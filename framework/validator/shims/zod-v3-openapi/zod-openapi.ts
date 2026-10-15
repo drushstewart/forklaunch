@@ -1,6 +1,7 @@
 import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from './schemaMerge';
 import { assertPureInputSchema, pureInputOptional } from './pureInput';
+import { stringLiteralPattern } from './stringLiteral';
 import { AnyZodObject, z, ZodTypeAny } from 'zod/v3';
 import {
   factoryEmailPattern,
@@ -188,6 +189,12 @@ function parseString({
         break;
     }
   });
+  if (!checks.some(item =>
+    item.kind === 'trim' || item.kind === 'toLowerCase' || item.kind === 'toUpperCase'
+  )) {
+    const patterns = checks.map(stringLiteralPattern).filter(pattern => pattern !== undefined);
+    if (patterns.length) baseSchema.allOf = patterns.map(pattern => ({ pattern }));
+  }
   // Zod applies every declared length rule. Collapse only the non-transforming
   // finite registration profile; UTF-16 versus JSON Schema code-point counting
   // remains a separate wire-schema limitation, even for a single constraint.

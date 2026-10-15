@@ -24842,6 +24842,11 @@
           "source": "framework/validator/shims/zod-v3-openapi/schemaMerge.ts"
         },
         {
+          "subpath": "./shims/zod-v3-openapi/stringLiteral",
+          "target": "lib/shims/zod-v3-openapi/stringLiteral.d.ts",
+          "source": "framework/validator/shims/zod-v3-openapi/stringLiteral.ts"
+        },
+        {
           "subpath": "./shims/zod-v3-openapi/zod-extensions",
           "target": "lib/shims/zod-v3-openapi/zod-extensions.d.ts",
           "source": "framework/validator/shims/zod-v3-openapi/zod-extensions.ts"
@@ -25331,13 +25336,13 @@
               "name": "assertPureInputSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/pureInput.ts",
-              "line": 36
+              "line": 37
             },
             {
               "name": "pureInputOptional",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/pureInput.ts",
-              "line": 89
+              "line": 104
             }
           ]
         },
@@ -25349,6 +25354,17 @@
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/schemaMerge.ts",
               "line": 11
+            }
+          ]
+        },
+        {
+          "source": "framework/validator/shims/zod-v3-openapi/stringLiteral.ts",
+          "exports": [
+            {
+              "name": "stringLiteralPattern",
+              "kind": "FunctionDeclaration",
+              "source": "framework/validator/shims/zod-v3-openapi/stringLiteral.ts",
+              "line": 7
             }
           ]
         },
@@ -25370,20 +25386,20 @@
               "name": "AnatineSchemaObject",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 15,
+              "line": 16,
               "type": "SchemaObject & {\n  hideDefinitions?: string[];\n  $schema?: string;\n}"
             },
             {
               "name": "OpenApiZodAny",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 20,
+              "line": 21,
               "members": [
                 {
                   "name": "metaOpenApi",
                   "signature": "metaOpenApi?: AnatineSchemaObject | AnatineSchemaObject[];",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 21
+                  "line": 22
                 }
               ]
             },
@@ -25391,19 +25407,19 @@
               "name": "SchemaGenerationOptions",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 30,
+              "line": 31,
               "members": [
                 {
                   "name": "jsonSchemaDialect",
                   "signature": "readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 31
+                  "line": 32
                 },
                 {
                   "name": "pureInput",
                   "signature": "readonly pureInput?: boolean;",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 33
+                  "line": 34
                 }
               ]
             },
@@ -25411,13 +25427,13 @@
               "name": "extendApi",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 50
+              "line": 51
             },
             {
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 970
+              "line": 977
             }
           ]
         },

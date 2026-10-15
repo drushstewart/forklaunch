@@ -907,7 +907,7 @@ contracts and TypeScript behavior, then implement idiomatic Rust equivalents and
 validate generated modules and SDKs. Runtime-specific JavaScript adapters do not
 require literal Rust clones, but their public request/response behavior does.
 
-- [ ] Inventory every published framework/blueprint package and map its public runtime, provider, service, DTO, contract and generated-module capabilities to Rust implementations and conformance fixtures. The 44-package/module inventory is recorded in [RUST-TYPESCRIPT-PARITY-INVENTORY.md](RUST-TYPESCRIPT-PARITY-INVENTORY.md); the checked source inventory now resolves 620 entry points and records 1,698 declaration/re-export records, public members, type aliases, external boundaries, module sources and CLI bins. Sixteen common naming/hash/path symbols have explicit implementations and actual-source conformance; remaining detailed semantic symbol/DTO/fixture mapping stays open.
+- [ ] Inventory every published framework/blueprint package and map its public runtime, provider, service, DTO, contract and generated-module capabilities to Rust implementations and conformance fixtures. The 44-package/module inventory is recorded in [RUST-TYPESCRIPT-PARITY-INVENTORY.md](RUST-TYPESCRIPT-PARITY-INVENTORY.md); the checked source inventory now resolves 621 entry points and records 1,699 declaration/re-export records, public members, type aliases, external boundaries, module sources and CLI bins. Sixteen common naming/hash/path symbols have explicit implementations and actual-source conformance; remaining detailed semantic symbol/DTO/fixture mapping stays open.
 - [x] Complete messaging interface/base persistence, generated SMS module and Twilio delivery/status-callback integration with provider fixtures and tenant isolation. (`blueprint/interfaces/messaging`, `blueprint/implementations/messaging/{base,twilio}`, generated messaging modules) Actual TypeScript base/Twilio fixtures cover DTOs, all 16 status cases, dispatch forms, callbacks and error clearing. Generated Rust/mixed modules pass both SDKs through contract and OpenAPI imports, JWT/HMAC failures, signed-form tampering, restricted-role RLS/encryption/auditing, restart persistence, compliance and init/rename/sync/delete. SMS storage uses native Rust migrations; shared MikroORM schema and generic compliance/retention wrappers remain separate tasks.
 - [x] Port all five billing interface service families and base persistence/cache lifecycle. The 168-operation actual TS base-class comparison and native memory/PostgreSQL tests pass; provider ID/party lookups use indexed tenant-scoped queries, and metadata-only ID lookup avoids decrypting provider data. Native responses retain complete typed DTOs when a generic mapper would otherwise return partial portal data; configured Stripe mappers and Redis cache interoperability remain separate.
 - [x] Port Stripe billing authenticated transport and five asynchronous provider services over tenant-bound base persistence. Twenty-one official Stripe 22.6.2 transport comparisons and 144 actual TS wrapper operations pass, including plan replacement, subscription item updates, nonresumable cancellation errors, session IDs/expiry, payment-link metadata, provider failures and cache/backup lifecycle. Native checks enforce timeout/response/form bounds, redaction and redirect refusal. Shared raw-body verification retains 20 SDK signature comparisons and adds stale billing callback rejection; the synchronous reference adapter now fails closed instead of fabricating provider results. Fixtures use owned generic mapper/storage boundaries, so configured application mappers remain a separate gate.
@@ -2391,3 +2391,26 @@ Independent new Subscription CI direct-executable wrapper passes restrictedPG/
 HTTP/MCP/oneTS+oneRust SDK3.01s (/private/tmp/fl-subscription-route-root-wrapper.log),
 confirming Cargo lock is released before SDK subprocess builds. This supersedes
 the queued wrapper status in preceding receipt. No deps/locks.660/682(96.8%).
+
+
+### Literal string schema constraints across AJV and Rust (2026-10-14)
+
+Non-transforming startsWith/endsWith/includes declarations now emit escaped
+conjunctive pattern constraints rather than disappearing. endsWith uses true-end
+lookahead, avoiding ECMAScript $'s final-newline admission. Supports well-formed
+Unicode literal registrations, includes position undefined/numericzero (including
+negativezero), and empty includes at any position as a no-op. Nonzero nonempty
+positions/lone-surrogate registration literals retain baseline general export and
+reject in pure mode. Arbitrary RegExp flags/engines and transformed strings remain
+outside this slice. Existing format/pattern and annotation merges preserved.
+92880actualZod/AJV comparisons across1080exports+20controls and30960shipped
+Rust jsonschema/fancy-regex comparisons across360schemas pass, including newline,
+metacharacter/control/NUL/astral/contradictory/nested cases. StrictTS7.0.2
+12roots/620exports passed, then root refreshed inventory to621entries/1699records
+and independently passed12roots/621exports. Pure577+246,stringbounds196800+6
+explicit Unicode differences,NativeEnum16080+41,SDK20,URI203261TS-only pass.
+Frozen4 /private/tmp/fl-string-literals-source.json verified; logs /private/tmp/fl-
+string-literals-{native,types}.log plus named regression logs; root types log
+/private/tmp/fl-string-literals-root-types.log. CI enables native proof with existing
+contract schema-validation example; no Rust source/deps/locks changed. Broader
+schema/Unicode/callback gates remain open,660/682(96.8%),22open unchanged.

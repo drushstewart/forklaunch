@@ -1,4 +1,5 @@
 import { z, type ZodTypeAny } from 'zod/v3';
+import { stringLiteralPattern } from './stringLiteral';
 
 // Explicit supported nodes prevent the general exporter's catch-all fallback from
 // silently admitting JSON for non-JSON or unimplemented Zod types.
@@ -73,6 +74,20 @@ export function assertPureInputSchema(schema: ZodTypeAny): void {
   ) {
     throw new Error(
       'Pure input export does not support built-in string transforms'
+    );
+  }
+  if (
+    schema._def.typeName === 'ZodString' &&
+    (schema._def.checks as z.ZodStringCheck[]).some(
+      (check) =>
+        (check.kind === 'startsWith' ||
+          check.kind === 'endsWith' ||
+          check.kind === 'includes') &&
+        stringLiteralPattern(check) === undefined
+    )
+  ) {
+    throw new Error(
+      'Pure input export does not support this string literal position or surrogate'
     );
   }
   if (schema._def.coerce === true) {

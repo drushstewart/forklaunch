@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 620 resolved declaration entry points and 1,698 declaration/re-export
+It records 621 resolved declaration entry points and 1,699 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -10422,3 +10422,26 @@ Independent new Subscription CI direct-executable wrapper passes restrictedPG/
 HTTP/MCP/oneTS+oneRust SDK3.01s (/private/tmp/fl-subscription-route-root-wrapper.log),
 confirming Cargo lock is released before SDK subprocess builds. This supersedes
 the queued wrapper status in preceding receipt. No deps/locks.660/682(96.8%).
+
+
+### Literal string schema constraints across AJV and Rust (2026-10-14)
+
+Non-transforming startsWith/endsWith/includes declarations now emit escaped
+conjunctive pattern constraints rather than disappearing. endsWith uses true-end
+lookahead, avoiding ECMAScript $'s final-newline admission. Supports well-formed
+Unicode literal registrations, includes position undefined/numericzero (including
+negativezero), and empty includes at any position as a no-op. Nonzero nonempty
+positions/lone-surrogate registration literals retain baseline general export and
+reject in pure mode. Arbitrary RegExp flags/engines and transformed strings remain
+outside this slice. Existing format/pattern and annotation merges preserved.
+92880actualZod/AJV comparisons across1080exports+20controls and30960shipped
+Rust jsonschema/fancy-regex comparisons across360schemas pass, including newline,
+metacharacter/control/NUL/astral/contradictory/nested cases. StrictTS7.0.2
+12roots/620exports passed, then root refreshed inventory to621entries/1699records
+and independently passed12roots/621exports. Pure577+246,stringbounds196800+6
+explicit Unicode differences,NativeEnum16080+41,SDK20,URI203261TS-only pass.
+Frozen4 /private/tmp/fl-string-literals-source.json verified; logs /private/tmp/fl-
+string-literals-{native,types}.log plus named regression logs; root types log
+/private/tmp/fl-string-literals-root-types.log. CI enables native proof with existing
+contract schema-validation example; no Rust source/deps/locks changed. Broader
+schema/Unicode/callback gates remain open,660/682(96.8%),22open unchanged.
