@@ -98,7 +98,7 @@ type IntentRow = (String, String, String, String, String, Option<String>);
 // hence a 256 KiB envelope budget rather than the simpler 64 KiB Plan profile.
 // Count worst-case JSON escaping before cloning/sorting public input. Recursion
 // is bounded to 32 levels and 8192 nodes, including the outer envelope.
-fn budget(
+pub(super) fn budget(
     value: &Value,
     depth: usize,
     nodes: &mut usize,

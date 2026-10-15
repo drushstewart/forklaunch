@@ -1,6 +1,6 @@
 use axum::{
     Json, Router,
-    extract::State,
+    extract::{Path, State},
     http::HeaderMap,
     routing::{get, post},
 };
@@ -32,6 +32,8 @@ pub struct Provider {
     pub posts: Arc<AtomicUsize>,
     pub requests: Arc<AtomicUsize>,
     pub response: Arc<Mutex<Option<Value>>>,
+    pub readback: Arc<Mutex<Option<Value>>>,
+    pub pause_read: Arc<AtomicBool>,
     pub keys: Arc<Mutex<Vec<String>>>,
     pub pause: Arc<AtomicBool>,
     pub entered: Arc<Notify>,
@@ -58,6 +60,19 @@ async fn create(State(state): State<Provider>, headers: HeaderMap, body: String)
     }
     tokio::time::sleep(Duration::from_millis(state.delay.load(Ordering::SeqCst))).await;
     Json(state.response.lock().unwrap().clone().unwrap_or_else(||json!({"id":format!("plink_created_{number}"),"object":"payment_link","livemode":false,"url":"https://provider.test/private-token"})))
+}
+async fn read(
+    State(state): State<Provider>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Json<Value> {
+    auth(&headers);
+    assert!(!headers.contains_key("idempotency-key"));
+    if state.pause_read.load(Ordering::SeqCst) {
+        state.entered.notify_one();
+        state.resume.notified().await;
+    }
+    Json(state.readback.lock().unwrap().clone().unwrap_or_else(||json!({"id":id,"object":"payment_link","livemode":false,"active":false,"metadata":{"presentation":"fresh"}})))
 }
 pub struct Fixture {
     pub owner: PgPool,
@@ -110,6 +125,8 @@ impl Fixture {
             posts: Arc::new(AtomicUsize::new(0)),
             requests: Arc::new(AtomicUsize::new(0)),
             response: Arc::new(Mutex::new(None)),
+            readback: Arc::new(Mutex::new(None)),
+            pause_read: Arc::new(AtomicBool::new(false)),
             keys: Arc::new(Mutex::new(vec![])),
             pause: Arc::new(AtomicBool::new(false)),
             entered: Arc::new(Notify::new()),
@@ -132,6 +149,7 @@ impl Fixture {
                 }),
             )
             .route("/v1/payment_links", post(create))
+            .route("/v1/payment_links/{id}", get(read))
             .with_state(provider.clone())
             .layer(axum::middleware::from_fn({
                 let count = provider.requests.clone();

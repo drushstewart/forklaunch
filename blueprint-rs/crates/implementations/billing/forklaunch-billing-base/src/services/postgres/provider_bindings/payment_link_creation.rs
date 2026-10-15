@@ -1,10 +1,12 @@
 //! Trusted adapter journal; never a public provider-evidence ingestion endpoint.
 mod managed;
+mod read;
 use super::super::{db_error, invalid, storage_error};
 use super::{DurableStripeBinding, PostgresBillingStore, StripeBindingScope, conflict};
 use crate::services::{BillingKind, Scope};
 use forklaunch_blueprint_core::BlueprintResult;
 pub use managed::ManagedPaymentLinkPublication;
+pub use read::PaymentLinkCreationReadSnapshot;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use sqlx::{Postgres, Transaction};

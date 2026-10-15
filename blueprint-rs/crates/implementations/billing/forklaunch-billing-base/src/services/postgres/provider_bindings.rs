@@ -21,8 +21,8 @@ mod plan_creation;
 mod subscription_creation;
 pub use paused_effect::{PausedEffectAcknowledgement, PausedSubscriptionEffectSnapshot};
 pub use payment_link_creation::{
-    ManagedPaymentLinkPublication, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
-    PaymentLinkCreationStatus,
+    ManagedPaymentLinkPublication, PaymentLinkCreationClaim, PaymentLinkCreationReadSnapshot,
+    PaymentLinkCreationReservation, PaymentLinkCreationStatus,
 };
 pub use plan_creation::{
     PlanCreationClaim, PlanCreationReadSnapshot, PlanCreationReservation, PlanCreationStatus,

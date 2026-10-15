@@ -13,8 +13,9 @@ pub use provider_bindings::{
 };
 pub use provider_bindings::{
     DurableStripeBinding, ManagedPaymentLinkPublication, PausedEffectAcknowledgement,
-    PausedSubscriptionEffectSnapshot, PaymentLinkCreationClaim, PaymentLinkCreationReservation,
-    PaymentLinkCreationStatus, StripeBindingScope, StripeSubscriptionOwnership,
+    PausedSubscriptionEffectSnapshot, PaymentLinkCreationClaim, PaymentLinkCreationReadSnapshot,
+    PaymentLinkCreationReservation, PaymentLinkCreationStatus, StripeBindingScope,
+    StripeSubscriptionOwnership,
 };
 pub use provider_bindings::{
     PlanCreationClaim, PlanCreationReadSnapshot, PlanCreationReservation, PlanCreationStatus,

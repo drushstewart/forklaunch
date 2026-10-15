@@ -10485,3 +10485,31 @@ string-composition.log,/private/tmp/fl-factory-string-types.log and named regres
 logs. Root refreshed source locations/checked inventory621/1699; no exports/deps/
 locks/native source changes. CI native fixture runs within pinnedNode24.2 URI group.
 Broad schema/mapper/plugin/deployment gates remain open;660/682(96.8%),22open.
+
+
+### Actor-owned completed PaymentLink library read (2026-10-14)
+
+get_bound_created_payment_link adds a direct completed-creation getter with opaque
+joined actor/tenant/scope/API/canonicalhash/receipt/localbody/alias-generation proof.
+Original normalized trustedPrices must match, managed sealed payload rejects before
+provider I/O. Fresh pinned Account/Balance and exact PaymentLink id/kind/mode GET
+replace only providerFields; public UUID/local amount/status remain unchanged,
+including active=false provider responses. No line-item/price/payment/lifecycle or
+entitlement inference, POST/claims/publisher/cache mutation or administrative-only
+alias fallback. Existing administrative scoped getter remains compatible.
+Read evidence is bounded before additional cloning (32depth/8192nodes/256KiB worst
+case), repeated after provider and audit waits, with final postcommit deadline.
+Data linearizes at last matching SELECT, not guaranteed unchanged afterward.
+Older reserve_payment_link_creation still canonicalizes before size check; this
+separate hardening gap is not silently changed by the getter.
+Frozen9 /private/tmp/fl-created-payment-link-read-final.json verified, SHA256
+e81c76c4b56407fbcf245955b08374b89b67a2ddc7a76d6df19bed7f188e184a.
+New restrictedPG matrix5.53s,legacydirect/managed2tests10.67s,originalcreation/
+uncertainCOMMIT17.80s,strictbase+Stripeallfeature/alltargetClippy12.49s pass.
+ActualTS24cache-read cases/fullconfigured oracle pass. DeniedauditINSERT yields
+zero provider calls; actor/tenant/profile/admin-only/managed/oversize/GETmutation/
+auditexpiry/localbody cases pass. Immutable journal no-op mutation remains denied.
+Ownedroles0. Logs /private/tmp/fl-created-payment-link-read-{final,legacy,creation,
+clippy-final}.log; actual /private/tmp/fl-payment-link-read-audit-ts.log and
+/private/tmp/fl-payment-link-provenance-audit-configured.log. No new route/migration/
+manifest or reservation behavior; aggregate selection remains separate.660/682(96.8%).

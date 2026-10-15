@@ -1,6 +1,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "postgres-identity")]
+mod bound_created_payment_link_reads;
+#[cfg(feature = "postgres-identity")]
 pub mod bound_creation;
 #[cfg(feature = "postgres-identity")]
 pub mod bound_reads;
