@@ -83,7 +83,11 @@ pub(super) fn evaluate(
     Ok(if errors.is_empty() {
         Parsed::valid(Some(Value::String(value.to_owned())))
     } else {
-        Parsed::invalid(errors, Status::Dirty)
+        let mut parsed = Parsed::invalid(errors, Status::Dirty);
+        if budget.track_origins {
+            parsed.value = Some(Value::String(value.to_owned()));
+        }
+        parsed
     })
 }
 

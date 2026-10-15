@@ -86,6 +86,40 @@ fn runtime_format_field() -> typescript_coerce::ZodJsonField<'static> {
         schema: Schema::Optional(Box::new(Schema::Object(fields))),
     }
 }
+fn intersection_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
+    use typescript_coerce::{
+        ZodJsonField as Field, ZodJsonSchema as Schema, ZodStringCheck, ZodStringRule,
+        ZodStringStep,
+    };
+    let trim = || {
+        Schema::String(vec![ZodStringCheck {
+            rule: ZodStringRule::Step(ZodStringStep::Trim),
+            message: None,
+        }])
+    };
+    vec![
+        Field {
+            name: "joined",
+            schema: Schema::Optional(Box::new(Schema::Intersection {
+                left: Box::new(Schema::Object(vec![Field {
+                    name: "left",
+                    schema: trim(),
+                }])),
+                right: Box::new(Schema::Object(vec![Field {
+                    name: "right",
+                    schema: Schema::Number(vec![]),
+                }])),
+            })),
+        },
+        Field {
+            name: "conflict",
+            schema: Schema::Optional(Box::new(Schema::Intersection {
+                left: Box::new(trim()),
+                right: Box::new(Schema::String(vec![])),
+            })),
+        },
+    ]
+}
 fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
     let mut fields = vec![
@@ -172,10 +206,17 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
     ];
     fields.extend(tuple_fields());
     fields.push(runtime_format_field());
+    fields.extend(intersection_fields());
     fields.extend(absence_fields());
     fields.extend(object_policy_fields());
     #[cfg(feature = "zod-uri")]
-    fields.push(Field {
+    fields.push(uri_field());
+    Schema::Object(fields)
+}
+#[cfg(feature = "zod-uri")]
+fn uri_field<'a>() -> typescript_coerce::ZodJsonField<'a> {
+    use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
+    Field {
         name: "uri",
         schema: Schema::Optional(Box::new(Schema::String(vec![
             typescript_coerce::ZodStringCheck {
@@ -185,9 +226,9 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
                 message: None,
             },
         ]))),
-    });
-    Schema::Object(fields)
+    }
 }
+
 fn absence_fields<'a>() -> Vec<typescript_coerce::ZodJsonField<'a>> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
     vec![

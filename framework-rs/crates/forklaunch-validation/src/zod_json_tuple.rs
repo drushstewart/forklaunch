@@ -1,5 +1,5 @@
 use super::{
-    Budget, Order, ParseError, Parsed, Status, Value, ZodJsonSchema, ZodJsonUnsupported,
+    Budget, Order, Origin, ParseError, Parsed, Status, Value, ZodJsonSchema, ZodJsonUnsupported,
     evaluate_ordered, zod_array_shape,
 };
 
@@ -43,6 +43,12 @@ pub(super) fn evaluate(
         items.len()
     };
     budget.charge(count, count.saturating_mul(std::mem::size_of::<Value>()))?;
+    let origin_count = if budget.track_origins { count } else { 0 };
+    budget.charge(
+        0,
+        origin_count.saturating_mul(std::mem::size_of::<Origin>()),
+    )?;
+    let mut origins = Vec::with_capacity(origin_count);
     let mut output = Vec::with_capacity(count);
     for (index, value) in values.iter().take(count).enumerate() {
         let schema = items.get(index).or(rest).expect("admitted tuple slot");
@@ -55,10 +61,17 @@ pub(super) fn evaluate(
         parsed.absorb(&mut child, &index.to_string(), budget)?;
         if let Some(value) = child.value {
             output.push(value);
+            if budget.track_origins {
+                origins.push(child.origin);
+            }
         }
     }
-    if parsed.status == Status::Valid {
+    if parsed.status == Status::Valid || (budget.track_origins && parsed.status == Status::Dirty) {
         parsed.value = Some(Value::Array(output));
+        parsed.origin = Origin::Array {
+            source: None,
+            children: origins,
+        };
     }
     Ok(parsed)
 }

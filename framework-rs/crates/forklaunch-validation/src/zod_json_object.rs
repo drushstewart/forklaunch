@@ -1,9 +1,14 @@
 //! Finite object policies; outputs are semantic JSON, not serialized own-key order.
 use super::{
-    Budget, Issue, Order, ParseError, Parsed, Status, ZodJsonField, ZodJsonSchema,
+    Budget, Issue, Order, Origin, ParseError, Parsed, Status, ZodJsonField, ZodJsonSchema,
     ZodJsonUnknownKeys, ZodJsonUnsupported, evaluate_ordered, index_key,
 };
 use serde_json::{Map, Value};
+#[derive(Default)]
+struct ObjectOutput {
+    values: Map<String, Value>,
+    origins: std::collections::BTreeMap<String, Origin>,
+}
 pub(super) fn evaluate(
     input: Option<&Value>,
     fields: &[ZodJsonField<'_>],
@@ -39,7 +44,7 @@ pub(super) fn evaluate(
     let mut ordered: Vec<_> = fields.iter().collect();
     ordered.sort_by_key(|field| index_key(field.name));
     let mut parsed = Parsed::valid(None);
-    let mut output = Map::new();
+    let mut output = ObjectOutput::default();
     for field in ordered {
         let mut child = evaluate_ordered(
             values.get(field.name),
@@ -50,7 +55,17 @@ pub(super) fn evaluate(
         parsed.absorb(&mut child, field.name, remaining)?;
         if let Some(value) = child.value {
             remaining.charge(0, field.name.len())?;
-            output.insert(field.name.to_owned(), value);
+            if remaining.track_origins {
+                remaining.charge(
+                    1,
+                    field
+                        .name
+                        .len()
+                        .saturating_add(std::mem::size_of::<Origin>()),
+                )?;
+                output.origins.insert(field.name.to_owned(), child.origin);
+            }
+            output.values.insert(field.name.to_owned(), value);
         }
     }
     let catchall = catchall.filter(|schema| !matches!(schema, ZodJsonSchema::Never));
@@ -67,8 +82,13 @@ pub(super) fn evaluate(
     } else if unknown == ZodJsonUnknownKeys::Strict {
         super::reject_unknown(values, fields, order, &mut parsed, remaining)?;
     }
-    if parsed.status == Status::Valid {
-        parsed.value = Some(Value::Object(output));
+    if parsed.status == Status::Valid || (remaining.track_origins && parsed.status == Status::Dirty)
+    {
+        parsed.value = Some(Value::Object(output.values));
+        parsed.origin = Origin::Object {
+            source: None,
+            children: output.origins,
+        };
     }
     Ok(parsed)
 }
@@ -80,7 +100,7 @@ fn extras(
     order: Option<&Order>,
     catchall: Option<&ZodJsonSchema<'_>>,
     parsed: &mut Parsed,
-    output: &mut Map<String, Value>,
+    output: &mut ObjectOutput,
 ) -> Result<(), ZodJsonUnsupported> {
     remaining.charge(values.len() + fields.len(), values.len().saturating_mul(16))?;
     let declared: std::collections::BTreeSet<_> = fields.iter().map(|field| field.name).collect();
@@ -108,7 +128,11 @@ fn extras(
             && let Some(value) = child.value
         {
             remaining.charge(1, name.len())?;
-            output.insert(name.clone(), value);
+            if remaining.track_origins {
+                remaining.charge(1, name.len().saturating_add(std::mem::size_of::<Origin>()))?;
+                output.origins.insert(name.clone(), child.origin);
+            }
+            output.values.insert(name.clone(), value);
         }
     }
     if unordered_groups > 1 {

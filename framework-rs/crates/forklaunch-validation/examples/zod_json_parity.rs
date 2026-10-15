@@ -37,6 +37,9 @@ fn string_schema(spec: &Value) -> ZodJsonSchema<'_> {
                     "min" => ZodStringRule::Step(ZodStringStep::Min(
                         check["argument"].as_u64().unwrap().try_into().unwrap(),
                     )),
+                    "max" => ZodStringRule::Step(ZodStringStep::Max(
+                        check["argument"].as_u64().unwrap().try_into().unwrap(),
+                    )),
                     "endsWith" => ZodStringRule::EndsWith(check["argument"].as_str().unwrap()),
                     _ => panic!("unknown string check"),
                 },
@@ -92,6 +95,10 @@ fn schema(spec: &Value) -> ZodJsonSchema<'_> {
         "record" => ZodJsonSchema::Record {
             key: Box::new(schema(&spec["key"])),
             value: Box::new(schema(&spec["valueSchema"])),
+        },
+        "intersection" => ZodJsonSchema::Intersection {
+            left: Box::new(schema(&spec["left"])),
+            right: Box::new(schema(&spec["right"])),
         },
         "union" => ZodJsonSchema::Union(
             spec["branches"]

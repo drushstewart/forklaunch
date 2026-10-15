@@ -6,6 +6,7 @@ pub(super) const MAX_ADMISSION_BYTES: usize = 16 * 1024 * 1024;
 const MAX_WORK_BYTES: usize = 32 * 1024 * 1024;
 
 pub(super) struct Budget {
+    pub track_origins: bool,
     pub nodes: usize,
     #[cfg(feature = "zod-regex")]
     pub regex_work: usize,
@@ -14,6 +15,7 @@ pub(super) struct Budget {
 impl Budget {
     pub fn new() -> Self {
         Self {
+            track_origins: false,
             nodes: MAX_NODES,
             #[cfg(feature = "zod-regex")]
             regex_work: 400_000_000,

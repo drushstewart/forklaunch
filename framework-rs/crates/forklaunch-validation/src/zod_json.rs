@@ -11,6 +11,9 @@ mod issues;
 #[path = "zod_json_resources.rs"]
 mod resources;
 use issues::Issue;
+#[path = "zod_json_intersection.rs"]
+mod intersection;
+use intersection::Origin;
 #[path = "zod_json_literal.rs"]
 mod literal;
 pub use literal::ZodJsonLiteral;
@@ -93,6 +96,11 @@ pub enum ZodJsonSchema<'a> {
         catchall: Option<Box<Self>>,
     },
     Union(Vec<Self>),
+    /// Evaluate both branches and merge compatible transformed JSON outputs.
+    Intersection {
+        left: Box<Self>,
+        right: Box<Self>,
+    },
     /// Evaluate each own string key then its value. Successful scalar keys use
     /// JavaScript property-key conversion; transformed `__proto__` is omitted.
     /// Ordered documents retain last-wins collisions. Ordinary values defer
@@ -155,6 +163,9 @@ enum Status {
     Aborted,
 }
 struct Parsed {
+    finite_output: bool,
+    merge_order_available: bool,
+    origin: Origin,
     value: Option<Value>,
     errors: Vec<Issue>,
     status: Status,
@@ -162,6 +173,9 @@ struct Parsed {
 impl Parsed {
     fn valid(value: Option<Value>) -> Self {
         Self {
+            finite_output: true,
+            merge_order_available: true,
+            origin: Origin::default(),
             value,
             errors: Vec::new(),
             status: Status::Valid,
@@ -169,6 +183,9 @@ impl Parsed {
     }
     fn invalid(errors: Vec<ParseError>, status: Status) -> Self {
         Self {
+            finite_output: true,
+            merge_order_available: true,
+            origin: Origin::default(),
             value: None,
             errors: errors.into_iter().map(Issue::Leaf).collect(),
             status,
@@ -180,6 +197,8 @@ impl Parsed {
         key: &str,
         budget: &mut Budget,
     ) -> Result<(), ZodJsonUnsupported> {
+        self.finite_output &= child.finite_output;
+        self.merge_order_available &= child.merge_order_available;
         if child.status == Status::Aborted {
             self.status = Status::Aborted;
         } else if child.status == Status::Dirty && self.status == Status::Valid {
@@ -283,7 +302,8 @@ fn evaluate_document(
     if path_bytes > MAX_ADMISSION_BYTES {
         return Err(ZodJsonUnsupported::DiagnosticPath);
     }
-    let schema_bytes = admit_schema(schema)?.saturating_add(path_bytes);
+    let (schema_bytes, track_origins) = admit_schema(schema)?;
+    let schema_bytes = schema_bytes.saturating_add(path_bytes);
     if schema_bytes > MAX_ADMISSION_BYTES {
         return Err(ZodJsonUnsupported::SchemaBytes);
     }
@@ -294,6 +314,7 @@ fn evaluate_document(
         return Err(ZodJsonUnsupported::InputBytes);
     }
     let mut remaining = Budget::new();
+    remaining.track_origins = track_origins;
     remaining.charge(path.len(), path_bytes)?;
     let mut parsed = evaluate_ordered(input, schema, &mut remaining, order)?;
     if let Some(value) = &parsed.value {
@@ -362,7 +383,8 @@ fn admit_value_counted(
     Ok((nodes, bytes))
 }
 
-fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported> {
+fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool), ZodJsonUnsupported> {
+    let mut intersections = false;
     let mut stack = vec![(schema, 0)];
     let mut nodes = 0;
     let mut bytes = 0usize;
@@ -375,24 +397,7 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
         if bytes > MAX_ADMISSION_BYTES {
             return Err(ZodJsonUnsupported::SchemaBytes);
         }
-        let extra = match schema {
-            ZodJsonSchema::String(checks) => checks.len(),
-            #[cfg(feature = "zod-regex")]
-            ZodJsonSchema::CheckedString(checks) => checks.len(),
-            ZodJsonSchema::Number(checks) => checks.len(),
-            ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
-            ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
-            ZodJsonSchema::ObjectWithPolicy {
-                fields, catchall, ..
-            } => fields.len() + usize::from(catchall.is_some()),
-            ZodJsonSchema::Union(branches) => branches.len(),
-            ZodJsonSchema::Tuple { items, rest } => items.len() + usize::from(rest.is_some()),
-            ZodJsonSchema::Record { .. } => 2,
-            ZodJsonSchema::Optional(_)
-            | ZodJsonSchema::Nullable(_)
-            | ZodJsonSchema::Default { .. } => 1,
-            _ => 0,
-        };
+        let extra = schema_children(schema);
         if nodes + stack.len() + extra > MAX_NODES {
             return Err(ZodJsonUnsupported::SchemaNodes);
         }
@@ -403,7 +408,12 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
                     stack.push((rest, depth + 1));
                 }
             }
-            ZodJsonSchema::Record { key, value } => {
+            ZodJsonSchema::Intersection {
+                left: key,
+                right: value,
+            }
+            | ZodJsonSchema::Record { key, value } => {
+                intersections |= matches!(schema, ZodJsonSchema::Intersection { .. });
                 stack.push((key, depth + 1));
                 stack.push((value, depth + 1));
             }
@@ -457,7 +467,28 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<usize, ZodJsonUnsupported>
             _ => {}
         }
     }
-    Ok(bytes)
+    Ok((bytes, intersections))
+}
+
+fn schema_children(schema: &ZodJsonSchema<'_>) -> usize {
+    match schema {
+        ZodJsonSchema::String(checks) => checks.len(),
+        #[cfg(feature = "zod-regex")]
+        ZodJsonSchema::CheckedString(checks) => checks.len(),
+        ZodJsonSchema::Number(checks) => checks.len(),
+        ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
+        ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
+        ZodJsonSchema::ObjectWithPolicy {
+            fields, catchall, ..
+        } => fields.len() + usize::from(catchall.is_some()),
+        ZodJsonSchema::Union(branches) => branches.len(),
+        ZodJsonSchema::Tuple { items, rest } => items.len() + usize::from(rest.is_some()),
+        ZodJsonSchema::Record { .. } | ZodJsonSchema::Intersection { .. } => 2,
+        ZodJsonSchema::Optional(_) | ZodJsonSchema::Nullable(_) | ZodJsonSchema::Default { .. } => {
+            1
+        }
+        _ => 0,
+    }
 }
 
 fn prototype_name(name: &str) -> bool {
@@ -522,7 +553,18 @@ fn evaluate_ordered(
         ZodJsonSchema::Undefined => terminal(input, "undefined"),
         ZodJsonSchema::Void => terminal(input, "void"),
         ZodJsonSchema::Never => terminal(input, "never"),
-        ZodJsonSchema::Unknown => Parsed::valid(input.map(clone_json).transpose()?),
+        ZodJsonSchema::Unknown => {
+            let mut parsed = Parsed::valid(input.map(clone_json).transpose()?);
+            if remaining.track_origins
+                && let Some(input) = input
+            {
+                parsed.origin = Origin::borrowed(input, remaining)?;
+            }
+            parsed
+        }
+        ZodJsonSchema::Intersection { left, right } => {
+            intersect(input, left, right, remaining, order)?
+        }
         ZodJsonSchema::Optional(_) if input.is_none() => Parsed::valid(None),
         ZodJsonSchema::Nullable(_) if input == Some(&Value::Null) => {
             Parsed::valid(Some(Value::Null))
@@ -535,17 +577,7 @@ fn evaluate_ordered(
         }
         #[cfg(feature = "zod-regex")]
         ZodJsonSchema::CheckedString(checks) => regex::evaluate(input, checks, remaining)?,
-        ZodJsonSchema::String(checks) => match zod_string_checks(input, checks) {
-            Ok(value) => Parsed::valid(Some(Value::String(value.to_owned()))),
-            Err(errors) => Parsed::invalid(
-                errors,
-                if matches!(input, Some(Value::String(_))) {
-                    Status::Dirty
-                } else {
-                    Status::Aborted
-                },
-            ),
-        },
+        ZodJsonSchema::String(checks) => parsed_string(input, checks, remaining),
         ZodJsonSchema::Boolean => match boolean(input) {
             Ok(value) => Parsed::valid(Some(Value::Bool(value))),
             Err(error) => Parsed::invalid(vec![error], Status::Aborted),
@@ -554,14 +586,15 @@ fn evaluate_ordered(
             Ok(value) => Parsed::valid(Some(Value::Number(
                 serde_json::Number::from_f64(value).ok_or(ZodJsonUnsupported::NonFiniteNumber)?,
             ))),
-            Err(errors) => Parsed::invalid(
-                errors,
-                if number(input).is_ok() {
-                    Status::Dirty
-                } else {
-                    Status::Aborted
-                },
-            ),
+            Err(errors) => match number(input) {
+                Ok(value) => {
+                    let mut parsed = Parsed::invalid(errors, Status::Dirty);
+                    parsed.finite_output = value.is_finite();
+                    parsed.value = serde_json::Number::from_f64(value).map(Value::Number);
+                    parsed
+                }
+                Err(_) => Parsed::invalid(errors, Status::Aborted),
+            },
         },
         ZodJsonSchema::Array { element, checks } => {
             array(input, element, checks, remaining, order)?
@@ -588,6 +621,87 @@ fn evaluate_ordered(
             record::evaluate(input, key, value, remaining, order)?
         }
     })
+}
+
+fn parsed_string(
+    input: Option<&Value>,
+    checks: &[ZodStringCheck<'_>],
+    remaining: &Budget,
+) -> Parsed {
+    match zod_string_checks(input, &[]) {
+        Err(errors) => Parsed::invalid(errors, Status::Aborted),
+        Ok(mut value) => {
+            let mut length = value.encode_utf16().count() as u64;
+            let mut errors = Vec::new();
+            for check in checks {
+                if let Some(error) =
+                    super::strict_string::apply_check(&mut value, &mut length, *check)
+                {
+                    errors.push(error);
+                }
+            }
+            let status = if errors.is_empty() {
+                Status::Valid
+            } else {
+                Status::Dirty
+            };
+            let mut parsed = Parsed::invalid(errors, status);
+            if status == Status::Valid || remaining.track_origins {
+                parsed.value = Some(Value::String(value.to_owned()));
+            }
+            parsed
+        }
+    }
+}
+
+fn intersect(
+    input: Option<&Value>,
+    left: &ZodJsonSchema<'_>,
+    right: &ZodJsonSchema<'_>,
+    budget: &mut Budget,
+    order: Option<&Order>,
+) -> Result<Parsed, ZodJsonUnsupported> {
+    let mut left = evaluate_ordered(input, left, budget, order)?;
+    let mut right = evaluate_ordered(input, right, budget, order)?;
+    left.errors.append(&mut right.errors);
+    if left.status == Status::Aborted || right.status == Status::Aborted {
+        left.status = Status::Aborted;
+        left.value = None;
+        left.origin = Origin::default();
+        return Ok(left);
+    }
+    if !left.merge_order_available || !right.merge_order_available {
+        left.status = Status::Aborted;
+        left.value = None;
+        left.origin = Origin::default();
+        left.errors.push(Issue::UnorderedObject);
+        return Ok(left);
+    }
+    if !left.finite_output || !right.finite_output {
+        return Err(ZodJsonUnsupported::NonFiniteNumber);
+    }
+    let merged = intersection::merge(
+        left.value.take(),
+        std::mem::take(&mut left.origin),
+        right.value,
+        right.origin,
+        budget,
+    )?;
+    if let Some((value, origin)) = merged {
+        left.value = value;
+        left.origin = origin;
+        if right.status == Status::Dirty {
+            left.status = Status::Dirty;
+        }
+    } else {
+        budget.charge(1, 64)?;
+        left.status = Status::Aborted;
+        left.errors.push(Issue::Leaf(ParseError {
+            path: Vec::new(),
+            message: "Intersection results could not be merged".to_owned(),
+        }));
+    }
+    Ok(left)
 }
 
 fn terminal(input: Option<&Value>, expected: &str) -> Parsed {
@@ -642,6 +756,9 @@ fn union(
         }
     }
     Ok(first_dirty.unwrap_or_else(|| Parsed {
+        finite_output: true,
+        merge_order_available: true,
+        origin: Origin::default(),
         value: None,
         status: Status::Aborted,
         errors: vec![Issue::Union {
@@ -666,6 +783,16 @@ fn array(
     if !parsed.errors.is_empty() {
         parsed.status = Status::Dirty;
     }
+    let origin_count = if remaining.track_origins {
+        values.len()
+    } else {
+        0
+    };
+    remaining.charge(
+        0,
+        origin_count.saturating_mul(std::mem::size_of::<Origin>()),
+    )?;
+    let mut origins = Vec::with_capacity(origin_count);
     let mut output = Vec::with_capacity(values.len());
     for (index, value) in values.iter().enumerate() {
         let mut child = evaluate_ordered(
@@ -677,10 +804,18 @@ fn array(
         parsed.absorb(&mut child, &index.to_string(), remaining)?;
         if let Some(value) = child.value {
             output.push(value);
+            if remaining.track_origins {
+                origins.push(child.origin);
+            }
         }
     }
-    if parsed.status == Status::Valid {
+    if parsed.status == Status::Valid || (remaining.track_origins && parsed.status == Status::Dirty)
+    {
         parsed.value = Some(Value::Array(output));
+        parsed.origin = Origin::Array {
+            source: None,
+            children: origins,
+        };
     }
     Ok(parsed)
 }
