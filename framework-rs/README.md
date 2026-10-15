@@ -1355,3 +1355,9 @@ Emoji_Component in native and both TypeScript helpers, independent of host Unico
 tables. Individual components such as digits and joiners intentionally pass; this
 is Zod property membership, not grapheme-sequence validation. Source data, Unicode
 License V3 and reproducible generator are retained; the oracle pins Node24.2.
+
+Raw `.jwt()` assertions preserve optional algorithm matching through ordered
+`jwtAlgorithms` rules. Native header parsing matches JavaScript atob Latin1, JSON
+escaped UTF16 units, duplicate keys and numeric truthiness; deep containers use an
+iterative parser. This checks Zod structure/header policy only, including optional
+empty signature and unparsed payload. It performs no signature or claim verification.

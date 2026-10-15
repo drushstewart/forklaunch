@@ -1664,3 +1664,8 @@ Recovery is independently selected with internal service tenant authority and a 
 ### 2026-10-15 — Auth time-of-check and grant issuance
 
 Private HTTP clock propagation resamples after authoritative reads and awaited issuance work; direct supplied-time services remain deterministic. Password/MFA rotation and session refresh reject selected authority expiry races before commit, without replacing async proof lease guards or claiming a post-COMMIT deadline. Root review corrected the remaining active-session load for externally supplied change-email proofs; delayed writer regression proves no cookie/email mutation and transactional rollback. Secondary organization rechecks remain open. Original full218/PG215.96s precede that final email correction; final focused/email8 and both strict Clippy profiles pass.
+
+
+### 2026-10-15 — Raw JWT format is separate from authentication
+
+The explicit schema assertion mirrors Zod JWT structure/header checks, including truthy non-string alg when no algorithm is configured, optional empty signature, and unparsed payload. It must not substitute for JWT signature or claim verification. Native parsing preserves Latin1 and escaped UTF16 header semantics with iterative container traversal; malformed JSON, unsupported profile rules and explicit algorithm mismatch reject. Actual/native83,494 and live HTTP/generated SDK checks pass; authentication providers and verification policy are unchanged.

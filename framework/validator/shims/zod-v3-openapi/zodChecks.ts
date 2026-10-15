@@ -10,6 +10,7 @@ interface Checks {
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6' | 'emoji')[];
+  jwtAlgorithms?: (string | null)[];
   dateTimes?: { precision: number | null; local: boolean; offset: boolean }[];
   timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
@@ -63,11 +64,19 @@ export function projectStringChecks(
         throw new Error('Zod datetime local and offset options must be booleans');
       return {precision, local: check.local, offset: check.offset};
     });
-  const formatResult: Checks | undefined = formats.length || timePrecisions.length || dateTimes.length
-    ? { version: 1, ...(formats.length ? { formats } : {}), ...(timePrecisions.length ? { timePrecisions } : {}), ...(dateTimes.length ? { dateTimes } : {}) }
+  const jwtAlgorithms = metadata.some((value) => own(value, 'format')) ? [] : checks
+    .filter((check) => check.kind === 'jwt')
+    .map((check) => {
+      const algorithm = check.alg ?? null;
+      if (algorithm !== null && typeof algorithm !== 'string')
+        throw new Error('Zod JWT algorithm must be a string or null');
+      return algorithm;
+    });
+  const formatResult: Checks | undefined = formats.length || timePrecisions.length || dateTimes.length || jwtAlgorithms.length
+    ? { version: 1, ...(formats.length ? { formats } : {}), ...(timePrecisions.length ? { timePrecisions } : {}), ...(dateTimes.length ? { dateTimes } : {}), ...(jwtAlgorithms.length ? { jwtAlgorithms } : {}) }
     : undefined;
   if (
-    (formats.length || timePrecisions.length || dateTimes.length) &&
+    (formats.length || timePrecisions.length || dateTimes.length || jwtAlgorithms.length) &&
     checks.some((check) =>
       ['trim', 'toLowerCase', 'toUpperCase'].includes(check.kind)
     )

@@ -13,11 +13,33 @@ struct Checks {
     formats: Vec<Format>,
     time_precisions: Vec<Option<u16>>,
     date_times: Vec<DateTimeRule>,
+    jwt_algorithms: Vec<Option<String>>,
 }
 struct DateTimeRule {
     precision: Option<u16>,
     local: bool,
     offset: bool,
+}
+fn jwt_algorithms(value: Option<&Value>) -> Result<Vec<Option<String>>, ValidationError<'static>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    value
+        .as_array()
+        .filter(|v| v.len() <= 10_000)
+        .ok_or_else(invalid)?
+        .iter()
+        .map(|value| {
+            if value.is_null() {
+                Ok(None)
+            } else {
+                value
+                    .as_str()
+                    .map(|value| Some(value.to_owned()))
+                    .ok_or_else(invalid)
+            }
+        })
+        .collect()
 }
 fn date_times(value: Option<&Value>) -> Result<Vec<DateTimeRule>, ValidationError<'static>> {
     let Some(value) = value else {
@@ -190,11 +212,13 @@ pub(super) fn compile<'a>(
                     | "formats"
                     | "timePrecisions"
                     | "dateTimes"
+                    | "jwtAlgorithms"
             )
         })
     {
         return Err(invalid());
     }
+    let jwt_algorithms = jwt_algorithms(fields.get("jwtAlgorithms"))?;
     let date_times = date_times(fields.get("dateTimes"))?;
     let time_precisions = time_precisions(fields.get("timePrecisions"))?;
     let minimum = bound(fields.get("utf16MinLength"))?;
@@ -221,6 +245,7 @@ pub(super) fn compile<'a>(
         + raw_divisors.map_or(0, Vec::len)
         + time_precisions.len()
         + date_times.len()
+        + jwt_algorithms.len()
         > 10_000
     {
         return Err(invalid());
@@ -253,11 +278,17 @@ pub(super) fn compile<'a>(
         formats,
         time_precisions,
         date_times,
+        jwt_algorithms,
     }))
 }
 impl<'i> Keyword<'i> for Checks {
     fn is_valid(&self, instance: &'i Value) -> bool {
         if let Some(value) = instance.as_str() {
+            if !self.jwt_algorithms.iter().all(|algorithm| {
+                forklaunch_common::zod_string_format::jwt(value, algorithm.as_deref())
+            }) {
+                return false;
+            }
             if !self.date_times.iter().all(|rule| {
                 forklaunch_common::zod_string_format::datetime(
                     value,

@@ -83,6 +83,7 @@ on:
       - 'cli/tests/rust_zod_time_checks.mjs'
       - 'cli/tests/rust_zod_datetime_checks.mjs'
       - 'cli/tests/rust_zod_ip_checks.mjs'
+      - 'cli/tests/rust_zod_jwt_checks.mjs'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
       - 'cli/tests/rust_zod_format_checks.mjs'
@@ -509,6 +510,7 @@ on:
       - 'cli/tests/rust_zod_time_checks.mjs'
       - 'cli/tests/rust_zod_datetime_checks.mjs'
       - 'cli/tests/rust_zod_ip_checks.mjs'
+      - 'cli/tests/rust_zod_jwt_checks.mjs'
       - 'cli/tests/rust_zod_emoji_checks.mjs'
       - 'scripts/rust_zod_emoji_table.py'
       - 'cli/tests/rust_zod_format_checks.mjs'
@@ -1182,6 +1184,11 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
       - run: node cli/tests/rust_zod_checks.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_ZOD_CHECKS_NATIVE: '1'
+      - run: node cli/tests/rust_zod_jwt_checks.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http

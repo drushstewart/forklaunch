@@ -11061,3 +11061,27 @@ Final 34-source manifest: `/private/tmp/fl-clock-final-freeze.json`. Original lo
 logs: `/private/tmp/fl-clock-review-{native,email,clippy,minimal-clippy}.log`.
 Secondary organization transaction rechecks remain a concrete follow-up, as do
 broader auth options/plugins. No broad gate closes; checklist remains 660/682.
+
+
+### 2026-10-15 — Raw Zod JWT structure and header policy
+
+Explicit `zodChecks` now carries ordered `jwtAlgorithms` rules through ordinary/pure
+exports, owned/generated AJV and native contract validation. Native header decoding
+preserves JavaScript atob Latin1 semantics and permissive unused base64 pad bits; an
+iterative JSON reader handles duplicate keys, escaped lone UTF16 units, overflowing
+and underflowing numeric truthiness, and deeply nested containers without recursive
+call-stack growth. Optional typ must equal JWT, alg must be truthy, and a nonempty
+configured algorithm must match exactly. Null/empty algorithm permits any truthy
+alg, as upstream does. Payload syntax and optional empty signature are preserved;
+no cryptographic signature, payload decoding or claim verification is introduced.
+
+Permanent `rust_zod_jwt_checks.mjs` passes 83,494 actual Zod/AJV comparisons and
+83,494 native observations, including 20,000-deep JSON, byte mutations, surrogate
+escapes, numeric extremes, metadata overrides and per-list/aggregate rule admission.
+Live owned HTTP checks pass 25; generated TypeScript/Rust socket checks pass 100
+with strict source compilation and feature-off rejection. Strict all-target/all-
+feature Clippy across five affected crates, configured TypeScript 12 roots/623
+exports, and public API inventory 623/1703 pass. No dependencies changed. Logs:
+`/private/tmp/fl-zod-jwt-{native-final,consumers,types,clippy}.log`.
+Arbitrary regex, broader transforms/configuration and schema constraints remain open;
+this does not close the validator gate. Checklist remains 660/682.

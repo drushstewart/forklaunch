@@ -109,6 +109,7 @@ interface ZodChecks {
   utf16MinLength?: number;
   utf16MaxLength?: number;
   formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6' | 'emoji')[];
+  jwtAlgorithms?: (string | null)[];
   dateTimes?: { precision: number | null; local: boolean; offset: boolean }[];
   timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
@@ -128,7 +129,8 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
           'multipleOf',
           'formats',
           'timePrecisions',
-          'dateTimes'
+          'dateTimes',
+          'jwtAlgorithms'
         ].includes(key)
     )
   )
@@ -173,7 +175,12 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
         typeof rule.local !== 'boolean' || typeof rule.offset !== 'boolean' ||
         (rule.precision !== null && (typeof rule.precision !== 'number' || !Number.isInteger(rule.precision) || rule.precision < 0 || rule.precision > 1000)))))
     throw new Error('Invalid Zod datetime rules');
+  if (Object.prototype.hasOwnProperty.call(value, 'jwtAlgorithms') &&
+      (!Array.isArray(value.jwtAlgorithms) || value.jwtAlgorithms.length > 10000 ||
+       value.jwtAlgorithms.some((algorithm) => algorithm !== null && typeof algorithm !== 'string')))
+    throw new Error('Invalid Zod JWT algorithms');
   if (
+    (Array.isArray(value.jwtAlgorithms) ? value.jwtAlgorithms.length : 0) +
     (Array.isArray(value.dateTimes) ? value.dateTimes.length : 0) +
     (Array.isArray(value.timePrecisions) ? value.timePrecisions.length : 0) +
     (Array.isArray(value.formats) ? value.formats.length : 0) +
@@ -189,6 +196,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     typeof divisor === 'number' ? divisor : Number(divisor)
   );
   const formatChecks = profile.formats?.slice();
+  const jwtAlgorithms = profile.jwtAlgorithms?.slice();
   const timeSource = (p: number | null) =>
     `([01]\\d|2[0-3]):[0-5]\\d(:[0-5]\\d${p ? `\\.\\d{${p}}` : p === null ? '(\\.\\d+)?' : ''})${p ? '+' : '?'}`;
   const timeChecks = profile.timePrecisions?.map((p) => new RegExp(`^${timeSource(p)}$`));
@@ -214,6 +222,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     `^${simpleFormats.date.source.slice(1,-1)}T${timeSource(rule.precision)}(${rule.local ? 'Z?' : 'Z'}${rule.offset ? '|([+-]\\d{2}:?\\d{2})' : ''})$`
   ));
   return (data: unknown) => {
+    if (typeof data === 'string' && jwtAlgorithms && !jwtAlgorithms.every((algorithm) => jwt(data, algorithm))) return false;
     if (typeof data === 'string' && dateTimeChecks && !dateTimeChecks.every((check) => check.test(data))) return false;
     if (typeof data === 'string' && timeChecks && !timeChecks.every((check) => check.test(data))) return false;
     if (typeof data === 'string' && formatChecks)
@@ -280,4 +289,20 @@ export function registerZodChecks(ajv: Ajv): Ajv {
     errors: false
   });
   return ajv;
+}
+
+// Raw Zod syntax/header policy only; this is not JWT authentication.
+function jwt(value: string, algorithm: string | null): boolean {
+  if (!/^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]*$/.test(value)) return false;
+  try {
+    const header = value.split('.')[0];
+    const base64 = header.replace(/-/g, '+').replace(/_/g, '/')
+      .padEnd(header.length + ((4 - (header.length % 4)) % 4), '=');
+    const decoded = JSON.parse(atob(base64));
+    if (typeof decoded !== 'object' || decoded === null) return false;
+    if ('typ' in decoded && decoded.typ !== 'JWT') return false;
+    return !!decoded.alg && (!algorithm || decoded.alg === algorithm);
+  } catch {
+    return false;
+  }
 }

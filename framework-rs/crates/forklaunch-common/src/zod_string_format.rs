@@ -401,3 +401,10 @@ pub fn emoji(value: &str) -> bool {
             ranges.get(index).is_some_and(|(start, _)| *start <= code)
         })
 }
+
+mod jwt;
+/// Match raw Zod JWT structure/header checks. No signature or claims are verified.
+#[must_use]
+pub fn jwt(value: &str, algorithm: Option<&str>) -> bool {
+    jwt::accepts(value, algorithm)
+}

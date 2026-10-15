@@ -44,6 +44,7 @@ const source = z
     ip: z.string().ip({version:"v6"}),
     cidr: z.string().cidr({version:"v4"}),
     emoji: z.string().emoji(),
+    jwt: z.string().jwt({alg:"HS256"}),
   })
   .strict();
 const schema = validator.openapi2020(source, {
@@ -75,6 +76,7 @@ const validFormats = {
   ip: "fe80:::::%eth0",
   cidr: "1.2.3.4/32",
   emoji: "#0123😀",
+  jwt: Buffer.from(JSON.stringify({alg:"HS256",typ:"JWT"})).toString("base64url")+".x.",
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
@@ -96,6 +98,8 @@ for (const patch of [
   { ip: "::FFFF:192.168.1.1" },
   { cidr: "1.2.3.4/033" },
   { emoji: "😀a" },
+  { jwt: Buffer.from(JSON.stringify({alg:0})).toString("base64url")+".x." },
+  { jwt: Buffer.from(JSON.stringify({alg:"RS256"})).toString("base64url")+".x." },
 ])
   cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
 assert.equal(
