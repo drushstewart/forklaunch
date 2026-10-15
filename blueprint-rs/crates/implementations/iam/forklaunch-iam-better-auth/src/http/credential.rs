@@ -233,8 +233,64 @@ pub(super) async fn public<S: AuthStore + 'static>(
     query: &std::collections::HashMap<String, Value>,
     now: DateTime<Utc>,
 ) -> Option<BlueprintResult<Value>> {
+    if path == "/request-password-reset"
+        && let Some(delivery) = &app.password_reset_delivery
+    {
+        let service = crate::accounts::PasswordResetService::new(
+            app.store.clone(),
+            app.auth_base_url(),
+            app.policy.clone(),
+            delivery.clone(),
+        );
+        return Some(match service {
+            Err(error) => Err(error),
+            Ok(mut service) => {
+                if let Some(dispatcher) = &app.background_dispatcher {
+                    service = service.with_background_dispatcher(dispatcher.clone());
+                }
+                service
+                    .request(
+                        payload["email"].as_str().unwrap_or(""),
+                        payload["redirectTo"].as_str().unwrap_or(""),
+                        now,
+                    )
+                    .await
+            }
+        });
+    }
     if path == "/reset-password" {
         return Some(reset(app, payload, query, now).await);
     }
     configured_public(path).map(Err)
+}
+
+impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Enables trusted reset-link delivery; without this hook the route stays disabled.
+    #[must_use]
+    pub fn with_password_reset_delivery(
+        mut self,
+        delivery: std::sync::Arc<dyn crate::accounts::PasswordResetDelivery>,
+    ) -> Self {
+        self.password_reset_delivery = Some(delivery);
+        self
+    }
+    /// Configures shared application-owned scheduling. Explicit OTP-specific
+    /// dispatchers retain precedence, regardless of builder order.
+    #[must_use]
+    pub fn with_background_dispatcher(
+        mut self,
+        dispatcher: std::sync::Arc<dyn crate::background::AuthBackgroundDispatcher>,
+    ) -> Self {
+        if !self.otp_background_override
+            && let Some(factor) = &self.two_factor
+        {
+            self.two_factor = Some(std::sync::Arc::new(
+                factor
+                    .copy_configuration()
+                    .with_otp_background_dispatcher(dispatcher.clone()),
+            ));
+        }
+        self.background_dispatcher = Some(dispatcher);
+        self
+    }
 }

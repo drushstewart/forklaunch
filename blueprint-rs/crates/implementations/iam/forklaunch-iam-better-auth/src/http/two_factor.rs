@@ -57,6 +57,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         mut self,
         dispatcher: Arc<dyn crate::two_factor::OtpBackgroundDispatcher>,
     ) -> BlueprintResult<Self> {
+        self.otp_background_override = true;
         self = self.with_two_factor()?;
         self.two_factor = Some(Arc::new(
             self.two_factor
@@ -350,6 +351,15 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                 )?
                 .with_backup_code_storage(crate::two_factor::BackupCodeStorage::Encrypted),
             ));
+            if let Some(dispatcher) = self.background_dispatcher.clone() {
+                self.two_factor = Some(Arc::new(
+                    self.two_factor
+                        .as_ref()
+                        .ok_or_else(internal)?
+                        .copy_configuration()
+                        .with_otp_background_dispatcher(dispatcher),
+                ));
+            }
         }
         Ok(self)
     }

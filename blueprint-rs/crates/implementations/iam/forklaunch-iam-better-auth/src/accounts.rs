@@ -16,6 +16,10 @@ use zeroize::Zeroizing;
 mod password;
 mod profile;
 mod reset;
+pub(crate) mod reset_request;
+pub use reset_request::{
+    PasswordResetDelivery, PasswordResetDeliveryContext, PasswordResetService,
+};
 mod set;
 pub use password::{ChangePasswordInput, PasswordChange};
 

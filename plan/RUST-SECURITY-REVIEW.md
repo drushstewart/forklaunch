@@ -1254,3 +1254,17 @@ HTTP410/MCP denial returns noURL. Snapshot metadata includes xmin to detect no-o
 mutations during waits; post-finalSELECT changes remain outside read linearization.
 No provider call, TTL renewal, historical never-rebound or remotevalidity claim.
 RestrictedPG/race/expiry/tenant/actor and liveHTTP/MCP/bothSDK proofs pass.
+
+
+### Password-reset request security review (2026-10-14)
+
+Trusted hook only; defaultdisabled. Origin/rate/body policies retained; redirect
+trust+length checked before storage. Missinguser response identical withouttoken
+or callback; dummywork is mitigation withoutconstanttime claim. Unbiased24base62
+proofs useexisting encryptedPG verification/consumer format and1h lifetime; custom
+AuthStore owns security. Bounded publicprojection validates borrowedscalars before
+clone; sensitiveURL/token zeroize, noDebug/Serde or publicresponse/log disclosure.
+Prepare/dispatch/delivery failures do not revoke committedproof, cancellation split
+explicit, and GETcallback never consumes. Sharedscheduler retains OTP aliases and
+explicitoverride precedence. DomainHTTP/actual/restrictedPG consume+replay/expiry
+checks andstrictClippy pass; no new session or durable delivery guarantee.

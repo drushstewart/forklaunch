@@ -5,6 +5,7 @@
 #![forbid(unsafe_code)]
 
 pub mod accounts;
+pub mod background;
 pub mod compliance;
 pub mod cookies;
 pub mod credentials;

@@ -5,7 +5,6 @@ use super::{
     invalid_challenge, json, output_user, text, time, verification_row,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use std::{future::Future, pin::Pin};
 use zeroize::Zeroizing;
 
 /// Trusted delivered-code policy. Defaults are six digits, 180 seconds and five
@@ -67,7 +66,7 @@ impl OtpOptions {
 
 /// An owned delivery operation. Default dispatch awaits this future after the
 /// encrypted OTP transaction has committed; no storage lock survives dispatch.
-pub type OtpDeliveryFuture = Pin<Box<dyn Future<Output = BlueprintResult<()>> + Send + 'static>>;
+pub type OtpDeliveryFuture = crate::background::DeliveryFuture;
 
 /// Trusted delivery input. The code is an authentication secret; neither this
 /// context nor its secret implements Debug or Serialize. No session is included.
@@ -264,14 +263,15 @@ impl<S: AuthStore> TwoFactorService<S> {
                 "Unable to prepare OTP delivery",
             )
         })?;
-        let task = super::OtpBackgroundTask::new(future);
-        if let Some(dispatcher) = &self.otp_background_dispatcher {
-            if dispatcher.dispatch(task).is_err() {
-                super::otp_background::diagnostic(true);
-            }
-        } else {
-            task.await;
-        }
+        crate::background::run(
+            future,
+            self.otp_background_dispatcher.as_deref(),
+            "/two-factor/send-otp",
+            "TWO_FACTOR_DELIVERY_FAILED",
+            "TWO_FACTOR_DISPATCH_FAILED",
+            "OTP delivery failed",
+        )
+        .await;
         Ok(empty_response(json!({"status":true})))
     }
 

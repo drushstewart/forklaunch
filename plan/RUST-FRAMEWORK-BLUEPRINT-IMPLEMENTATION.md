@@ -57,7 +57,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: private SDK own-property compilation,128cases/controls and strict types; dual-use literal schema repairs reject explicitly to preserve defaults/equality.
 - Completed: optional application-owned OTP background delivery,3focused/36affected/5actual checks and strictClippy; defaultawait retained.
 - Completed: stored Portal UUID rereads with sealed/current provenance, original5minTTL, no providerI/O and explicit expired410; restrictedPG/races plusHTTP/MCP/sixSDKcalls and strictClippy pass. Explicit tuple consumer/emitter slices also pass; precise Rust tuple models remain separate.
-- Active: trusted password-reset delivery/shared background scheduler, precise fixed Rust tuple models, and remaining billing family reads. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: trusted password-reset delivery/shared app-owned scheduler, actual9/domainHTTP/restrictedPG/strictClippy proofs, existing OTP aliases and explicit override precedence.
+- Active: precise fixed Rust tuple models, bound Plan reads and email-verification delivery audit. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned roots and414MB exclusive nonexecutable cache cleaned with guards.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.
 - Integration: private companion source-pair CI is committed with pinned source/hash verification; local locked platform61 tests/types pass. Hosted CI has not been run.
@@ -2159,3 +2160,10 @@ checks and original5minTTL gate direct local reread, no providerrefresh. PGmutat
 auditexpiry andHTTP/MCP410/noURL +6SDKcalls pass;32artifacts/generatedmaincompile
 andstrictClippy pass. observedAt completionclock differs from preceding finalSELECT
 linearization. Otherfamilies remainopen;660/682 (96.8%),22open unchanged.
+
+
+Password-reset checkpoint (2026-10-14): optional trusted delivery creates fixed1h/
+24base62 compatibleproof, same missinguser response, boundedowned context and
+commit-beforeprepare. Reusable app-owned scheduler preservesOTP aliases/precedence.
+9actual/focusedHTTP/domain/restrictedPG andstrictClippy pass. GETchecks/redirects,
+POSTconsumes; broaderemail/options remain open.660/682 (96.8%),22open unchanged.

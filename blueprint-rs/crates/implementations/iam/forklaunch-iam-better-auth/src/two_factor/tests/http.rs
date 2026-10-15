@@ -1673,3 +1673,174 @@ async fn http_otp_background_returns_before_task_and_preserves_builders() {
         200
     );
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)] // Keep the request/callback/consume lifecycle in one fixture.
+async fn http_reset_delivery_optin_privacy_redirect_consume_and_shared_dispatch() {
+    use crate::accounts::reset_request::tests::Delivery;
+    let origin = "http://auth.fixture.test";
+    let store = Arc::new(MemoryAuthStore::default());
+    let delivery = Arc::new(Delivery::default());
+    let queue = Arc::new(otp_background::Queue::default());
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(Model::User,json!({"id":"reset-http","email":"reset-http@example.test","name":"Owned","emailVerified":false,"password":"private"})).await.unwrap();
+    tx.commit().await.unwrap();
+    let base = || {
+        AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+            .unwrap()
+            .with_rate_limiting(false)
+    };
+    let mut disabled = Browser {
+        router: base().router(),
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    assert_eq!(
+        disabled
+            .call(
+                "/request-password-reset",
+                Some(json!({"email":"reset-http@example.test"}))
+            )
+            .await
+            .1["code"],
+        "RESET_PASSWORD_DISABLED"
+    );
+    delivery.mode.store(3, std::sync::atomic::Ordering::SeqCst);
+    let mut browser = Browser {
+        router: base()
+            .with_password_reset_delivery(delivery.clone())
+            .with_background_dispatcher(queue.clone())
+            .router(),
+        jar: BTreeMap::new(),
+        origin: origin.into(),
+    };
+    let missing = browser
+        .call(
+            "/request-password-reset",
+            Some(json!({"email":"missing@example.test"})),
+        )
+        .await;
+    assert_eq!(missing.0, 200);
+    assert!(delivery.contexts.lock().unwrap().is_empty());
+    assert_eq!(
+        browser
+            .call(
+                "/request-password-reset",
+                Some(
+                    json!({"email":"reset-http@example.test","redirectTo":"https://evil.example/"})
+                )
+            )
+            .await
+            .0,
+        403
+    );
+    assert!(delivery.contexts.lock().unwrap().is_empty());
+    let response = browser
+        .call(
+            "/request-password-reset",
+            Some(json!({"email":"RESET-HTTP@EXAMPLE.TEST","redirectTo":"/owned"})),
+        )
+        .await;
+    assert_eq!(response.0, 200);
+    assert_eq!(response.1, missing.1);
+    assert!(response.2.get("set-cookie").is_none());
+    assert!(response.2.get("set-auth-jwt").is_none());
+    let proof = delivery.contexts.lock().unwrap()[0].token().to_owned();
+    assert!(!response.1.to_string().contains(&proof));
+    let task = queue.tasks.lock().unwrap().pop().unwrap();
+    let worker = tokio::spawn(task);
+    delivery.entered.notified().await;
+    assert!(!worker.is_finished());
+    delivery.release.notify_one();
+    worker.await.unwrap();
+    let callback = browser
+        .call(
+            &format!("/reset-password/{proof}?callbackURL=%2Fowned"),
+            None,
+        )
+        .await;
+    assert_eq!(callback.0, 302);
+    assert!(callback.2["location"].to_str().unwrap().contains(&proof));
+    assert_eq!(
+        browser
+            .call(
+                "/reset-password",
+                Some(json!({"token":proof,"newPassword":"owned-new-password"}))
+            )
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        browser
+            .call(
+                "/reset-password",
+                Some(json!({"token":proof,"newPassword":"owned-new-password"}))
+            )
+            .await
+            .0,
+        400
+    );
+    delivery.mode.store(1, std::sync::atomic::Ordering::SeqCst);
+    let failure = browser
+        .call(
+            "/request-password-reset",
+            Some(json!({"email":"reset-http@example.test"})),
+        )
+        .await;
+    assert_eq!(failure.0, 500);
+    assert!(failure.1.is_null());
+}
+
+#[tokio::test]
+async fn http_shared_background_preserves_legacy_otp_alias_and_override_order() {
+    fn legacy_task(task: OtpBackgroundTask) -> crate::background::AuthBackgroundTask {
+        task
+    }
+    for explicit in [false, true] {
+        for global_first in [false, true] {
+            let global = Arc::new(otp_background::Queue::default());
+            let local = Arc::new(otp_background::Queue::default());
+            let delivery = Arc::new(otp::Delivery::default());
+            let origin = "http://auth.fixture.test";
+            let mut app = AuthHttp::new(
+                Arc::new(MemoryAuthStore::default()),
+                origin.into(),
+                vec![42; 32],
+                vec![],
+            )
+            .unwrap()
+            .with_rate_limiting(false);
+            if global_first {
+                app = app.with_background_dispatcher(global.clone());
+            }
+            if explicit {
+                app = app
+                    .with_two_factor_otp_background_dispatcher(local.clone())
+                    .unwrap();
+            }
+            app = app.with_two_factor_otp(delivery).unwrap();
+            if !global_first {
+                app = app.with_background_dispatcher(global.clone());
+            }
+            let mut browser = Browser {
+                router: app.router(),
+                jar: BTreeMap::new(),
+                origin: origin.into(),
+            };
+            assert_eq!(browser.call("/sign-up/email",Some(json!({"name":"Owned","firstName":"Owned","lastName":"User","email":"reset-scheduler@example.test","password":PASSWORD}))).await.0,200);
+            assert_eq!(
+                browser
+                    .call("/two-factor/send-otp", Some(json!({})))
+                    .await
+                    .0,
+                200
+            );
+            let chosen = if explicit { &local } else { &global };
+            let other = if explicit { &global } else { &local };
+            assert!(other.tasks.lock().unwrap().is_empty());
+            let task = chosen.tasks.lock().unwrap().pop().unwrap();
+            legacy_task(task).await;
+        }
+    }
+}

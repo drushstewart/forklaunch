@@ -10009,3 +10009,36 @@ lifetime-unit,route-unit,live-route,artifacts,clippy,default-clippy}.log.
 Ownedroles/databases cleaned0. Only fixture UUIDSerde/semicolon fixes during
 validation, productiondomain unchanged after firstPG. No lock/dependency/template
 changes andno new immutablearchive-generatedprofileclaim.660/682 (96.8%),22open.
+
+
+### Trusted password-reset delivery and shared scheduler (2026-10-14)
+
+Optional PasswordResetDelivery hook enables existing public reset-request route;
+without hook RESET_PASSWORD_DISABLED stays. Email normalization/redirect trust and
+bounds precede store access. Missing user gets same200message/no delivery/noinsert,
+with discardedrandom24 and indexed dummylookup timing mitigation, notconstanttime.
+Existing user inclsocialonly gets unbiased24ASCIIbase62 token with fixed1h expiry,
+existing reset-password:<token>/userID verification format; configuredPG encrypts,
+customstore owns persistence/security. Existing POSTreset consumption/expiry equality/
+replay unchanged; GETcallback checks/redirects without consuming. No session issuance
+or token in requestresponse/logs; prior sessionretention policy unchanged.
+Opaque owned deliverycontext exposes boundedscalar publicuser projection, zeroizing
+URL/token and noDebug/Serde/rawrequest. Borrowedfield validation precedes cloning.
+Proof commits before synchronousprepare; prepareErr sanitizesempty500, asyncdelivery/
+dispatchErr remains200 with staticdiagnostics and committedproof. No transaction
+spans callbackfuture. Cancellation split atcommit explicit; no durablemailqueue claim.
+Shared background::AuthBackgroundTask/Dispatcher/DeliveryFuture preserves oldOTP
+publicnames asaliases; globalAuthHttp scheduler inherited byOTP unless explicitOTP
+override, eitherbuilderorder. Lazy polling/capacity/drain/drop app-owned, noautoexecutor.
+Frozen15 /private/tmp/fl-reset-delivery-freeze.json SHA256
+8b1eb8e0a23307c794865fa22d9848c51a68c7e1f72a30c8ba96087e53616694.
+Actual9, focusedreset4 (3.15s), scheduler4 (12.39s), resetfilter5 and restrictedPG1
+(52.14s), strictfullalltargets/minimalClippy pass. Resetfilter5 includes new4 plus
+elapsed-session test; unchanged oldresethelper is exercised directly by newdomain/
+PG lifecycle, not falsely counted as independently rerun. Missingdummy uniqueAPI
+initialfailure corrected to indexedfind_page limit1; nestedprojection andcancellation/
+commitfault checks pass. Owned roles/records/audits0. Logs
+/private/tmp/fl-reset-delivery-{actual,native,scheduler,regression,pg,clippy,minimal-clippy}.log.
+No manifests/locks/schema/template changes; no immutablearchive/generated delivery
+profile claim. Configurable tokenTTL/arbitraryuserprojection/rawJScontext and email/
+invitation/globalbackgroundcoverage remain separate.660/682 (96.8%),22open unchanged.

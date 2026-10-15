@@ -61,6 +61,9 @@ pub struct AuthHttp<S> {
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
     two_factor: Option<Arc<crate::two_factor::TwoFactorService<S>>>,
+    background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
+    otp_background_override: bool,
+    password_reset_delivery: Option<Arc<dyn crate::accounts::PasswordResetDelivery>>,
     jwks_adapter: Option<crate::keyring::adapter::JwksAdapter>,
     key_config: crate::keyring::KeyPairConfig,
     jwt_header_disabled: bool,
@@ -126,6 +129,9 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             google: None,
             external_jwt: None,
             two_factor: None,
+            background_dispatcher: None,
+            otp_background_override: false,
+            password_reset_delivery: None,
             jwks_adapter: None,
             key_config: crate::keyring::KeyPairConfig::default(),
             jwt_header_disabled: false,
@@ -803,6 +809,7 @@ fn failure_response(error: &BlueprintError) -> Response {
         error.code.as_str(),
         "HTTP_INTERNAL_EMPTY"
             | "TWO_FACTOR_DELIVERY_PREPARATION_FAILED"
+            | "PASSWORD_RESET_DELIVERY_PREPARATION_FAILED"
             | "TWO_FACTOR_GENERATION_FAILED"
             | "TWO_FACTOR_STORAGE_DECODE_FAILED"
             | "TWO_FACTOR_BACKUP_STORAGE_FAILED"

@@ -1616,6 +1616,53 @@ valid and do not change the successful response or mint a session, cookie, or JW
 A dispatcher that accepts a task and then returns an error owns that accepted task;
 there is no compensating cancellation or proof rollback. No storage transaction
 is held across delivery polling. The same path serves builtin and custom OTP
-field storage. This implements the OTP use of Better Auth's background helper;
-email verification, invitations, rate cleanup and other plugin background work
-remain separate capabilities.
+field storage. The shared scheduler also serves opt-in password-reset delivery below. Email
+verification, invitations, rate cleanup and other plugin background work remain
+separate capabilities.
+
+### Opt-in password-reset delivery and shared scheduling
+
+`AuthHttp::with_password_reset_delivery(Arc<dyn PasswordResetDelivery>)` enables the
+existing `/request-password-reset` route. Without the hook it retains
+`RESET_PASSWORD_DISABLED`. A standalone tenant-bound `PasswordResetService` accepts
+the fixed auth base URL and trusted `OriginPolicy`; requests validate email and
+redirect before any storage or delivery work. Callback redirects are bounded to
+8,192 UTF-8 bytes. Existing request Origin/rate/body policies remain in force.
+
+Missing users receive the same status/message without delivery or a persisted
+token. A discarded random token and dummy verification lookup follow upstream's
+timing-mitigation shape, without a constant-time claim. Existing users, including
+those without a credential account, get a random 24-character ASCII base62 token
+with unbiased sampling and a one-hour expiry. Email lookup lowercases the input.
+The Verification record uses the existing `reset-password:<token>` identifier
+and user-ID value. Configured PostgreSQL storage encrypts it; custom AuthStore
+implementations own their storage security. POST `/reset-password` consumes the
+record through the existing expiry/replay rules; its GET callback only checks the
+record and redirects. Existing sessions retain the prior reset
+policy. No token is returned by the request endpoint or logged.
+
+Delivery receives an owned `PasswordResetDeliveryContext`: public user projection,
+reset URL, and token. No Debug/Serde or raw request/cookie/session fields are
+provided. Selected public values must be scalar (strings at most4,096 UTF-8 bytes,
+booleans for flags, or null), preventing nested private fields from hitchhiking in
+the projection. Token and URL storage zeroizes on drop; callback code must never
+log them. The link uses the configured auth base and encodeURIComponent-compatible
+redirect encoding. Configurable token TTL, arbitrary custom user projections and
+raw JavaScript request context remain separate options.
+
+The token commits before `prepare` is called, with no transaction held across the
+returned future. Preparation `Err` is a sanitized empty500; asynchronous delivery
+and dispatcher errors preserve the successful response and committed token.
+Cancellation while waiting for the writer or before submitting commit leaves no
+token; cancellation during a database commit can have an uncertain outcome. After
+commit, cancellation can leave a valid token even if no delivery completes. This
+is not durable mail queuing.
+
+`AuthHttp::with_background_dispatcher` configures the reusable
+`background::AuthBackgroundDispatcher` for reset delivery and inherited OTP
+scheduling. Explicit OTP-specific dispatchers take precedence in either builder
+order. The existing `OtpBackgroundTask`, `OtpBackgroundDispatcher` and
+`OtpDeliveryFuture` remain type-compatible aliases, not competing runtime systems.
+No dispatcher means default-await delivery. Applications own lazy task polling,
+queue limits, runtime lifetime, draining and cancellation as described above;
+there is no implicit executor or retry.
