@@ -1,7 +1,7 @@
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, Engine, FactorResponse, Model, STANDARD,
     TwoFactorService, Utc, Value, authenticated, crypto, empty_response, enabled, error, factor,
-    json, new_session, secret, text, timestamp, verification_row,
+    json, secret, text, timestamp, verification_row,
 };
 impl<S: AuthStore> TwoFactorService<S> {
     /// Begins or replaces enrollment. Default policy requires verification; trusted
@@ -66,7 +66,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             user["twoFactorEnabled"] = json!(true);
             user["updatedAt"] = json!(timestamp(now));
             tx.replace(Model::User, user.clone()).await?;
-            Some(rotate(&mut tx, &user, &old_session, now).await?)
+            Some(rotate(&mut tx, &user, &old_session, now, self.session_policy).await?)
         } else {
             None
         };
@@ -168,7 +168,7 @@ impl<S: AuthStore> TwoFactorService<S> {
         {
             tx.delete(Model::Verification, text(&row, "id")?).await?;
         }
-        let session = rotate(&mut tx, &user, &old_session, now).await?;
+        let session = rotate(&mut tx, &user, &old_session, now, self.session_policy).await?;
         tx.commit().await?;
         let mut response = empty_response(json!({"status":true}));
         response.session = Some(session);
@@ -181,12 +181,15 @@ pub(super) async fn rotate<T: AuthTransaction>(
     user: &Value,
     old: &Value,
     now: DateTime<Utc>,
+    policy: crate::sessions::SessionPolicy,
 ) -> BlueprintResult<Value> {
-    let mut session = new_session(
+    let mut session = crate::sessions::new_session_with_policy(
         text(user, "id")?,
         old["ipAddress"].as_str().unwrap_or(""),
         old["userAgent"].as_str().unwrap_or(""),
         now,
+        policy,
+        true,
     )?;
     for field in ["activeOrganizationId", "activeTeamId"] {
         if let Some(value) = old.get(field) {

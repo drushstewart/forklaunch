@@ -89,6 +89,7 @@ impl<S> TwoFactorService<S> {
     #[cfg(feature = "http")]
     pub(crate) fn copy_configuration(&self) -> Self {
         Self {
+            session_policy: self.session_policy,
             store: self.store.clone(),
             secret: self.secret.clone(),
             issuer: self.issuer.clone(),

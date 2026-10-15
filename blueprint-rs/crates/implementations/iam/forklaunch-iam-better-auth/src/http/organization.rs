@@ -24,7 +24,8 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     pending: &mut HeaderMap,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
-    let service = OrganizationService::new(app.store.clone());
+    let service =
+        OrganizationService::new(app.store.clone()).with_session_policy(app.session_policy);
     let (token, transient) = session;
     if let Some(body) = roles::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
@@ -225,7 +226,8 @@ fn selected<S: AuthStore>(
     if result.cookie {
         set_cookie(
             pending,
-            &app.cookie.serialize(token, &app.secret, !transient),
+            &app.cookie
+                .serialize_with_policy(token, &app.secret, !transient, app.session_policy),
         )?;
         if transient {
             set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;

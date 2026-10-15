@@ -2,7 +2,7 @@
 use super::{AuthHttp, callback, clear, failure, internal, request, set_cookie, text};
 use crate::{
     credentials::{EmailTokenError, VerifiedEmailToken, verify_email_token},
-    sessions::{SessionService, load, new_session, public_user},
+    sessions::{SessionService, load, public_user},
     store::{AuthStore, AuthTransaction, Model},
 };
 use axum::{
@@ -95,13 +95,19 @@ async fn handle<S: AuthStore + 'static>(
     let mut active = None;
     if changing {
         active = SessionService::new(app.store.clone())
+            .with_session_policy(app.session_policy)
             .get(&session_token, transient, false, now)
             .await?;
         if let Some(view) = &active {
             if view.refreshed {
                 set_cookie(
                     pending,
-                    &app.cookie.serialize(&session_token, &app.secret, true),
+                    &app.cookie.serialize_with_policy(
+                        &session_token,
+                        &app.secret,
+                        true,
+                        app.session_policy,
+                    ),
                 )?;
             }
             if view.user["email"] != claims.email {
@@ -172,8 +178,12 @@ async fn complete<S: AuthStore + 'static>(
     if let Some(session) = session {
         set_cookie(
             pending,
-            &app.cookie
-                .serialize(text(&session, "token")?, &app.secret, !transient),
+            &app.cookie.serialize_with_policy(
+                text(&session, "token")?,
+                &app.secret,
+                !transient,
+                app.session_policy,
+            ),
         )?;
         if transient {
             set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
@@ -227,13 +237,19 @@ async fn auto_login<S: AuthStore + 'static>(
     // Expired-session cleanup/refresh commits independently before a new grant,
     // matching upstream's getSession-before-create partial-failure boundary.
     let view = SessionService::new(app.store.clone())
+        .with_session_policy(app.session_policy)
         .get(&request.token, transient, false, (app.clock)())
         .await?;
     if let Some(view) = &view {
         if view.refreshed {
             set_cookie(
                 pending,
-                &app.cookie.serialize(&request.token, &app.secret, true),
+                &app.cookie.serialize_with_policy(
+                    &request.token,
+                    &app.secret,
+                    true,
+                    app.session_policy,
+                ),
             )?;
         }
     } else if !request.token.is_empty() {
@@ -259,8 +275,15 @@ async fn auto_login<S: AuthStore + 'static>(
     }) {
         current.session
     } else {
-        let session = new_session(&request.user_id, &request.ip, &request.agent, now)
-            .map_err(|_| login_failure())?;
+        let session = crate::sessions::new_session_with_policy(
+            &request.user_id,
+            &request.ip,
+            &request.agent,
+            now,
+            app.session_policy,
+            true,
+        )
+        .map_err(|_| login_failure())?;
         tx.insert(Model::Session, session.clone())
             .await
             .map_err(|_| login_failure())?;
@@ -313,7 +336,14 @@ async fn apply<S: AuthStore + 'static>(
             }
             current.session
         } else {
-            let current = new_session(text(&user, "id")?, ip, agent, now)?;
+            let current = crate::sessions::new_session_with_policy(
+                text(&user, "id")?,
+                ip,
+                agent,
+                now,
+                app.session_policy,
+                true,
+            )?;
             tx.insert(Model::Session, current.clone()).await?;
             current
         };
@@ -435,6 +465,7 @@ pub(super) async fn send<S: AuthStore + 'static>(
         ));
     }
     let view = SessionService::new(app.store.clone())
+        .with_session_policy(app.session_policy)
         .get(credentials.0, credentials.1, false, now)
         .await?;
     super::refresh_cookie_headers(app, view.as_ref(), credentials.0, pending)?;

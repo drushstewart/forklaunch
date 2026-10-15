@@ -471,3 +471,22 @@ roles/records/audits0. Eight-path /private/tmp/fl-verification-auto-freeze.json
 verified SHA2564ca4ee6e6413cbe17a2b130ca28282cdd189c6a74b1305e909ed2a09411ba5f2.
 Logs /private/tmp/fl-verification-auto-{actual,native,regression,pg,clippy,minimal-clippy}.log.
 No dependencies/locks; checklist660/682(96.8%),22broad gates remain open.
+
+
+### 2026-10-15 — shared session-policy implementation
+
+The additive `SessionPolicy` configures expiry, refresh age, freshness age and
+refresh disabling across AuthHttp and its credential, Google, MFA, verification
+and organization/session services. Direct service callers receive the same builder.
+Default constructors preserve the existing one-day ForkLaunch preset; upstream's
+unconfigured seven-day lifetime is a separate default, not silently substituted.
+The typed domain accepts whole-second u32 values with positive expiry, allows
+update age beyond expiry, and supports zero refresh age and zero freshness.
+
+Persistent creation and cookie Max-Age use the policy. Actual Better Auth checks
+confirm that transient credential/pending-MFA grants retain one-day stored expiry,
+while password rotation, enrollment/disable and email-verification auto-login use
+configured expiry even when cookies omit Max-Age. Stored expiry remains authoritative
+for existing rows. JWT and MFA proof/trust lifetimes remain independent. Deferred
+refresh, secondary storage and cookie caching remain open, along with broader
+credential, organization and plugin options. This does not close the Better Auth gate.

@@ -1607,3 +1607,15 @@ ordinary annotation overrides retain their documented precedence. No schema
 callbacks execute in the pure-input profile. Native Unicode and finite-number
 representation limits remain explicit; arbitrary regex equivalence is not claimed.
 Both workspace locks add only the shared numeric-kernel edge to pinned `ryu-js`.
+
+
+### 2026-10-15 — session expiry and freshness configuration
+
+Trusted typed session policy uses checked timestamp arithmetic and positive
+whole-second expiry, with zero freshness explicitly disabling freshness checks.
+Existing stored expiry remains authoritative; disabling refresh still expires and
+cleans stale rows. Cookie Max-Age and all built-in session creation families use
+the selected policy with documented upstream transient exceptions. JWT and MFA
+challenge/trust lifetimes are independent. Restricted PostgreSQL lifecycle,
+full IAM tests and strict full/minimal profiles pass. Existing caller/request-clock
+sampling semantics remain explicit and are not claimed as post-await timing parity.

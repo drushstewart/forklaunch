@@ -1803,3 +1803,44 @@ A final tenant-bound writer rechecks target ID, email and verified status and lo
 or creates the session; it refuses stale callback authority if the user was deleted,
 changed address or became unverified. This is deliberately stronger than upstream
 snapshot-based session creation. No database transaction spans a hook await.
+
+### Shared session policy
+
+`SessionPolicy::new(expires_in, update_age, fresh_age, disable_refresh)` accepts
+trusted whole-second `u32` values, with positive expiry. `Default` preserves the
+ForkLaunch preset: 86,400-second expiry/freshness and 3,600-second refresh age.
+This differs from upstream Better Auth's unconfigured seven-day expiry. Zero
+update age permits refresh on every read; zero freshness disables the age check.
+Update age may exceed expiry. Negative/fractional values and upstream's zero-expiry
+fallback are outside this typed profile; use an explicit positive expiry instead.
+Timestamp arithmetic is checked before persistence.
+
+Apply `AuthHttp::with_session_policy(policy)` once to configure credential,
+provider, factor, verification, organization session reads and session cookies.
+It preserves installed factor options regardless of builder order. Direct
+`SessionService`, `CredentialService`, `GoogleAccounts`, `OrganizationService`
+and `TwoFactorService` callers have the same additive builder and must choose a
+consistent policy when composing services themselves. Existing constructors and
+`SessionCookie::serialize` retain their defaults; `serialize_with_policy` exposes
+configured cookie serialization without changing the public cookie struct.
+
+Persistent creation uses configured expiry and cookie Max-Age. Explicit
+`rememberMe:false` credential login and pending MFA completion instead retain
+upstream's fixed one-day stored lifetime and omit cookie Max-Age. Enrollment,
+disable, password rotation and automatic email-verification login use configured
+expiry even when a signed transient marker suppresses persistent cookies, because
+those upstream calls create a session without the transient creation argument.
+Existing session expiry remains authoritative: changing policy affects refresh
+thresholds/current freshness checks and future grants, without rewriting old rows.
+Expiry equality is valid, refresh-threshold equality refreshes, freshness equality
+rejects unless freshness is zero, and disabled refresh still cleans expired rows.
+JWT expiration and MFA challenge/trust/OTP lifetimes remain independent. Deferred
+GET/POST refresh, secondary storage and cookie-cache options remain separate work.
+
+Direct domain methods continue to use their caller-supplied `now`. The current
+HTTP adapter passes its request-time sample through credential hashing/provider
+work, so this profile proves supplied-time arithmetic and policy selection, not
+exact parity with upstream post-await wall-clock sampling. With very short TTLs,
+that can shorten the useful lifetime of a newly returned session. Resampling at
+HTTP creation/refresh boundaries, with delayed-work and authority tests, remains
+queued; explicit-time domain APIs retain their existing contract.

@@ -338,6 +338,7 @@ impl<S: AuthStore> TwoFactorService<S> {
                         &user,
                         fresh.session.as_ref().ok_or_else(super::unauthorized)?,
                         now,
+                        self.session_policy,
                     )
                     .await?,
                 )

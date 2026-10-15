@@ -10,6 +10,8 @@
 //! Optional delivered OTP uses a trusted server hook; `TotpOptions` supports bounded
 //! six/eight-digit periods while preserving SHA-1 and the one-step window. Recovery values are authorized disclosures and
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
+#[cfg(test)]
+use crate::sessions::new_session;
 mod backup_async;
 mod backup_codec;
 mod backup_codec_state;
@@ -54,7 +56,7 @@ mod verification;
 use crate::{
     accounts::CredentialService,
     credentials,
-    sessions::{new_session, public_user},
+    sessions::public_user,
     store::{AuthStore, AuthTransaction, Model},
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -68,6 +70,7 @@ use zeroize::Zeroizing;
 
 /// Trusted two-factor configuration. No Debug/Serialize: this holds signing secrets.
 pub struct TwoFactorService<S> {
+    session_policy: crate::sessions::SessionPolicy,
     pub(crate) store: Arc<S>,
     secret: Zeroizing<Vec<u8>>,
     issuer: String,
@@ -172,6 +175,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             ));
         }
         Ok(Self {
+            session_policy: crate::sessions::SessionPolicy::default(),
             store,
             secret: Zeroizing::new(secret),
             issuer,
@@ -303,3 +307,12 @@ async fn verification_row<T: AuthTransaction>(
 
 #[cfg(test)]
 mod tests;
+
+impl<S: AuthStore> TwoFactorService<S> {
+    /// Installs trusted session policy independently of factor/proof lifetimes.
+    #[must_use]
+    pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
+        self.session_policy = policy;
+        self
+    }
+}

@@ -18,6 +18,7 @@ pub(super) async fn login<S: AuthStore + 'static>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
     let mut service = CredentialService::new(app.store.clone())
+        .with_session_policy(app.session_policy)
         .with_email_verification_policy(app.email_verification_policy)
         .with_signup_auto_sign_in(app.signup_auto_sign_in);
     if let Some(hook) = &app.email_verification_delivery {
@@ -109,10 +110,11 @@ pub(super) async fn login<S: AuthStore + 'static>(
     };
     set_cookie(
         pending,
-        &app.cookie.serialize(
+        &app.cookie.serialize_with_policy(
             grant.session["token"].as_str().ok_or_else(internal)?,
             &app.secret,
             grant.persistent,
+            app.session_policy,
         ),
     )?;
     if !grant.persistent {
@@ -146,7 +148,7 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
     pending: &mut HeaderMap,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
-    let service = CredentialService::new(app.store.clone());
+    let service = CredentialService::new(app.store.clone()).with_session_policy(app.session_policy);
     let (token, transient) = session;
     match path {
         "/change-email" => {
@@ -166,7 +168,12 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
             service.update_profile(token, &payload, now).await?;
             set_cookie(
                 pending,
-                &app.cookie.serialize(token, &app.secret, !transient),
+                &app.cookie.serialize_with_policy(
+                    token,
+                    &app.secret,
+                    !transient,
+                    app.session_policy,
+                ),
             )?;
             if transient {
                 set_cookie(pending, &app.cookie.transient_flag(&app.secret))?;
@@ -197,10 +204,11 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
     if let Some(session) = &changed.session {
         set_cookie(
             pending,
-            &app.cookie.serialize(
+            &app.cookie.serialize_with_policy(
                 session["token"].as_str().ok_or_else(internal)?,
                 &app.secret,
                 !transient,
+                app.session_policy,
             ),
         )?;
         if transient {
@@ -245,6 +253,7 @@ async fn reset<S: AuthStore + 'static>(
         .or_else(|| query.get("token").and_then(Value::as_str))
         .unwrap_or("");
     let mut service = CredentialService::new(app.store.clone())
+        .with_session_policy(app.session_policy)
         .with_revoke_sessions_on_password_reset(app.revoke_sessions_on_password_reset);
     if let Some(observer) = &app.password_reset_observer {
         service = service.with_password_reset_observer(observer.clone());

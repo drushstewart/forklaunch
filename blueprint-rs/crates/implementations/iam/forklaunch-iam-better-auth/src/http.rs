@@ -51,6 +51,8 @@ pub use rate::{
 #[cfg(feature = "application-http")]
 pub mod relay;
 mod request;
+#[cfg(test)]
+pub(crate) mod session_policy_tests;
 mod social;
 mod social_callback;
 mod social_link;
@@ -63,6 +65,7 @@ mod two_factor;
 // Independent trusted options; these flags do not encode mutually exclusive states.
 #[allow(clippy::struct_excessive_bools)]
 pub struct AuthHttp<S> {
+    session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
     external_jwt: Option<ExternalJwtSigner>,
@@ -99,6 +102,19 @@ pub struct AuthHttp<S> {
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Applies one trusted session policy to every built-in authentication route.
+    /// JWT expiry and two-factor proof/trust lifetimes remain independent.
+    #[must_use]
+    pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
+        self.session_policy = policy;
+        if let Some(factor) = &self.two_factor {
+            self.two_factor = Some(Arc::new(
+                factor.copy_configuration().with_session_policy(policy),
+            ));
+        }
+        self
+    }
+
     /// Uses fixed tenant-bound callbacks for local JWT signing and JWKS publication.
     /// The caller must bind the callbacks to the same tenant as this service's store.
     #[must_use]
@@ -139,6 +155,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         let policy = OriginPolicy::new(&base_url, trusted)?;
         let secure = Url::parse(&base_url).is_ok_and(|url| url.scheme() == "https");
         Self {
+            session_policy: crate::sessions::SessionPolicy::default(),
             store,
             google: None,
             external_jwt: None,
@@ -573,7 +590,7 @@ async fn handle<S: AuthStore + 'static>(
     if path == app.jwks_path {
         return app.jwks(now).await;
     }
-    let sessions = SessionService::new(app.store.clone());
+    let sessions = SessionService::new(app.store.clone()).with_session_policy(app.session_policy);
     if path == "/sign-out" {
         return sign_out(app, &token, pending).await;
     }
@@ -641,7 +658,7 @@ async fn session_operation<S: AuthStore + 'static>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
     let (token, transient, view) = session;
-    let sessions = SessionService::new(app.store.clone());
+    let sessions = SessionService::new(app.store.clone()).with_session_policy(app.session_policy);
     match path {
         "/verify-password" | "/change-password" | "/list-accounts" | "/unlink-account"
         | "/update-user" | "/change-email" | "/delete-user" => {
@@ -710,7 +727,10 @@ async fn sign_out<S: AuthStore + 'static>(
     pending: &mut HeaderMap,
 ) -> BlueprintResult<Value> {
     if !token.is_empty()
-        && let Err(error) = SessionService::new(app.store.clone()).sign_out(token).await
+        && let Err(error) = SessionService::new(app.store.clone())
+            .with_session_policy(app.session_policy)
+            .sign_out(token)
+            .await
     {
         crate::error_origin::log_handled_failure("/sign-out", &error);
     }
@@ -1000,7 +1020,11 @@ fn refresh_cookie_headers<S>(
 ) -> BlueprintResult<()> {
     if let Some(view) = view {
         if view.refreshed {
-            set_cookie(pending, &app.cookie.serialize(token, &app.secret, true))?;
+            set_cookie(
+                pending,
+                &app.cookie
+                    .serialize_with_policy(token, &app.secret, true, app.session_policy),
+            )?;
         }
     } else if !token.is_empty() {
         clear(app.cookie, pending)?;

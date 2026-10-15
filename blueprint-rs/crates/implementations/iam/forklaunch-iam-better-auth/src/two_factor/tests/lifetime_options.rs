@@ -238,6 +238,7 @@ pub(super) async fn lifecycle<S: AuthStore + 'static>(store: Arc<S>) {
 impl<S> TwoFactorService<S> {
     fn copy_for_test(&self, options: TwoFactorLifetimeOptions) -> Self {
         Self {
+            session_policy: self.session_policy,
             store: self.store.clone(),
             secret: self.secret.clone(),
             issuer: self.issuer.clone(),

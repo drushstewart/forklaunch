@@ -1,7 +1,7 @@
 //! Native email signup/signin with atomic credential/session persistence.
 use crate::{
     credentials,
-    sessions::{new_session, public_user},
+    sessions::public_user,
     store::{AuthStore, AuthTransaction, Model},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -88,6 +88,7 @@ impl AuthGrant {
     }
 }
 pub struct CredentialService<S> {
+    session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
     workers: Arc<Semaphore>,
     verification_policy: EmailVerificationPolicy,
@@ -98,12 +99,20 @@ pub struct CredentialService<S> {
     pub(crate) verification_delivery: Option<verification_policy::Delivery>,
 }
 impl<S: AuthStore> CredentialService<S> {
+    /// Installs trusted session lifetime, refresh and freshness options.
+    #[must_use]
+    pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
+        self.session_policy = policy;
+        self
+    }
+
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
         // Shared across service instances. Cancelling an HTTP future does not
         // release capacity until its blocking hash job has actually completed.
         static WORKERS: OnceLock<Arc<Semaphore>> = OnceLock::new();
         Self {
+            session_policy: crate::sessions::SessionPolicy::default(),
             store,
             verification_policy: EmailVerificationPolicy::default(),
             signup_auto_sign_in: true,
@@ -240,7 +249,14 @@ impl<S: AuthStore> CredentialService<S> {
                 self.verification_policy.require,
             ));
         }
-        let session = new_session(&id, ip, agent, now)?;
+        let session = crate::sessions::new_session_with_policy(
+            &id,
+            ip,
+            agent,
+            now,
+            self.session_policy,
+            input.remember_me,
+        )?;
         tx.insert(Model::Session, session.clone()).await?;
         tx.commit().await?;
         Ok(SignupOutcome::Authenticated(AuthGrant {
@@ -378,7 +394,14 @@ impl<S: AuthStore> CredentialService<S> {
                 crate::two_factor::signin::SigninGate::Trusted(value) => trust = Some(value),
             }
         }
-        let session = new_session(text(&user, "id")?, ip, agent, now)?;
+        let session = crate::sessions::new_session_with_policy(
+            text(&user, "id")?,
+            ip,
+            agent,
+            now,
+            self.session_policy,
+            input.remember_me,
+        )?;
         tx.insert(Model::Session, session.clone()).await?;
         tx.commit().await?;
         Ok(crate::two_factor::CredentialSigninOutcome::Authenticated {

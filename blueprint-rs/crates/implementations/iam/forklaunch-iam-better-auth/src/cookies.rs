@@ -148,9 +148,26 @@ impl SessionCookie {
     /// omit Max-Age; persistent sessions use exactly 24 hours.
     #[must_use]
     pub fn serialize(self, token: &str, secret: &[u8], persistent: bool) -> String {
+        self.serialize_with_policy(
+            token,
+            secret,
+            persistent,
+            crate::sessions::SessionPolicy::default(),
+        )
+    }
+
+    /// Serializes a session cookie with trusted policy Max-Age; transient cookies omit it.
+    #[must_use]
+    pub fn serialize_with_policy(
+        self,
+        token: &str,
+        secret: &[u8],
+        persistent: bool,
+        policy: crate::sessions::SessionPolicy,
+    ) -> String {
         self.header(
             &sign_cookie_value(token, secret),
-            persistent.then_some(86400),
+            persistent.then_some(policy.expires_in()),
         )
     }
 

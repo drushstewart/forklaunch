@@ -1,5 +1,6 @@
 use super::*;
 use crate::accounts::{EmailVerificationObserver, EmailVerificationObserverContext};
+use crate::sessions::new_session;
 use crate::store::{AuthCursor, AuthPage, AuthWindow, memory::MemoryAuthStore};
 use tower::ServiceExt;
 #[path = "email_auto_fault_store.rs"]

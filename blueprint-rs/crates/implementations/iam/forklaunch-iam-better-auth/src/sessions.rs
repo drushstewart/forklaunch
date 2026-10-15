@@ -7,9 +7,15 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 #[cfg(test)]
+pub(crate) mod policy_tests;
+#[cfg(test)]
 pub(crate) mod tests;
 
+mod policy;
+pub use policy::SessionPolicy;
+
 pub struct SessionService<S> {
+    policy: SessionPolicy,
     store: Arc<S>,
 }
 
@@ -30,11 +36,21 @@ impl SessionView {
 impl<S: AuthStore> SessionService<S> {
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
-        Self { store }
+        Self {
+            store,
+            policy: SessionPolicy::default(),
+        }
+    }
+
+    /// Installs trusted session policy; existing stored expiry remains authoritative.
+    #[must_use]
+    pub fn with_session_policy(mut self, policy: SessionPolicy) -> Self {
+        self.policy = policy;
+        self
     }
 
     /// Creates a session for an existing trusted user, with an opaque random
-    /// token and a 24-hour lifetime. Signup must use the same record builder within
+    /// token and the configured lifetime (24 hours by default). Signup uses the same record builder within
     /// its user/account transaction to preserve atomicity.
     /// # Errors
     /// Rejects unknown users or storage/random-source/timestamp failures.
@@ -49,14 +65,15 @@ impl<S: AuthStore> SessionService<S> {
         if tx.get(Model::User, user_id).await?.is_none() {
             return Err(unauthorized());
         }
-        let session = new_session(user_id, ip_address, user_agent, now)?;
+        let session =
+            new_session_with_policy(user_id, ip_address, user_agent, now, self.policy, true)?;
         tx.insert(Model::Session, session.clone()).await?;
         tx.commit().await?;
         Ok(session)
     }
 
-    /// Reads persistent state, removes expired sessions and performs hourly
-    /// refresh unless transient cookies or explicit query flags suppress it.
+    /// Reads persistent state, removes expired sessions and performs configured
+    /// refresh (hourly by default) unless policy, transient cookies or query flags suppress it.
     /// Missing/revoked sessions return None. Token and creation time stay stable.
     /// # Errors
     /// Returns sanitized storage or corrupt-record/timestamp failures.
@@ -72,7 +89,14 @@ impl<S: AuthStore> SessionService<S> {
             .begin(true)
             .await
             .map_err(crate::error_origin::session_catch)?;
-        let result = load(&mut tx, token, transient || disable_refresh, now).await?;
+        let result = load_with_policy(
+            &mut tx,
+            token,
+            transient || disable_refresh,
+            now,
+            self.policy,
+        )
+        .await?;
         tx.commit()
             .await
             .map_err(crate::error_origin::session_catch)?;
@@ -90,12 +114,13 @@ impl<S: AuthStore> SessionService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        let Some(current) = load(&mut tx, token, transient, now).await? else {
+        let Some(current) = load_with_policy(&mut tx, token, transient, now, self.policy).await?
+        else {
             tx.commit().await?;
             return Err(unauthorized());
         };
         let created = field_time(&current.session, "createdAt")?;
-        if now.signed_duration_since(created) >= Duration::days(1) {
+        if !self.policy.fresh(created, now) {
             // The real middleware persists refresh before rejecting freshness.
             tx.commit().await?;
             return Err(BlueprintError::new(
@@ -176,7 +201,8 @@ impl<S: AuthStore> SessionService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let mut tx = self.store.begin(true).await?;
-        let Some(current) = load(&mut tx, token, transient, now).await? else {
+        let Some(current) = load_with_policy(&mut tx, token, transient, now, self.policy).await?
+        else {
             tx.commit().await?;
             return Err(unauthorized());
         };
@@ -257,14 +283,29 @@ fn revoke_failure(mode: Revoke<'_>, error: BlueprintError) -> BlueprintError {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn new_session(
     user_id: &str,
     ip: &str,
     agent: &str,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
+    new_session_with_policy(user_id, ip, agent, now, SessionPolicy::default(), true)
+}
+pub(crate) fn new_session_with_policy(
+    user_id: &str,
+    ip: &str,
+    agent: &str,
+    now: DateTime<Utc>,
+    policy: SessionPolicy,
+    persistent: bool,
+) -> BlueprintResult<Value> {
     let expires = now
-        .checked_add_signed(Duration::days(1))
+        .checked_add_signed(Duration::seconds(i64::from(if persistent {
+            policy.expires_in
+        } else {
+            86400
+        })))
         .ok_or_else(storage_error)?;
     let alphabet = b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let mut token = String::with_capacity(32);
@@ -302,7 +343,16 @@ pub(crate) async fn load<T: AuthTransaction>(
     skip_refresh: bool,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Option<SessionView>> {
-    load_inner(tx, token, skip_refresh, now)
+    load_with_policy(tx, token, skip_refresh, now, SessionPolicy::default()).await
+}
+pub(crate) async fn load_with_policy<T: AuthTransaction>(
+    tx: &mut T,
+    token: &str,
+    skip_refresh: bool,
+    now: DateTime<Utc>,
+    policy: SessionPolicy,
+) -> BlueprintResult<Option<SessionView>> {
+    load_inner(tx, token, skip_refresh, now, policy)
         .await
         .map_err(crate::error_origin::session_catch)
 }
@@ -312,6 +362,7 @@ async fn load_inner<T: AuthTransaction>(
     token: &str,
     skip_refresh: bool,
     now: DateTime<Utc>,
+    policy: SessionPolicy,
 ) -> BlueprintResult<Option<SessionView>> {
     let Some(mut session) = find_token(tx, token).await? else {
         return Ok(None);
@@ -326,12 +377,14 @@ async fn load_inner<T: AuthTransaction>(
         return Ok(None);
     };
     let threshold = expires
-        .checked_sub_signed(Duration::hours(23))
+        .checked_add_signed(Duration::seconds(
+            i64::from(policy.update_age) - i64::from(policy.expires_in),
+        ))
         .ok_or_else(storage_error)?;
-    let refreshed = !skip_refresh && threshold <= now;
+    let refreshed = !skip_refresh && !policy.disable_refresh && threshold <= now;
     if refreshed {
         session["expiresAt"] = json!(timestamp(
-            now.checked_add_signed(Duration::days(1))
+            now.checked_add_signed(Duration::seconds(i64::from(policy.expires_in)))
                 .ok_or_else(storage_error)?
         ));
         session["updatedAt"] = json!(timestamp(now));

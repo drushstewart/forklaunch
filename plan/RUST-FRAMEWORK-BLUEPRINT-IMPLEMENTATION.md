@@ -13,7 +13,7 @@ Build a Rust-native ForkLaunch stack with two new workspaces:
 
 The Rust stack should interoperate with the TypeScript stack through shared contract artifacts. A Rust service should be able to generate TypeScript SDKs for frontend consumers and Rust SDKs for service-to-service consumers.
 
-## Active Task Queue (2026-10-14)
+## Active Task Queue (2026-10-15)
 
 Current parallel work (these are slices of the existing gates, not extra checklist items):
 
@@ -71,7 +71,8 @@ Current parallel work (these are slices of the existing gates, not extra checkli
 - Completed: trusted before/after email-verification hooks and pre-clone PaymentLink reservation limits; actual-source, restricted PostgreSQL and strict native checks pass.
 - Completed: verification auto-signin, Rust builtin-name compatibility, bounded PaymentLink list library/HTTP/MCP/SDKs, and immutable6f77 packaged runtime/startup validation.
 - Completed: opt-in exact Zod UTF-16 length and numeric remainder assertions across native validators, HTTP SDK and generated socket clients; 2,220 Zod/AJV and 3,332 native observations pass. Regex/format conjunctions remain open.
-- Active: configurable session policy across auth flows, explicit Zod constraint compatibility, and bound billing creation HTTP/MCP/SDK wiring. Signup auto-signin, Subscription read selection, password-reset revocation/observer, and bounded string-schema fixes have landed. Broader plugin/mapper/schema/deployment gates remain open.
+- Completed: shared authentication session policy across credential, Google, MFA, verification and session flows; 22 actual-source cases, 214 full-suite tests and restricted PostgreSQL lifecycle pass. Post-await clock sampling and broader auth options remain open.
+- Active: broader credential/options parity, explicit Zod format/regex compatibility, and bound billing creation HTTP/MCP/SDK wiring. Signup auto-signin, Subscription read selection, password-reset revocation/observer, and bounded string-schema fixes have landed. Broader plugin/mapper/schema/deployment gates remain open.
 - Validation: immutable4ff9e3958 package/install passed2799 files with SHA256db6cb114da0e7faabb74e01ceb1ae0da081020194764fbabbbc177171ca0033c. Portable runtime/HTTP/MCP/SDK checks now pass with195IAM tests and3PGignored; all2799bytes verified after. Current policy/pure/Subscription/collision fixes are excluded by exact source commit.
 - Validation: immutable37b54 archive package/install/portable services/workers/SDK/HTTP/MCP runtime passes with2775 before/after byte-verified files and packagedIAM184 (3PGignored). Later OTPdispatcher/tupleconsumer/new drafts are excluded by source commit; owned roots and414MB exclusive nonexecutable cache cleaned with guards.
 - Validation: immutable d835 archive installed with2622 byte-verified files and passes full portable runtime/HTTP/MCP checks; expanded generated MFA29 also passes, with zero remaining fixture roles/records/audits.

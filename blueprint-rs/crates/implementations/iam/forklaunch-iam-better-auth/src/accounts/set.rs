@@ -24,6 +24,7 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let view = SessionService::new(self.store.clone())
+            .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
             .ok_or_else(unauthorized)?;

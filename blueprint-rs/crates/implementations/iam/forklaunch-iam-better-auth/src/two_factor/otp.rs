@@ -298,7 +298,8 @@ impl<S: AuthStore> TwoFactorService<S> {
         user["twoFactorEnabled"] = json!(true);
         user["updatedAt"] = json!(super::timestamp(now));
         tx.replace(Model::User, user.clone()).await?;
-        let replacement = enrollment::rotate(&mut tx, &user, &session, now).await?;
+        let replacement =
+            enrollment::rotate(&mut tx, &user, &session, now, self.session_policy).await?;
         tx.commit().await?;
         let mut response = empty_response(json!({"method":"otp"}));
         response.session = Some(replacement);
@@ -434,7 +435,8 @@ impl<S: AuthStore> TwoFactorService<S> {
                 user["twoFactorEnabled"] = json!(true);
                 user["updatedAt"] = json!(super::timestamp(now));
                 tx.replace(Model::User, user.clone()).await?;
-                let replacement = enrollment::rotate(tx, &user, &session, now).await?;
+                let replacement =
+                    enrollment::rotate(tx, &user, &session, now, self.session_policy).await?;
                 response.body = json!({"token":replacement["token"],"user":output_user(&user)});
                 response.session = Some(replacement);
             }
@@ -442,11 +444,13 @@ impl<S: AuthStore> TwoFactorService<S> {
             let challenge = bound.challenge.ok_or_else(invalid_challenge)?;
             tx.delete(Model::Verification, text(&challenge, "id")?)
                 .await?;
-            let session = super::new_session(
+            let session = crate::sessions::new_session_with_policy(
                 text(&user, "id")?,
                 challenge["ipAddress"].as_str().unwrap_or(""),
                 challenge["userAgent"].as_str().unwrap_or(""),
                 now,
+                self.session_policy,
+                challenge["persistent"].as_bool().unwrap_or(true),
             )?;
             tx.insert(Model::Session, session.clone()).await?;
             response.body["token"] = session["token"].clone();

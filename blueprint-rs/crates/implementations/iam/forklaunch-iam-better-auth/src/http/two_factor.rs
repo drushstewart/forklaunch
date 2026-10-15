@@ -349,7 +349,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                     self.secret.to_vec(),
                     "Better Auth".into(),
                 )?
-                .with_backup_code_storage(crate::two_factor::BackupCodeStorage::Encrypted),
+                .with_backup_code_storage(crate::two_factor::BackupCodeStorage::Encrypted)
+                .with_session_policy(self.session_policy),
             ));
             if let Some(dispatcher) = self.background_dispatcher.clone() {
                 self.two_factor = Some(Arc::new(
@@ -633,10 +634,11 @@ fn apply<S: AuthStore>(
     if let Some(session) = response.session {
         set_cookie(
             pending,
-            &app.cookie.serialize(
+            &app.cookie.serialize_with_policy(
                 session["token"].as_str().ok_or_else(internal)?,
                 &app.secret,
                 persistent,
+                app.session_policy,
             ),
         )?;
     }

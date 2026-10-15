@@ -25,6 +25,7 @@ pub use members::{AddMemberInput, MemberRoles};
 pub(crate) mod tests;
 
 pub struct OrganizationService<S> {
+    session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
 }
 /// The selection endpoint emits a session cookie only after an actual selection
@@ -34,9 +35,19 @@ pub struct OrganizationSelection {
     pub cookie: bool,
 }
 impl<S: AuthStore> OrganizationService<S> {
+    /// Installs trusted session lifetime, refresh and freshness options.
+    #[must_use]
+    pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
+        self.session_policy = policy;
+        self
+    }
+
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
-        Self { store }
+        Self {
+            store,
+            session_policy: crate::sessions::SessionPolicy::default(),
+        }
     }
 
     /// Lists organizations in membership insertion order.
@@ -97,6 +108,7 @@ impl<S: AuthStore> OrganizationService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<SessionView> {
         SessionService::new(self.store.clone())
+            .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
             .ok_or_else(unauthorized)

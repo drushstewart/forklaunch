@@ -164,7 +164,7 @@ async fn finish<S: AuthStore + 'static>(
     if callback.is_empty() {
         return with_error(error_url, "no_callback_url", None);
     }
-    let accounts = GoogleAccounts::new(app.store.clone());
+    let accounts = GoogleAccounts::new(app.store.clone()).with_session_policy(app.session_policy);
     if let Some(link) = data.get("link") {
         match accounts.link_verified(&profile, tokens, link, now).await {
             Ok(()) => return Ok(callback.to_owned()),
@@ -179,8 +179,12 @@ async fn finish<S: AuthStore + 'static>(
         Ok(grant) => {
             set_cookie(
                 pending,
-                &app.cookie
-                    .serialize(text(&grant.auth.session, "token")?, &app.secret, true),
+                &app.cookie.serialize_with_policy(
+                    text(&grant.auth.session, "token")?,
+                    &app.secret,
+                    true,
+                    app.session_policy,
+                ),
             )?;
             Ok(if grant.registered {
                 data["newUserURL"]

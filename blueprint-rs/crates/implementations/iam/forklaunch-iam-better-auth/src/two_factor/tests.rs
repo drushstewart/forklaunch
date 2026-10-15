@@ -496,9 +496,15 @@ async fn rotation_after_elapsed_time_resets_configured_session_dates() {
     let mut tx = store.begin(true).await.unwrap();
     tx.insert(Model::Session, old.clone()).await.unwrap();
     let later = now + Duration::minutes(5);
-    let rotated = enrollment::rotate(&mut tx, &json!({"id":"rotation-user"}), &old, later)
-        .await
-        .unwrap();
+    let rotated = enrollment::rotate(
+        &mut tx,
+        &json!({"id":"rotation-user"}),
+        &old,
+        later,
+        crate::sessions::SessionPolicy::default(),
+    )
+    .await
+    .unwrap();
     assert_eq!(time(&rotated, "createdAt").unwrap(), later);
     assert_eq!(
         time(&rotated, "expiresAt").unwrap(),

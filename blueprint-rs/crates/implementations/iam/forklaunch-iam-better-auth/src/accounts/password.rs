@@ -1,5 +1,5 @@
 //! Authenticated password changes with authoritative rechecks after derivation.
-use super::{CredentialService, credentials, find_credential, new_session, text, validate_length};
+use super::{CredentialService, credentials, find_credential, text, validate_length};
 use crate::sessions::{SessionService, load};
 use crate::store::{AuthStore, AuthTransaction, Model};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -43,6 +43,7 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         let view = SessionService::new(self.store.clone())
+            .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
             .ok_or_else(unauthorized)?;
@@ -96,6 +97,7 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<PasswordChange> {
         let view = SessionService::new(self.store.clone())
+            .with_session_policy(self.session_policy)
             .get(token, transient, false, now)
             .await?
             .ok_or_else(unauthorized)?;
@@ -150,7 +152,14 @@ impl<S: AuthStore> CredentialService<S> {
                     tx.delete(Model::Session, text(&session, "id")?).await?;
                 }
             }
-            let session = new_session(user_id, ip, agent, now)?;
+            let session = crate::sessions::new_session_with_policy(
+                user_id,
+                ip,
+                agent,
+                now,
+                self.session_policy,
+                true,
+            )?;
             tx.insert(Model::Session, session.clone()).await?;
             Some(session)
         } else {

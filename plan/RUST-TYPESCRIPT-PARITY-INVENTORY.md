@@ -10647,3 +10647,31 @@ overlapping number/integer, constrained branches and sibling assertions remain
 intact. Negative controls verify those exclusions. Independent integration checks
 also passed the 623-entry/1,703-record inventory, all 12 configured TypeScript roots
 and 623 public exports, workflow YAML parsing and whitespace validation.
+
+
+### 2026-10-15 — shared authentication session policy
+
+Additive `SessionPolicy` builders propagate configured expiry, refresh age,
+freshness and refresh disabling across credential, Google, MFA, verification,
+organization and direct-session flows. Existing constructors retain the one-day
+ForkLaunch preset; whole-second positive expiry is explicit. Persistent cookie
+Max-Age follows policy, while transient credential and pending-factor grants keep
+the upstream fixed one-day stored TTL. Rotation/enrollment/verification creation
+uses configured expiry even with transient cookies. Existing stored expiry is
+preserved until refresh, with equality boundaries and policy changes tested.
+
+Actual Better Auth comparisons pass 22 clock/creation cases; three focused native
+tests cover the policy and HTTP creation families. The full IAM suite passes
+214 tests (three PostgreSQL tests ignored in that run). The separately executed
+restricted PostgreSQL lifecycle passes in 164.26 seconds, including the new domain
+and HTTP policy matrices. Its first run exposed a shared-fixture email collision;
+a unique seed fixed the fixture, without production changes. Full and minimal
+strict Clippy pass. CI runs the permanent actual-source policy fixture and existing
+full/native PostgreSQL suites.
+
+Direct services retain caller-supplied `now`; AuthHttp currently samples the
+request clock before asynchronous credential work. Frozen-clock comparisons prove
+arithmetic and option selection, not post-await wall-clock equivalence. Resampling
+at upstream creation points remains work alongside deferred refresh, cookie cache,
+secondary storage, broader credential/organization options and plugin coverage.
+No broad checklist gate is closed by this feature group.

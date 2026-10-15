@@ -37,14 +37,16 @@ pub(super) async fn sign_in<S: AuthStore + 'static>(
         }
         let (ip, agent) = super::request::client_metadata(headers);
         let grant = GoogleAccounts::new(app.store.clone())
+            .with_session_policy(app.session_policy)
             .sign_in_verified(&profile, &tokens, &ip, &agent, now)
             .await?;
         set_cookie(
             pending,
-            &app.cookie.serialize(
+            &app.cookie.serialize_with_policy(
                 super::text(&grant.auth.session, "token")?,
                 &app.secret,
                 true,
+                app.session_policy,
             ),
         )?;
         return Ok(

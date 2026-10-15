@@ -4,7 +4,7 @@ use crate::{
     sessions::{SessionView, load},
     store::{AuthStore, AuthTransaction, Model},
 };
-use chrono::{DateTime, Duration, SecondsFormat, Utc};
+use chrono::{DateTime, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::{Value, json};
 
@@ -73,7 +73,7 @@ impl<S: AuthStore> CredentialService<S> {
             .ok_or_else(unauthorized)?;
         let created = DateTime::parse_from_rfc3339(text(&view.session, "createdAt")?)
             .map_err(|_| internal())?;
-        if now.signed_duration_since(created) >= Duration::days(1) {
+        if !self.session_policy.fresh(created.with_timezone(&Utc), now) {
             return Err(BlueprintError::new(
                 "SESSION_NOT_FRESH",
                 "Session is not fresh",

@@ -1,7 +1,7 @@
 //! Persistent Google identity resolution after a trusted provider verification.
 use crate::{
     accounts::AuthGrant,
-    sessions::{new_session, public_user},
+    sessions::public_user,
     store::{AuthStore, AuthTransaction, Model},
 };
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -13,6 +13,7 @@ use std::sync::Arc;
 pub(crate) mod tests;
 
 pub struct GoogleAccounts<S> {
+    session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
 }
 pub struct GoogleGrant {
@@ -20,9 +21,19 @@ pub struct GoogleGrant {
     pub registered: bool,
 }
 impl<S: AuthStore> GoogleAccounts<S> {
+    /// Installs trusted session lifetime, refresh and freshness options.
+    #[must_use]
+    pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
+        self.session_policy = policy;
+        self
+    }
+
     #[must_use]
     pub fn new(store: Arc<S>) -> Self {
-        Self { store }
+        Self {
+            store,
+            session_policy: crate::sessions::SessionPolicy::default(),
+        }
     }
     /// Links a verified direct ID token to the authenticated local user.
     /// Existing own accounts may update tokens without re-running initial email policy.
@@ -213,7 +224,14 @@ impl<S: AuthStore> GoogleAccounts<S> {
             }
             tx.insert(Model::Account, account).await?;
         }
-        let session = new_session(text(&user, "id")?, ip, agent, now)?;
+        let session = crate::sessions::new_session_with_policy(
+            text(&user, "id")?,
+            ip,
+            agent,
+            now,
+            self.session_policy,
+            true,
+        )?;
         tx.insert(Model::Session, session.clone()).await?;
         tx.commit().await?;
         user = public_user(&user);

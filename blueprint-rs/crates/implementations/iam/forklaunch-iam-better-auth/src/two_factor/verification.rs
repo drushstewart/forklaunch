@@ -1,8 +1,8 @@
 use super::{
     AuthStore, AuthTransaction, BlueprintResult, DateTime, Duration, FactorResponse, Model,
     TwoFactorService, Utc, authenticated, corrupt, crypto, empty_response, enabled, enrollment,
-    error, expiry, factor, invalid_challenge, json, new_session, output_user, secret, text, time,
-    timestamp, unauthorized, verification_row,
+    error, expiry, factor, invalid_challenge, json, output_user, secret, text, time, timestamp,
+    unauthorized, verification_row,
 };
 /// Trusted recovery verification options. Defaults retain session issuance.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -262,11 +262,13 @@ impl<S: AuthStore> TwoFactorService<S> {
                 tx.replace(Model::TwoFactor, row).await?;
                 return Ok(response);
             }
-            let mut next = new_session(
+            let mut next = crate::sessions::new_session_with_policy(
                 text(&user, "id")?,
                 challenge_row["ipAddress"].as_str().unwrap_or(""),
                 challenge_row["userAgent"].as_str().unwrap_or(""),
                 now,
+                self.session_policy,
+                challenge_row["persistent"].as_bool().unwrap_or(true),
             )?;
             response.persistent = challenge_row["persistent"].as_bool().unwrap_or(true);
             if !response.persistent {
@@ -291,6 +293,7 @@ impl<S: AuthStore> TwoFactorService<S> {
                         &updated,
                         session.as_ref().ok_or_else(unauthorized)?,
                         now,
+                        self.session_policy,
                     )
                     .await?,
                 );
