@@ -4,10 +4,11 @@ use super::{
     bound_plan_read_contracts, bound_portal_contracts, bound_subscription_read_contracts,
 };
 use forklaunch_billing_base::services::postgres::{
-    StripeBindingScope, TrustedCheckoutPublisher, TrustedPortalPublisher,
-    TrustedSubscriptionPublisher,
+    StripeBindingScope, TrustedCheckoutPublisher, TrustedPaymentLinkExpirationPublisher,
+    TrustedPortalPublisher, TrustedSubscriptionPublisher,
 };
 use forklaunch_billing_stripe::bound_creation::BoundPaymentLinkCreationProfile;
+use forklaunch_billing_stripe::bound_payment_link_expiration::BoundPaymentLinkExpirationProfile;
 use forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile;
 use forklaunch_billing_stripe::bound_portal_creation::BoundPortalCreationProfile;
 use forklaunch_billing_stripe::bound_subscription_creation::{
@@ -40,6 +41,7 @@ pub struct BoundBillingConfig {
     subscription_read: Option<BoundSubscriptionCreationProfile>,
     payment_link_read: Option<PaymentLinkReadConfig>,
     payment_link: Option<BoundPaymentLinkCreationProfile>,
+    payment_link_expiration: Option<BoundPaymentLinkExpirationProfile>,
     plan: Option<BoundPlanCreationProfile>,
     subscription: Option<BoundSubscriptionCreationProfile>,
     subscription_recovery: Option<BoundSubscriptionCreationProfile>,
@@ -142,6 +144,18 @@ fn payment_link_creation_profile(
         serde_json::from_value(part["trustedPrices"].clone()).map_err(|_| configuration())?;
     BoundPaymentLinkCreationProfile::trusted(scope.clone(), prices).map_err(|_| configuration())
 }
+fn payment_link_expiration_profile(
+    scope: &StripeBindingScope,
+    part: &Value,
+) -> BlueprintResult<BoundPaymentLinkExpirationProfile> {
+    exact(part, &["trustedPrices", "authority"], &[])?;
+    if part["authority"] != "internal_service_tenant_v1" {
+        return Err(configuration());
+    }
+    let prices: Vec<String> =
+        serde_json::from_value(part["trustedPrices"].clone()).map_err(|_| configuration())?;
+    BoundPaymentLinkExpirationProfile::trusted(scope.clone(), prices).map_err(|_| configuration())
+}
 fn plan_profile(
     scope: &StripeBindingScope,
     part: &Value,
@@ -188,6 +202,7 @@ impl BoundBillingConfig {
                 "subscriptionRead",
                 "paymentLinkRead",
                 "paymentLink",
+                "paymentLinkExpiration",
                 "plan",
                 "subscription",
                 "subscriptionRecovery",
@@ -236,6 +251,10 @@ impl BoundBillingConfig {
             .get("paymentLink")
             .map(|part| payment_link_creation_profile(&scope, part))
             .transpose()?;
+        let payment_link_expiration = value
+            .get("paymentLinkExpiration")
+            .map(|part| payment_link_expiration_profile(&scope, part))
+            .transpose()?;
         let payment_link_read = value
             .get("paymentLinkRead")
             .map(|part| payment_link_profile(&scope, part))
@@ -247,6 +266,7 @@ impl BoundBillingConfig {
             && subscription_read.is_none()
             && payment_link_read.is_none()
             && payment_link.is_none()
+            && payment_link_expiration.is_none()
             && plan.is_none()
             && subscription.is_none()
             && subscription_recovery.is_none()
@@ -261,6 +281,7 @@ impl BoundBillingConfig {
             subscription_read,
             payment_link_read,
             payment_link,
+            payment_link_expiration,
             plan,
             subscription,
             subscription_recovery,
@@ -302,7 +323,11 @@ impl BoundBillingConfig {
     pub const fn has_payment_link(&self) -> bool {
         self.payment_link.is_some()
     }
-    /// Checkout and Portal creation require separate publication connections.
+    #[must_use]
+    pub const fn has_payment_link_expiration(&self) -> bool {
+        self.payment_link_expiration.is_some()
+    }
+    /// Checkout/Portal/Subscription creation and `PaymentLink` expiration require separate publication connections.
     /// `PaymentLink` uses its existing ordinary-role immutable journal authority.
     #[must_use]
     pub const fn requires_publisher(&self) -> bool {
@@ -310,6 +335,7 @@ impl BoundBillingConfig {
             || self.has_portal()
             || self.has_subscription()
             || self.has_subscription_recovery()
+            || self.has_payment_link_expiration()
     }
     /// Shared runtime/artifact contracts, with no server configuration embedded.
     #[must_use]
@@ -330,6 +356,11 @@ impl BoundBillingConfig {
         }
         if self.has_plan() {
             routes.extend(super::bound_plan::bound_plan_contracts());
+        }
+        if self.has_payment_link_expiration() {
+            routes.extend(
+                super::bound_payment_link_expiration::bound_payment_link_expiration_contracts(),
+            );
         }
         if self.has_payment_link() {
             routes.extend(super::bound_payment_link::bound_payment_link_contracts());
@@ -366,6 +397,8 @@ pub struct BoundBillingV1 {
     subscription_read: Option<BoundSubscriptionCreationProfile>,
     payment_link_read: Option<PaymentLinkReadConfig>,
     payment_link: Option<BoundPaymentLinkCreationProfile>,
+    payment_link_expiration:
+        Option<super::bound_payment_link_expiration::BoundPaymentLinkExpirationV1>,
     plan: Option<BoundPlanCreationProfile>,
     subscription: Option<super::bound_subscription::BoundSubscriptionV1>,
 }
@@ -389,7 +422,26 @@ impl BoundBillingV1 {
         portal: Option<TrustedPortalPublisher>,
         subscription: Option<TrustedSubscriptionPublisher>,
     ) -> BlueprintResult<Self> {
-        if configuration.has_checkout() != checkout.is_some()
+        Self::trusted_with_payment_link_expiration(
+            configuration,
+            checkout,
+            portal,
+            subscription,
+            None,
+        )
+    }
+    /// Adds explicit metadata-only expiration publication authority; no fallback.
+    /// # Errors
+    /// Rejects missing or surplus publishers for every selected capability.
+    pub fn trusted_with_payment_link_expiration(
+        configuration: BoundBillingConfig,
+        checkout: Option<TrustedCheckoutPublisher>,
+        portal: Option<TrustedPortalPublisher>,
+        subscription: Option<TrustedSubscriptionPublisher>,
+        expiration: Option<TrustedPaymentLinkExpirationPublisher>,
+    ) -> BlueprintResult<Self> {
+        if configuration.has_payment_link_expiration() != expiration.is_some()
+            || configuration.has_checkout() != checkout.is_some()
             || configuration.has_portal() != portal.is_some()
             || (configuration.has_subscription() || configuration.has_subscription_recovery())
                 != subscription.is_some()
@@ -402,6 +454,14 @@ impl BoundBillingV1 {
             subscription_read: configuration.subscription_read,
             payment_link_read: configuration.payment_link_read,
             payment_link: configuration.payment_link,
+            payment_link_expiration: configuration.payment_link_expiration.zip(expiration).map(
+                |(profile, publisher)| {
+                    super::bound_payment_link_expiration::BoundPaymentLinkExpirationV1 {
+                        profile,
+                        publisher,
+                    }
+                },
+            ),
             plan: configuration.plan,
             subscription: subscription.map(|publisher| {
                 super::bound_subscription::BoundSubscriptionV1 {
@@ -433,6 +493,7 @@ impl BillingBackend {
             || self.bound_subscription_read.is_some()
             || self.bound_payment_link_read.is_some()
             || self.bound_payment_link.is_some()
+            || self.bound_payment_link_expiration.is_some()
             || self.bound_plan.is_some()
             || self.bound_subscription.is_some()
         {
@@ -443,6 +504,9 @@ impl BillingBackend {
         }
         if let Some(plan) = profile.plan {
             self = self.with_bound_plan(plan).await?;
+        }
+        if let Some(expiration) = profile.payment_link_expiration {
+            self = self.with_bound_payment_link_expiration(expiration).await?;
         }
         if let Some(payment_link) = profile.payment_link {
             self = self.with_bound_payment_link(payment_link).await?;
@@ -475,6 +539,28 @@ impl BillingBackend {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn payment_link_expiration_requires_explicit_publisher_and_authority() {
+        let value = json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"paymentLinkExpiration":{"trustedPrices":["price_owned"],"authority":"internal_service_tenant_v1"}});
+        let config = BoundBillingConfig::from_json(&value.to_string()).unwrap();
+        assert!(config.has_payment_link_expiration());
+        assert!(config.requires_publisher());
+        assert!(!config.has_payment_link());
+        assert!(!config.has_payment_link_read());
+        assert_eq!(config.contracts().len(), 2);
+        assert!(BoundBillingV1::trusted(config, None, None).is_err());
+        for bad in [
+            json!(null),
+            json!({}),
+            json!({"trustedPrices":["price_owned"]}),
+            json!({"trustedPrices":["price_owned"],"authority":"end_user"}),
+            json!({"trustedPrices":["price_owned"],"authority":"internal_service_tenant_v1","maxRecords":10}),
+        ] {
+            let mut invalid = value.clone();
+            invalid["paymentLinkExpiration"] = bad;
+            assert!(BoundBillingConfig::from_json(&invalid.to_string()).is_err());
+        }
+    }
     fn valid() -> Value {
         json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"}})
     }

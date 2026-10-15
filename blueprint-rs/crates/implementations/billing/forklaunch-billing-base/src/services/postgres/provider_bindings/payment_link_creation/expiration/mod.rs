@@ -52,6 +52,34 @@ fn unknown() -> BlueprintError {
     )
 }
 impl PostgresBillingStore {
+    /// Checks explicit reservation, dependency-lock and inspection grants locally.
+    /// # Errors
+    /// Rejects missing individual privileges or migration-owner membership.
+    pub async fn validate_payment_link_expiration_access(&self) -> BlueprintResult<()> {
+        self.validate_payment_link_creation_read_access().await?;
+        let mut tx = self.transaction().await?;
+        self.expiration_role(&mut tx).await?;
+        for (table, privilege) in [
+            ("records", "UPDATE"),
+            ("provider_bindings", "UPDATE"),
+            ("payment_link_expiration_intents", "INSERT"),
+            ("payment_link_expiration_dependency_claims", "INSERT"),
+            ("payment_link_expiration_audit", "INSERT"),
+            ("subscription_publication_identity", "SELECT"),
+        ] {
+            let allowed: bool =
+                sqlx::query_scalar("SELECT has_table_privilege(current_user,$1,$2)")
+                    .bind(format!("fl_billing.{table}"))
+                    .bind(privilege)
+                    .fetch_one(&mut *tx)
+                    .await
+                    .map_err(db_error)?;
+            if !allowed {
+                return Err(conflict());
+            }
+        }
+        tx.commit().await.map_err(db_error)
+    }
     async fn expiration_role(&self, tx: &mut Transaction<'_, Postgres>) -> BlueprintResult<()> {
         let forbidden: bool = sqlx::query_scalar("SELECT pg_has_role(current_user,relowner,'MEMBER') FROM pg_class WHERE oid='fl_billing.payment_link_expiration_dependency_guards'::regclass")
             .fetch_one(&mut **tx).await.map_err(db_error)?;

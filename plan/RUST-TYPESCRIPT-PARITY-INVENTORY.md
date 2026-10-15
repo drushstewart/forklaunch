@@ -11358,3 +11358,34 @@ formatting discrepancies were corrected without behavior changes. Both complete
 member checks pass; workflow YAML parses. Logs:
 /private/tmp/fl-oct15-{framework,blueprint}-member-format.log.
 This is CI reliability work, not a closed feature gate;660/682 unchanged.
+
+
+### 2026-10-15 — PaymentLink expiration HTTP/MCP and both SDKs
+
+Explicit paymentLinkExpiration selection requires trusted prices, the existing
+internal_service_tenant_v1 authority declaration and a separate expiration
+publisher. POST /bound-payment-links/:publicId/expire accepts only operationId;
+GET /bound-payment-links/:publicId/expiration-operations/:operationId exposes
+historical IDs/status. Creation/read selectors never infer mutation capability.
+The effect remains metadata.status=EXPIRED, not active=false or URL revocation.
+POST reports completed200 or pending/stale-evidence202; inspection returns200 for
+a recorded operation and404 when absent. Missing evidence does not prove rollback.
+
+Selected startup checks every required runtime/publisher read, lock and insert
+privilege, publication function execution, role separation and database identity.
+Base/managed/backup or incomplete configurations fail before listening without
+provider I/O. Existing constructors remain compatible; the new explicit publisher
+constructor and generated billing binary select this capability independently.
+
+Final direct-executable runtime wrapper passes3.73s against restricted PostgreSQL,
+including HTTP, both MCP operations, four actual SDK calls (two TS/two Rust),
+concurrent one-POST dispatch, historical no-provider reads, pending202/no retry,
+and runtime/publisher privilege matrices. Units15, generated artifact cases166
+(including actual base/Stripe main templates), full strict Clippy17.94s and minimal
+8.44s pass. Owned PostgreSQL databases/roles0/0. Source formatting/diff checks pass.
+
+Frozen12-source manifest /private/tmp/fl-payment-link-expiration-route-final.json,
+SHA256b7ca19e08e5f67ce60bbbdca1fed7ed936a1b9deb8009092b7d3b5f60857e1e4.
+Root-owned runtime wrapper was exercised by the final proof and added to CI.
+Logs /private/tmp/fl-payment-link-expiration-route-{wrapper-final,artifacts,units,clippy,minimal}.log.
+Event-linked recovery and broader billing remain open;660/682(96.8%) unchanged.

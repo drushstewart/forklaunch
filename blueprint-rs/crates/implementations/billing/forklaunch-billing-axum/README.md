@@ -445,3 +445,31 @@ Use the existing distinct non-owner runtime role. Migration owners and privilege
 DB administrators remain trusted; no protection against stolen runtime write
 credentials is claimed. No expiration UPDATE/DELETE policy is granted, and mutation
 and TRUNCATE triggers reject history removal even with broader table grants.
+
+
+### Explicit PaymentLink metadata expiration
+
+`bound-billing-v1` accepts `paymentLinkExpiration` with `trustedPrices` and
+`authority: "internal_service_tenant_v1"`. This is internal service tenant
+authority, not end-user authorization. Selection requires a distinct trusted
+expiration publisher and enables POST `/bound-payment-links/:publicId/expire`
+with `{operationId}` plus GET
+`/bound-payment-links/:publicId/expiration-operations/:operationId`.
+Read and creation selectors do not infer this authority. Legacy routes remain.
+
+The provider effect is exactly `metadata.status=EXPIRED`; it neither sets
+`active=false` nor revokes a provider URL. A confirmed publication blocks the
+created-only bound reader/list locally. POST returns 200 `completed`, or 202
+`pending`/`recordedEvidenceNoLongerCurrent` after an uncertain or stale outcome.
+There is no automatic retry or recovery endpoint. Inspection performs no provider
+I/O and returns IDs/status only, never the URL or provider body. A missing receipt
+is not proof that the provider effect or an earlier transaction rolled back.
+
+Migration 17 is required. Startup checks each runtime SELECT on records, bindings,
+creation/expiration journals and publication identity; UPDATE on records/bindings
+for proof locks; INSERT on expiration journal, dependency claims, expiration audit
+and sensitive-read audit. The separate publisher requires its validated publication
+function permission, schema usage, record/binding SELECT and UPDATE, and journal
+and publication-identity SELECT. Role separation and same-database checks remain
+mandatory. Startup makes no provider calls; incomplete, managed, or backup profiles
+fail before listening. Publisher credentials are trusted administrative authority.

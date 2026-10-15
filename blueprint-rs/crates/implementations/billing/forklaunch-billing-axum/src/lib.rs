@@ -7,6 +7,8 @@ mod bound_checkout;
 #[cfg(feature = "bound-checkout")]
 mod bound_payment_link;
 #[cfg(feature = "bound-checkout")]
+mod bound_payment_link_expiration;
+#[cfg(feature = "bound-checkout")]
 mod bound_payment_link_read;
 #[cfg(feature = "bound-checkout")]
 mod bound_plan;
@@ -28,6 +30,8 @@ pub use bound_checkout::{
 };
 #[cfg(feature = "bound-checkout")]
 pub use bound_payment_link::bound_payment_link_contracts;
+#[cfg(feature = "bound-checkout")]
+pub use bound_payment_link_expiration::bound_payment_link_expiration_contracts;
 #[cfg(feature = "bound-checkout")]
 pub use bound_payment_link_read::bound_payment_link_read_contracts;
 #[cfg(feature = "bound-checkout")]
@@ -93,6 +97,8 @@ pub struct BillingBackend {
     bound_plan: Option<Arc<forklaunch_billing_stripe::bound_plan_creation::BoundPlanCreationProfile>>,
     #[cfg(feature = "bound-checkout")]
     bound_subscription: Option<Arc<bound_subscription::BoundSubscriptionV1>>,
+    #[cfg(feature="bound-checkout")]
+    bound_payment_link_expiration: Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
     request_dates: BillingRequestDateProfile,
     webhook: Option<forklaunch_billing_stripe::webhook::StripeWebhookVerifier>,
     platform_key: Option<zeroize::Zeroizing<String>>,
@@ -118,6 +124,8 @@ impl BillingBackend {
             bound_payment_link_read: None,
             #[cfg(feature = "bound-checkout")]
             bound_payment_link: None,
+            #[cfg(feature = "bound-checkout")]
+            bound_payment_link_expiration: None,
             #[cfg(feature = "bound-checkout")]
             bound_plan: None,
             #[cfg(feature = "bound-checkout")]
@@ -147,6 +155,8 @@ impl BillingBackend {
             bound_payment_link_read: None,
             #[cfg(feature = "bound-checkout")]
             bound_payment_link: None,
+            #[cfg(feature = "bound-checkout")]
+            bound_payment_link_expiration: None,
             #[cfg(feature = "bound-checkout")]
             bound_plan: None,
             #[cfg(feature = "bound-checkout")]
@@ -521,6 +531,8 @@ pub fn billing_router(
     let router = bound_payment_link_read::register(router, &backend);
     #[cfg(feature = "bound-checkout")]
     let router = bound_payment_link::register(router, &backend);
+    #[cfg(feature = "bound-checkout")]
+    let router = bound_payment_link_expiration::register(router, &backend);
     #[cfg(feature = "bound-checkout")]
     let router = bound_plan::register(router, &backend);
     #[cfg(feature = "bound-checkout")]

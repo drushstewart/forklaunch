@@ -61,7 +61,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(audience) = env::var("JWT_AUDIENCE") { validation.validate_aud = true; validation.set_audience(&[audience]); }
     let auth = HmacJwksAuth::new(secret.into_bytes(), jwks, validation)?;
     let publisher_pool = if bound_checkout_config.is_some() || bound_billing_config.as_ref().is_some_and(|c|c.requires_publisher()) {
-        Some(PgPoolOptions::new().max_connections(4).connect(&env::var("BILLING_PUBLISHER_DATABASE_URL").map_err(|_| "Selected bound creation requires a publisher database")?).await.map_err(|_| "Unable to connect to billing publisher database")?)
+        Some(PgPoolOptions::new().max_connections(4).connect(&env::var("BILLING_PUBLISHER_DATABASE_URL").map_err(|_| "Selected bound capability requires a publisher database")?).await.map_err(|_| "Unable to connect to billing publisher database")?)
     } else { None };
     let checkout_selected=bound_checkout_config.is_some() || bound_billing_config.as_ref().is_some_and(|c|c.has_checkout());
     let portal_selected=bound_billing_config.as_ref().is_some_and(|c|c.has_portal());
@@ -74,6 +74,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     } else { None };
     let subscription_publisher = if bound_billing_config.as_ref().is_some_and(|c|c.has_subscription() || c.has_subscription_recovery()) {
         Some(startup_store.trusted_subscription_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
+    } else { None };
+    let expiration_publisher = if bound_billing_config.as_ref().is_some_and(|c|c.has_payment_link_expiration()) {
+        Some(startup_store.trusted_payment_link_expiration_publisher(publisher_pool.as_ref().ok_or("Missing publisher")?.clone()).await?)
     } else { None };
     {{#stripe}}
     let gateway = env::var("PLATFORM_GATEWAY_URL").ok().filter(|value|!value.is_empty());
@@ -95,7 +98,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let backend = backend.with_database_backup(env::var("BILLING_DATABASE_BACKUP").unwrap_or_else(|_|"false".into()).parse()?);
     let backend = backend.with_request_dates(request_date_profile_from_env()?);
     let backend = if let Some(config)=bound_billing_config {
-        backend.with_bound_billing(BoundBillingV1::trusted_with_subscription(config,publisher,portal_publisher,subscription_publisher)?).await?
+        backend.with_bound_billing(BoundBillingV1::trusted_with_payment_link_expiration(config,publisher,portal_publisher,subscription_publisher,expiration_publisher)?).await?
     } else {
         match (bound_checkout_config,publisher) {
             (Some(config),Some(publisher)) => backend.with_bound_checkout(BoundCheckoutV1::trusted(config,publisher)).await?,

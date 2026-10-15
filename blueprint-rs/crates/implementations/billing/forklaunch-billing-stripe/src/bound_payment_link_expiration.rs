@@ -51,6 +51,23 @@ fn historical(status: PaymentLinkExpirationStatus) -> BoundPaymentLinkExpiration
     }
 }
 impl StripeBillingService<PostgresBillingStore> {
+    /// Local direct-client/grant/publisher validation, with zero provider requests.
+    /// # Errors
+    /// Denies managed/Connect, backup selection by caller, missing grants or shared authority.
+    pub async fn validate_bound_payment_link_expiration_configuration(
+        &self,
+        publisher: &TrustedPaymentLinkExpirationPublisher,
+    ) -> BlueprintResult<()> {
+        self.client().direct_creation_version()?;
+        self.base()
+            .store()
+            .validate_payment_link_expiration_access()
+            .await?;
+        publisher
+            .validate_configuration_for(self.base().store())
+            .await
+    }
+
     /// Historical IDs/status inspection only. No provider reads, redispatch or URL.
     /// # Errors
     /// Denies changed actor, tenant, public ID, scope or immutable trusted policy.

@@ -85,6 +85,45 @@ impl PostgresBillingStore {
     }
 }
 impl TrustedPaymentLinkExpirationPublisher {
+    /// Checks selected runtime identity and every publisher read/lock privilege.
+    /// # Errors
+    /// Denies incomplete publisher grants before any provider effect.
+    pub async fn validate_configuration_for(
+        &self,
+        runtime: &PostgresBillingStore,
+    ) -> BlueprintResult<()> {
+        self.validate_for(runtime).await?;
+        let usage: bool =
+            sqlx::query_scalar("SELECT has_schema_privilege(current_user,'fl_billing','USAGE')")
+                .fetch_one(&self.store.pool)
+                .await
+                .map_err(db_error)?;
+        if !usage {
+            return Err(conflict());
+        }
+        for (table, privilege) in [
+            ("records", "SELECT"),
+            ("records", "UPDATE"),
+            ("provider_bindings", "SELECT"),
+            ("provider_bindings", "UPDATE"),
+            ("payment_link_creation_intents", "SELECT"),
+            ("payment_link_expiration_intents", "SELECT"),
+            ("subscription_publication_identity", "SELECT"),
+        ] {
+            let allowed: bool =
+                sqlx::query_scalar("SELECT has_table_privilege(current_user,$1,$2)")
+                    .bind(format!("fl_billing.{table}"))
+                    .bind(privilege)
+                    .fetch_one(&self.store.pool)
+                    .await
+                    .map_err(db_error)?;
+            if !allowed {
+                return Err(conflict());
+            }
+        }
+        Ok(())
+    }
+
     /// Derives an actor-scoped wrapper from an explicitly validated trusted publisher.
     /// Credentials, pool identity and runtime-role separation remain unchanged.
     /// Only trusted server authentication may choose this audit actor.
