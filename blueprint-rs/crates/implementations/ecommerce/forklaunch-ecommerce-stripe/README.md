@@ -47,5 +47,13 @@ existing reconciliation audit and a tenant-scoped durable receipt in one
 transaction. The order and provider references are retained. No provider POST,
 capture, refund or retry occurs. Unknown COMMIT outcomes require
 `scoped_capture_receipt(receipt_id)` inspection; recorded-but-expired observations
-return `RecordedEvidenceNoLongerCurrent`. Connect and managed capture adoption
-remain separate. No default HTTP/MCP route is added.
+return `RecordedEvidenceNoLongerCurrent`. The explicit Connected counterpart is
+`reconcile_bound_connected_captured_payment(scope, payment_id, actor, receipt_id)`.
+It binds the sealed client/account/configuration and sends the exact
+`Stripe-Account` on each provider GET. The direct method still rejects Connect.
+Connected direct-charge evidence requires explicit null delegation/source-transfer
+fields and rejects destination/transfer ambiguity or missing critical fields.
+Coherent historical application fees between zero and gross are admitted
+independently of current `fee_bps`; fees/net payout/fee ownership are not inferred.
+The same non-FX gross evidence, atomic receipt and ambiguity rules apply. Managed
+capture adoption remains separate. No default HTTP/MCP route is added.

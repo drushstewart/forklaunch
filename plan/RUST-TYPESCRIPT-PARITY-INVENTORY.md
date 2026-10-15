@@ -8936,3 +8936,28 @@ regression reran after test-only lint correction; production unchanged. Logs
 hashes /private/tmp/fl-zod-literal-source.json. Existing CI runs expanded fixtures.
 Record/strict own-key order, broader schema/callback and wire key-order gates
 remain open. No immutable archive claim.
+
+
+## Explicit Connected captured-payment adoption (2026-10-14)
+
+An explicit Connected counterpart reuses the same immutable payment/order/binding
+CAS and atomic audit/receipt, with base migration11 unchanged. Provider context
+binds client generation, copied account/fee configuration, mode and five-second
+observation; every account/balance/expanded intent GET carries the exact sealed
+Stripe-Account. Direct still rejects Connect before I/O. Connected direct-charge
+profile requires explicit null critical delegation/source-transfer fields and
+rejects destination/transfer ambiguity or missing fields. Coherent historical
+PI/Charge application fees0..gross are admitted independently of current fee_bps;
+gross capture evidence does not claim net payout/fee ownership/settlement. Same
+non-FX balance bookkeeping and refund/dispute guards apply.
+
+Actual TS/official Stripe22.6.2 direct/Connected three-GET header/expansion checks,
+restricted PG twins2/5.62s, native unit5 and strict Stripe all-feature/all-target
+Clippy5.15s pass. Twins cover zero-I/O wrong profile/account, missing/transfer/fee
+rejections, historicalfee5/currentfee0/net97/gross105 acceptance, client/config/
+account generations, CAS/expiry/concurrent single publication/lost COMMIT ack.
+Owned roles/records0. Final4 hashes /private/tmp/fl-connected-capture-source.json;
+logs /private/tmp/fl-connected-capture-{ts-sdk,pg,unit,clippy,cleanup}.log. Existing
+CI fixture/PG entries run both profiles. No new schema/default route/provider
+write/order transition/reference clearing. Broader ambiguous/managed/PayPal
+reconciliation remains open.

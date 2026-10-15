@@ -32,6 +32,7 @@ struct Fixture {
     connected: bool,
     change: Arc<AtomicUsize>,
     calls: Arc<AtomicUsize>,
+    context_calls: Arc<AtomicUsize>,
     owner: PgPool,
     tenant: String,
     store: Arc<PostgresEcommerceStore>,
@@ -124,7 +125,15 @@ async fn audit_count(owner: &PgPool, tenant: &str) -> i64 {
 #[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
 #[allow(clippy::too_many_lines)]
 async fn direct_scoped_capture_atomic_receipts_scope_cas_and_deadline() {
-    let connected = false;
+    run_profile(false).await;
+}
+#[tokio::test]
+#[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
+async fn connected_scoped_capture_atomic_receipts_scope_cas_and_deadline() {
+    run_profile(true).await;
+}
+#[allow(clippy::too_many_lines)]
+async fn run_profile(connected: bool) {
     let owner = PgPoolOptions::new()
         .max_connections(5)
         .connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL").unwrap())
@@ -179,12 +188,25 @@ async fn direct_scoped_capture_atomic_receipts_scope_cas_and_deadline() {
         .provision_payment_provider_binding(&scope, &payment)
         .await
         .unwrap();
-    let terminal = json!({"id":"pi_owned","object":"payment_intent","livemode":false,"status":"succeeded","amount":105,"amount_received":105,"amount_capturable":0,"currency":"usd","metadata":{"orderId":"order"},"latest_charge":{"id":"ch_owned","object":"charge","livemode":false,"payment_intent":"pi_owned","status":"succeeded","paid":true,"captured":true,"refunded":false,"disputed":false,"amount":105,"amount_captured":105,"amount_refunded":0,"currency":"usd","balance_transaction":{"id":"txn_owned","object":"balance_transaction","source":"ch_owned","amount":105,"currency":"usd","type":"charge","status":"pending","exchange_rate":null}}});
+    let mut terminal = json!({"id":"pi_owned","object":"payment_intent","livemode":false,"status":"succeeded","amount":105,"amount_received":105,"amount_capturable":0,"currency":"usd","metadata":{"orderId":"order"},"latest_charge":{"id":"ch_owned","object":"charge","livemode":false,"payment_intent":"pi_owned","status":"succeeded","paid":true,"captured":true,"refunded":false,"disputed":false,"amount":105,"amount_captured":105,"amount_refunded":0,"currency":"usd","balance_transaction":{"id":"txn_owned","object":"balance_transaction","source":"ch_owned","amount":105,"currency":"usd","type":"charge","status":"pending","exchange_rate":null}}});
+    if connected {
+        terminal["on_behalf_of"] = Value::Null;
+        terminal["application_fee_amount"] = json!(5);
+        let charge = &mut terminal["latest_charge"];
+        charge["on_behalf_of"] = Value::Null;
+        charge["source_transfer"] = Value::Null;
+        charge["transfer_data"] = Value::Null;
+        charge["application_fee_amount"] = json!(5);
+        charge["application_fee"] = json!("fee_historical");
+        charge["balance_transaction"]["fee"] = json!(8);
+        charge["balance_transaction"]["net"] = json!(97);
+    }
     let state = Fixture {
         body: Arc::new(Mutex::new(terminal.clone())),
         connected,
         change: Arc::new(AtomicUsize::new(0)),
         calls: Arc::new(AtomicUsize::new(0)),
+        context_calls: Arc::new(AtomicUsize::new(0)),
         owner: owner.clone(),
         tenant: role.clone(),
         store: store.clone(),
@@ -195,6 +217,8 @@ async fn direct_scoped_capture_atomic_receipts_scope_cas_and_deadline() {
         .route(
             "/v1/account",
             get(|State(s): State<Fixture>, headers: HeaderMap| async move {
+                s.context_calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(headers["authorization"], "Bearer owned-secret");
                 assert_eq!(
                     headers.get("stripe-account").map(|v| v.to_str().unwrap()),
                     s.connected.then_some("acct_owned")
@@ -205,6 +229,8 @@ async fn direct_scoped_capture_atomic_receipts_scope_cas_and_deadline() {
         .route(
             "/v1/balance",
             get(|State(s): State<Fixture>, headers: HeaderMap| async move {
+                s.context_calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(headers["authorization"], "Bearer owned-secret");
                 assert_eq!(
                     headers.get("stripe-account").map(|v| v.to_str().unwrap()),
                     s.connected.then_some("acct_owned")
@@ -223,7 +249,7 @@ async fn direct_scoped_capture_atomic_receipts_scope_cas_and_deadline() {
             .unwrap(),
     )
     .unwrap();
-    let service = StripePaymentService::new(base, client.clone());
+    let direct = StripePaymentService::new(base, client.clone());
     let connected_service =
         StripePaymentService::new(BaseEcommerceService::new(store.clone()), client)
             .with_connect(StripeConnect::new("acct_owned".into(), 0).unwrap());
@@ -233,7 +259,91 @@ async fn direct_scoped_capture_atomic_receipts_scope_cas_and_deadline() {
             .await
             .is_err()
     );
+    assert!(
+        direct
+            .reconcile_bound_connected_captured_payment(&scope, "payment", actor(), Uuid::new_v4())
+            .await
+            .is_err()
+    );
+    assert_eq!(state.context_calls.load(Ordering::SeqCst), 0);
     assert_eq!(state.calls.load(Ordering::SeqCst), 0);
+    let service = Profile {
+        service: if connected { connected_service } else { direct },
+        connected,
+    };
+    if connected {
+        let wrong_scope = PaymentProviderScope::administrative(
+            "stripe".into(),
+            "owned".into(),
+            "acct_other".into(),
+            false,
+        )
+        .unwrap();
+        assert!(
+            service
+                .reconcile_bound_captured_payment(&wrong_scope, "payment", actor(), Uuid::new_v4())
+                .await
+                .is_err()
+        );
+        assert_eq!(state.context_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(state.calls.load(Ordering::SeqCst), 0);
+        for (pointer, value) in [
+            ("/on_behalf_of", json!("acct_other")),
+            ("/transfer_data", json!({"destination":"acct_other"})),
+            ("/latest_charge/source_transfer", json!("tr_incoming")),
+            (
+                "/latest_charge/transfer_data",
+                json!({"destination":"acct_other"}),
+            ),
+            ("/latest_charge/transfer", json!("tr_outgoing")),
+            ("/latest_charge/application_fee_amount", json!(6)),
+            ("/application_fee_amount", json!(106)),
+            (
+                "/latest_charge/application_fee",
+                json!({"id":"fee_historical"}),
+            ),
+        ] {
+            let mut bad = terminal.clone();
+            if pointer == "/transfer_data" {
+                bad["transfer_data"] = value;
+            } else if pointer == "/latest_charge/transfer" {
+                bad["latest_charge"]["transfer"] = value;
+            } else {
+                *bad.pointer_mut(pointer).unwrap() = value;
+            }
+            *state.body.lock().unwrap() = bad;
+            assert!(
+                service
+                    .reconcile_bound_captured_payment(&scope, "payment", actor(), Uuid::new_v4())
+                    .await
+                    .is_err()
+            );
+            assert_eq!(audit_count(&owner, &role).await, 0);
+        }
+        for (parent, key) in [
+            ("", "on_behalf_of"),
+            ("/latest_charge", "source_transfer"),
+            ("/latest_charge", "transfer_data"),
+            ("/latest_charge", "on_behalf_of"),
+            ("", "application_fee_amount"),
+        ] {
+            let mut bad = terminal.clone();
+            bad.pointer_mut(parent)
+                .unwrap()
+                .as_object_mut()
+                .unwrap()
+                .remove(key);
+            *state.body.lock().unwrap() = bad;
+            assert!(
+                service
+                    .reconcile_bound_captured_payment(&scope, "payment", actor(), Uuid::new_v4())
+                    .await
+                    .is_err()
+            );
+        }
+    } else {
+        assert_eq!(state.calls.load(Ordering::SeqCst), 0);
+    }
     for (key, value) in [
         ("amount_received", json!(104)),
         ("livemode", json!(true)),
@@ -707,4 +817,34 @@ async fn reset_capture(owner: &PgPool, tenant: &str) {
         .unwrap();
     }
     sqlx::query("UPDATE fl_ecommerce.records SET data=jsonb_set(data,'{status}','\"pending\"') WHERE tenant_id=$1 AND kind='payment'").bind(tenant).execute(owner).await.unwrap();
+}
+
+struct Profile {
+    service: StripePaymentService<PostgresEcommerceStore>,
+    connected: bool,
+}
+impl std::ops::Deref for Profile {
+    type Target = StripePaymentService<PostgresEcommerceStore>;
+    fn deref(&self) -> &Self::Target {
+        &self.service
+    }
+}
+impl Profile {
+    async fn reconcile_bound_captured_payment(
+        &self,
+        scope: &PaymentProviderScope,
+        id: &str,
+        actor: AuditContext,
+        receipt: Uuid,
+    ) -> forklaunch_blueprint_core::BlueprintResult<ScopedCaptureOutcome> {
+        if self.connected {
+            self.service
+                .reconcile_bound_connected_captured_payment(scope, id, actor, receipt)
+                .await
+        } else {
+            self.service
+                .reconcile_bound_captured_payment(scope, id, actor, receipt)
+                .await
+        }
+    }
 }

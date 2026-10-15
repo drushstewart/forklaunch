@@ -233,6 +233,14 @@ pub(crate) enum ServiceContext {
 }
 #[cfg(feature = "postgres")]
 impl ServiceContext {
+    // Request construction uses the copied configuration sealed into the context,
+    // never a separate caller-supplied account after verification.
+    pub(crate) fn sealed_connect_config(&self) -> Option<&StripeConnect> {
+        match self {
+            Self::Direct(_) => None,
+            Self::Connected(context) => Some(&context.connect),
+        }
+    }
     pub(crate) fn ensure_current(
         &self,
         client: &StripeClient,

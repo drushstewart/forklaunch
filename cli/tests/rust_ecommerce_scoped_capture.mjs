@@ -38,12 +38,26 @@ for(const interrupted of [true,false]){
 }
 // Official SDK wire proof only; native HTTP and evidence acceptance are tested in PG/unit fixtures.
 assert(process.env.STRIPE_SDK_PATH,'Set STRIPE_SDK_PATH');
-const Stripe=require(process.env.STRIPE_SDK_PATH);let calls=0;
+const Stripe=require(process.env.STRIPE_SDK_PATH);let calls=[];let connected=false;
 const server=http.createServer((req,res)=>{
- calls++;assert.equal(req.method,'GET');assert.equal(req.headers.authorization,'Bearer capture-owned');assert.equal(req.headers['stripe-account'],undefined);
- const url=new URL(req.url,'http://fixture.invalid');assert.equal(url.pathname,'/v1/payment_intents/pi_owned');assert.deepEqual([...url.searchParams],[['expand[0]','latest_charge.balance_transaction']]);
- res.setHeader('content-type','application/json');res.end(JSON.stringify({id:'pi_owned',object:'payment_intent',latest_charge:{id:'ch_owned',balance_transaction:{id:'txn_owned',status:'pending'}}}));
+ assert.equal(req.method,'GET');assert.equal(req.headers.authorization,'Bearer capture-owned');assert.equal(req.headers['stripe-account'],connected?'acct_owned':undefined);
+ const url=new URL(req.url,'http://fixture.invalid');calls.push(url.pathname);
+ let value;
+ if(url.pathname==='/v1/account'){assert.equal(url.search,'');value={object:'account',id:'acct_owned'};}
+ else if(url.pathname==='/v1/balance'){assert.equal(url.search,'');value={object:'balance',livemode:false};}
+ else{assert.equal(url.pathname,'/v1/payment_intents/pi_owned');assert.deepEqual([...url.searchParams],[['expand[0]','latest_charge.balance_transaction']]);value={id:'pi_owned',object:'payment_intent',latest_charge:{id:'ch_owned',balance_transaction:{id:'txn_owned',status:'pending'}}};}
+ res.setHeader('content-type','application/json');res.end(JSON.stringify(value));
 });
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
-try{const stripe=new Stripe('capture-owned',{host:'127.0.0.1',port:server.address().port,protocol:'http',maxNetworkRetries:0});const value=await stripe.paymentIntents.retrieve('pi_owned',{expand:['latest_charge.balance_transaction']});assert.equal(value.latest_charge.balance_transaction.id,'txn_owned');assert.equal(calls,1);}finally{await new Promise(resolve=>server.close(resolve));}
-console.log(`PASS actual configured TS confirmation success/interruption (zero provider calls), official Stripe ${Stripe.PACKAGE_VERSION} nested capture expansion GET; no live capture or settlement claim`);
+try{
+ const stripe=new Stripe('capture-owned',{host:'127.0.0.1',port:server.address().port,protocol:'http',maxNetworkRetries:0});
+ for(const mode of [false,true]){
+  connected=mode;calls=[];const options=connected?{stripeAccount:'acct_owned'}:undefined;
+  assert.equal((await stripe.accounts.retrieveCurrent({},options)).id,'acct_owned');
+  assert.equal((await stripe.balance.retrieve({},options)).livemode,false);
+  const value=await stripe.paymentIntents.retrieve('pi_owned',{expand:['latest_charge.balance_transaction']},options);
+  assert.equal(value.latest_charge.balance_transaction.id,'txn_owned');
+  assert.deepEqual(calls,['/v1/account','/v1/balance','/v1/payment_intents/pi_owned']);
+ }
+}finally{await new Promise(resolve=>server.close(resolve));}
+console.log(`PASS actual configured TS confirmation success/interruption (zero provider calls), official Stripe ${Stripe.PACKAGE_VERSION} direct/Connected three-GET account headers and nested capture expansion; no live capture or settlement claim`);
