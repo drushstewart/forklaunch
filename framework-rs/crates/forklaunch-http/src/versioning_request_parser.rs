@@ -8,7 +8,11 @@ use crate::{
 };
 use forklaunch_contract::RouteContract;
 use serde_json::{Map, Value};
-use std::{collections::BTreeMap, sync::Arc};
+use std::{
+    any::Any,
+    collections::BTreeMap,
+    sync::{Arc, OnceLock},
+};
 
 /// Borrowed candidate input after the shared wire parser, before authentication
 /// when the route opts into pre-auth selection. Header credentials stay on the
@@ -17,6 +21,51 @@ pub struct VersionRequestInput<'a> {
     pub version: &'a str,
     pub fields: &'a VersionFieldValues,
     pub body: Option<&'a Value>,
+    /// Internally bound, unmodified JSON parser source; unavailable after revivers.
+    pub json_body: Option<VersionRequestJson<'a>>,
+}
+/// A trusted per-selection cache, never populated from request extensions.
+/// A producer is called once across version candidates. Incompatible cached
+/// types or producer failure remain operational; callbacks are trusted code.
+#[derive(Clone, Copy)]
+pub struct VersionRequestJson<'a> {
+    source: &'a [u8],
+    charset: &'a str,
+    cache: &'a OnceLock<Result<Box<dyn Any + Send + Sync>, VersionRequestJsonError>>,
+}
+/// Failures preparing trusted source provenance, never schema validation errors.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VersionRequestJsonError {
+    Preparation,
+    TypeConflict,
+}
+impl VersionRequestJson<'_> {
+    /// Prepare typed JSON provenance once from the built-in decoded source.
+    /// Source bytes and decoded UTF-8 are independently limited to 16 MiB before
+    /// the producer runs. This is a conservative additional profile limit.
+    /// # Errors
+    /// Producer failure or a conflicting producer type is operational.
+    pub fn cached<T: Any + Send + Sync>(
+        &self,
+        producer: impl FnOnce(&str) -> Result<T, VersionRequestJsonError>,
+    ) -> Result<&T, VersionRequestJsonError> {
+        self.cache
+            .get_or_init(|| {
+                if self.source.len() > 16 * 1024 * 1024 {
+                    return Err(VersionRequestJsonError::Preparation);
+                }
+                let source = super::charset::decode(self.source, self.charset)
+                    .map_err(|_| VersionRequestJsonError::Preparation)?;
+                if source.len() > 16 * 1024 * 1024 {
+                    return Err(VersionRequestJsonError::Preparation);
+                }
+                producer(&source).map(|value| Box::new(value) as Box<dyn Any + Send + Sync>)
+            })
+            .as_ref()
+            .map_err(|error| *error)?
+            .downcast_ref::<T>()
+            .ok_or(VersionRequestJsonError::TypeConflict)
+    }
 }
 impl VersionRequestInput<'_> {
     /// Materialize the finite JSON request shape for an application evaluator.
@@ -25,6 +74,17 @@ impl VersionRequestInput<'_> {
     /// explicit simple-query parser profile. The caller owns this allocation.
     #[must_use]
     pub fn to_json(&self) -> Value {
+        let Value::Object(mut result) = self.fields_json() else {
+            unreachable!()
+        };
+        if let Some(body) = self.body {
+            result.insert("body".into(), body.clone());
+        }
+        Value::Object(result)
+    }
+    /// Materialize only field sections without cloning the parsed body.
+    #[must_use]
+    pub fn fields_json(&self) -> Value {
         let mut result = Map::new();
         for (name, fields) in [
             ("params", &self.fields.params),
@@ -40,9 +100,6 @@ impl VersionRequestInput<'_> {
                         .collect(),
                 ),
             );
-        }
-        if let Some(body) = self.body {
-            result.insert("body".into(), body.clone());
         }
         Value::Object(result)
     }
@@ -156,6 +213,7 @@ impl VersionedRoutePlan {
         &self,
         request: &FrameworkRequest,
         body: Option<&Value>,
+        parsed: Option<&super::VersionParsedBody>,
         parsers: &BTreeMap<String, VersionRequestParser>,
     ) -> Selection {
         let strings = |values: &BTreeMap<String, String>| {
@@ -173,6 +231,22 @@ impl VersionedRoutePlan {
                 strings(&request.query)
             },
         };
+        let source = if matches!(
+            self.typescript_wire_parser.as_ref(),
+            Some(super::VersionWireParser::Json(_))
+        ) && !self.parser_hooks.has_json_reviver()
+        {
+            parsed
+                .and_then(super::VersionParsedBody::raw_body)
+                .filter(|bytes| !bytes.is_empty())
+        } else {
+            None
+        };
+        let charset = super::charset::charset(
+            crate::header_value(&request.headers, "content-type"),
+            &self.parsers.json_default_charset,
+        );
+        let cache = OnceLock::new();
         let mut matched = Vec::new();
         let mut selected = None;
         let mut errors = Vec::new();
@@ -182,6 +256,11 @@ impl VersionedRoutePlan {
                 version: &variant.name,
                 fields: &fields,
                 body,
+                json_body: source.map(|source| VersionRequestJson {
+                    source,
+                    charset: &charset,
+                    cache: &cache,
+                }),
             }) {
                 Ok(mut projection) => {
                     projection.fields.headers =
@@ -254,6 +333,68 @@ mod tests {
     use forklaunch_contract::{BodyContract, RequestContract, VersionedContract};
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    #[test]
+    fn trusted_json_cache_is_single_producer_and_type_bound() {
+        let cache = OnceLock::new();
+        let source = VersionRequestJson {
+            source: br#"{"z":1,"a":2}"#,
+            charset: "utf-8",
+            cache: &cache,
+        };
+        let calls = AtomicUsize::new(0);
+        for _ in 0..3 {
+            assert_eq!(
+                source
+                    .cached(|text| {
+                        calls.fetch_add(1, Ordering::SeqCst);
+                        Ok(text.to_owned())
+                    })
+                    .unwrap(),
+                r#"{"z":1,"a":2}"#
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            source.cached::<usize>(|_| panic!("cached producer ran again")),
+            Err(VersionRequestJsonError::TypeConflict)
+        );
+    }
+    #[test]
+    fn trusted_json_cache_decodes_charset_and_retains_failure() {
+        let cache = OnceLock::new();
+        let bytes = [b'{', 0, b'}', 0];
+        let source = VersionRequestJson {
+            source: &bytes,
+            charset: "utf-16le",
+            cache: &cache,
+        };
+        assert_eq!(source.cached(|text| Ok(text.to_owned())).unwrap(), "{}");
+        let failure = OnceLock::new();
+        let source = VersionRequestJson {
+            source: b"{}",
+            charset: "utf-8",
+            cache: &failure,
+        };
+        assert_eq!(
+            source.cached::<usize>(|_| Err(VersionRequestJsonError::Preparation)),
+            Err(VersionRequestJsonError::Preparation)
+        );
+        assert_eq!(
+            source.cached::<usize>(|_| panic!("failed producer ran again")),
+            Err(VersionRequestJsonError::Preparation)
+        );
+        let oversized = vec![b' '; 16 * 1024 * 1024 + 1];
+        let cache = OnceLock::new();
+        let source = VersionRequestJson {
+            source: &oversized,
+            charset: "utf-8",
+            cache: &cache,
+        };
+        assert_eq!(
+            source.cached::<usize>(|_| panic!("over-limit source reached producer")),
+            Err(VersionRequestJsonError::Preparation)
+        );
+    }
     fn route() -> RouteContract {
         let mut route = RouteContract::post("CheckedVersions", "Checked versions", "/checked");
         for name in ["first", "last"] {

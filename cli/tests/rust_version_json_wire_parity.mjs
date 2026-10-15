@@ -17,6 +17,8 @@ for(const [name,version] of Object.entries(expected)) {
 }
 const temporary=mkdtempSync(join(tmpdir(),'fl-request-fields-'));
 const children=[];
+const diagnosticProfile=process.env.FORKLAUNCH_DIAGNOSTIC_NATIVE==='1';
+if(diagnosticProfile)process.env.FORKLAUNCH_ZOD_DIAGNOSTIC_SCHEMAS=join(temporary,'diagnostic-schemas.json');
 function run(command,args){
  const result=spawnSync(command,args,{cwd:temporary,env:{...process.env,CARGO_INCREMENTAL:'0'},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
  assert.equal(result.status,0,`${result.error??''}\n${result.stdout}\n${result.stderr}`);
@@ -48,11 +50,14 @@ try{
   '@forklaunch/express':['source/express/index.ts']},target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',esModuleInterop:true}}));
  writeFileSync(join(temporary,'service.ts'),`
 import {forklaunchExpress} from '@forklaunch/express';
+import {writeFileSync} from 'node:fs';
 import {SchemaValidator} from '@forklaunch/validator/zod';
 import {z} from 'zod/v3';
 import {OpenTelemetryCollector} from '@forklaunch/core/http';
+const diagnosticSchemas={};
 let handlers=0,verifiers=0;const app=forklaunchExpress(SchemaValidator(),new OpenTelemetryCollector('versions','silent'),{mcp:false,json:{limit:128,verify(req){verifiers++;if(req.headers['x-deny']==='yes')throw new Error('PRIVATE_VERIFY');}}});
-for(const mode of ['none','warning','error'])for(const optional of [false,true]){const body=optional?z.object({flag:z.literal('ok')}).optional().default({flag:'ok'}):z.object({flag:z.literal('ok')});app.post('/'+mode+'/'+optional,{name:'Body'+mode+optional,summary:'Body',options:{requestValidation:mode,responseValidation:'none'},versions:{first:{body,responses:{200:z.unknown()}},last:{body,responses:{200:z.unknown()}}}},(req,res)=>{handlers++;res.json({selected:req.version??null,body:req.body??null});});}
+for(const mode of ['none','warning','error'])for(const optional of [false,true]){const body=optional?z.object({flag:z.literal('ok')}).optional().default({flag:'ok'}):z.object({flag:z.literal('ok')});if(process.env.FORKLAUNCH_ZOD_DIAGNOSTIC_SCHEMAS)diagnosticSchemas[optional]=SchemaValidator().openapi2020(body,{zodDiagnostics:true,diagnosticDefaults:new Map(optional?[[body,{flag:'ok'}]]:[])});app.post('/'+mode+'/'+optional,{name:'Body'+mode+optional,summary:'Body',options:{requestValidation:mode,responseValidation:'none'},versions:{first:{body,responses:{200:z.unknown()}},last:{body,responses:{200:z.unknown()}}}},(req,res)=>{handlers++;res.json({selected:req.version??null,body:req.body??null});});}
+if(process.env.FORKLAUNCH_ZOD_DIAGNOSTIC_SCHEMAS)writeFileSync(process.env.FORKLAUNCH_ZOD_DIAGNOSTIC_SCHEMAS,JSON.stringify(diagnosticSchemas));
 app.get('/calls',{name:'Calls',summary:'Calls',responses:{200:z.unknown()}},(_req,res)=>res.json({handlers,verifiers}));
 const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('READY http://127.0.0.1:'+server.address().port));process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 `);
@@ -96,7 +101,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
  for(const surface of ['native','local']) {
  const actual=await wire(rust,'/'+surface+path,input);const label=JSON.stringify({mode,optional,surface,input,expected,actual});
  assert.equal(actual.status,expected.status,label);assert.equal(actual.handlers,expected.handlers,label);assert.equal(actual.verifiers,expected.verifiers,label);
- if(expected.status===400&&String(expected.body).startsWith('Version first request')) {
+ if(!diagnosticProfile&&expected.status===400&&String(expected.body).startsWith('Version first request')) {
  assert.ok(String(actual.body).includes('request does not match any declared API version'),label);diagnostics++;
  } else {assert.deepEqual(actual,expected,label);exact++;}
  assert.ok(!JSON.stringify(actual).includes('PRIVATE_VERIFY'));

@@ -30,6 +30,8 @@ fn tags<'a>(
                 ZodJsonLiteral::String(value) => Atom::String(value),
                 ZodJsonLiteral::Number(value) => Atom::Number(*value),
                 ZodJsonLiteral::Boolean(value) => Atom::Boolean(*value),
+                ZodJsonLiteral::Null => Atom::Null,
+                ZodJsonLiteral::Undefined => Atom::Missing,
             },
             budget,
         )?,

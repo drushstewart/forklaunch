@@ -544,19 +544,21 @@ export class ZodSchemaValidator implements SV<
    */
   openapi2020(
     schema: unknown,
-    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean }
+    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean; zodDiagnostics?: boolean; diagnosticDefaults?: ReadonlyMap<unknown, unknown> }
   ): SchemaObject & {
     $schema: 'https://json-schema.org/draft/2020-12/schema';
   } {
     const schemified = this.schemify(schema as ZodIdiomaticSchema);
-    if (options?.pureInput) {
+    if (options?.pureInput || options?.zodDiagnostics) {
       // The pure traversal is immutable and owns its cycle/depth/work guards.
       // Cloning before those guards would recurse through cyclic schema graphs.
       return generateSchema(schemified, false, '3.1', {
         jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema',
         pureInput: true,
         zodChecks: options.zodChecks,
-        zodRegex: options.zodRegex
+        zodRegex: options.zodRegex,
+        zodDiagnostics: options.zodDiagnostics,
+        diagnosticDefaults: options.diagnosticDefaults
       }) as SchemaObject & {
         $schema: 'https://json-schema.org/draft/2020-12/schema';
       };

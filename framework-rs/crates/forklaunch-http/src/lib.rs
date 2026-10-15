@@ -21,8 +21,9 @@ pub mod versioning;
 pub use versioning::{
     BodyParserHooks, JsonRequestParsers, MultipartLimits, ParsedJsonBody, PreparedVersionSelection,
     SelectedVersion, VersionBodyHooks, VersionBodyHooksRegistry, VersionFieldHooks,
-    VersionFieldValues, VersionParsedBody, VersionRequestInput, VersionRequestParseFailure,
-    VersionRequestParser, VersionRequestProjection, VersionedRoutePlan,
+    VersionFieldValues, VersionParsedBody, VersionRequestInput, VersionRequestJson,
+    VersionRequestJsonError, VersionRequestParseFailure, VersionRequestParser,
+    VersionRequestProjection, VersionedRoutePlan,
 };
 
 use std::{

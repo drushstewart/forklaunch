@@ -14,7 +14,8 @@ mod hooks;
 #[path = "versioning_request_parser.rs"]
 mod request_parser;
 pub use request_parser::{
-    VersionRequestInput, VersionRequestParseFailure, VersionRequestParser, VersionRequestProjection,
+    VersionRequestInput, VersionRequestJson, VersionRequestJsonError, VersionRequestParseFailure,
+    VersionRequestParser, VersionRequestProjection,
 };
 #[path = "versioning_parser_hooks.rs"]
 mod parser_hooks;
@@ -378,7 +379,12 @@ impl VersionedRoutePlan {
             Err(error) => Err(vec![error]),
             Ok(body) => {
                 if let Some(parsers) = &self.request_parsers {
-                    let selection = self.select_parsed_request(request, body.as_ref(), parsers);
+                    let selection = self.select_parsed_request(
+                        request,
+                        body.as_ref(),
+                        parsed.as_ref(),
+                        parsers,
+                    );
                     if parsed.is_none() {
                         parsed = Some(VersionParsedBody(ParsedJsonBody::from_wire(
                             body.map(Arc::new),

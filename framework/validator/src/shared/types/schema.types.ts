@@ -290,7 +290,7 @@ export interface SchemaValidator<
   /** Optional explicit JSON Schema 2020-12 input-schema export capability. */
   openapi2020?: (
     schema: unknown,
-    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean }
+    options?: { pureInput?: boolean; zodChecks?: boolean; zodRegex?: boolean; zodDiagnostics?: boolean; diagnosticDefaults?: ReadonlyMap<unknown, unknown> }
   ) => SchemaObject & {
     $schema: 'https://json-schema.org/draft/2020-12/schema';
   };

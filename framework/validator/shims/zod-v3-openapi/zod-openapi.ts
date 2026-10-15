@@ -1,3 +1,4 @@
+import { diagnosticProvenance, zodDiagnosticsKeyword, type ZodDiagnosticOptions } from './zodDiagnostics';
 import { projectRegexChecks, zodRegexKeyword } from './zodRegex';
 import type { SchemaObject, SchemaObjectType } from 'openapi3-ts/oas31';
 import { merge } from './schemaMerge';
@@ -30,7 +31,9 @@ interface OpenApiZodAnyObject extends AnyZodObject {
 
 type OpenAPIVersion = '3.0' | '3.1';
 
-export interface SchemaGenerationOptions {
+export interface SchemaGenerationOptions extends ZodDiagnosticOptions {
+  /** Retain trusted ordered runtime schema provenance; implies callback-free input projection. */
+  readonly zodDiagnostics?: boolean;
   readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';
   /** Reject callback-dependent schemas and omit computed defaults recursively. */
   readonly pureInput?: boolean;
@@ -1125,10 +1128,11 @@ export function generateSchema(
   ) {
     throw new Error('Explicit JSON Schema 2020-12 export requires OpenAPI 3.1');
   }
-  if (options?.pureInput && useOutput) {
+  if ((options?.pureInput || options?.zodDiagnostics) && useOutput) {
     throw new Error('Pure input export does not support output projection');
   }
-  const context = options ? Object.freeze({ ...options }) : undefined;
+  const provenance = options?.zodDiagnostics ? diagnosticProvenance(zodRef, options) : undefined;
+  const context = options ? Object.freeze({ ...options, pureInput: options.pureInput || options.zodDiagnostics }) : undefined;
   let remaining = 10000;
   const active = new Set<ZodTypeAny>();
   const charge = (depth: number) => {
@@ -1214,5 +1218,13 @@ export function generateSchema(
     }
   };
   const result = generate(zodRef, useOutput, openApiVersion, 0);
-  return context ? { ...result, $schema: context.jsonSchemaDialect } : result;
+  if (!context) return result;
+  const projected = { ...result, $schema: context.jsonSchemaDialect };
+  if (!provenance) return projected;
+  // A detached serialized binding detects later edits of assertion metadata.
+  // Ordinary annotations remain unchanged; the runtime profile is opt-in.
+  const projection = JSON.stringify(projected);
+  if (projection.length > 16 * 1024 * 1024)
+    throw new Error('Zod diagnostic projection byte budget exceeded');
+  return { ...projected, [zodDiagnosticsKeyword]: { ...provenance, projection } };
 }

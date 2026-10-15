@@ -1,4 +1,4 @@
-//! Opt-in first-version JSON wire parsing; schema defaults remain caller-owned.
+//! Opt-in JSON wire parsing, with an optional actual-exported diagnostic profile.
 use axum::{Extension, Json};
 use forklaunch_axum::{CorrelationIdFormat, ForkLaunchRouter, ParserErrorFormat, RouterConfig};
 use forklaunch_contract::{
@@ -21,6 +21,12 @@ fn contract(surface: &str, name: &str, mode: ValidationMode, optional: bool) -> 
         json!({"type":"object","required":["flag"],"properties":{"flag":{"const":"ok"}}})
             .to_string(),
     );
+    if let Ok(path) = std::env::var("FORKLAUNCH_ZOD_DIAGNOSTIC_SCHEMAS") {
+        let schemas: Value = serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap();
+        body.schema = body
+            .schema
+            .with_json_schema(schemas[optional.to_string()].to_string());
+    }
     let mut route = RouteContract::post(
         format!("{surface}{name}{optional}"),
         "JSON wire",
@@ -66,7 +72,9 @@ fn configure(
             }),
         )
         .unwrap();
-    if optional {
+    if std::env::var_os("FORKLAUNCH_ZOD_DIAGNOSTIC_SCHEMAS").is_some() {
+        forklaunch_validation::zod_provenance::register_zod_version_parsers(hooks, route).unwrap();
+    } else if optional {
         for version in ["first", "last"] {
             hooks
                 .insert(

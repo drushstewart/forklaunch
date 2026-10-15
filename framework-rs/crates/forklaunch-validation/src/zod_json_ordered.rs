@@ -64,6 +64,55 @@ impl OrderedJsonDocument {
         })
     }
 
+    /// Embed this immutable document under a new owned object field. The
+    /// context's child objects do not acquire invented source order; only this
+    /// document retains its original order. Combined admission precedes key
+    /// copies and all body values/order metadata are moved, never cloned.
+    /// # Errors
+    /// Rejects duplicate field names and aggregate input budgets.
+    pub fn embed_in_object(
+        self,
+        name: &str,
+        context: Map<String, Value>,
+    ) -> Result<Self, ZodJsonUnsupported> {
+        if context.contains_key(name) {
+            return Err(ZodJsonUnsupported::DuplicateField);
+        }
+        let order_bytes = context
+            .keys()
+            .try_fold(0usize, |size, key| {
+                size.checked_add(key.len())
+                    .and_then(|size| size.checked_add(32))
+            })
+            .ok_or(ZodJsonUnsupported::InputBytes)?;
+        let context = Value::Object(context);
+        let (_, context_bytes) = super::admit_value_counted(&context, None)?;
+        let bytes = self
+            .bytes
+            .checked_add(context_bytes)
+            .and_then(|bytes| bytes.checked_add(order_bytes))
+            .and_then(|bytes| bytes.checked_add(name.len().saturating_mul(3).saturating_add(64)))
+            .filter(|bytes| *bytes <= MAX_ADMISSION_BYTES)
+            .ok_or(ZodJsonUnsupported::InputBytes)?;
+        let Value::Object(mut context) = context else {
+            unreachable!()
+        };
+        let mut keys = context.keys().cloned().collect::<Vec<_>>();
+        keys.push(name.to_owned());
+        keys.sort_by_key(|key| index_key(key));
+        // Root order is the newly constructed context, not a reconstructed wire object.
+        let mut children = BTreeMap::new();
+        children.insert(name.to_owned(), self.order);
+        context.insert(name.to_owned(), self.value);
+        let value = Value::Object(context);
+        super::admit_value_counted(&value, None)?;
+        Ok(Self {
+            value,
+            order: Order::Object { keys, children },
+            bytes,
+        })
+    }
+
     /// Borrow the value. No mutable access is exposed: order cannot become stale.
     #[must_use]
     pub const fn value(&self) -> &Value {

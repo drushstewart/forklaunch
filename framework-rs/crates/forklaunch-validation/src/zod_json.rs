@@ -60,7 +60,11 @@ pub enum ZodJsonSchema<'a> {
     /// abort all branches; borrowed string helper signatures remain unchanged.
     CheckedString(Vec<ZodJsonStringCheck<'a>>),
     Boolean,
+    /// Raw Zod boolean, without the `ForkLaunch` factory preprocessing.
+    StrictBoolean,
     Number(Vec<ZodNumberCheck<'a>>),
+    /// Raw Zod number; checks run only after a supplied numeric input passes type admission.
+    StrictNumber(Vec<ZodNumberCheck<'a>>),
     Unknown,
     /// Accept only a supplied JSON null.
     Null,
@@ -458,7 +462,9 @@ fn admit_schema(schema: &ZodJsonSchema<'_>) -> Result<(usize, bool, bool), ZodJs
             ZodJsonSchema::NativeEnum(values) => nodes += values.len(),
             ZodJsonSchema::String(checks) => nodes += checks.len(),
             ZodJsonSchema::CheckedString(checks) => nodes += checks.len(),
-            ZodJsonSchema::Number(checks) => nodes += checks.len(),
+            ZodJsonSchema::Number(checks) | ZodJsonSchema::StrictNumber(checks) => {
+                nodes += checks.len();
+            }
             ZodJsonSchema::Optional(inner) | ZodJsonSchema::Nullable(inner) => {
                 stack.push((inner, depth + 1));
             }
@@ -513,7 +519,7 @@ fn schema_children(schema: &ZodJsonSchema<'_>) -> usize {
     match schema {
         ZodJsonSchema::String(checks) => checks.len(),
         ZodJsonSchema::CheckedString(checks) => checks.len(),
-        ZodJsonSchema::Number(checks) => checks.len(),
+        ZodJsonSchema::Number(checks) | ZodJsonSchema::StrictNumber(checks) => checks.len(),
         ZodJsonSchema::Array { checks, .. } => checks.len() + 1,
         ZodJsonSchema::CheckedArray { checks, .. } => checks.len() + 1,
         ZodJsonSchema::Object(fields) | ZodJsonSchema::StrictObject(fields) => fields.len(),
@@ -566,7 +572,7 @@ fn schema_check_count(schema: &ZodJsonSchema<'_>) -> usize {
     match schema {
         ZodJsonSchema::String(checks) => checks.len(),
         ZodJsonSchema::CheckedString(checks) => checks.len(),
-        ZodJsonSchema::Number(checks) => checks.len(),
+        ZodJsonSchema::Number(checks) | ZodJsonSchema::StrictNumber(checks) => checks.len(),
         ZodJsonSchema::Array { checks, .. } => checks.len(),
         ZodJsonSchema::CheckedArray { checks, .. } => checks.len(),
         _ => 0,
@@ -622,24 +628,19 @@ fn evaluate_ordered(
         }
         ZodJsonSchema::CheckedString(checks) => regex::evaluate(input, checks, remaining)?,
         ZodJsonSchema::String(checks) => parsed_string(input, checks, remaining),
-        ZodJsonSchema::Boolean => match boolean(input) {
+        ZodJsonSchema::StrictBoolean if !matches!(input, Some(Value::Bool(_))) => {
+            terminal(input, "boolean")
+        }
+        ZodJsonSchema::Boolean | ZodJsonSchema::StrictBoolean => match boolean(input) {
             Ok(value) => Parsed::valid(Some(Value::Bool(value))),
             Err(error) => Parsed::invalid(vec![error], Status::Aborted),
         },
-        ZodJsonSchema::Number(checks) => match zod_number_checks(input, checks) {
-            Ok(value) => Parsed::valid(Some(Value::Number(
-                serde_json::Number::from_f64(value).ok_or(ZodJsonUnsupported::NonFiniteNumber)?,
-            ))),
-            Err(errors) => match number(input) {
-                Ok(value) => {
-                    let mut parsed = Parsed::invalid(errors, Status::Dirty);
-                    parsed.finite_output = value.is_finite();
-                    parsed.value = serde_json::Number::from_f64(value).map(Value::Number);
-                    parsed
-                }
-                Err(_) => Parsed::invalid(errors, Status::Aborted),
-            },
-        },
+        ZodJsonSchema::StrictNumber(_) if !matches!(input, Some(Value::Number(_))) => {
+            terminal(input, "number")
+        }
+        ZodJsonSchema::Number(checks) | ZodJsonSchema::StrictNumber(checks) => {
+            parsed_number(input, checks)?
+        }
         ZodJsonSchema::Array { element, checks } => array(
             input,
             element,
@@ -675,6 +676,26 @@ fn evaluate_ordered(
         ZodJsonSchema::Record { key, value } => {
             record::evaluate(input, key, value, remaining, order)?
         }
+    })
+}
+
+fn parsed_number(
+    input: Option<&Value>,
+    checks: &[ZodNumberCheck<'_>],
+) -> Result<Parsed, ZodJsonUnsupported> {
+    Ok(match zod_number_checks(input, checks) {
+        Ok(value) => Parsed::valid(Some(Value::Number(
+            serde_json::Number::from_f64(value).ok_or(ZodJsonUnsupported::NonFiniteNumber)?,
+        ))),
+        Err(errors) => match number(input) {
+            Ok(value) => {
+                let mut parsed = Parsed::invalid(errors, Status::Dirty);
+                parsed.finite_output = value.is_finite();
+                parsed.value = serde_json::Number::from_f64(value).map(Value::Number);
+                parsed
+            }
+            Err(_) => Parsed::invalid(errors, Status::Aborted),
+        },
     })
 }
 
