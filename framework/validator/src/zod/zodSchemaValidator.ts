@@ -532,6 +532,57 @@ export class ZodSchemaValidator implements SV<
     );
   }
 
+  /** Explicit 2020-12 input-schema profile; root callbacks are not evaluated.
+   * Nested defaults/effects retain the general exporter's existing semantics.
+   */
+  openapi2020(
+    schema: unknown
+  ): SchemaObject & {
+    $schema: 'https://json-schema.org/draft/2020-12/schema';
+  } {
+    const schemified = this.schemify(schema as ZodIdiomaticSchema);
+    let current: unknown = schemified;
+    for (let depth = 0; current; depth++) {
+      if (depth > 64)
+        throw new Error('Explicit JSON Schema root wrapper budget exceeded');
+      const node = current as {
+        metaOpenApi?: { $schema?: string } | { $schema?: string }[];
+        _def: { typeName: string; innerType?: unknown; schema?: unknown };
+      };
+      const metadata = Array.isArray(node.metaOpenApi)
+        ? node.metaOpenApi
+        : [node.metaOpenApi];
+      if (
+        metadata.some(
+          (value) =>
+            value?.$schema !== undefined &&
+            (typeof value.$schema !== 'string' ||
+              value.$schema.replace(/#$/, '') !==
+                'https://json-schema.org/draft/2020-12/schema')
+        )
+      ) {
+        throw new Error(
+          'Schema annotation dialect conflicts with explicit JSON Schema export'
+        );
+      }
+      if (
+        ['ZodOptional', 'ZodNullable', 'ZodDefault'].includes(
+          node._def.typeName
+        )
+      )
+        current = node._def.innerType;
+      else if (node._def.typeName === 'ZodEffects') current = node._def.schema;
+      else break;
+    }
+    return requestBodyOpenApi(schemified, (value) =>
+      generateSchema(deepCloneWithoutUndefined(value), false, '3.1', {
+        jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema'
+      })
+    ).schema as SchemaObject & {
+      $schema: 'https://json-schema.org/draft/2020-12/schema';
+    };
+  }
+
   /**
    * Convert a schema to an OpenAPI schema object.
    * @param {ZodIdiomaticSchema} schema - The schema to convert.

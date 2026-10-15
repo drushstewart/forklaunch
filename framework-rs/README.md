@@ -1254,3 +1254,12 @@ Unmarked OpenAPI3.1 documents retain legacy draft7 behavior. Positional tuple sl
 coerce dates/binary through legacy `items[]` or explicit2020 `prefixItems`, including
 references and rest items. This consumer support does not add tuple schema emission
 or precise generated Rust tuple models.
+
+
+The Zod adapter's optional `openapi2020(schema)` capability emits an explicit2020
+input schema, including positional tuples with fixed or typed rest items. Existing
+`openapi` and TypeBox defaults remain unchanged. Direct `generateSchema` callers
+may pass fourth options `{ jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema' }`
+with OpenAPI3.1. Conflicting dialect metadata/OAS3.0 reject. Root input callbacks
+are skipped by the adapter; nested callback/default export behavior retains its
+existing limitations. Precise generated Rust tuple models remain separate work.

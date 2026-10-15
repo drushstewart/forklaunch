@@ -287,6 +287,13 @@ export interface SchemaValidator<
    */
   openapi: OpenAPIFunction;
 
+  /** Optional explicit JSON Schema 2020-12 input-schema export capability. */
+  openapi2020?: (
+    schema: unknown
+  ) => SchemaObject & {
+    $schema: 'https://json-schema.org/draft/2020-12/schema';
+  };
+
   /** Optional root-input projection without evaluating root user callbacks.
    * General/nested schema export semantics remain adapter-defined.
    */

@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {fileURLToPath} from 'node:url';
+import {actualValidator} from './rust_actual_validator_fixture.mjs';
 import {createRequire} from 'node:module';
 import path from 'node:path';
 import {actualUniversalSdk} from './fixtures/rust_better_auth_frontend_client.mjs';
@@ -29,6 +31,12 @@ try {
  await check({type:'array',prefixItems:[{anyOf:[date,{type:'null'}]},binary],items:false},modern,[null,'AQID'],[null,expected[1]]);
  await check({type:'array',prefixItems:[{type:'string',format:'forklaunch-whatwg-url'}],items:false},modern,[' https://example.com/a b '],[' https://example.com/a b ']);
  await check(Type.Object({dates:Type.Array(Type.String({format:'date-time'}))}),undefined,{dates:[instant]},{dates:[new Date(instant)]});
+ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
+ const {validator}=actualValidator(root),{z}=require('zod/v3');
+ const emitted=validator.openapi2020(z.tuple([validator.date,validator.binary]).rest(validator.date));
+ await check(emitted,undefined,[instant,'AQID',instant],expected);
+ await check(validator.openapi2020(z.object({rows:z.array(z.tuple([validator.date,validator.binary]))})),undefined,{rows:[[instant,'AQID']]},{rows:[expected.slice(0,2)]});
+ await check(validator.openapi2020(z.tuple([])),undefined,[],[]);
  const schema={type:'array',prefixItems:[date],items:false,minItems:1};
  const doc=document(schema,modern);const direct=new ResponseSchemas(new Ajv({strict:false,coerceTypes:true}));
  const input=[instant];assert.throws(()=>direct.validator(doc,'/unused',schema),/does not support selected dialect/);assert.throws(()=>direct.coerce(doc,'/unused',schema,input),/does not support selected dialect/);assert.deepEqual(input,[instant]);

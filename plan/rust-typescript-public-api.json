@@ -25349,19 +25349,33 @@
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
               "line": 14,
-              "type": "SchemaObject & { hideDefinitions?: string[] }"
+              "type": "SchemaObject & {\n  hideDefinitions?: string[];\n  $schema?: string;\n}"
             },
             {
               "name": "OpenApiZodAny",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 16,
+              "line": 19,
               "members": [
                 {
                   "name": "metaOpenApi",
                   "signature": "metaOpenApi?: AnatineSchemaObject | AnatineSchemaObject[];",
                   "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-                  "line": 17
+                  "line": 20
+                }
+              ]
+            },
+            {
+              "name": "SchemaGenerationOptions",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
+              "line": 29,
+              "members": [
+                {
+                  "name": "jsonSchemaDialect",
+                  "signature": "readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';",
+                  "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
+                  "line": 30
                 }
               ]
             },
@@ -25369,13 +25383,13 @@
               "name": "extendApi",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 34
+              "line": 46
             },
             {
               "name": "generateSchema",
               "kind": "FunctionDeclaration",
               "source": "framework/validator/shims/zod-v3-openapi/zod-openapi.ts",
-              "line": 834
+              "line": 901
             }
           ]
         },
@@ -25619,10 +25633,16 @@
                   "line": 288
                 },
                 {
+                  "name": "openapi2020",
+                  "signature": "openapi2020?: (\n    schema: unknown\n  ) => SchemaObject & {\n    $schema: 'https://json-schema.org/draft/2020-12/schema';\n  };",
+                  "source": "framework/validator/src/shared/types/schema.types.ts",
+                  "line": 291
+                },
+                {
                   "name": "openapiRequestBody",
                   "signature": "openapiRequestBody?: (schema: unknown) => {\n    required: boolean;\n    schema: SchemaObject;\n  };",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 293
+                  "line": 300
                 }
               ]
             },
@@ -25630,32 +25650,32 @@
               "name": "AnySchemaValidator",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 302,
+              "line": 309,
               "type": "SchemaValidator<\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown,\n  unknown\n> & {\n  /**\n   * The type of the schema resolver.\n   */\n  _Type: keyof SchemaResolve<unknown>;\n}"
             },
             {
               "name": "SchemaResolve",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 331,
+              "line": 338,
               "members": [
                 {
                   "name": "Zod",
                   "signature": "Zod: ZodResolve<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 335
+                  "line": 342
                 },
                 {
                   "name": "TypeBox",
                   "signature": "TypeBox: TResolve<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 340
+                  "line": 347
                 },
                 {
                   "name": "Mock",
                   "signature": "Mock: T;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 345
+                  "line": 352
                 }
               ]
             },
@@ -25663,25 +25683,25 @@
               "name": "SchemaTranslate",
               "kind": "InterfaceDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 353,
+              "line": 360,
               "members": [
                 {
                   "name": "Zod",
                   "signature": "Zod: ZodSchemaTranslate<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 357
+                  "line": 364
                 },
                 {
                   "name": "TypeBox",
                   "signature": "TypeBox: TSchemaTranslate<T>;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 362
+                  "line": 369
                 },
                 {
                   "name": "Mock",
                   "signature": "Mock: T;",
                   "source": "framework/validator/src/shared/types/schema.types.ts",
-                  "line": 367
+                  "line": 374
                 }
               ]
             },
@@ -25689,42 +25709,42 @@
               "name": "Schema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 391,
+              "line": 398,
               "type": "SchemaTranslate<\n  SchemaResolve<T>[SV['_Type']]\n>[SV['_Type']] extends infer Schema\n  ? Schema extends (...args: infer Args) => infer Return\n    ? (...args: Args) => Return\n    : SchemaPrettify<SchemaResolve<T>[SV['_Type']], SV>\n  : never"
             },
             {
               "name": "UnboxedObjectSchema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 407,
+              "line": 414,
               "type": "{\n  [key: KeyTypes]: IdiomaticSchema<SV>;\n}"
             },
             {
               "name": "LiteralSchema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 414,
+              "line": 421,
               "type": "string | number | boolean"
             },
             {
               "name": "IdiomaticSchema",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 421,
+              "line": 428,
               "type": "LiteralSchema | SV['_SchemaCatchall'] | UnboxedObjectSchema<SV>"
             },
             {
               "name": "Increment",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 461,
+              "line": 468,
               "type": "T extends keyof IncrementMap\n  ? IncrementMap[T]\n  : 25"
             },
             {
               "name": "KeyTypes",
               "kind": "TypeAliasDeclaration",
               "source": "framework/validator/src/shared/types/schema.types.ts",
-              "line": 468,
+              "line": 475,
               "type": "string | number"
             }
           ]
@@ -26717,6 +26737,12 @@
               "kind": "VariableDeclaration",
               "source": "framework/validator/src/zod/staticSchemaValidator.ts",
               "line": 198
+            },
+            {
+              "name": "openapi2020",
+              "kind": "VariableDeclaration",
+              "source": "framework/validator/src/zod/staticSchemaValidator.ts",
+              "line": 202
             }
           ]
         },
@@ -27071,10 +27097,16 @@
                   "line": 528
                 },
                 {
+                  "name": "openapi2020",
+                  "signature": "openapi2020(\n    schema: unknown\n  ): SchemaObject & {\n    $schema: 'https://json-schema.org/draft/2020-12/schema';\n  }",
+                  "source": "framework/validator/src/zod/zodSchemaValidator.ts",
+                  "line": 538
+                },
+                {
                   "name": "openapi",
                   "signature": "openapi<T extends ZodIdiomaticSchema | ZodCatchall>(schema: T): SchemaObject",
                   "source": "framework/validator/src/zod/zodSchemaValidator.ts",
-                  "line": 540
+                  "line": 591
                 }
               ]
             }

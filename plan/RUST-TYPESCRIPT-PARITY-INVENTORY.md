@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 619 resolved declaration entry points and 1,694 declaration/re-export
+It records 619 resolved declaration entry points and 1,696 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different
@@ -9955,3 +9955,29 @@ physical APFS-space claim. Retained4.87MB archive and logs remain. Metadata
 /private/tmp/fl-oct14-billing-sdk-checkpoint.json, cleanup log
 /private/tmp/fl-oct14-billing-sdk-cleanup.log, cache receipt
 /private/tmp/fl-oct14-billing-sdk-cache-cleanup.json.660/682 unchanged.
+
+
+### Explicit JSON Schema2020 tuple emission (2026-10-14)
+
+Additive Zod openapi2020/static capability and optional shared capability export
+input schemas with explicit root$schema2020. Fourth generateSchema options argument
+threads immutable recursive generation context,10kvisits/64depth budgets; root
+$schema emitted once. Explicit OAS3.0 or conflicting metadata dialect rejects.
+Default general exporter/TypeBox unchanged. Tuples emit prefixItems whennonempty,
+minItems=all declaredslots (including optional/default), items=false+maxItems for
+closed tuples or exact rest schema. Nullable tuple merging preserves array type.
+Adapter reuses root-input projection, so root default/effect/preprocess callbacks
+are not evaluated; existing nested callback/default semantics remain an explicit
+gap, not a callback-free recursive exporter claim. Explicit metadata remainslast.
+Frozen6 /private/tmp/fl-tuple-emitter-source.json.1620actualZod/AJV2020 comparisons
+across108exports and20realHTTP SDK cases including newly emitted date/binary/rest/
+nested/empty schemas pass; reference18/body13 and stricttypes pass. Logs
+/private/tmp/fl-tuple-final-{emitter,types,rust_sdk_tuple_coercion,
+rust_sdk_reference_coercion,rust_sdk_body_parity}.log. Existing bounds153972,
+union10674,Never224,record1744+16rawAJVexceptions,URI203261+90,own128 regressions
+pass (/private/tmp/fl-tuple-emitter-rust_*.log). Parent sourceinventory refreshed
+TS5.9.3:619entries/1696declarations/0unresolved; tests and strict12roots/619exports
+(actualTS7.0.2) pass. Logs fl-tuple-emitter-{inventory,refreshed-types}.log.
+No native/Cargo/lock changes or precise generatedRusttuple claim. OAS3.0 tuples,
+precise Rust tuple models and remaining emitter/constraint gates stay open;
+660/682 (96.8%),22open unchanged.

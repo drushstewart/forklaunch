@@ -11,7 +11,10 @@ import {
   hasFactoryUriGrammar
 } from '../../src/zod/uriOpenApi';
 
-export type AnatineSchemaObject = SchemaObject & { hideDefinitions?: string[] };
+export type AnatineSchemaObject = SchemaObject & {
+  hideDefinitions?: string[];
+  $schema?: string;
+};
 
 export interface OpenApiZodAny extends ZodTypeAny {
   metaOpenApi?: AnatineSchemaObject | AnatineSchemaObject[];
@@ -23,7 +26,16 @@ interface OpenApiZodAnyObject extends AnyZodObject {
 
 type OpenAPIVersion = '3.0' | '3.1';
 
+export interface SchemaGenerationOptions {
+  readonly jsonSchemaDialect: 'https://json-schema.org/draft/2020-12/schema';
+}
 interface ParsingArgs<T> {
+  generateSchema: (
+    schema: OpenApiZodAny,
+    useOutput?: boolean,
+    openApiVersion?: OpenAPIVersion
+  ) => SchemaObject;
+  jsonSchemaDialect?: SchemaGenerationOptions['jsonSchemaDialect'];
   zodRef: T;
   schemas: AnatineSchemaObject[];
   useOutput?: boolean;
@@ -47,6 +59,7 @@ export function extendApi<T extends OpenApiZodAny>(
 }
 
 function iterateZodObject({
+  generateSchema,
   zodRef,
   useOutput,
   hideDefinitions,
@@ -73,6 +86,7 @@ function typeFormat<const T extends SchemaObjectType>(
 }
 
 function parseTransformation({
+  generateSchema,
   zodRef,
   schemas,
   useOutput,
@@ -284,6 +298,7 @@ function getExcludedDefinitionsFromSchema(
 }
 
 function parseObject({
+  generateSchema,
   zodRef,
   schemas,
   useOutput,
@@ -316,12 +331,10 @@ function parseObject({
     (zodRef as z.AnyZodObject).shape
   ).filter((key) => {
     const item = (zodRef as z.AnyZodObject).shape[key];
-    return (
-      !(
-        item.isOptional() ||
-        item instanceof z.ZodDefault ||
-        item._def.typeName === 'ZodDefault'
-      )
+    return !(
+      item.isOptional() ||
+      item instanceof z.ZodDefault ||
+      item._def.typeName === 'ZodDefault'
     );
   });
 
@@ -332,6 +345,7 @@ function parseObject({
     {
       type: typeFormat('object', openApiVersion),
       properties: iterateZodObject({
+        generateSchema,
         zodRef: zodRef as OpenApiZodAnyObject,
         schemas,
         useOutput,
@@ -354,14 +368,20 @@ function recordStringKeys(schema: ZodTypeAny): string[] | undefined {
   let remaining = 10000;
   function visit(input: ZodTypeAny, depth: number): string[] | undefined {
     if (--remaining < 0 || depth > 64) return undefined;
-    const def = input._def as z.ZodTypeDef & { typeName: string; value?: unknown; values: string[]; innerType: ZodTypeAny; options: ZodTypeAny[] };
+    const def = input._def as z.ZodTypeDef & {
+      typeName: string;
+      value?: unknown;
+      values: string[];
+      innerType: ZodTypeAny;
+      options: ZodTypeAny[];
+    };
     switch (def.typeName) {
       case 'ZodLiteral':
         return typeof def.value === 'string' ? [def.value] : undefined;
       case 'ZodEnum':
         return def.values.length <= remaining &&
           def.values.every((value: unknown) => typeof value === 'string')
-          ? (remaining -= def.values.length, def.values)
+          ? ((remaining -= def.values.length), def.values)
           : undefined;
       case 'ZodOptional':
       case 'ZodNullable':
@@ -385,6 +405,7 @@ function recordStringKeys(schema: ZodTypeAny): string[] | undefined {
 }
 
 function parseRecord({
+  generateSchema,
   zodRef,
   schemas,
   useOutput,
@@ -400,7 +421,9 @@ function parseRecord({
     if (openApiVersion === '3.1') {
       constraints.propertyNames = keys.length ? { enum: keys } : { not: {} };
     } else {
-      constraints.properties = Object.fromEntries(keys.map(key => [key, valueSchema]));
+      constraints.properties = Object.fromEntries(
+        keys.map((key) => [key, valueSchema])
+      );
       constraints.additionalProperties = false;
     }
   }
@@ -475,6 +498,7 @@ function parseNull({
 }
 
 function parseOptional({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -488,6 +512,7 @@ function parseOptional({
 }
 
 function parseNullable({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -505,6 +530,7 @@ function parseNullable({
 }
 
 function parseDefault({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -521,6 +547,7 @@ function parseDefault({
 }
 
 function parseArray({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -592,7 +619,8 @@ function parseEnum({
   openApiVersion
 }: ParsingArgs<z.ZodEnum<never> | z.ZodNativeEnum<never>>): SchemaObject {
   const type = typeof Object.values(zodRef._def.values)[0] as
-    'string' | 'number';
+    | 'string'
+    | 'number';
   return merge(
     {
       type: typeFormat(type, openApiVersion),
@@ -604,6 +632,7 @@ function parseEnum({
 }
 
 function parseIntersection({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -622,6 +651,7 @@ function parseIntersection({
 }
 
 function parseUnion({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -699,6 +729,7 @@ function parseUnion({
 }
 
 function parseDiscriminatedUnion({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -742,6 +773,7 @@ function parseNever({
 }
 
 function parseBranded({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -764,6 +796,7 @@ function catchAllParser({
 }
 
 function parsePipeline({
+  generateSchema,
   schemas,
   zodRef,
   useOutput,
@@ -780,6 +813,7 @@ function parsePipeline({
 }
 
 function parseReadonly({
+  generateSchema,
   zodRef,
   useOutput,
   schemas,
@@ -789,6 +823,40 @@ function parseReadonly({
     generateSchema(zodRef._def.innerType, useOutput, openApiVersion),
     zodRef.description ? { description: zodRef.description } : {},
     ...schemas
+  );
+}
+
+function parseTuple(
+  args: ParsingArgs<
+    z.ZodTuple<[z.ZodTypeAny, ...z.ZodTypeAny[]] | [], z.ZodTypeAny | null>
+  >
+): SchemaObject {
+  if (!args.jsonSchemaDialect) return catchAllParser(args);
+  const items = args.zodRef._def.items;
+  const rest = args.zodRef._def.rest;
+  return merge(
+    {
+      type: typeFormat('array', args.openApiVersion),
+      minItems: items.length,
+      ...(items.length
+        ? {
+            prefixItems: items.map((item) =>
+              args.generateSchema(item, args.useOutput, args.openApiVersion)
+            )
+          }
+        : {}),
+      ...(rest
+        ? {
+            items: args.generateSchema(
+              rest,
+              args.useOutput,
+              args.openApiVersion
+            )
+          }
+        : { items: false, maxItems: items.length })
+    },
+    args.zodRef.description ? { description: args.zodRef.description } : {},
+    ...args.schemas
   );
 }
 
@@ -817,8 +885,7 @@ const workerMap = {
   ZodBranded: parseBranded,
   // TODO Transform the rest to schemas
   ZodUndefined: catchAllParser,
-  // TODO: `prefixItems` is allowed in OpenAPI 3.1 which can be used to create tuples
-  ZodTuple: catchAllParser,
+  ZodTuple: parseTuple,
   ZodMap: catchAllParser,
   ZodFunction: catchAllParser,
   ZodLazy: catchAllParser,
@@ -834,26 +901,66 @@ type WorkerKeys = keyof typeof workerMap;
 export function generateSchema(
   zodRef: OpenApiZodAny,
   useOutput = false,
-  openApiVersion: OpenAPIVersion = '3.1'
-): SchemaObject {
-  const { metaOpenApi = {} } = zodRef;
-  const schemas = [
-    ...(Array.isArray(metaOpenApi) ? metaOpenApi : [metaOpenApi])
-  ];
-  try {
-    const typeName = zodRef._def.typeName as WorkerKeys;
-    if (typeName in workerMap) {
-      return workerMap[typeName]({
-        zodRef: zodRef as never,
-        schemas,
-        useOutput,
-        openApiVersion
-      });
-    }
-
-    return catchAllParser({ zodRef, schemas, openApiVersion });
-  } catch (err) {
-    console.error(err);
-    return catchAllParser({ zodRef, schemas, openApiVersion });
+  openApiVersion: OpenAPIVersion = '3.1',
+  options?: SchemaGenerationOptions
+): SchemaObject & { $schema?: string } {
+  if (
+    options &&
+    (options.jsonSchemaDialect !==
+      'https://json-schema.org/draft/2020-12/schema' ||
+      openApiVersion !== '3.1')
+  ) {
+    throw new Error('Explicit JSON Schema 2020-12 export requires OpenAPI 3.1');
   }
+  const context = options ? Object.freeze({ ...options }) : undefined;
+  let remaining = 10000;
+  const generate = (
+    schema: OpenApiZodAny,
+    output: boolean,
+    version: OpenAPIVersion,
+    depth: number
+  ): SchemaObject => {
+    if (context && (depth > 64 || --remaining < 0))
+      throw new Error('Explicit JSON Schema export budget exceeded');
+    const { metaOpenApi = {} } = schema;
+    const schemas = [
+      ...(Array.isArray(metaOpenApi) ? metaOpenApi : [metaOpenApi])
+    ];
+    if (
+      context &&
+      schemas.some(
+        (metadata) =>
+          metadata.$schema !== undefined &&
+          (typeof metadata.$schema !== 'string' ||
+            metadata.$schema.replace(/#$/, '') !== context.jsonSchemaDialect)
+      )
+    ) {
+      throw new Error(
+        'Schema annotation dialect conflicts with explicit JSON Schema export'
+      );
+    }
+    const args = {
+      zodRef: schema as never,
+      schemas,
+      useOutput: output,
+      openApiVersion: version,
+      jsonSchemaDialect: context?.jsonSchemaDialect,
+      generateSchema: (
+        child: OpenApiZodAny,
+        childOutput = output,
+        childVersion = version
+      ) => generate(child, childOutput, childVersion, depth + 1)
+    };
+    try {
+      const typeName = schema._def.typeName as WorkerKeys;
+      if (typeName in workerMap) return workerMap[typeName](args);
+      return catchAllParser(args);
+    } catch (err) {
+      if (context) throw err;
+      console.error(err);
+      return catchAllParser(args);
+    }
+  };
+  const result = generate(zodRef, useOutput, openApiVersion, 0);
+  return context ? { ...result, $schema: context.jsonSchemaDialect } : result;
 }
