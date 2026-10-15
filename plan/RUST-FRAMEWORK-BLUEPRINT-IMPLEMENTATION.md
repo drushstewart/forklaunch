@@ -3248,3 +3248,29 @@ All11 frozen paths match `/private/tmp/fl-billing-hmac-final.json`, SHA256
 Detailed proof: `/private/tmp/fl-billing-hmac-receipt.md` and matching log prefix.
 CI adds the actual HMAC oracle; existing backend/artifact jobs exercise selected
 behavior. Broader auth/billing/route gates remain open; checklist660/682 unchanged.
+
+
+### 2026-10-15 — Full numeric CORS maxAge
+
+Integrated3f5ed284f adds explicit max_age_number for JavaScript Number values,
+preserving fractions, negatives, signed zero, NaN and infinities as header text.
+It takes precedence over the unchanged legacy safe-integer field. Only preflight
+responses emit the header. A feature-gated common formatter reuses existing ryu-js;
+Axum adapter enables the feature, while common remains dependency-free by default.
+No dependency version or lock changed; two feature declarations changed.
+
+Actual direct32 middleware observations, common16 tests, CORS9 tests and1350 live
+TypeScript/native static comparisons pass. The latter has950 exact pairs and400
+explicitly asserted204/304 Content-Length transport differences. Full common/Axum
+all-target Clippy7.19s, minimal adapter Clippy14.38s and feature-off common8 tests
+pass. One documentation backtick lint was fixed after semantic tests; final strict
+checks use corrected source. Logs: `/private/tmp/fl-cors-numeric-*.log`.
+
+All8 integrated hashes match `/private/tmp/fl-cors-numeric-source.json` SHA256
+`db47427ef9dafe65aab77410d29ef47e8f026530844e5788c0e9e8b6f2fc1ed2`.
+Existing CORS CI runs the expanded matrix. Exact committed worktree was removed
+after clean status,8 source hashes and zero owned processes were verified;
+`/private/tmp/fl-cors-numeric-cleanup.json` records4255 regular files/45663893
+logical bytes. Branch/proof remain. Earlier discriminator cleanup likewise retains
+`/private/tmp/fl-discriminator-input-cleanup.json` (54,704 KiB logical). Broader
+route/error gates remain open; checklist660/682 unchanged.
