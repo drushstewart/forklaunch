@@ -2761,3 +2761,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Trusted scalar team policies pass actual27, final organization7, restricted PostgreSQL concurrency and strict full/minimal checks. Default-team/zero/window/last-team behaviors covered; stronger native failure rollback remains explicit. Broader auth remains open,660/682 unchanged.
 
 - 2026-10-15: Generated Stripe Subscription update preflight passes actual84, native/real PostgreSQL HTTP, legacy170, artifacts186 and strict checks. Owner/enums reject before provider I/O; configured-vs-baseline-vs-recovery audit recorded. Broader billing/error parity remains open,660/682 unchanged.
+
+- 2026-10-15: Immutable e0af2cc0d CLI package passes3,005-file integrity, optional regex forwarding, portable modules/four workers, strict SDKs, IAM223/3ignored, generated HTTP/MCP lifecycle and five capability callbacks. Exact owned roots cleaned; later source changes retain separate receipts,660/682 unchanged.

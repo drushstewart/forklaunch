@@ -11700,3 +11700,39 @@ separates confirmed configured gaps, already-matching baseline operations, expli
 reconciliation requirements and extra authority hardening. Raw-ID dispatch shared
 by both languages is not itself a missing Rust operation. Broader billing and
 transport error gates remain open;660/682 unchanged.
+
+### 2026-10-15: Immutable packaged CLI and generated runtime with checked regex
+
+Exact commit `e0af2cc0d08680d2fd9887b1abb95db73728c9c9` was archived into a
+git-free source tree, packaged/installed/repackaged offline with the retained CLI
+lock, and used to generate a relocated application. The archive contains3,005
+regular files and6,874,324 bytes; SHA256
+`888fdb3a62aaa1743c523971ab2a8f06bff282fd713cb95c7ba0a21acfd0abed`.
+Retained artifact: `cli/target/parity-artifacts/forklaunch-e0af2cc0d-888fdb3a.crate`.
+The allowlisted certificate fixtures and vendored regex/Unicode source/license
+coverage are verified. All archived source bytes matched again after runtime.
+
+The installed CLI generated portable modules, four worker kinds and infrastructure
+capabilities; native services/SDKs compiled, contract/OpenAPI/AsyncAPI generation
+and regeneration checks passed, and generated Rust/TypeScript consumers passed
+strict checks. Optional `FORKLAUNCH_SDK_ZOD_REGEX=1` forwarding and packaged
+contract regex tests passed. Packaged IAM223 tests passed with3 explicitly ignored
+PostgreSQL tests (167.78s); this snapshot's separate restricted PostgreSQL evidence
+is recorded in the individual feature receipts.
+
+Generated HTTP/MCP startup passed shared/separate/disabled/custom listeners,
+explicit/ephemeral ports and the TypeScript+2000 fallback, initialization/discovery/
+health calls, Origin rejection, atomic startup failure and graceful shutdown.
+All five generated native capability callbacks passed actual TypeScript signatures,
+forgery/staleness/replay rejection, event redelivery and unknown-feature behavior.
+AWS S3 and all generated blueprint implementation checks passed locally; this
+does not assert deployed AWS tasks or public registry publication.
+
+Driver9733 and runtime25277 both terminated0. Metadata/log hashes and excluded
+later changes are in `/private/tmp/fl-oct15-regex-package-checkpoint.json`; runtime
+log is `/private/tmp/fl-oct15-regex-package-runtime.log`. This immutable snapshot
+predates runtime-format expansion, invitation delivery/team policies, factory
+annotation corrections and recovery-route/configured-owner changes. Those retain
+their own later source receipts. After verifying archive integrity and zero active/
+open paths, both owned source/install/generated roots were removed:265,596,389
+logical bytes, with the retained archive hash unchanged. Broader gates remain open.
