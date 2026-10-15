@@ -12,6 +12,8 @@ use serde_json::{Value, json};
 use std::sync::Arc;
 
 mod create;
+mod delivery;
+pub use delivery::{InvitationDeliveryContext, InvitationEmailDelivery};
 mod full;
 mod invitation_policy;
 mod invitations;
@@ -31,6 +33,8 @@ pub(crate) mod tests;
 pub struct OrganizationService<S> {
     policy: OrganizationPolicy,
     invitation_policy: InvitationPolicy,
+    invitation_delivery: Option<Arc<dyn InvitationEmailDelivery>>,
+    background_dispatcher: Option<Arc<dyn crate::background::AuthBackgroundDispatcher>>,
     cancel_pending_invitations_on_reinvite: bool,
     time_source: crate::time_source::TimeSource,
     session_policy: crate::sessions::SessionPolicy,
@@ -46,6 +50,22 @@ impl<S: AuthStore> OrganizationService<S> {
     #[cfg(feature = "http")]
     pub(crate) fn with_time_source(mut self, source: crate::time_source::TimeSource) -> Self {
         self.time_source = source;
+        self
+    }
+
+    /// Installs the trusted `sendInvitationEmail` hook; no delivery occurs by default.
+    #[must_use]
+    pub fn with_invitation_delivery(mut self, hook: Arc<dyn InvitationEmailDelivery>) -> Self {
+        self.invitation_delivery = Some(hook);
+        self
+    }
+    /// Installs application-owned delivery scheduling; omission awaits delivery.
+    #[must_use]
+    pub fn with_background_dispatcher(
+        mut self,
+        dispatcher: Arc<dyn crate::background::AuthBackgroundDispatcher>,
+    ) -> Self {
+        self.background_dispatcher = Some(dispatcher);
         self
     }
 
@@ -83,6 +103,8 @@ impl<S: AuthStore> OrganizationService<S> {
         Self {
             policy: OrganizationPolicy::default(),
             invitation_policy: InvitationPolicy::default(),
+            invitation_delivery: None,
+            background_dispatcher: None,
             cancel_pending_invitations_on_reinvite: false,
             time_source: crate::time_source::TimeSource::default(),
             store,

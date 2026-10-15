@@ -1,4 +1,5 @@
 //! Configured invitation admission and resend ordering.
+use super::super::delivery::{self, InvitationDeliveryContext};
 use super::super::permission::allowed;
 use super::super::{
     AuthStore, AuthTransaction, BlueprintError, BlueprintResult, DateTime, Model,
@@ -12,7 +13,10 @@ struct Canceled {
     pending: Vec<Value>,
 }
 enum Step {
-    Complete(Value),
+    Complete(
+        Value,
+        Option<Box<BlueprintResult<InvitationDeliveryContext>>>,
+    ),
     Canceled(Canceled),
 }
 impl<S: AuthStore> OrganizationService<S> {
@@ -27,16 +31,30 @@ impl<S: AuthStore> OrganizationService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<Value> {
         self.session(token, transient, now).await?;
-        match self.invitation_step(token, body, now, None).await? {
-            Step::Complete(row) => Ok(row),
+        let completed = match self.invitation_step(token, body, now, None).await? {
+            Step::Complete(row, context) => (row, context),
             Step::Canceled(canceled) => match self
                 .invitation_step(token, body, now, Some(&canceled))
                 .await?
             {
-                Step::Complete(row) => Ok(row),
-                Step::Canceled(_) => Err(state_changed()),
+                Step::Complete(row, context) => (row, context),
+                Step::Canceled(_) => return Err(state_changed()),
             },
+        };
+        if let Some(hook) = &self.invitation_delivery {
+            let context = (*completed.1.ok_or_else(delivery::failure)?)?;
+            let future = hook.prepare(context).map_err(|_| delivery::failure())?;
+            crate::background::run(
+                future,
+                self.background_dispatcher.as_deref(),
+                "/organization/invite-member",
+                "INVITATION_DELIVERY_FAILED",
+                "INVITATION_DELIVERY_DISPATCH_FAILED",
+                "Unable to deliver invitation email",
+            )
+            .await;
         }
+        Ok(completed.0)
     }
     async fn invitation_step(
         &self,
@@ -46,13 +64,13 @@ impl<S: AuthStore> OrganizationService<S> {
         canceled: Option<&Canceled>,
     ) -> BlueprintResult<Step> {
         let mut tx = self.store.begin(true).await?;
-        let admitted = self.invitation_admission(&mut tx, token, body, now).await?;
         let admission::Admission {
             org,
             email,
             role,
             actor,
-        } = admitted;
+            inviter,
+        } = self.invitation_admission(&mut tx, token, body, now).await?;
         let org = org.as_str();
         let matching_rows =
             crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
@@ -83,7 +101,8 @@ impl<S: AuthStore> OrganizationService<S> {
                 "User is already invited to this organization",
             ));
         }
-        tx.get(Model::Organization, org)
+        let organization = tx
+            .get(Model::Organization, org)
             .await?
             .ok_or_else(missing)?;
         if let Some(expected) = canceled
@@ -118,8 +137,9 @@ impl<S: AuthStore> OrganizationService<S> {
         {
             pending["expiresAt"] = json!(expiry);
             tx.replace(Model::Invitation, pending.clone()).await?;
+            let completed = complete(pending, inviter, &organization);
             tx.commit().await?;
-            return Ok(Step::Complete(pending));
+            return Ok(completed);
         }
         if crate::store::find_all(&mut tx, Model::Invitation, "organizationId", org)
             .await?
@@ -138,8 +158,9 @@ impl<S: AuthStore> OrganizationService<S> {
         let teams = input::teams(&mut tx, org, body.get("teamId")).await?;
         let invitation = json!({"id":uuid::Uuid::new_v4().to_string(),"email":email,"role":role,"organizationId":org,"inviterId":actor,"status":"pending","expiresAt":expiry,"createdAt":timestamp(now),"teamId":if teams.is_empty(){Value::Null}else{json!(teams.join(","))}});
         tx.insert(Model::Invitation, invitation.clone()).await?;
+        let completed = complete(invitation, inviter, &organization);
         tx.commit().await?;
-        Ok(Step::Complete(invitation))
+        Ok(completed)
     }
 }
 fn error(code: &str, message: &str) -> BlueprintError {
@@ -169,4 +190,10 @@ fn same_pending(expected: &[Value], current: &[Value]) -> bool {
         (Some(a), Some(b)) => a.len() == expected.len() && a == b,
         _ => false,
     }
+}
+
+fn complete(row: Value, inviter: Option<BlueprintResult<Value>>, organization: &Value) -> Step {
+    let context = inviter
+        .map(|inviter| inviter.and_then(|inviter| delivery::context(inviter, organization, &row)));
+    Step::Complete(row, context.map(Box::new))
 }

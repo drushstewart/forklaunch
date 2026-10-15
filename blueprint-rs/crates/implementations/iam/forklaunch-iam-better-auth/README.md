@@ -1984,3 +1984,38 @@ store scan (maximum4096); it does not expand the existing first100 selection or
 quota windows. Thus a known101st pending row shifting into the lookup window is
 accepted, while a newly inserted row is rejected. Stable ID/value sets, rather
 than row order alone, determine whether preexisting duplicates remain unchanged.
+
+### Trusted invitation email delivery
+
+`with_invitation_delivery(Arc<dyn InvitationEmailDelivery>)` on `AuthHttp` or
+`OrganizationService` implements the optional `sendInvitationEmail` callback.
+`prepare(InvitationDeliveryContext)` returns the existing owned `DeliveryFuture`.
+By default its future is awaited; `with_background_dispatcher` transfers it to
+application-owned scheduling, with the same dispatcher used by other auth delivery
+paths. Rust futures are lazy, unlike JavaScript promises; the application owns
+polling, capacity, shutdown draining and dropping accepted tasks. No implicit task
+spawn, hard timeout, panic handling or cancellation of external email is promised.
+
+The opaque context has `id`, `role`, lowercased `email`, `organization`,
+`invitation`, and `inviter` accessors; `inviter` contains the member and its nested
+configured public user. There is no raw Request, session token or arbitrary custom
+field export. Selected scalar fields are validated while borrowed before cloning,
+with at most4096 UTF-8 bytes per string and configured boolean/null user fields.
+Organization metadata in this bounded profile is string/null, as persisted by the
+native configured creation path. Unknown fields are omitted; malformed selected
+fields cause a sanitized preparation failure. Context has no Debug/Serde; the
+application is responsible for any data it deliberately copies or logs.
+
+Snapshots come from the authoritative write transaction, but projection errors
+are deferred until persistence succeeds. No callback runs inside a transaction.
+Successful creation or resend commits first, then invokes preparation exactly once.
+A preparation Result error returns an empty HTTP500 **after** the invitation/new
+expiry persists. Future rejection or scheduler Result error is logged with static
+sanitized fields and the successful HTTP200 response is preserved. A future may
+reenter the store without retaining the admission writer lock. Cancellation-only
+admission failures and storage/COMMIT errors invoke zero callbacks, including an
+uncertain commit acknowledgement even if the row actually persisted. A request
+interrupted after commit can leave a persisted invitation without completed email;
+this is not durable email delivery. The disabled/default path performs no callback
+projection and retains its prior response behavior. Policy builders preserve the
+installed delivery hook and shared dispatcher.

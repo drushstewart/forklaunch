@@ -11546,3 +11546,29 @@ controls and six calls through each generated SDK. Logs use the
 Unicode JSON; time precision is bounded to 0..1000. Intersections, discriminated
 unions, allocating case transforms, recursion and arbitrary callbacks/non-JSON
 outputs remain separate schema work. Checklist remains 660/682.
+
+### 2026-10-15: Trusted invitation delivery after persistence
+
+Optional invitation delivery captures bounded configured organization, invitation,
+member and public-user projections in the authoritative transaction. Preparation
+runs only after confirmed persistence; its errors yield a sanitized empty500,
+while future/dispatcher failures retain successful admission. Default delivery
+is awaited; an explicit shared dispatcher supports background delivery. New
+invitations and resends deliver; cancellation-only failures and uncertain commit
+acknowledgements do not. No hook leaves existing projection behavior unchanged.
+No raw request, arbitrary custom projection, panic or blocking-code parity is claimed.
+
+Frozen13-source manifest `/private/tmp/fl-invitation-delivery-freeze.json` has
+SHA256 `1316afe803b110af768cfbbdc0b2d1cf940783beb19c21761670c229bfce8d31`.
+Actual Better Auth9 checks pass; final organization6 pass0.28s. Restricted PostgreSQL
+lifecycle passes227.45s, with owned roles/records/audits cleaned. PG precedes only
+layout changes (boxing callback payload and extracting HTTP service construction);
+final exact-source organization tests and strict all-feature/all-target Clippy
+12.53s/minimal4.81s pass. Logs use `/private/tmp/fl-invitation-delivery-`.
+This receipt does not claim live TCP/browser delivery. Broader auth remains open.
+
+After native jobs released the blueprint target,551 generated executable artifacts
+older than24h were removed after checking no candidate was open. This removed
+9,189,656,400 logical bytes; source and retained archives remain. Candidate hashes
+are not asserted: exact paths/sizes/mtimes and completion are recorded in
+`/private/tmp/fl-oct15-old-blueprint-binaries{,-cleanup}.json`.

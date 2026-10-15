@@ -2,13 +2,13 @@ use crate::store::{AuthCursor, AuthPage, AuthStore, AuthTransaction, AuthWindow,
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
-pub(super) enum AfterCancel {
+pub(crate) enum AfterCancel {
     Delete(Model, String),
     Replace(Model, Value),
     Pause(Arc<tokio::sync::Notify>, Arc<tokio::sync::Notify>),
 }
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Failure {
+pub(crate) enum Failure {
     None,
     CancelCommit,
     Insert,
@@ -16,12 +16,12 @@ pub(super) enum Failure {
     CancelAcknowledgement,
     ReplacementAcknowledgement,
 }
-pub(super) struct Store<S> {
+pub(crate) struct Store<S> {
     pub inner: Arc<S>,
     pub after: Mutex<Option<AfterCancel>>,
     pub failure: Failure,
 }
-pub(super) struct Transaction<'a, S: AuthStore> {
+pub(crate) struct Transaction<'a, S: AuthStore> {
     inner: S::Transaction<'a>,
     store: &'a Store<S>,
     canceled: bool,

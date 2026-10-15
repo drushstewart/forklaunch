@@ -2,7 +2,7 @@ use super::invitation_policy::{request, rows, seed};
 use super::*;
 use crate::organizations::InvitationPolicy;
 use std::sync::Mutex;
-mod store;
+pub(super) mod store;
 use store::{AfterCancel, Failure, Store};
 
 #[allow(clippy::too_many_lines)]

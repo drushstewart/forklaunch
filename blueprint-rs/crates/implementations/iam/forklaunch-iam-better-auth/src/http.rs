@@ -74,6 +74,7 @@ pub struct AuthHttp<S> {
     session_policy: crate::sessions::SessionPolicy,
     organization_policy: crate::organizations::OrganizationPolicy,
     invitation_policy: crate::organizations::InvitationPolicy,
+    invitation_delivery: Option<Arc<dyn crate::organizations::InvitationEmailDelivery>>,
     cancel_pending_invitations_on_reinvite: bool,
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
@@ -111,6 +112,16 @@ pub struct AuthHttp<S> {
     clock: Arc<dyn Fn() -> DateTime<Utc> + Send + Sync>,
 }
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Installs trusted post-persistence invitation delivery (`sendInvitationEmail`).
+    #[must_use]
+    pub fn with_invitation_delivery(
+        mut self,
+        hook: Arc<dyn crate::organizations::InvitationEmailDelivery>,
+    ) -> Self {
+        self.invitation_delivery = Some(hook);
+        self
+    }
+
     /// Enables trusted cancellation-on-reinvite with a separate committed cancellation.
     #[must_use]
     pub fn with_cancel_pending_invitations_on_reinvite(mut self, enabled: bool) -> Self {
@@ -198,6 +209,7 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
             session_policy: crate::sessions::SessionPolicy::default(),
             organization_policy: crate::organizations::OrganizationPolicy::default(),
             invitation_policy: crate::organizations::InvitationPolicy::default(),
+            invitation_delivery: None,
             cancel_pending_invitations_on_reinvite: false,
             store,
             google: None,
@@ -913,6 +925,7 @@ fn failure_response(error: &BlueprintError) -> Response {
             | "EMAIL_VERIFICATION_OBSERVER_FAILED"
             | "EMAIL_VERIFICATION_SESSION_FAILED"
             | "PASSWORD_RESET_DELIVERY_PREPARATION_FAILED"
+            | "INVITATION_DELIVERY_PREPARATION_FAILED"
             | "PASSWORD_RESET_OBSERVER_FAILED"
             | "TWO_FACTOR_GENERATION_FAILED"
             | "TWO_FACTOR_STORAGE_DECODE_FAILED"

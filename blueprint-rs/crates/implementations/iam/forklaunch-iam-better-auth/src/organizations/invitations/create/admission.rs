@@ -8,6 +8,7 @@ pub(super) struct Admission {
     pub email: String,
     pub role: String,
     pub actor: String,
+    pub inviter: Option<BlueprintResult<Value>>,
 }
 impl<S: AuthStore> OrganizationService<S> {
     pub(super) async fn invitation_admission<T: AuthTransaction>(
@@ -63,7 +64,12 @@ impl<S: AuthStore> OrganizationService<S> {
             ));
         }
         input::ensure_not_member(tx, org, &email).await?;
+        let inviter = self
+            .invitation_delivery
+            .as_ref()
+            .map(|_| super::super::super::delivery::inviter(&member, &view.user));
         Ok(Admission {
+            inviter,
             org: org.to_owned(),
             email,
             role,

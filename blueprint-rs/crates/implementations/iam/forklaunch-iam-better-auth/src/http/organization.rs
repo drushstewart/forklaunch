@@ -15,6 +15,22 @@ mod teams;
 mod validation;
 pub(super) use validation::{validate_body, validate_query};
 
+fn service<S: AuthStore>(app: &AuthHttp<S>) -> OrganizationService<S> {
+    let mut service = OrganizationService::new(app.store.clone())
+        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
+        .with_session_policy(app.session_policy)
+        .with_organization_policy(app.organization_policy)
+        .with_invitation_policy(app.invitation_policy)
+        .with_cancel_pending_invitations_on_reinvite(app.cancel_pending_invitations_on_reinvite);
+    if let Some(hook) = &app.invitation_delivery {
+        service = service.with_invitation_delivery(hook.clone());
+    }
+    if let Some(dispatcher) = &app.background_dispatcher {
+        service = service.with_background_dispatcher(dispatcher.clone());
+    }
+    service
+}
+
 pub(super) async fn handle<S: AuthStore + 'static>(
     app: &AuthHttp<S>,
     path: &str,
@@ -24,12 +40,7 @@ pub(super) async fn handle<S: AuthStore + 'static>(
     pending: &mut HeaderMap,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
-    let service = OrganizationService::new(app.store.clone())
-        .with_time_source(crate::time_source::TimeSource::http(app.clock.clone()))
-        .with_session_policy(app.session_policy)
-        .with_organization_policy(app.organization_policy)
-        .with_invitation_policy(app.invitation_policy)
-        .with_cancel_pending_invitations_on_reinvite(app.cancel_pending_invitations_on_reinvite);
+    let service = service(app);
     let (token, transient) = session;
     if let Some(body) = roles::handle(&service, path, payload, query, session, now).await? {
         return Ok(body);
