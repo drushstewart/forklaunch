@@ -392,10 +392,16 @@ impl ForkLaunchRouter {
                     };
                     // Flattened nesting changes the transport path, while the local
                     // router retains its original route paths and parameter matcher.
-                    if let Some(prefix) = parts
-                        .extensions
-                        .get::<MatchedPath>()
-                        .and_then(|matched| matched.as_str().strip_suffix(&contract.openapi_path))
+                    if let Some(prefix) =
+                        parts.extensions.get::<MatchedPath>().and_then(|matched| {
+                            let path = matched.as_str();
+                            let canonical = path.strip_suffix('/').unwrap_or(path);
+                            if contract.openapi_path == "/" {
+                                Some(canonical)
+                            } else {
+                                canonical.strip_suffix(&contract.openapi_path)
+                            }
+                        })
                         && request.path.starts_with(prefix)
                     {
                         request.path.drain(..prefix.len());

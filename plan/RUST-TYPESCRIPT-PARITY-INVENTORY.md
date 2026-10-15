@@ -12616,3 +12616,24 @@ Broad gates remain open; checklist660/682 (96.8%) unchanged.
 The integrated UTF16 worktree was removed after exact commit, nine source hashes,
 clean status and no active/open owned files were verified. Branch and proofs
 remain; `/private/tmp/fl-utf16-bound-domain-cleanup.json` records54,876KiB logical.
+
+
+### 2026-10-15 — Nested LocalRouter prefix correction
+
+A follow-up alias audit reproduced404 instead of201 when a nested LocalRouter
+received the optional final slash: canonical suffix removal failed, leaving the
+mount prefix in the local path. The same bridge also mishandled local root routes.
+Prefix derivation now handles the root explicitly and removes exactly one final
+transport slash before matching the canonical suffix. Original raw path/signature
+bytes and canonical contract/version keys remain unchanged.
+
+The retained failing run is `/private/tmp/fl-nested-local-alias-red.log`.
+Eight direct/local, root/nonroot, canonical/slash cases now pass, asserting raw
+path, selected version, exactly-once preprocessing and transformed responses.
+All19 versioning and148 Axum tests pass, with strict full/all-target and minimal
+Clippy20.50s/6.27s. Proofs use integrated UTF16 f7dff8dfd. Two source hashes match
+`/private/tmp/fl-nested-local-alias-final.json`, SHA256
+`88509eb2df6fbc91c41770370c68c995e13f3eddedde1a66998214bd638d94c4`.
+Receipt `/private/tmp/fl-nested-local-alias-receipt.md` names every log. Existing
+Axum CI exercises the expanded regression. OPTIONS and case-insensitive routing
+remain separate measured gaps. Checklist remains660/682 (96.8%).

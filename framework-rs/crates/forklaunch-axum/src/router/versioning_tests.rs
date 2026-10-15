@@ -428,8 +428,24 @@ async fn versioned_body_delivers_parsed_values_without_consuming_wire_bytes() {
 #[tokio::test]
 async fn native_body_hooks_run_once_through_direct_and_nested_local_adapters() {
     use forklaunch_http::{VersionBodyHooks, VersionBodyHooksRegistry};
-    for local in [false, true] {
-        let mut contract = RouteContract::post("Hook", "Hook", "/hook");
+    for (local, trailing, root) in [
+        (false, false, false),
+        (false, true, false),
+        (true, false, false),
+        (true, true, false),
+        (false, false, true),
+        (false, true, true),
+        (true, false, true),
+        (true, true, true),
+    ] {
+        let route_path = if root { "/" } else { "/hook" };
+        let wire_path = match (root, trailing) {
+            (false, false) => "/api/hook",
+            (false, true) => "/api/hook/",
+            (true, false) => "/api",
+            (true, true) => "/api/",
+        };
+        let mut contract = RouteContract::post("Hook", "Hook", route_path);
         contract.options.body_parser.json_strict = false;
         contract = contract.with_version(VersionedContract {
             version: "one".into(),
@@ -461,12 +477,14 @@ async fn native_body_hooks_run_once_through_direct_and_nested_local_adapters() {
             )
             .unwrap();
         let service = ServiceInfo::new("hooks", "1");
-        let child = if local {
+        let mut child = if local {
             let mut handlers = LocalRouter::new();
             handlers.register_with_body_hooks(
                 contract.clone(),
                 &hooks,
-                |request: FrameworkRequest| {
+                move |request: FrameworkRequest| {
+                    assert_eq!(request.raw_path.as_deref(), Some(wire_path));
+                    assert_eq!(request.version.as_ref().unwrap().version, "one");
                     assert_eq!(request.body, FrameworkBody::Text("\"41\"".into()));
                     Ok(FrameworkResponse::json(
                         201,
@@ -481,6 +499,10 @@ async fn native_body_hooks_run_once_through_direct_and_nested_local_adapters() {
                     (StatusCode::CREATED, axum::Json(value))
                 })
         };
+        child
+            .config
+            .optional_trailing_slash_paths
+            .insert(route_path.into());
         // Hook registration survives mounting a child router, and local selection
         // sees its original route path rather than the flattened transport prefix.
         let app = ForkLaunchRouter::new(service)
@@ -488,14 +510,18 @@ async fn native_body_hooks_run_once_through_direct_and_nested_local_adapters() {
             .into_router();
         let response = app
             .oneshot(
-                Request::post("/api/hook")
+                Request::post(wire_path)
                     .header("content-type", "application/json")
                     .body(Body::from("\"41\""))
                     .unwrap(),
             )
             .await
             .unwrap();
-        assert_eq!(response.status(), StatusCode::CREATED, "local={local}");
+        assert_eq!(
+            response.status(),
+            StatusCode::CREATED,
+            "local={local}, trailing={trailing}, root={root}"
+        );
         let value: serde_json::Value =
             serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap()).unwrap();
         assert_eq!(value, json!({"result":42}));
