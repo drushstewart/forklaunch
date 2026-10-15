@@ -138,6 +138,10 @@ pub struct RouterConfig {
     pub authorizer: Option<Authorizer>,
     /// Format only credential/policy errors; validation/handler errors are separate.
     pub auth_error_format: AuthErrorFormat,
+    /// Per-operation override keyed by method and operation name, matching request
+    /// validator identity. Unselected routes retain `auth_error_format`.
+    /// Rendering only: callers must declare matching response schemas for exports.
+    pub auth_error_formats: HashMap<(String, String), AuthErrorFormat>,
     /// Format for errors returned by framework local handlers.
     pub handler_error_format: HandlerErrorFormat,
     /// Final wire representation for request-parser and transport-limit failures.
@@ -179,6 +183,7 @@ impl Default for RouterConfig {
             response_authenticator: None,
             authorizer: None,
             auth_error_format: AuthErrorFormat::Json,
+            auth_error_formats: HashMap::new(),
             handler_error_format: HandlerErrorFormat::Json,
             parser_error_format: ParserErrorFormat::Json,
             router_origin_format: RouterOriginFormat::Native,
@@ -240,6 +245,24 @@ impl RouterConfig {
         + 'static,
     ) -> Self {
         self.authorizer = Some(Arc::new(authorizer));
+        self
+    }
+
+    /// Select public authentication-error rendering for one trusted route.
+    /// This does not alter credential verification or authorization.
+    #[must_use]
+    pub fn with_auth_error_format_for_route(
+        mut self,
+        route: &RouteContract,
+        format: AuthErrorFormat,
+    ) -> Self {
+        self.auth_error_formats.insert(
+            (
+                route.method.as_str().to_owned(),
+                route.operation_name.clone(),
+            ),
+            format,
+        );
         self
     }
 
@@ -551,6 +574,9 @@ impl ForkLaunchRouter {
             config,
             ..
         } = child;
+        self.config
+            .auth_error_formats
+            .extend(config.auth_error_formats);
         self.config
             .json_request_parsers
             .extend(config.json_request_parsers)
@@ -931,6 +957,7 @@ struct ValidationState {
     response_authenticator: Option<ResponseAuthenticator>,
     authorizer: Option<Authorizer>,
     auth_error_format: AuthErrorFormat,
+    auth_error_formats: HashMap<(String, String), AuthErrorFormat>,
     handler_error_format: HandlerErrorFormat,
     parser_error_format: ParserErrorFormat,
     response_status_error_format: ResponseStatusErrorFormat,
@@ -1043,6 +1070,7 @@ impl ValidationState {
             response_authenticator: config.response_authenticator.clone(),
             authorizer: config.authorizer.clone(),
             auth_error_format: config.auth_error_format,
+            auth_error_formats: config.auth_error_formats.clone(),
             handler_error_format: config.handler_error_format,
             parser_error_format: config.parser_error_format,
             response_status_error_format: config.response_status_error_format,
@@ -1181,6 +1209,20 @@ fn attach_parsed_request(parts: &mut Parts, framework_request: &FrameworkRequest
     }
 }
 
+fn authentication_error_format(
+    state: &ValidationState,
+    contract: &RouteContract,
+) -> AuthErrorFormat {
+    state
+        .auth_error_formats
+        .get(&(
+            contract.method.as_str().to_owned(),
+            contract.operation_name.clone(),
+        ))
+        .copied()
+        .unwrap_or(state.auth_error_format)
+}
+
 async fn validate_matched_contract(
     state: &Arc<ValidationState>,
     contract: RouteContract,
@@ -1262,7 +1304,8 @@ async fn validate_matched_contract(
                     &framework_request.context.correlation_id,
                 );
                 tracing::warn!(operation = %contract.operation_name, correlation_id = %framework_request.context.correlation_id, "request authentication or authorization failed");
-                let response = match state.auth_error_format {
+                let format = authentication_error_format(state, &contract);
+                let response = match format {
                     AuthErrorFormat::Json => error
                         .with_correlation_id(framework_request.context.correlation_id)
                         .to_response(),
@@ -1591,6 +1634,7 @@ fn build_framework_request(
         path,
         RequestContext::new(correlation_id),
     );
+    request.raw_path = Some(path.to_owned());
     request.params = match_path_checked(&contract.openapi_path, path)
         .map_err(|error| validation_error_response(&[error], &request.context.correlation_id))?
         .unwrap_or_default();

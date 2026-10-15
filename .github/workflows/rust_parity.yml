@@ -411,6 +411,7 @@ on:
       - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
       - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/typescript_billing_payment_link_update_http.mjs'
+      - 'cli/tests/typescript_billing_hmac_http.mjs'
       - 'cli/tests/rust_billing_payment_link_coercion_sdk.mjs'
       - 'cli/tests/typescript_billing_configured_get_http.mjs'
       - 'cli/tests/typescript_billing_cached_dates.mjs'
@@ -880,6 +881,7 @@ on:
       - 'cli/tests/rust_billing_checkout_expiration_source.mjs'
       - 'cli/tests/typescript_billing_subscription_owner_http.mjs'
       - 'cli/tests/typescript_billing_payment_link_update_http.mjs'
+      - 'cli/tests/typescript_billing_hmac_http.mjs'
       - 'cli/tests/rust_billing_payment_link_coercion_sdk.mjs'
       - 'cli/tests/typescript_billing_configured_get_http.mjs'
       - 'cli/tests/typescript_billing_cached_dates.mjs'
@@ -1866,6 +1868,11 @@ jobs:
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/typescript_billing_payment_link_update_http.mjs
+        env:
+          TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
+          FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+          STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
+      - run: node cli/tests/typescript_billing_hmac_http.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts

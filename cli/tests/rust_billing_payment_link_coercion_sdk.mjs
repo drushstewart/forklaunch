@@ -23,9 +23,17 @@ try {
 }finally{rmSync(tmp,{recursive:true,force:true});}
 for(const amount of [null,'12',false,[],'Infinity',{},'bad']) {
  const body={id,amount},raw=JSON.stringify(body),stamp=new Date().toISOString(),nonce=randomUUID(),route=`/payment-link/${id}`;
- const signature=createHmac('sha256','billing-owner-fixture').update(`PUT\n${route}\n${raw}\n${stamp}\n${nonce}`).digest('base64');
+ const signature=createHmac('sha256','billing-owner-fixture').update(`PUT\n${route.replace(/^\/payment-link/, '')}\n${raw}\n${stamp}\n${nonce}`).digest('base64');
  const result=await call({params:{id},body,headers:{authorization:`HMAC keyId=default ts=${stamp} nonce=${nonce} signature=${signature}`}});
  assert.equal(result.status,amount==='bad'||typeof amount==='object'&&amount!==null&&!Array.isArray(amount)?400:200,JSON.stringify(result));
  if(result.status===200)assert.equal(result.response.amount,34);
 }
-console.log('PASS seven generated TypeScript SDK PaymentLink coercion calls, including invalid admission');
+for(const kind of ['missing','invalid','full-path','old']) {
+ const body={id,amount:'12'},raw=JSON.stringify(body),stamp=kind==='old'?'1900-01-01T00:00:00.000Z':new Date().toISOString(),nonce=randomUUID();
+ const route=kind==='full-path'?`/payment-link/${id}`:`/${id}`;
+ const signature=kind==='invalid'?'bad':createHmac('sha256','billing-owner-fixture').update(`PUT\n${route}\n${raw}\n${stamp}\n${nonce}`).digest('base64');
+ const headers=kind==='missing'?{}:{authorization:`HMAC keyId=default ts=${stamp} nonce=${nonce} signature=${signature}`};
+ const result=await call({params:{id},body,headers});assert.equal(result.status,kind==='missing'?401:kind==='old'?200:403);
+ if(kind==='missing')assert.equal(result.response,'Authorization token required.');else if(kind!=='old')assert.equal(result.response,'Invalid Authorization signature.');else assert.equal(result.response.amount,34);
+}
+console.log('PASS eleven generated TypeScript SDK calls: seven amount coercions and four configured authentication controls');

@@ -79,7 +79,7 @@ pub fn contract_registry_with_profiles(profile: BillingRequestDateProfile, ident
     for route in contracts::module_registry({{#stripe}}true{{/stripe}}{{^stripe}}false{{/stripe}}).routes() {
         let mut route = route.clone();
         profile.project(&mut route)?;
-        {{#stripe}}forklaunch_billing_axum::project_configured_payment_link_update(&mut route)?;{{/stripe}}
+        {{#stripe}}forklaunch_billing_axum::project_configured_billing_hmac(&mut route);forklaunch_billing_axum::project_configured_payment_link_update(&mut route)?;{{/stripe}}
         registry.register(route);
     }
     if identity == BillingIdentityProfile::BoundCheckoutV1 {

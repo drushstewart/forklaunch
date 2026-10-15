@@ -31,6 +31,14 @@ pub struct HmacJwksAuth {
     route_hmac_keys: BTreeMap<(String, String), BTreeMap<String, Vec<u8>>>,
 }
 
+/// Safe result categories for trusted application-owned HMAC payload profiles.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HmacPayloadError {
+    NotHmac,
+    UnknownKey,
+    InvalidSignature,
+}
+
 impl HmacJwksAuth {
     /// # Errors
     /// Requires a nonempty HMAC secret, asymmetric JWT algorithms and expiry
@@ -94,6 +102,43 @@ impl HmacJwksAuth {
         self.route_hmac_keys
             .insert((route.method.as_str().into(), route.path.clone()), policy);
         Ok(self)
+    }
+
+    /// Verify an application-owned canonical payload with this route's immutable
+    /// server key policy. Keys are never returned. The caller owns parsing, wire
+    /// canonicalization and freshness/replay policy; the ordinary `authenticate`
+    /// method retains its existing strict header and five-minute freshness checks.
+    /// # Errors
+    /// Distinguishes absent server keys from invalid signatures without exposing
+    /// key material. A service principal is returned only after MAC verification.
+    pub fn verify_hmac_payload_for_route(
+        &self,
+        route: &RouteContract,
+        key_id: &str,
+        payload: &[u8],
+        signature: &str,
+    ) -> Result<AuthenticatedSession, HmacPayloadError> {
+        if !matches!(route.auth, Some(AuthConfig::Hmac(_))) {
+            return Err(HmacPayloadError::NotHmac);
+        }
+        let secret = if let Some(policy) = self
+            .route_hmac_keys
+            .get(&(route.method.as_str().into(), route.path.clone()))
+        {
+            policy.get(key_id).ok_or(HmacPayloadError::UnknownKey)?
+        } else if key_id == "default" {
+            &self.secret
+        } else {
+            return Err(HmacPayloadError::UnknownKey);
+        };
+        if !forklaunch_auth::hmac_verify(secret, payload, signature) {
+            return Err(HmacPayloadError::InvalidSignature);
+        }
+        let subject = format!("service:{key_id}");
+        Ok(AuthenticatedSession::new(
+            Principal::new(&subject),
+            serde_json::json!({"sub":subject}),
+        ))
     }
 
     #[must_use]

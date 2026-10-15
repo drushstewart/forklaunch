@@ -135,6 +135,13 @@ try {
    const updateRoute=contract.routes.find(r=>r.operationName==='updatePaymentLink');
    const updateSchema=typeof updateRoute.request.body.schema.jsonSchema==='string'?JSON.parse(updateRoute.request.body.schema.jsonSchema):updateRoute.request.body.schema.jsonSchema;
    if(stripe){assert.equal(updateSchema.properties.amount['x-forklaunch-coercion'],'typescript-number');assert.equal(updateSchema.properties.amount.type,undefined);}else assert.equal(updateSchema.properties.amount.type,'number');
+   for(const route of contract.routes) {
+    const selected=stripe && ['/payment-link','/checkout-session','/subscription','/plan'].some(prefix=>route.path===prefix||route.path.startsWith(prefix+'/')) && route.auth?.method==='hmac';
+    if(selected)for(const status of [401,403])assert.equal(route.responses.find(r=>r.statusCode===status)?.body?.contentType,'text/plain');
+   }
+   const authResponse=openapi.paths['/payment-link/{id}'].put.responses['401'];
+   if(stripe)assert(authResponse.content['text/plain']);else assert.equal(authResponse,undefined);
+   for(const route of contract.routes.filter(r=>r.path.startsWith('/billing-portal')||r.path.startsWith('/bound-')))for(const status of [401,403]){const response=route.responses.find(r=>r.statusCode===status);if(response)assert.notEqual(response.body?.contentType,'text/plain');}
    const listRoute=contract.routes.find(r=>r.operationName==='listBoundCreatedPaymentLinks');
    if(listRoute){const field=listRoute.request.query.find(v=>v.name==='ids');assert.equal(field.required,true);const schema=typeof field.schema.jsonSchema==='string'?JSON.parse(field.schema.jsonSchema):field.schema.jsonSchema;assert.equal(schema.type,'array');assert.equal(schema.minItems,1);assert.equal(schema.maxItems,test.name==='payment-link-read-limit'?150:100);assert.equal(schema.items.format,'uuid');}
    const text=JSON.stringify({contract,openapi});assert(text.includes('x-forklaunch-date-profile'));
@@ -158,7 +165,7 @@ try {
   const render=text=>text.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-checkout-artifacts').replaceAll('{{crate_module}}','fl_billing_bound_checkout_artifacts');
   writeFileSync(path.join(temporary,'src/lib.rs'),render(template));
   const renderedMain=render(mainTemplate);
-  assert.equal(renderedMain.includes('BillingBackend::stripe(store,client).with_configured_subscription_updates(true)'),stripe,'generated Stripe backend selects configured owner preflight; base template does not');
+  assert.equal(renderedMain.includes('BillingBackend::stripe(store,client).with_configured_hmac(true).with_configured_subscription_updates(true)'),stripe,'generated Stripe backend selects configured owner preflight; base template does not');
   assert.equal(renderedMain.includes('.with_configured_cached_reads(true)'),stripe,'generated Stripe backend selects configured cached GET mapping; generic base stays unchanged');
   assert.equal(renderedMain.includes('.with_configured_payment_link_updates(true)'),stripe,'generated Stripe backend selects configured PaymentLink update preflight independently from reads');
   writeFileSync(path.join(temporary,'src/main.rs'),renderedMain);

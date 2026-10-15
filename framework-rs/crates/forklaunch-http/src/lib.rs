@@ -129,6 +129,9 @@ pub struct FrameworkRequest {
     pub context: RequestContext,
     pub method: HttpMethod,
     pub path: String,
+    /// Original transport pathname, before route normalization; excludes query.
+    /// None for callers that only provide a normalized logical route.
+    pub raw_path: Option<String>,
     pub params: Params,
     pub query: Query,
     /// Original encoded query, including repeated keys, when supplied by transport.
@@ -154,6 +157,7 @@ impl FrameworkRequest {
             context,
             method,
             path: normalize_route_path(&path.into()),
+            raw_path: None,
             params: Params::new(),
             query: Query::new(),
             raw_query: None,

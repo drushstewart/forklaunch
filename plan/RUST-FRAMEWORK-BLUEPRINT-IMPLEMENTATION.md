@@ -3218,3 +3218,33 @@ All3 hashes match `/private/tmp/fl-discriminator-input-source.json`, SHA256
 `8fb276edd04ce7fe92c8ae7b6b15df0994c607a937ca419de62cad4b5a3dafaf`.
 Receipt/log prefix `/private/tmp/fl-discriminator-input-`; CI adds the new native
 oracle. Broader schema/validation gates remain open; checklist660/682 unchanged.
+
+
+### 2026-10-15 — Configured billing HMAC wire behavior
+
+Generated Stripe billing now selects actual HMAC semantics for its four internal
+PaymentLink/Checkout/Subscription/Plan families. Portal JWT, bound capabilities
+and generic builders retain historical behavior. Selected verification matches
+part ordering/error classes, old/future/repeated signatures, raw bodies and local
+mounted paths; route-specific keys remain private. Original URI path provenance
+is additive. Per-route error formatting affects rendering only; billing explicitly
+declares selected401/403 text schemas, preserving absent generic declarations.
+
+Actual91 HTTP observations, native3 tests, restricted PG HTTP1 (1.56s) with36 auth
+cases/11 generated TypeScript SDK calls/6 MCP calls/Portal JSON controls pass.
+Artifacts186, generic170, shared auth5 and integrated CORS8 regressions pass.
+Strict billing full8.94s/minimal6.30s and shared Axum+HTTP8.05s pass. Source corrections
+included Hash key choice, lint-only refactoring and fixture metadata assumptions;
+original failures are retained. No dependencies/locks changed.
+
+Remaining measured differences: actual trailing-slash routes accept200 but native
+strict matching returns404 with zero provider effects; legacy and offsetless Date
+strings accepted upstream remain unsupported. ISO/full TimeClip is covered. SDKs
+forward caller-supplied Authorization, so callers choose the mount-local signed
+path; no automatic signing rewrite is claimed. Follow-up routing/date work remains.
+
+All11 frozen paths match `/private/tmp/fl-billing-hmac-final.json`, SHA256
+`e865ceb95942f44b34a55367855104ff20043fb764a4a00ff6586d2cb57211c9`.
+Detailed proof: `/private/tmp/fl-billing-hmac-receipt.md` and matching log prefix.
+CI adds the actual HMAC oracle; existing backend/artifact jobs exercise selected
+behavior. Broader auth/billing/route gates remain open; checklist660/682 unchanged.

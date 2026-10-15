@@ -1,5 +1,7 @@
 //! Persistent billing HTTP handlers shared with authenticated MCP dispatch.
 #![forbid(unsafe_code)]
+mod configured_hmac;
+pub use configured_hmac::project_configured_billing_hmac;
 mod configured_payment_link_input;
 pub use configured_payment_link_input::project_configured_payment_link_update;
 #[cfg(feature = "bound-checkout")]
@@ -106,6 +108,7 @@ pub struct BillingBackend {
     bound_subscription: Option<Arc<bound_subscription::BoundSubscriptionV1>>,
     #[cfg(feature="bound-checkout")]
     bound_payment_link_expiration: Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
+    configured_hmac: bool,
     configured_subscription_updates: bool,
     configured_payment_link_updates: bool,
     configured_cached_reads: bool,
@@ -141,6 +144,7 @@ impl BillingBackend {
             bound_plan: None,
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
+            configured_hmac: false,
             configured_subscription_updates: false,
             configured_payment_link_updates: false,
             configured_cached_reads: false,
@@ -176,6 +180,7 @@ impl BillingBackend {
             bound_plan: None,
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
+            configured_hmac: false,
             configured_subscription_updates: false,
             configured_payment_link_updates: false,
             configured_cached_reads: false,
@@ -192,6 +197,16 @@ impl BillingBackend {
         self.configured_subscription_updates = enabled;
         self
     }
+    /// Select actual configured internal billing HMAC parsing and mounted-path signing.
+    /// Generic HMAC, Portal JWT and bound operation policies remain unchanged.
+    /// ISO timestamp forms are supported; legacy/local-time JavaScript Date strings
+    /// remain a distinct unsupported boundary in this implementation phase.
+    #[must_use]
+    pub const fn with_configured_hmac(mut self, enabled: bool) -> Self {
+        self.configured_hmac = enabled;
+        self
+    }
+
     /// Selects configured `PaymentLink` cache/patch validation before provider updates.
     /// Read selectors do not imply this mutation behavior.
     #[must_use]
@@ -480,6 +495,7 @@ pub fn billing_router(
     let registry = module_contracts::module_registry(backend.client.is_some());
     let backend = Arc::new(backend);
     let auth = Arc::new(auth);
+    let configured_hmac = backend.configured_hmac;
     let mut config = RouterConfig {
         response_status_error_format: if backend.configured_cached_reads
             || backend.configured_payment_link_updates
@@ -488,7 +504,8 @@ pub fn billing_router(
         } else {
             forklaunch_axum::ResponseStatusErrorFormat::Json
         },
-        correlation_id_format: if backend.configured_subscription_updates
+        correlation_id_format: if backend.configured_hmac
+            || backend.configured_subscription_updates
             || backend.configured_cached_reads
             || backend.configured_payment_link_updates
         {
@@ -498,9 +515,27 @@ pub fn billing_router(
         },
         ..RouterConfig::default()
     }
-    .with_authenticator(move |request, contract| {
+    .with_response_authenticator(move |request, contract| {
         let auth = Arc::clone(&auth);
-        async move { auth.authenticate(request, contract).await }
+        async move {
+            if configured_hmac && configured_hmac::selected(&contract) {
+                return configured_hmac::authenticate(&auth, &request, &contract);
+            }
+            let jwt = matches!(
+                contract.auth,
+                Some(forklaunch_blueprint_core::contract::AuthConfig::Jwt(_))
+            );
+            auth.authenticate(request, contract).await.map_err(|error| {
+                if jwt && error == forklaunch_auth::AuthError::InvalidCredentials {
+                    forklaunch_http::ErrorResponse::new(
+                        forklaunch_http::ErrorKind::Forbidden,
+                        "invalid credentials",
+                    )
+                } else {
+                    error.to_error_response()
+                }
+            })
+        }
     });
     let mut router = ForkLaunchRouter::new(service.clone());
     for contract in registry
@@ -509,6 +544,13 @@ pub fn billing_router(
         .filter(|route| route.operation_name != "getHealth")
     {
         let mut contract = contract.clone();
+        if backend.configured_hmac && configured_hmac::selected(&contract) {
+            project_configured_billing_hmac(&mut contract);
+            config = config.with_auth_error_format_for_route(
+                &contract,
+                forklaunch_axum::AuthErrorFormat::TypeScriptText,
+            );
+        }
         backend
             .request_dates
             .project(&mut contract)

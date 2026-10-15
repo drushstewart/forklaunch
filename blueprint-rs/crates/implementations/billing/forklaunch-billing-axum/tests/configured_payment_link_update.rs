@@ -31,7 +31,11 @@ fn sign(method: &str, path: &str, body: Option<&Value>, actor: &str) -> String {
         KEY,
         actor,
         method,
-        path.split('?').next().unwrap(),
+        path.split('?')
+            .next()
+            .unwrap()
+            .strip_prefix("/payment-link")
+            .unwrap_or(path),
         encoded
             .as_deref()
             .map_or(SignedBody::Absent, SignedBody::Text),
@@ -115,6 +119,7 @@ async fn matrix(f: &Fixture) {
     )
     .unwrap();
     let backend = BillingBackend::stripe((*f.store).clone(), client)
+        .with_configured_hmac(true)
         .with_configured_payment_link_updates(true);
     let auth = HmacJwksAuth::new(
         KEY.to_vec(),
@@ -270,12 +275,12 @@ async fn matrix(f: &Fixture) {
     assert_eq!(body["stripeFields"]["id"], id);
     // Actual shared TS router runs parse before auth. Invalid conversions win
     // over invalid signatures; successful coercion must still authenticate raw bytes.
-    // Native HMAC rejects with401; actual TS uses403 (existing auth-envelope gap).
+    // Selected configured HMAC matches actual TS 403 for invalid signatures.
     for (amount, expected) in [
         (json!("bad"), 400),
         (json!({}), 400),
-        (json!(null), 401),
-        (json!("12"), 401),
+        (json!(null), 403),
+        (json!("12"), 403),
     ] {
         state.calls.lock().await.clear();
         let body = json!({"amount":amount});
@@ -390,6 +395,133 @@ async fn matrix(f: &Fixture) {
         String::from_utf8_lossy(&result.stderr)
     );
     println!("{}", String::from_utf8_lossy(&result.stdout));
+    hmac_matrix(&http, &url, &id, &state).await;
     server.abort();
     provider_task.abort();
+}
+
+#[allow(clippy::too_many_lines)] // One finite header/correlation matrix shares the live provider counters.
+async fn hmac_matrix(http: &reqwest::Client, url: &str, id: &str, state: &Provider) {
+    let path = format!("/payment-link/{id}");
+    let body = json!({"amount":"12"});
+    let valid = sign("PUT", &path, Some(&body), "default");
+    let mut cases = vec![
+        (None, 401, "Authorization token required."),
+        (
+            Some(String::new()),
+            401,
+            "Invalid Authorization token format.",
+        ),
+        (
+            Some("HMAC".into()),
+            401,
+            "Invalid Authorization token format.",
+        ),
+        (
+            Some("HMAC keyId=default".into()),
+            403,
+            "Invalid Authorization token.",
+        ),
+        (
+            Some(valid.replace("HMAC", "OTHER")),
+            403,
+            "Invalid Authorization token.",
+        ),
+        (
+            Some(valid.replace("keyId=", "key=")),
+            401,
+            "Invalid Authorization token format.",
+        ),
+        (
+            Some(valid.replace("keyId=default", "keyId=unknown")),
+            500,
+            "",
+        ),
+        (
+            Some(valid.replace("signature=", "signature=bad")),
+            403,
+            "Invalid Authorization signature.",
+        ),
+        (Some(valid.clone()), 200, ""),
+        (Some(valid), 200, ""),
+    ];
+    for stamp in ["1900-01-01T00:00:00.000Z", "2100-01-01T00:00:00.000Z"] {
+        let payload = format!("PUT\n/{id}\n{body}\n{stamp}\nrepeat");
+        let signature = forklaunch_auth::hmac_sign(KEY, payload.as_bytes());
+        cases.push((
+            Some(format!(
+                "HMAC keyId=default ts={stamp} nonce=repeat signature={signature} ignored=extra"
+            )),
+            200,
+            "",
+        ));
+    }
+    for (authorization, status, message) in cases {
+        for correlation in [None, Some("hmac-correlation"), Some("")] {
+            state.calls.lock().await.clear();
+            let mut request = http.put(format!("{url}{path}")).json(&body);
+            if let Some(value) = &authorization {
+                request = request.header("authorization", value);
+            }
+            if let Some(value) = correlation {
+                request = request.header("x-correlation-id", value);
+            }
+            let response = request.send().await.unwrap();
+            assert_eq!(response.status().as_u16(), status, "{authorization:?}");
+            let observed = response.headers()["x-correlation-id"]
+                .to_str()
+                .unwrap()
+                .to_owned();
+            let text = response.text().await.unwrap();
+            if status == 500 {
+                assert_eq!(
+                    text,
+                    format!("Internal server error:\n\nCorrelation id: {observed}")
+                );
+            } else if status != 200 {
+                assert_eq!(text, message);
+            } else {
+                let value: Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(value["amount"], 34.0);
+            }
+            assert_eq!(state.calls.lock().await.len(), usize::from(status == 200));
+        }
+    }
+    state.calls.lock().await.clear();
+    for (authorization, status) in [(None, 401), (Some("Bearer invalid"), 403)] {
+        let mut request = http.get(format!("{url}/billing-portal/{id}"));
+        if let Some(value) = authorization {
+            request = request.header("authorization", value);
+        }
+        let response = request.send().await.unwrap();
+        assert_eq!(response.status().as_u16(), status);
+        assert!(
+            response.headers()["content-type"]
+                .to_str()
+                .unwrap()
+                .starts_with("application/json")
+        );
+        let _: Value = response.json().await.unwrap();
+        assert!(state.calls.lock().await.is_empty());
+    }
+    state.calls.lock().await.clear();
+    let trailing = http
+        .put(format!("{url}{path}/"))
+        .header(
+            "authorization",
+            sign("PUT", &format!("{path}/"), Some(&body), "default"),
+        )
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        trailing.status(),
+        404,
+        "current native strict slash admission; actual Express accepts"
+    );
+    assert!(state.calls.lock().await.is_empty());
+    println!(
+        "PASS36 configured HMAC backend HTTP cases: exact public errors/correlation; old/future/repeated signatures; zero provider effects on rejection"
+    );
 }
