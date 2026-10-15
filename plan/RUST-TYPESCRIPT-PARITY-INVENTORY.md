@@ -12319,3 +12319,31 @@ All3 integrated hashes match `/private/tmp/fl-record-pure-source.json` SHA256
 Receipt and logs: `/private/tmp/fl-record-pure-receipt.md` and matching prefix.
 CI runs the new oracle with native checks. Broad schema/emitter/validation gates
 remain open; checklist660/682 unchanged.
+
+
+### 2026-10-15 — Validated CORS delegate integration checkpoint
+
+Awaited CORS origin delegates are frozen on isolated commit
+`fb1aa08a05f2ebc40fde3cf19cbb8cae535aa691`, pending integration after the shared
+billing-auth router edits are committed. This is not a claim that main contains
+the feature. The typed callback receives joined optional Origin bytes and returns
+one awaited static policy or sanitized error; missing/empty headers, disabled
+versus denied allowlists, callback-once and cancellation are explicit.
+
+Eight native tests,64 actual/native HTTP comparisons, strict full/minimal
+all-target checks and810 static CORS regression pairs pass. The static regression
+retains160 explicitly asserted204/304 Content-Length transport differences;650
+pairs are exact. Callback errors preserve the actual early-middleware body
+correlation fallback even when the outer response has a supplied correlation
+header. Regex/multiple-callback/JS coercion behavior remains outside this typed
+interface. No dependencies changed.
+
+Source manifest `/private/tmp/fl-cors-delegate-source.json` SHA256
+`e901506493e92e1b7ac97a8633b6236352d05f433f3cc09a2ad6bb44e082fac8` and
+`/private/tmp/fl-cors-delegate-receipt.md` retain proof and integration instructions.
+Both native chains completed; CLI cache handed back to billing.
+
+The previously integrated record worktree was removed after exact625c58808 HEAD,
+clean status, all3 source hashes and zero owned processes were verified. Receipt
+`/private/tmp/fl-record-pure-cleanup.json` records54,696 KiB logical; branch and
+proof retained. Checklist660/682 remains unchanged.
