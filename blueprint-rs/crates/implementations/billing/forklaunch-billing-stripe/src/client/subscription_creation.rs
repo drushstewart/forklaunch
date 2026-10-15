@@ -26,7 +26,7 @@ impl StripeBillingClient {
             return Err(invalid());
         };
         let allowed = match (method.clone(), segments) {
-            (Method::GET, ["v1", "customers" | "plans" | "subscriptions", id]) => {
+            (Method::GET, ["v1", "customers" | "plans" | "subscriptions" | "events", id]) => {
                 super::super::bound_plan_creation::safe_reference(id)
             }
             (Method::POST, ["v1", "subscriptions"]) => true,

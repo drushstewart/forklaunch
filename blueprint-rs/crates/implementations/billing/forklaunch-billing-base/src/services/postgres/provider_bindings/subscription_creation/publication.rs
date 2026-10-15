@@ -3,6 +3,7 @@ use super::{
     IntentRow, PostgresBillingStore, SubscriptionCreationPending, SubscriptionCreationReservation,
     budget, conflict, db_error, hash, invalid, storage_error,
 };
+use super::{SubscriptionDependencySnapshot, recovery::SubscriptionCreationRecovery};
 use crate::services::{BillingKind, Scope};
 use forklaunch_blueprint_core::BlueprintResult;
 use serde_json::{Value, json};
@@ -22,6 +23,27 @@ pub struct TrustedSubscriptionPublisher {
 pub enum SubscriptionCreationStatus {
     Pending(SubscriptionCreationPending),
     Completed { operation_id: Uuid, record: Value },
+}
+// Publication authority contains no dispatch key and cannot become a reservation.
+pub(super) struct Publication {
+    pub operation_id: Uuid,
+    pub public_id: Uuid,
+    pub reservation_id: Uuid,
+    pub payload_hash: String,
+    pub canonical: String,
+    pub snapshot: Box<SubscriptionDependencySnapshot>,
+}
+impl From<SubscriptionCreationReservation> for Publication {
+    fn from(ticket: SubscriptionCreationReservation) -> Self {
+        Self {
+            operation_id: ticket.operation_id,
+            public_id: ticket.public_id,
+            reservation_id: ticket.reservation_id,
+            payload_hash: ticket.payload_hash,
+            canonical: ticket.canonical,
+            snapshot: ticket.snapshot,
+        }
+    }
 }
 type DatabaseIdentity = (String, Option<String>, Option<i32>, String);
 async fn database_identity(pool: &PgPool) -> BlueprintResult<DatabaseIdentity> {
@@ -97,6 +119,13 @@ impl PostgresBillingStore {
         operation: Uuid,
         row: &IntentRow,
     ) -> BlueprintResult<Value> {
+        Ok(self.open_subscription_receipt_envelope(operation, row)?["record"].clone())
+    }
+    pub(super) fn open_subscription_receipt_envelope(
+        &self,
+        operation: Uuid,
+        row: &IntentRow,
+    ) -> BlueprintResult<Value> {
         self.open_subscription_intent(operation, row)?;
         if row.4 != "completed" {
             return Err(conflict());
@@ -115,7 +144,16 @@ impl PostgresBillingStore {
         {
             return Err(storage_error());
         }
-        Ok(envelope["record"].clone())
+        if let Some(evidence) = envelope.get("publicationEvidence") {
+            budget(evidence, 0, &mut 0, &mut 0)?;
+            if evidence["kind"] != "subscription_created_event"
+                || evidence["eventHash"]
+                    != hash("event", &super::canonical(&evidence["event"]).to_string())
+            {
+                return Err(storage_error());
+            }
+        }
+        Ok(envelope)
     }
     /// Inspects a pending intent or encrypted completed receipt; never recreates
     /// a dispatch capability or releases claims from an unresolved operation.
@@ -192,6 +230,37 @@ impl TrustedSubscriptionPublisher {
     where
         F: Fn() -> BlueprintResult<()> + Send + Sync,
     {
+        self.publish(ticket.into(), record, None, fresh).await
+    }
+    /// Publishes only after the trusted adapter validates fresh read-only event
+    /// evidence. This capability cannot be converted into a dispatch reservation.
+    /// # Errors
+    /// Denies changed dependencies, invalid evidence budgets or uncertain COMMIT.
+    pub async fn complete_recovered<F>(
+        &self,
+        recovery: SubscriptionCreationRecovery,
+        record: Value,
+        event: Value,
+        fresh: F,
+    ) -> BlueprintResult<()>
+    where
+        F: Fn() -> BlueprintResult<()> + Send + Sync,
+    {
+        budget(&event, 0, &mut 0, &mut 0)?;
+        let evidence = json!({"kind":"subscription_created_event", "eventHash":hash("event", &super::canonical(&event).to_string()), "event":event});
+        self.publish(recovery.publication, record, Some(evidence), fresh)
+            .await
+    }
+    async fn publish<F>(
+        &self,
+        ticket: Publication,
+        record: Value,
+        evidence: Option<Value>,
+        fresh: F,
+    ) -> BlueprintResult<()>
+    where
+        F: Fn() -> BlueprintResult<()> + Send + Sync,
+    {
         let store = &self.store;
         if ticket.snapshot.tenant != store.tenant.id()
             || ticket.snapshot.actor != store.binding_actor()?
@@ -199,7 +268,11 @@ impl TrustedSubscriptionPublisher {
         {
             return Err(conflict());
         }
-        budget(&record, 0, &mut 0, &mut 0)?;
+        let (mut nodes, mut bytes) = (0, 0);
+        budget(&record, 1, &mut nodes, &mut bytes)?;
+        if let Some(value) = &evidence {
+            budget(value, 1, &mut nodes, &mut bytes)?;
+        }
         separated_roles(&self.runtime, &store.pool).await?;
         if database_identity(&self.runtime).await? != database_identity(&store.pool).await? {
             return Err(conflict());
@@ -214,7 +287,19 @@ impl TrustedSubscriptionPublisher {
             .ok_or_else(invalid)?
             .to_owned();
         let encoded = store.encode(Scope::Durable, BillingKind::Subscription, record.clone())?;
-        let receipt=store.encryptor.seal(&json!({"kind":"subscription_creation_receipt","operationId":ticket.operation_id.to_string(),"publicId":ticket.public_id.to_string(),"payloadHash":ticket.payload_hash,"record":record}).to_string(),store.tenant.id(),"[Billing subscription receipt]").map_err(|_|storage_error())?;
+        let mut envelope = json!({"kind":"subscription_creation_receipt","operationId":ticket.operation_id.to_string(),"publicId":ticket.public_id.to_string(),"payloadHash":ticket.payload_hash,"record":record});
+        if let Some(evidence) = evidence {
+            envelope["publicationEvidence"] = evidence;
+        }
+        budget(&envelope, 0, &mut 0, &mut 0)?;
+        let receipt = store
+            .encryptor
+            .seal(
+                &envelope.to_string(),
+                store.tenant.id(),
+                "[Billing subscription receipt]",
+            )
+            .map_err(|_| storage_error())?;
         let mut tx = store.transaction().await?;
         store.subscription_runtime_role(&mut tx).await?;
         if store

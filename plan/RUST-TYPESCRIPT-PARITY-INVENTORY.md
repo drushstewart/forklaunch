@@ -8738,3 +8738,36 @@ Logs /private/tmp/fl-composition-bridge-{tests,live,clippy}.log and
 /private/tmp/fl-composition-legacy-{transform,fields}.log. CI runs the fixture
 with pinned canonical dependencies. Broader unions/records/strict/schema gates
 remain open. Evidence is working source, not an immutable package proof.
+
+
+## GET-only interrupted Subscription recovery (2026-10-14)
+
+Opaque same-actor recovery snapshots restore publication authority only, with
+no dispatch/key getter/Clone/Debug/Serde. Snapshot checks immutable encrypted
+intent/hash, exact current encrypted Customer/Plan dependencies, binder/provenance
+and all four durable claims. Trusted adapter verifies account/mode, exact creation
+Event request-key linkage, static rendering API version, event/object timestamps
+within reservation -5s/+5min and nonfuture bounds, fresh Customer/expanded Plan
+and exact Subscription. Incomplete-to-active is admitted; active-to-incomplete
+is rejected. Key linkage is not process-origin proof; the narrow clock/version
+policy is not a provider guarantee. Null/automatic keys and ambiguous evidence
+require manual review. Provider traffic is GET-only; no retry/refund/renewal.
+
+Separate-role publisher shares the existing locked atomic publication, encrypted
+receipt/audit/claim release and post-write freshness check. Historical recovery
+evidence is bound to operation/public UUID/payload hash plus event hash. Lost
+COMMIT acknowledgements remain inspectable without dispatch. Runtime journal
+SELECT FOR UPDATE initially failed because runtime deliberately has no UPDATE
+policy; exact dependency locks already dominate publisher completion, so immutable
+journal read/reread now uses those locks without widening permissions.
+
+Final isolated base PG3, native Stripe creation/recovery matrix3.37s, unit17,
+strict all-feature/all-target Clippy and official Stripe22.6.2 Event GET5 pass.
+Matrices cover timestamp/version/key/scope/terms rejection, status regression,
+concurrent single publication, audit/release/freshness rollback, lost COMMIT ack
+and ciphertext-bound receipt tampering. Owned databases/roles0. Final11 hashes:
+/private/tmp/fl-subscription-recovery-source.json; logs
+/private/tmp/fl-subscription-recovery-{base-pg-second,stripe-pg-final,
+clippy-second,unit,sdk,cleanup}.log. CI runs new SDK fixture and existing expanded
+PG matrices. No migration/default route change. Broader interruption, mapper,
+managed Subscription and mutation gates remain open.

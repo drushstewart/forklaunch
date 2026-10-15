@@ -14,8 +14,9 @@ pub use provider_bindings::{
 };
 pub use provider_bindings::{PlanCreationClaim, PlanCreationReservation, PlanCreationStatus};
 pub use provider_bindings::{
-    SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationReservation,
-    SubscriptionCreationStatus, SubscriptionDependencySnapshot, TrustedSubscriptionPublisher,
+    SubscriptionCreationClaim, SubscriptionCreationPending, SubscriptionCreationRecovery,
+    SubscriptionCreationReservation, SubscriptionCreationStatus, SubscriptionDependencySnapshot,
+    TrustedSubscriptionPublisher,
 };
 pub use webhooks::{PendingWebhook, WebhookResolution};
 

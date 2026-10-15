@@ -275,6 +275,7 @@ on:
       - 'cli/tests/rust_billing_bound_plan_sdk.mjs'
       - 'cli/tests/rust_billing_customer_registration_sdk.mjs'
       - 'cli/tests/rust_billing_bound_subscription_sdk.mjs'
+      - 'cli/tests/rust_billing_subscription_recovery_sdk.mjs'
       - 'cli/tests/rust_billing_subscription_target_gap.mjs'
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
@@ -603,6 +604,7 @@ on:
       - 'cli/tests/rust_billing_bound_plan_sdk.mjs'
       - 'cli/tests/rust_billing_customer_registration_sdk.mjs'
       - 'cli/tests/rust_billing_bound_subscription_sdk.mjs'
+      - 'cli/tests/rust_billing_subscription_recovery_sdk.mjs'
       - 'cli/tests/rust_billing_subscription_target_gap.mjs'
       - 'cli/tests/rust_billing_managed_creation.mjs'
       - 'cli/tests/rust_billing_subscription_update_preflight.mjs'
@@ -1231,6 +1233,9 @@ jobs:
         env:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_billing_bound_subscription_sdk.mjs
+        env:
+          STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
+      - run: node cli/tests/rust_billing_subscription_recovery_sdk.mjs
         env:
           STRIPE_SDK_PATH: ${{ runner.temp }}/fl-rust-ts/node_modules/stripe
       - run: node cli/tests/rust_billing_subscription_target_gap.mjs

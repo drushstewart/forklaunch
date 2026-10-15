@@ -1022,6 +1022,7 @@ async fn publication_matrix(f: &Fixture, pool: &PgPool) {
         .execute(&f.owner)
         .await
         .unwrap();
+    recovery_budget_and_rollback(f, &publisher).await;
     publication_lost_ack(f, pool).await;
 }
 async fn publication_lost_ack(f: &Fixture, publisher_pool: &PgPool) {
@@ -1058,10 +1059,17 @@ async fn publication_lost_ack(f: &Fixture, publisher_pool: &PgPool) {
     let ticket = reservation(f).await;
     let operation = ticket.operation_id();
     let record = subscription_record(ticket.public_id(), f.plan, "sub_lost_ack");
+    drop(ticket); // Recovery must never recreate dispatch authority.
+    let recovery = f
+        .store
+        .snapshot_subscription_recovery(operation)
+        .await
+        .unwrap();
+    let event = json!({"id":"evt_lost_ack","object":"event","request":{"id":"req_owned"}});
     armed.store(true, Ordering::SeqCst);
     assert!(
         trusted
-            .complete(ticket, record.clone(), || Ok(()))
+            .complete_recovered(recovery, record.clone(), event.clone(), || Ok(()))
             .await
             .is_err()
     );
@@ -1077,8 +1085,186 @@ async fn publication_lost_ack(f: &Fixture, publisher_pool: &PgPool) {
         panic!("lost acknowledged COMMIT actually completed")
     };
     assert_eq!(historical, record);
+    assert_eq!(
+        f.store
+            .inspect_subscription_recovery_evidence(operation)
+            .await
+            .unwrap()
+            .unwrap()["event"],
+        event
+    );
+    assert!(
+        f.store
+            .snapshot_subscription_recovery(operation)
+            .await
+            .is_err()
+    );
+
     assert_eq!(f.count("subscription_dependency_claims").await, 16);
     publisher.close().await;
     runtime.close().await;
     proxy.abort();
+}
+
+// Keep the same pending operation across each rollback fault and final publication.
+#[allow(clippy::too_many_lines)]
+async fn recovery_budget_and_rollback(
+    f: &Fixture,
+    publisher: &forklaunch_billing_base::services::postgres::TrustedSubscriptionPublisher,
+) {
+    let ticket = reservation(f).await;
+    let operation = ticket.operation_id();
+    let record = subscription_record(ticket.public_id(), f.plan, "sub_recovered");
+    let key = ticket.idempotency_key().to_owned();
+    drop(ticket);
+    let pending = f.count("subscription_dependency_claims").await;
+    let recovery = f
+        .store
+        .snapshot_subscription_recovery(operation)
+        .await
+        .unwrap();
+    assert!(recovery.matches_event_request_key(&key));
+    assert!(!recovery.matches_event_request_key("metadata-only"));
+    let mut event = json!(null);
+    for _ in 0..40 {
+        event = json!([event]);
+    }
+    assert!(
+        publisher
+            .complete_recovered(recovery, record.clone(), event, || Ok(()))
+            .await
+            .is_err()
+    );
+    assert_eq!(f.count("subscription_dependency_claims").await, pending);
+    let other = f
+        .store
+        .with_audit_context(AuditContext::actor("other", "recovery-test"))
+        .unwrap();
+    assert!(
+        other
+            .snapshot_subscription_recovery(operation)
+            .await
+            .is_err()
+    );
+    let recovery = f
+        .store
+        .snapshot_subscription_recovery(operation)
+        .await
+        .unwrap();
+    drop(recovery);
+    for (table, trigger, when) in [
+        (
+            "subscription_creation_audit",
+            "fixture_deny_completion",
+            "INSERT",
+        ),
+        (
+            "subscription_dependency_guards",
+            "fixture_deny_release",
+            "UPDATE",
+        ),
+    ] {
+        sqlx::query(&format!("CREATE TRIGGER {trigger} BEFORE {when} ON fl_billing.{table} FOR EACH ROW EXECUTE FUNCTION fl_billing.{trigger}()")).execute(&f.owner).await.unwrap();
+        let recovery = f
+            .store
+            .snapshot_subscription_recovery(operation)
+            .await
+            .unwrap();
+        assert!(
+            publisher
+                .complete_recovered(recovery, record.clone(), json!({"id":"evt_owned"}), || Ok(
+                    ()
+                ))
+                .await
+                .is_err()
+        );
+        assert_eq!(f.count("subscription_dependency_claims").await, pending);
+        sqlx::query(&format!("DROP TRIGGER {trigger} ON fl_billing.{table}"))
+            .execute(&f.owner)
+            .await
+            .unwrap();
+    }
+    let recovery = f
+        .store
+        .snapshot_subscription_recovery(operation)
+        .await
+        .unwrap();
+    let calls = AtomicUsize::new(0);
+    assert!(
+        publisher
+            .complete_recovered(recovery, record.clone(), json!({"id":"evt_owned"}), || {
+                if calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                    Ok(())
+                } else {
+                    Err(BlueprintError::new("owned_expiry", "Expired"))
+                }
+            })
+            .await
+            .is_err()
+    );
+    assert_eq!(f.count("subscription_dependency_claims").await, pending);
+    let recovery = f
+        .store
+        .snapshot_subscription_recovery(operation)
+        .await
+        .unwrap();
+    publisher
+        .complete_recovered(recovery, record, json!({"id":"evt_owned"}), || Ok(()))
+        .await
+        .unwrap();
+    assert_eq!(f.count("subscription_dependency_claims").await, pending - 4);
+    recovery_receipt_tamper(f, operation).await;
+}
+// Deliberately exercise corruption by the trusted migration owner only inside
+// this disposable database. Ordinary runtime cannot disable these triggers.
+async fn recovery_receipt_tamper(f: &Fixture, operation: Uuid) {
+    let mut tx = f.owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('forklaunch.tenant_id','subscription-a',true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let original:String=sqlx::query_scalar("SELECT receipt_ciphertext FROM fl_billing.subscription_creation_intents WHERE operation_id=$1::uuid").bind(operation.to_string()).fetch_one(&mut *tx).await.unwrap();
+    tx.rollback().await.unwrap();
+    let cipher = FieldEncryptor::new("owned-subscription-foundation-key").unwrap();
+    let good: serde_json::Value =
+        serde_json::from_str(&cipher.decrypt(&original, "subscription-a").unwrap()).unwrap();
+    for field in [
+        "/operationId",
+        "/publicId",
+        "/payloadHash",
+        "/publicationEvidence/eventHash",
+    ] {
+        let mut bad = good.clone();
+        *bad.pointer_mut(field).unwrap() = json!("different");
+        let encrypted = cipher
+            .seal(&bad.to_string(), "subscription-a", "owned tamper fixture")
+            .unwrap();
+        overwrite_recovery_receipt(f, operation, &encrypted).await;
+        assert!(
+            f.store
+                .inspect_subscription_recovery_evidence(operation)
+                .await
+                .is_err(),
+            "{field}"
+        );
+    }
+    overwrite_recovery_receipt(f, operation, &original).await;
+    assert!(
+        f.store
+            .inspect_subscription_recovery_evidence(operation)
+            .await
+            .unwrap()
+            .is_some()
+    );
+}
+async fn overwrite_recovery_receipt(f: &Fixture, operation: Uuid, value: &str) {
+    let mut tx = f.owner.begin().await.unwrap();
+    sqlx::query("SELECT set_config('forklaunch.tenant_id','subscription-a',true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    sqlx::query("ALTER TABLE fl_billing.subscription_creation_intents DISABLE TRIGGER subscription_intent_completion").execute(&mut *tx).await.unwrap();
+    sqlx::query("UPDATE fl_billing.subscription_creation_intents SET receipt_ciphertext=$1 WHERE operation_id=$2::uuid").bind(value).bind(operation.to_string()).execute(&mut *tx).await.unwrap();
+    sqlx::query("ALTER TABLE fl_billing.subscription_creation_intents ENABLE TRIGGER subscription_intent_completion").execute(&mut *tx).await.unwrap();
+    tx.commit().await.unwrap();
 }

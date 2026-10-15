@@ -81,4 +81,19 @@ ownership binding, audit and encrypted receipt before releasing those claims.
 provider write. `RecordedEvidenceNoLongerCurrent` means a receipt was committed
 before evidence expired. `inspect_bound_subscription_creation` returns historical
 pending/completed state without dispatch authority or a current-payment claim.
-General recovery and ownership-aware mutations remain separate work.
+For an interrupted pending operation, call
+`recover_bound_subscription(&profile, &publisher, operation_id, event_id)` with
+an exact `customer.subscription.created` event ID. Recovery performs provider
+GETs only and does not reconstruct dispatch authority. It requires the original
+server-generated request key, unchanged local dependencies and trusted profile,
+matching event rendering API version/account/mode, and fresh exact Customer,
+Plan and Subscription evidence. It admits only creation timestamps within the
+explicit reservation window (-5 seconds/+5 minutes), and rejects status regression
+from active to incomplete. This restricted window is application policy, not a
+Stripe guarantee. Key linkage identifies a request, not its originating process.
+Missing/automatic event request keys, old/incompatible event versions or ambiguous
+evidence require manual review; no POST retry, refund or claim release occurs.
+`inspect_subscription_recovery_evidence` returns the encrypted historical event
+receipt bound to the operation, public UUID and payload hash. It grants no new
+provider authority. General recovery, managed creation and ownership-aware
+mutations remain separate work.

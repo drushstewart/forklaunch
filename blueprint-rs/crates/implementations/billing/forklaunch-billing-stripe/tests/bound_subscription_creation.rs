@@ -35,6 +35,8 @@ use uuid::Uuid;
 #[derive(Clone, Default)]
 struct Provider {
     posts: Arc<AtomicUsize>,
+    event: Arc<Mutex<Value>>,
+    event_reads: Arc<AtomicUsize>,
     response: Arc<Mutex<Option<Value>>>,
     readback: Arc<Mutex<Option<Value>>>,
     pause: Arc<AtomicUsize>,
@@ -163,6 +165,15 @@ async fn matrix(f: &Fixture) {
                 Json(plan())
             }),
         )
+        .route(
+            "/v1/events/{id}",
+            get(|State(p): State<Provider>, h: HeaderMap| async move {
+                auth(&h);
+                assert!(!h.contains_key("idempotency-key"));
+                p.event_reads.fetch_add(1, Ordering::SeqCst);
+                Json(p.event.lock().unwrap().clone())
+            }),
+        )
         .route("/v1/subscriptions", post(create))
         .route("/v1/subscriptions/{id}", get(read))
         .with_state(p.clone());
@@ -201,6 +212,7 @@ async fn matrix(f: &Fixture) {
     )
     .unwrap();
     cases(f, &p, &service, &profile, &publisher).await;
+    recovery_cases(f, &p, &service, &profile, &publisher).await;
     drop(publisher);
     pool.close().await;
     server.abort();
@@ -366,4 +378,149 @@ async fn cases(
     ));
     assert_eq!(p.posts.load(Ordering::SeqCst), before + 1);
     assert_eq!(f.count("records").await, records);
+}
+
+#[allow(clippy::too_many_lines)]
+async fn recovery_cases(
+    f: &Fixture,
+    p: &Provider,
+    service: &StripeBillingService<
+        forklaunch_billing_base::services::postgres::PostgresBillingStore,
+    >,
+    profile: &BoundSubscriptionCreationProfile,
+    publisher: &TrustedSubscriptionPublisher,
+) {
+    p.delay_ms.store(0, Ordering::SeqCst);
+    *p.readback.lock().unwrap() = None;
+    let operation = Uuid::new_v4();
+    *p.response.lock().unwrap() = Some(json!({"ambiguous":"owned bad response"}));
+    assert!(matches!(
+        service
+            .create_bound_subscription(profile, publisher, operation, request(f))
+            .await
+            .unwrap(),
+        Outcome::Unresolved { .. }
+    ));
+    *p.response.lock().unwrap() = None;
+    let posts = p.posts.load(Ordering::SeqCst);
+    let records = f.count("records").await;
+    let mut tx = f.pool.begin().await.unwrap();
+    sqlx::query("SELECT set_config('forklaunch.tenant_id','subscription-a',true)")
+        .execute(&mut *tx)
+        .await
+        .unwrap();
+    let (key,created):(String,i64)=sqlx::query_as("SELECT idempotency_key,floor(extract(epoch FROM created_at))::bigint FROM fl_billing.subscription_creation_intents WHERE operation_id=$1::uuid").bind(operation.to_string()).fetch_one(&mut *tx).await.unwrap();
+    tx.rollback().await.unwrap();
+    let mut original = subscription(posts);
+    original["created"] = json!(created);
+    let event = json!({"id":"evt_owned","object":"event","type":"customer.subscription.created","api_version":STRIPE_API_VERSION,"livemode":false,"created":created,"request":{"id":"req_owned","idempotency_key":key},"data":{"object":original},"account":null,"context":null});
+    let mut current = original.clone();
+    current["status"] = json!("active");
+    *p.readback.lock().unwrap() = Some(current.clone());
+    for (path, bad) in [
+        ("/id", json!("evt_other")),
+        ("/object", json!("subscription")),
+        ("/type", json!("customer.subscription.updated")),
+        ("/request", json!(null)),
+        ("/request/id", json!(null)),
+        ("/request/idempotency_key", json!(null)),
+        ("/request/idempotency_key", json!("different")),
+        ("/api_version", json!("2019-02-19")),
+        ("/api_version", json!(null)),
+        ("/livemode", json!(true)),
+        ("/account", json!("acct_other")),
+        ("/context", json!("ctx_other")),
+        ("/created", json!(created + 86_400)),
+        ("/created", json!(created + 200)),
+        ("/created", json!(created - 6)),
+        ("/data/object/created", json!(created - 6)),
+        ("/data/object/customer", json!("cus_other")),
+        ("/data/object/items/data/0/quantity", json!(3)),
+        ("/data/object/items/data/0/price/unit_amount", json!(1201)),
+    ] {
+        let mut bad_event = event.clone();
+        *bad_event.pointer_mut(path).unwrap() = bad;
+        bad_event["data"]["object"]["metadata"] =
+            json!({"operationId":operation.to_string(),"idempotencyKey":key});
+        *p.event.lock().unwrap() = bad_event;
+        assert!(
+            service
+                .recover_bound_subscription(profile, publisher, operation, "evt_owned")
+                .await
+                .is_err(),
+            "{path}"
+        );
+        assert_eq!(p.posts.load(Ordering::SeqCst), posts);
+        assert_eq!(f.count("records").await, records);
+    }
+    *p.event.lock().unwrap() = event.clone();
+    for (path, bad) in [
+        ("/created", json!(created + 1)),
+        ("/items/data/0/id", json!("si_other")),
+        ("/items/data/0/price/currency", json!("eur")),
+        ("/status", json!("canceled")),
+    ] {
+        let mut bad_current = current.clone();
+        *bad_current.pointer_mut(path).unwrap() = bad;
+        *p.readback.lock().unwrap() = Some(bad_current);
+        assert!(
+            service
+                .recover_bound_subscription(profile, publisher, operation, "evt_owned")
+                .await
+                .is_err(),
+            "{path}"
+        );
+    }
+    let mut active_event = event.clone();
+    active_event["data"]["object"]["status"] = json!("active");
+    *p.event.lock().unwrap() = active_event;
+    *p.readback.lock().unwrap() = Some(original);
+    assert!(
+        service
+            .recover_bound_subscription(profile, publisher, operation, "evt_owned")
+            .await
+            .is_err()
+    );
+    assert_eq!(f.count("records").await, records);
+    *p.event.lock().unwrap() = event.clone();
+    *p.readback.lock().unwrap() = Some(current);
+    let changed_profile = BoundSubscriptionCreationProfile::trusted(
+        f.scope.clone(),
+        vec![(f.plan, f.plan_operation), (Uuid::new_v4(), Uuid::new_v4())],
+        SubscriptionCollectionPolicy::AutomaticDefaultIncomplete,
+    )
+    .unwrap();
+    let before = p.event_reads.load(Ordering::SeqCst);
+    assert!(
+        service
+            .recover_bound_subscription(&changed_profile, publisher, operation, "evt_owned")
+            .await
+            .is_err()
+    );
+    assert_eq!(p.event_reads.load(Ordering::SeqCst), before);
+    let (a, b) = tokio::join!(
+        service.recover_bound_subscription(profile, publisher, operation, "evt_owned"),
+        service.recover_bound_subscription(profile, publisher, operation, "evt_owned")
+    );
+    assert!(
+        matches!(a, Ok(Outcome::Completed { .. })) || matches!(b, Ok(Outcome::Completed { .. }))
+    );
+    assert_eq!(p.posts.load(Ordering::SeqCst), posts);
+    assert_eq!(f.count("records").await, records + 1);
+    let evidence = f
+        .store
+        .inspect_subscription_recovery_evidence(operation)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(evidence["event"], event);
+    assert_eq!(evidence["eventHash"].as_str().unwrap().len(), 64);
+    assert!(matches!(
+        service
+            .recover_bound_subscription(profile, publisher, operation, "evt_owned")
+            .await
+            .unwrap(),
+        Outcome::Completed { .. }
+    ));
+    assert_eq!(p.posts.load(Ordering::SeqCst), posts);
 }
