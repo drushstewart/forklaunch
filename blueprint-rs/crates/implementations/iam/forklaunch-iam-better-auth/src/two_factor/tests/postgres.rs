@@ -71,6 +71,14 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
         backup_storage::lifecycle(store.clone()).await;
         backup_async::lifecycle(store.clone()).await;
         backup_async::rollback(store.clone()).await;
+        backup_view::readonly(store.clone()).await;
+        let before_view_audit:i64=sqlx::query_scalar("SELECT count(*) FROM fl_better_auth.audit WHERE tenant_id=$1").bind(&tenant).fetch_one(&reader).await.unwrap();
+        let viewer=TwoFactorService::new(store.clone(),vec![42;32],"Read".into()).unwrap();
+        assert_eq!(viewer.view_backup_codes_for_user("view-legacy").await.unwrap().len(),4);
+        let after_view_audit:i64=sqlx::query_scalar("SELECT count(*) FROM fl_better_auth.audit WHERE tenant_id=$1").bind(&tenant).fetch_one(&reader).await.unwrap();
+        assert_eq!(before_view_audit,after_view_audit);
+        let foreign_viewer=TwoFactorService::new(Arc::new(foreign.clone()),vec![42;32],"Read".into()).unwrap();
+        assert_eq!(foreign_viewer.view_backup_codes_for_user("view-legacy").await.err().unwrap().code,"BACKUP_CODES_NOT_ENABLED");
         otp_storage::lifecycle(store.clone()).await;
         otp_encryption::lifecycle(store.clone()).await;
         otp_async::lifecycle(store.clone()).await;

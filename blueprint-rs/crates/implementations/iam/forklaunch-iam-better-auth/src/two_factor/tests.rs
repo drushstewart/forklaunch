@@ -8,6 +8,7 @@ mod backup_async;
 mod backup_commit_store;
 mod backup_options;
 mod backup_storage;
+mod backup_view;
 #[allow(clippy::duplicate_mod)]
 #[path = "../http/observer/fault_store.rs"]
 mod fault_store;

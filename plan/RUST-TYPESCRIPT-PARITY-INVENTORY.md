@@ -9782,3 +9782,31 @@ CI adds oracle and expanded existinglive fixture. SDK checks prove transport/val
 behavior, not new precise tuple models. Positional OAS3.1 emission requires explicit
 2020dialect, consumer selection/positional coercion and Rustmodel follow-through;
 current emitter remains separate opengap.660/682 (96.8%),22open unchanged.
+
+
+### Trusted server-only backup-code viewing (2026-10-14)
+
+Adds view_backup_codes_for_user and trusted clock variant, returning opaque
+ViewedBackupCodes with zeroizing owned strings and borrowed iteration, no Debug
+or serialization. Caller authorizes the requested user; fixed store tenant remains
+the isolation boundary. Actual upstream serverOnly behavior has no HTTP endpoint;
+no native HTTP/MCP/client endpoint is introduced. No User/session/password record
+is required, and viewing does not consume codes, migrate storage or mutate state.
+Built-in policies and trusted async codecs support the bounded array profile
+(100codes,128UTF8bytes each); truthy nonarray upstream data remains outside typed
+profile. Falsy decoded values/malformed JSON return INVALID_BACKUP_CODE while
+generic verification behavior is preserved. Any preexisting lease, even expired,
+rejects viewing without cleanup. Factor digest/revision and lease absence are
+rechecked for every profile; custom futures release the initial transaction and
+recheck fresh wall/monotonic deadline after final reads/commit. Legacy arrays skip
+callbacks/deadlines. Final reads cannot revoke returned plaintext or detect every
+completed no-change lease; cooperating PostgreSQL writers use existing tenant
+advisory locks. No new store isolation or post-return revocation claim.
+Frozen9 /private/tmp/fl-backup-view-freeze.json SHA256
+4945106c7b0381f8efe7c17bae68f19a62e99804b1166e9a36bda3371561fdb7.
+26backup tests including6new pass18.67s; restrictedPG1pass49.11s with unchanged
+audit and foreign-tenant denial;14actual-source observations and strict full/minimal
+Clippy pass. Owned roles/records/audit cleaned to0. Logs
+/private/tmp/fl-backup-view-{regression,pg,clippy,minimal-clippy,actual}.log.
+No lock/template/dependency changes; no immutable archive runtime claim. Broad
+MFA/library and parity gates remain open;660/682 (96.8%),22open unchanged.

@@ -1206,3 +1206,16 @@ configuration. No individual end-user authorization/Party ownership claim is mad
 Live actor isolation, concurrency, retained dependency claims and both SDKs pass;
 metadata/config failures do not reflect private configuration. Other billing
 families and automatic alias provisioning remain separate gates.
+
+
+### Server-only backup disclosure review (2026-10-14)
+
+Trusted caller authorizes userId; opaque zeroizing result prevents accidental
+Debug/Serde disclosure but explicit borrowed plaintext remains sensitive. Read-only
+transactions and all-profile generation/lease rechecks preserve current factor
+authority; async callbacks run outside transactions with final deadline checks.
+Any existing reservation rejects viewing without recovery/migration. Existing
+PostgreSQL tenant advisory locks coordinate managed writers; ordinary post-final-read
+races and post-return revocation remain application limitations. No public route,
+proof consumption or implicit User/session/password authorization added.26backup,
+14actual and restrictedPG read-only/tenant checks pass; strict Clippy passes.

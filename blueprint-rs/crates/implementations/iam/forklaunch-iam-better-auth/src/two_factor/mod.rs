@@ -16,11 +16,13 @@ mod backup_codec_state;
 pub(crate) use backup_codec_state::cleanup_backup_lease;
 mod backup_options;
 mod backup_storage;
+mod backup_view;
 pub use backup_async::BackupCodecCleanup;
 pub use backup_codec::{
     BackupCodeCodecFuture, BackupCodeCodecOptions, BackupCodeCodecText, BackupCodeEncryptionCodec,
 };
 pub use backup_storage::{BackupCodeEncryptionKeys, BackupCodeStorage};
+pub use backup_view::ViewedBackupCodes;
 mod crypto;
 mod enrollment;
 mod lifecycle;

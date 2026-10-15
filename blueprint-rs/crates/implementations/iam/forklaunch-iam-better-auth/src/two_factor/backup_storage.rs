@@ -116,8 +116,11 @@ impl<S> TwoFactorService<S> {
         self
     }
     pub(super) fn read_backup_codes(&self, row: &Value) -> BlueprintResult<Option<Vec<String>>> {
+        self.read_backup_value(row)?.as_ref().map(codes).transpose()
+    }
+    pub(super) fn read_backup_value(&self, row: &Value) -> BlueprintResult<Option<Value>> {
         if row.get(FORMAT).is_none() && row["backupCodes"].is_array() {
-            return codes(&row["backupCodes"]).map(Some);
+            return Ok(Some(row["backupCodes"].clone()));
         }
         if row[FORMAT] != json!(1) {
             return Err(failure());
@@ -142,7 +145,7 @@ impl<S> TwoFactorService<S> {
         }
         match serde_json::from_str::<Value>(&decoded) {
             Err(_) | Ok(Value::Null) => Ok(None),
-            Ok(value) => codes(&value).map(Some),
+            Ok(value) => Ok(Some(value)),
         }
     }
     pub(super) fn write_backup_codes(

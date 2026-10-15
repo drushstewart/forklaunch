@@ -1441,9 +1441,7 @@ Timeouts bound cooperative polling and publication checks, not synchronous metho
 construction or blocking/non-yielding code. Clock checks occur after writer
 acquisition and immediately before commit; they cannot guarantee when a database
 COMMIT physically completes. Missing reservations, different owners, expired
-leases and upgraded instances without the codec fail closed. Server-only
-`viewBackupCodes` and arbitrary JavaScript callback/value semantics remain separate
-capabilities.
+leases and upgraded instances without the codec fail closed. Arbitrary JavaScript callback/value semantics remain outside this typed profile.
 
 ### OTP field storage policy
 
@@ -1557,3 +1555,36 @@ before enabling custom codecs: older binaries do not implement the envelope
 lifecycle. This native envelope is not a Better Auth database interchange format.
 Custom callback storage is distinct from whole-record encryption. Backup-code
 field codecs remain a separate capability.
+
+### Trusted server-only backup-code disclosure
+
+`TwoFactorService::view_backup_codes_for_user(user_id)` reads current plaintext
+backup codes without consuming, regenerating, migrating, or resetting any proof,
+challenge, session, or counter. Like upstream `auth.api.viewBackupCodes`, this is
+trusted server code: the caller must authorize the user ID, normally from a
+verified session. It does not authenticate a raw ID or require a User/password
+record; tenant isolation comes from the configured store. No HTTP, MCP or client
+endpoint is registered. `ViewedBackupCodes` exposes borrowed string iteration but
+has no Debug/Serialize; owned strings zeroize on drop. Do not log or indiscriminately
+serialize this intentionally sensitive result.
+
+The current builtin/custom codec is used without autodetection. Legacy arrays stay
+unchanged, duplicates and empty strings survive, and an empty list is valid.
+Missing factors produce `BACKUP_CODES_NOT_ENABLED`; invalid JSON/null/false/zero/empty-string JSON produces
+`INVALID_BACKUP_CODE`; incompatible keys, formats, callback errors and non-array
+JSON fail closed. Upstream can return arbitrary truthy JSON despite its string-array
+type; this API retains the bounded 100 strings × 128 UTF-8 byte profile.
+
+Any existing backup-code reservation, active or expired, rejects the read before
+decoding. Explicit cleanup remains separate. Async callbacks run outside a database
+transaction; a second read verifies the factor generation and absence of a lease,
+with fresh-clock and cooperative timeout checks. Builtins and custom legacy-array
+reads also recheck the generation after checking reservation absence immediately
+before commit; the no-callback legacy-array path has no callback deadline. Ordinary
+changes after the final read remain possible. Deletion, regeneration or a new
+reservation during decoding rejects the result instead of returning upstream's
+stale snapshot. No state is written on success, failure, cancellation or timeout.
+These checks do not revoke plaintext already returned, detect every completed
+no-change reservation, or authorize the caller. The trusted `_with_clock` variant
+supports deterministic policy tests; blocking/non-yielding callbacks remain outside
+the cooperative timeout guarantee.

@@ -2102,3 +2102,12 @@ contract/OpenAPI artifacts. The owned generated workspace and MinIO container
 were removed. This completes the engineering review, not the separate remaining
 provider, deployment, scalability and implementation gates.
 Checklist: **632/682 (92.7%), 50 open**.
+
+
+Server-only backup-code viewing checkpoint (2026-10-14): opaque zeroizing trusted
+domain result, read-only built-in/custom decode, current-generation/lease/deadline
+rechecks and explicit caller authorization.26backup/14actual and restrictedPG pass;
+strict full/minimal Clippy green. No public HTTP/MCP route. See inventory/security
+receipt. Latest CLI1122 tests pass, production CLI builds24.07s (four existing
+warnings), and1285 embedded source/template package entries pass; working-source
+checks include current drafts, not an immutable checkpoint.660/682 (96.8%),22open.
