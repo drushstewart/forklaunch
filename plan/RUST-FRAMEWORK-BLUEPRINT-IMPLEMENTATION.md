@@ -2753,3 +2753,5 @@ Checklist660/682(96.8%),22broad gates remain open.
 - 2026-10-15: Ordered runtime formats pass65,703 actual/native comparisons,76 all-feature/71 minimal tests,267 HTTP/126 MCP and both generated SDKs. Typed registration and JWT algorithm resource bounds are covered; broader schema composition remains open,660/682 unchanged.
 
 - 2026-10-15: Optional invitation delivery passes actual9, final organization6, restricted PostgreSQL and strict full/minimal Clippy. Callback ordering/commit uncertainty and sanitized delivery failures covered; stale generated executables cleaned after lease release. Broader auth remains open,660/682 unchanged.
+
+- 2026-10-15: Unconstrained Zod factory exports no longer falsely require objects; actual/AJV11,106 comparisons and strict12-root TypeScript pass. Explicit overrides preserved; native/SDK follow-up queued,660/682 unchanged.

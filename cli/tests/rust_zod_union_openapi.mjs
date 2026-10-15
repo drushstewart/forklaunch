@@ -23,6 +23,16 @@ function check(label,schema){
   }
  }
 }
+// Factory annotations must not narrow unconstrained runtime validators to objects.
+for(const [name,source] of [['any',validator.any],['unknown',validator.unknown],['type',validator.type()]]){
+ check('factory '+name,source);
+ for(const version of ['3.0','3.1']){
+  const exported=generateSchema(source,false,version);
+  assert.equal(exported.type,undefined,name+' has no object-only restriction');
+  const override=generateSchema(source.openapi({type:'object'}),false,version);
+  assert.equal(override.type,'object','explicit application overrides remain authoritative');
+ }
+}
 check('empty',validator.enum_({}));
 for(const entries of [[],['same'],['same','same'],['a','same','a'],[0,-0,1,1],[true,false,true],['a',1,true],['a',1,'same'],[false,0,false]]){
  check('enum '+JSON.stringify(entries),validator.enum_(Object.fromEntries(entries.map((v,i)=>[i,v]))));

@@ -219,12 +219,10 @@ export class ZodSchemaValidator implements SV<
   });
   any = z.any().openapi({
     title: 'Any',
-    type: 'object',
     example: 'any'
   });
   unknown = z.unknown().openapi({
     title: 'Unknown',
-    type: 'object',
     example: 'unknown'
   });
   never = z.never().openapi({

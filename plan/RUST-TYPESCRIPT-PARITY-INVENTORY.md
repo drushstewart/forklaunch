@@ -11572,3 +11572,16 @@ older than24h were removed after checking no candidate was open. This removed
 9,189,656,400 logical bytes; source and retained archives remain. Candidate hashes
 are not asserted: exact paths/sizes/mtimes and completion are recorded in
 `/private/tmp/fl-oct15-old-blueprint-binaries{,-cleanup}.json`.
+
+### 2026-10-15: Unconstrained factory schema annotations
+
+Removed factory-owned `type: object` annotations from Zod `any` and `unknown`;
+`type<T>()` delegates to `any`. These validators admit every JSON value at runtime,
+so exported schemas now preserve that acceptance. Explicit application OpenAPI
+object overrides remain authoritative. A regression first failed on null against
+the old factory schema, then passed11,106 actual Zod/AJV comparisons over616
+OAS3.0/3.1 exports, including direct/optional/object/array wrappers and existing
+union/enum controls. Configured TypeScript7.0.2 passes12 roots and625 exports.
+Logs: `/private/tmp/fl-unconstrained-factory-{before,after,types}.log`. Native and
+SDK consumer revalidation for this annotation change remains queued behind the
+immutable packaged-runtime run, which intentionally predates this source change.
