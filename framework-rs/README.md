@@ -1321,3 +1321,7 @@ using Zod's syntax rules, including noncanonical Base64 pad bits and optional
 URL-safe padding. These assertions require `zod-checks` but do not require
 `zod-uri`. They preserve ordered conjunctions and explicit format overrides.
 Date/time, IP-related and other raw Zod formats remain under parity development.
+
+The explicit `zodChecks` profile also preserves raw Zod `.date()` assertions: exact
+four-digit Gregorian dates, including year zero and century leap-year rules. This
+is string validation; date/time coercion and other time formats remain independent.

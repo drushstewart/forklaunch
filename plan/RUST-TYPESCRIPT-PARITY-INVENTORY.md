@@ -10848,3 +10848,24 @@ zero. Strict full and minimal Clippy passed. Frozen 20-source manifest:
 Change-email delivery and delete-user remain disabled. Fresh clock sampling after
 awaited work is a separate pending slice; unrestricted callbacks, broader plugins
 and full Better Auth parity remain open. Checklist remains 660/682 (96.8%).
+
+
+### 2026-10-15 — Raw Zod date assertion
+
+The existing explicit `zodChecks` profile now preserves `.date()` through the
+TypeScript emitter, owned and generated AJV helpers, and native contract validation.
+The shared Rust predicate implements exact ASCII four-digit Gregorian syntax,
+including year zero and century leap-year boundaries. Existing metadata override,
+ordered conjunction, transformation rejection and feature-off behavior remain.
+Default export is unchanged; this adds no Date coercion or datetime/time support.
+
+The permanent `rust_zod_date_checks.mjs` fixture passes 70,000 actual Zod/AJV and
+70,000 native observations, covering February in all 10,000 years, invalid month/day
+boundaries, Unicode/control suffixes, nesting and metadata overrides. Live owned
+UniversalSdk responses pass 16 checks; generated TypeScript/Rust socket consumers
+pass 64 checks with strict generated-source compilation and feature-off rejection.
+Strict Clippy passes all targets/features for common, contract, validation and both
+SDK crates. Configured TypeScript passes all 12 roots and 623 exports; refreshed
+public API inventory passes 623 entries/1703 declarations. Logs:
+`/private/tmp/fl-zod-date-{native,consumers,clippy,types,inventory}.log`.
+Regex and further format/configuration parity remain open; 660/682 is unchanged.

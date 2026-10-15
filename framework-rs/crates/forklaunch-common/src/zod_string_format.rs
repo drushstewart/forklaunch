@@ -125,3 +125,36 @@ fn base64_syntax(value: &str, url: bool) -> bool {
         _ => false,
     }
 }
+
+/// Match Zod v3's four-digit Gregorian date grammar, including year zero.
+#[must_use]
+pub fn date(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() != 10
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || !bytes
+            .iter()
+            .enumerate()
+            .all(|(i, b)| matches!(i, 4 | 7) || b.is_ascii_digit())
+    {
+        return false;
+    }
+    let year = bytes[..4]
+        .iter()
+        .fold(0u32, |acc, b| acc * 10 + u32::from(b - b'0'));
+    let pair = |i| u32::from(bytes[i] - b'0') * 10 + u32::from(bytes[i + 1] - b'0');
+    let days = match pair(5) {
+        1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+        4 | 6 | 9 | 11 => 30,
+        2 => {
+            if year.is_multiple_of(400) || (year.is_multiple_of(4) && !year.is_multiple_of(100)) {
+                29
+            } else {
+                28
+            }
+        }
+        _ => return false,
+    };
+    (1..=days).contains(&pair(8))
+}

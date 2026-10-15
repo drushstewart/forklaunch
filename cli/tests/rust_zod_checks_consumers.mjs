@@ -36,6 +36,7 @@ const source = z
     nanoid: z.string().nanoid(),
     base64: z.string().base64(),
     base64url: z.string().base64url(),
+    date: z.string().date(),
   })
   .strict();
 const schema = validator.openapi2020(source, {
@@ -59,6 +60,7 @@ const validFormats = {
   nanoid: "-".repeat(21),
   base64: "AB==",
   base64url: "_w",
+  date: "0000-02-29",
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
@@ -72,6 +74,7 @@ for (const patch of [
   { nanoid: "a".repeat(20) },
   { base64: "AA" },
   { base64url: "/w==" },
+  { date: "1900-02-29" },
 ])
   cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
 assert.equal(
