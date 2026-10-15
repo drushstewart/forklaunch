@@ -387,3 +387,17 @@ pub fn cidr(value: &str, version: Option<u8>) -> bool {
     (version != Some(6) && width <= 32 && ip(address, Some(4)))
         || (version != Some(4) && width <= 128 && ip(address, Some(6)))
 }
+
+mod emoji_table;
+/// Match raw Zod emoji property membership against Node24.2 / Unicode16.
+/// Individual emoji components are accepted; this is not grapheme validation.
+#[must_use]
+pub fn emoji(value: &str) -> bool {
+    !value.is_empty()
+        && value.chars().all(|ch| {
+            let code = u32::from(ch);
+            let ranges = emoji_table::RANGES;
+            let index = ranges.partition_point(|(_, end)| *end < code);
+            ranges.get(index).is_some_and(|(start, _)| *start <= code)
+        })
+}

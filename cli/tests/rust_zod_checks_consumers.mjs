@@ -43,6 +43,7 @@ const source = z
     datetime: z.string().datetime({offset:true,local:true,precision:2}),
     ip: z.string().ip({version:"v6"}),
     cidr: z.string().cidr({version:"v4"}),
+    emoji: z.string().emoji(),
   })
   .strict();
 const schema = validator.openapi2020(source, {
@@ -73,6 +74,7 @@ const validFormats = {
   datetime: "0000-02-29T00:00:00.12+99:99",
   ip: "fe80:::::%eth0",
   cidr: "1.2.3.4/32",
+  emoji: "#0123😀",
 };
 for (const value of cases) Object.assign(value, validFormats);
 for (const patch of [
@@ -93,6 +95,7 @@ for (const patch of [
   { datetime: "1900-02-29T00:00:00.12Z" },
   { ip: "::FFFF:192.168.1.1" },
   { cidr: "1.2.3.4/033" },
+  { emoji: "😀a" },
 ])
   cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
 assert.equal(

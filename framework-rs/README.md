@@ -1349,3 +1349,9 @@ the same profile. Native predicates reproduce Zod's legacy mixed IPv4/IPv6 and
 zone syntax, including its lowercase mapped-prefix and two-digit embedded-octet
 quirks. CIDR prefix widths are lexical/range checks; host bits are not normalized.
 This validation does not establish routability, address ownership or network policy.
+
+Raw `.emoji()` uses an 84-range Unicode16 union of Extended_Pictographic and
+Emoji_Component in native and both TypeScript helpers, independent of host Unicode
+tables. Individual components such as digits and joiners intentionally pass; this
+is Zod property membership, not grapheme-sequence validation. Source data, Unicode
+License V3 and reproducible generator are retained; the oracle pins Node24.2.

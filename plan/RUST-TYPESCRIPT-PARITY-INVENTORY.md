@@ -11010,3 +11010,26 @@ Frozen 12-source manifest: `/private/tmp/fl-subscription-recovery-route-final.js
 Logs: `/private/tmp/fl-subscription-recovery-route-{live4,unit,artifacts,clippy,minimal}.log`
 and `/private/tmp/fl-subscription-recovery-creation-regression.log`. Managed recovery
 and broader billing mutation semantics remain open; 660/682 is unchanged.
+
+
+### 2026-10-15 — Raw Zod emoji assertions with pinned Unicode data
+
+Explicit `zodChecks` now preserves `.emoji()` using the Unicode16 union of
+Extended_Pictographic and Emoji_Component. A checked generator derives 84 merged
+ranges for Rust and both TypeScript helpers; runtime acceptance is independent of
+the host Unicode version. The actual reference pins Node24.2/Unicode16. Individual
+components, including digits and joiners, intentionally pass without claiming valid
+grapheme sequences. Unicode source data, SHA provenance and License V3 are retained
+in `forklaunch-common/data/unicode-16.0.0`; offline locked Cargo package listing
+confirms license/data/generated Rust table inclusion. No dependencies changed.
+
+Permanent `rust_zod_emoji_checks.mjs` passes 2,224,436 actual Zod/AJV comparisons
+and 2,224,436 native observations, covering every Unicode scalar, components,
+sequences, nested/conjunctive schemas and metadata overrides. Final generated-table
+TypeScript rerun passes the same 2,224,436 cases. Live HTTP checks pass 23; generated
+TypeScript/Rust socket checks pass 92 with strict compilation and feature-off
+rejection. Strict all-target/all-feature Clippy for five affected crates, configured
+TypeScript 12 roots/623 exports, and inventory 623/1703 pass. Initial generated
+integer-literal style diagnostics were fixed in the generator and final Clippy passed.
+Evidence: `/private/tmp/fl-zod-emoji-{native,js-final,consumers,types-final,clippy-final,package-list}.log`.
+Regex, JWT format and broader schema constraints remain open; 660/682 unchanged.

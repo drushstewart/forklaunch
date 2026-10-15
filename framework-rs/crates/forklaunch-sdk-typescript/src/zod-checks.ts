@@ -1,4 +1,106 @@
 import type Ajv from 'ajv';
+// BEGIN GENERATED UNICODE16 EMOJI RANGES
+const zodEmojiRanges: readonly (readonly [number, number])[] = [
+  [35, 35],
+  [42, 42],
+  [48, 57],
+  [169, 169],
+  [174, 174],
+  [8205, 8205],
+  [8252, 8252],
+  [8265, 8265],
+  [8419, 8419],
+  [8482, 8482],
+  [8505, 8505],
+  [8596, 8601],
+  [8617, 8618],
+  [8986, 8987],
+  [9000, 9000],
+  [9096, 9096],
+  [9167, 9167],
+  [9193, 9203],
+  [9208, 9210],
+  [9410, 9410],
+  [9642, 9643],
+  [9654, 9654],
+  [9664, 9664],
+  [9723, 9726],
+  [9728, 9733],
+  [9735, 9746],
+  [9748, 9861],
+  [9872, 9989],
+  [9992, 10002],
+  [10004, 10004],
+  [10006, 10006],
+  [10013, 10013],
+  [10017, 10017],
+  [10024, 10024],
+  [10035, 10036],
+  [10052, 10052],
+  [10055, 10055],
+  [10060, 10060],
+  [10062, 10062],
+  [10067, 10069],
+  [10071, 10071],
+  [10083, 10087],
+  [10133, 10135],
+  [10145, 10145],
+  [10160, 10160],
+  [10175, 10175],
+  [10548, 10549],
+  [11013, 11015],
+  [11035, 11036],
+  [11088, 11088],
+  [11093, 11093],
+  [12336, 12336],
+  [12349, 12349],
+  [12951, 12951],
+  [12953, 12953],
+  [65039, 65039],
+  [126976, 127231],
+  [127245, 127247],
+  [127279, 127279],
+  [127340, 127345],
+  [127358, 127359],
+  [127374, 127374],
+  [127377, 127386],
+  [127405, 127487],
+  [127489, 127503],
+  [127514, 127514],
+  [127535, 127535],
+  [127538, 127546],
+  [127548, 127551],
+  [127561, 128317],
+  [128326, 128591],
+  [128640, 128767],
+  [128884, 128895],
+  [128981, 129023],
+  [129036, 129039],
+  [129096, 129103],
+  [129114, 129119],
+  [129160, 129167],
+  [129198, 129279],
+  [129292, 129338],
+  [129340, 129349],
+  [129351, 129791],
+  [130048, 131069],
+  [917536, 917631],
+];
+// END GENERATED UNICODE16 EMOJI RANGES
+function emoji(value: string): boolean {
+  if (!value.length) return false;
+  for (const ch of value) {
+    const code = ch.codePointAt(0)!;
+    let low = 0, high = zodEmojiRanges.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (zodEmojiRanges[middle][1] < code) low = middle + 1;
+      else high = middle;
+    }
+    if (low === zodEmojiRanges.length || zodEmojiRanges[low][0] > code) return false;
+  }
+  return true;
+}
 
 // Reserved versioned capability; arbitrary JSON Schema keywords are unchanged.
 const zodChecksKeyword = 'x-forklaunch-zod-checks';
@@ -6,7 +108,7 @@ interface ZodChecks {
   version: 1;
   utf16MinLength?: number;
   utf16MaxLength?: number;
-  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6')[];
+  formats?: ('email' | 'uuid' | 'uri' | 'cuid' | 'cuid2' | 'ulid' | 'nanoid' | 'base64' | 'base64url' | 'date' | 'duration' | 'ip' | 'ipv4' | 'ipv6' | 'cidr' | 'cidrv4' | 'cidrv6' | 'emoji')[];
   dateTimes?: { precision: number | null; local: boolean; offset: boolean }[];
   timePrecisions?: (number | null)[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
@@ -57,7 +159,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     (!Array.isArray(value.formats) ||
       value.formats.length > 10000 ||
       value.formats.some(
-        (format) => !['email', 'uuid', 'uri', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url', 'date', 'duration', 'ip', 'ipv4', 'ipv6', 'cidr', 'cidrv4', 'cidrv6'].includes(format)
+        (format) => !['email', 'uuid', 'uri', 'cuid', 'cuid2', 'ulid', 'nanoid', 'base64', 'base64url', 'date', 'duration', 'ip', 'ipv4', 'ipv6', 'cidr', 'cidrv4', 'cidrv6', 'emoji'].includes(format)
       ))
   )
     throw new Error('Invalid Zod format rules');
@@ -116,6 +218,7 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     if (typeof data === 'string' && timeChecks && !timeChecks.every((check) => check.test(data))) return false;
     if (typeof data === 'string' && formatChecks)
       for (const format of formatChecks) {
+        if (format === 'emoji' && !emoji(data)) return false;
         if (format === 'ip' && !simpleFormats.ipv4.test(data) && !simpleFormats.ipv6.test(data)) return false;
         if (format === 'cidr' && !simpleFormats.cidrv4.test(data) && !simpleFormats.cidrv6.test(data)) return false;
         if (format in simpleFormats && !simpleFormats[format as keyof typeof simpleFormats].test(data)) return false;

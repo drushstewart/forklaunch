@@ -70,6 +70,7 @@ enum Format {
     Base64Url,
     Date,
     Duration,
+    Emoji,
     Ip(Option<u8>),
     Cidr(Option<u8>),
     #[cfg(feature = "zod-uri")]
@@ -80,6 +81,7 @@ impl Format {
         match self {
             Self::Ip(version) => forklaunch_common::zod_string_format::ip(value, *version),
             Self::Cidr(version) => forklaunch_common::zod_string_format::cidr(value, *version),
+            Self::Emoji => forklaunch_common::zod_string_format::emoji(value),
             Self::Email => forklaunch_common::zod_string_format::email(value),
             Self::Uuid => forklaunch_common::zod_string_format::uuid(value),
             Self::Cuid => forklaunch_common::zod_string_format::cuid(value),
@@ -147,6 +149,7 @@ fn formats(raw_formats: Option<&Vec<Value>>) -> Result<Vec<Format>, ValidationEr
             Some("cidr") => Format::Cidr(None),
             Some("cidrv4") => Format::Cidr(Some(4)),
             Some("cidrv6") => Format::Cidr(Some(6)),
+            Some("emoji") => Format::Emoji,
             Some("email") => Format::Email,
             Some("uuid") => Format::Uuid,
             Some("cuid") => Format::Cuid,
