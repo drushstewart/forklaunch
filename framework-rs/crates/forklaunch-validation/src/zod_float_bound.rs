@@ -12,6 +12,36 @@ impl ZodFloatBound {
         Self(value.to_bits())
     }
 
+    /// String lengths are JavaScript Numbers. The explicit cast intentionally
+    /// uses IEEE rounding; admitted evaluator strings are far below 2^53.
+    #[allow(clippy::cast_precision_loss)]
+    pub(super) fn string_length_rejection(
+        self,
+        length: u64,
+        comparison: std::cmp::Ordering,
+    ) -> Option<String> {
+        let length = length as f64;
+        let bound = f64::from_bits(self.0);
+        let (rejected, label) = match comparison {
+            std::cmp::Ordering::Less => (length < bound, "at least"),
+            std::cmp::Ordering::Greater => (length > bound, "at most"),
+            // Zod uses ordered comparisons, so NaN exact-length is inert too.
+            std::cmp::Ordering::Equal => (
+                matches!(
+                    length.partial_cmp(&bound),
+                    Some(std::cmp::Ordering::Less | std::cmp::Ordering::Greater)
+                ),
+                "exactly",
+            ),
+        };
+        rejected.then(|| {
+            format!(
+                "String must contain {label} {} character(s)",
+                ryu_js::Buffer::new().format(bound)
+            )
+        })
+    }
+
     pub(super) fn rejection(self, value: f64, minimum: bool, inclusive: bool) -> Option<String> {
         let bound = f64::from_bits(self.0);
         let rejected = match (minimum, inclusive) {

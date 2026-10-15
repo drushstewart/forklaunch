@@ -1,4 +1,5 @@
 //! Strict Zod v3 string operations over the UTF-8 JSON value domain.
+use super::ZodFloatBound;
 use crate::ParseError;
 use serde_json::Value;
 #[path = "zod_string_format.rs"]
@@ -22,6 +23,11 @@ pub enum ZodStringStep {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ZodStringRule<'a> {
     Step(ZodStringStep),
+    /// Ordered UTF-16 length bound accepting every IEEE value, including NaN.
+    MinFloat(ZodFloatBound),
+    MaxFloat(ZodFloatBound),
+    /// Uses ordered comparisons; a NaN exact-length registration is inert.
+    LengthFloat(ZodFloatBound),
     Format(ZodStringFormat),
     /// Zod JWT header structure, not signature verification. A nonempty algorithm
     /// must match exactly; absent/empty algorithms preserve Zod's no-filter behavior.
@@ -149,6 +155,20 @@ pub(super) fn apply_check(
     length: &mut u64,
     check: ZodStringCheck<'_>,
 ) -> Option<ParseError> {
+    let bound = match check.rule {
+        ZodStringRule::MinFloat(bound) => Some((bound, std::cmp::Ordering::Less)),
+        ZodStringRule::MaxFloat(bound) => Some((bound, std::cmp::Ordering::Greater)),
+        ZodStringRule::LengthFloat(bound) => Some((bound, std::cmp::Ordering::Equal)),
+        _ => None,
+    };
+    if let Some((bound, comparison)) = bound {
+        return bound
+            .string_length_rejection(*length, comparison)
+            .map(|message| ParseError {
+                path: Vec::new(),
+                message: check.message.map_or(message, str::to_owned),
+            });
+    }
     let step = match check.rule {
         ZodStringRule::Step(step) => step,
         literal => {
@@ -236,6 +256,76 @@ fn includes(value: &str, needle: &str, position: Option<f64>) -> bool {
 mod tests {
     use super::*;
     use serde_json::json;
+    #[test]
+    fn general_float_lengths_preserve_nan_order_and_messages() {
+        let nan = ZodFloatBound::new(f64::NAN);
+        assert_eq!(
+            zod_string_rules(
+                Some(&json!("😀")),
+                &[
+                    ZodStringRule::MinFloat(nan),
+                    ZodStringRule::MaxFloat(nan),
+                    ZodStringRule::LengthFloat(nan)
+                ]
+            ),
+            Ok("😀")
+        );
+        let input = json!(" a ");
+        assert_eq!(
+            zod_string_rules(
+                Some(&input),
+                &[
+                    ZodStringRule::MinFloat(ZodFloatBound::new(2.5)),
+                    ZodStringRule::Step(ZodStringStep::Trim)
+                ]
+            ),
+            Ok("a")
+        );
+        let errors = zod_string_checks(
+            Some(&input),
+            &[
+                ZodStringCheck {
+                    rule: ZodStringRule::Step(ZodStringStep::Trim),
+                    message: None,
+                },
+                ZodStringCheck {
+                    rule: ZodStringRule::MinFloat(ZodFloatBound::new(2.5)),
+                    message: None,
+                },
+                ZodStringCheck {
+                    rule: ZodStringRule::LengthFloat(ZodFloatBound::new(1.5)),
+                    message: Some(""),
+                },
+            ],
+        )
+        .unwrap_err();
+        assert_eq!(
+            errors[0].message,
+            "String must contain at least 2.5 character(s)"
+        );
+        assert_eq!(errors[1].message, "");
+        assert_eq!(input, json!(" a "));
+        assert_eq!(
+            zod_string_rules(
+                Some(&json!("")),
+                &[ZodStringRule::MaxFloat(ZodFloatBound::new(-0.0))]
+            ),
+            Ok("")
+        );
+        assert_eq!(
+            zod_string_rules(
+                Some(&json!("a")),
+                &[ZodStringRule::MaxFloat(ZodFloatBound::new(-0.0))]
+            )
+            .unwrap_err()[0]
+                .message,
+            "String must contain at most 0 character(s)"
+        );
+        assert_eq!(
+            zod_string_rules(None, &[ZodStringRule::LengthFloat(nan)]).unwrap_err()[0].message,
+            "Required"
+        );
+    }
     #[test]
     fn literal_messages_preserve_type_errors_and_atomic_transforms() {
         let checks = [

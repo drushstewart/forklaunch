@@ -1,7 +1,7 @@
 //! Streaming case-transformation oracle; keeps the full-scalar corpus bounded.
 use forklaunch_validation::typescript_coerce::{
-    ZodJsonOutcome, ZodJsonSchema, ZodJsonStringCheck, ZodStringCheck, ZodStringRule,
-    ZodStringStep, zod_json,
+    ZodFloatBound, ZodJsonOutcome, ZodJsonSchema, ZodJsonStringCheck, ZodStringCheck,
+    ZodStringRule, ZodStringStep, zod_json, zod_string_checks,
 };
 use serde_json::{Value, json};
 use std::io::{self, BufRead, Write};
@@ -16,6 +16,17 @@ fn checks(input: &Value) -> Vec<ZodJsonStringCheck<'_>> {
             name => ZodJsonStringCheck::Scalar(ZodStringCheck {
                 message: check["message"].as_str(),
                 rule: match name {
+                    "min" | "max" | "length" if input["float"] == true => {
+                        let bound =
+                            ZodFloatBound::new(check["argument"].as_f64().unwrap_or_else(|| {
+                                check["argument"].as_str().unwrap().parse().unwrap()
+                            }));
+                        match name {
+                            "min" => ZodStringRule::MinFloat(bound),
+                            "max" => ZodStringRule::MaxFloat(bound),
+                            _ => ZodStringRule::LengthFloat(bound),
+                        }
+                    }
                     "trim" => ZodStringRule::Step(ZodStringStep::Trim),
                     "min" => ZodStringRule::Step(ZodStringStep::Min(
                         u32::try_from(check["argument"].as_u64().unwrap()).unwrap(),
@@ -60,7 +71,23 @@ fn main() {
                 }
             }
         } else {
-            let schema = ZodJsonSchema::CheckedString(checks(&input));
+            let checks = checks(&input);
+            if input["borrowed"] == true {
+                let checks: Vec<_> = checks
+                    .into_iter()
+                    .map(|check| match check {
+                        ZodJsonStringCheck::Scalar(check) => check,
+                        _ => panic!("borrowed scalar only"),
+                    })
+                    .collect();
+                let result = match zod_string_checks(input.get("value"), &checks) {
+                    Ok(value) => json!({"ok":true,"value":value}),
+                    Err(errors) => json!({"ok":false,"errors":errors}),
+                };
+                writeln!(output, "{result}").unwrap();
+                continue;
+            }
+            let schema = ZodJsonSchema::CheckedString(checks);
             let before = input.clone();
             let result = match zod_json(input.get("value"), &schema) {
                 Ok(ZodJsonOutcome::Valid(value)) => json!({"ok":true,"value":value}),

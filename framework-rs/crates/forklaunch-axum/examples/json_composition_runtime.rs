@@ -194,6 +194,36 @@ fn case_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
         },
     ]
 }
+fn float_length_fields() -> Vec<typescript_coerce::ZodJsonField<'static>> {
+    use typescript_coerce::{
+        ZodFloatBound as Bound, ZodJsonField as Field, ZodJsonSchema as Schema,
+        ZodStringCheck as Check, ZodStringRule as Rule,
+    };
+    [
+        (
+            "floatText",
+            vec![
+                Rule::MinFloat(Bound::new(1.5)),
+                Rule::MaxFloat(Bound::new(2.5)),
+            ],
+        ),
+        ("nanText", vec![Rule::LengthFloat(Bound::new(f64::NAN))]),
+    ]
+    .into_iter()
+    .map(|(name, rules)| Field {
+        name,
+        schema: Schema::Optional(Box::new(Schema::String(
+            rules
+                .into_iter()
+                .map(|rule| Check {
+                    rule,
+                    message: None,
+                })
+                .collect(),
+        ))),
+    })
+    .collect()
+}
 fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> {
     use typescript_coerce::{ZodJsonField as Field, ZodJsonSchema as Schema};
     let mut fields = vec![
@@ -278,6 +308,7 @@ fn composition_schema(fallback: &Value) -> typescript_coerce::ZodJsonSchema<'_> 
             })),
         },
     ];
+    fields.extend(float_length_fields());
     fields.extend(case_fields());
     fields.push(discriminated_field());
     fields.extend(tuple_fields());
