@@ -1307,3 +1307,10 @@ Ordinary explicit schema annotations keep their override semantics. This option
 does not imply general Zod schema equivalence: regex/format conjunction work remains
 open, native strings exclude lone UTF-16 surrogates, and transformations combined
 with synthesized length checks are rejected. Default schema export is unchanged.
+
+
+The explicit Zod-check profile also preserves ordered email/UUID/URI conjunctions.
+URI assertions additionally require `zod-uri`; native compilation rejects URI
+demand without that feature. Email/UUID use shared Zod predicates. Compatibility
+fixtures pin Node 24.2.0 and Ada 3.2.4. Other formats and arbitrary regex equivalence
+remain separate work; explicit ordinary annotations retain precedence.

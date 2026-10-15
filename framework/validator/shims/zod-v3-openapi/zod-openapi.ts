@@ -156,7 +156,7 @@ function parseString({
     type: typeFormat('string', openApiVersion)
   };
   const { checks = [] } = zodRef._def;
-  const exact = zodChecks ? projectStringChecks(checks, schemas as Record<string, unknown>[]) : undefined;
+  const exact = zodChecks ? projectStringChecks(checks, schemas as Record<string, unknown>[], hasFactoryEmailGrammar(zodRef)) : undefined;
   checks.forEach((item) => {
     switch (item.kind) {
       case 'email':
@@ -222,6 +222,8 @@ function parseString({
     }
   }
   if (zodChecks) {
+    if (exact?.formats?.some(format => format !== 'email' || !hasFactoryEmailGrammar(zodRef)) && ['email', 'uuid', 'uri', factoryUriFormat].includes(baseSchema.format as string)) delete baseSchema.format;
+    if (exact?.formats?.includes('email') && hasFactoryEmailGrammar(zodRef)) delete baseSchema.pattern;
     if (exact?.utf16MinLength !== undefined) delete baseSchema.minLength;
     if (exact?.utf16MaxLength !== undefined) delete baseSchema.maxLength;
     if (exact) Object.assign(baseSchema, { [zodChecksKeyword]: exact });

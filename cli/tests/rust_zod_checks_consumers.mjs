@@ -23,7 +23,14 @@ const require = createRequire(path.join(deps, "package.json"));
 const { z } = require("zod/v3");
 const { validator } = actualValidator(root);
 const source = z
-  .object({ text: z.string().length(2), number: z.number().multipleOf(0.1) })
+  .object({
+    text: z.string().length(2),
+    number: z.number().multipleOf(0.1),
+    email: z.string().email().email(),
+    uuid: z.string().uuid(),
+    uri: z.string().url().url(),
+    impossible: z.string().email().uuid().optional(),
+  })
   .strict();
 const schema = validator.openapi2020(source, {
   pureInput: true,
@@ -36,6 +43,25 @@ const cases = [
   { text: "😀a", number: 0.3 },
   { text: "😀", number: 0.1 + 0.2 },
 ];
+const validFormats = {
+  email: "a'b@b-.co",
+  uuid: "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
+  uri: "http://example.test/a b",
+};
+for (const value of cases) Object.assign(value, validFormats);
+for (const patch of [
+  { email: "a%b@b.co" },
+  { uuid: "urn:uuid:" + validFormats.uuid },
+  { uri: "http://256.1.1.1" },
+  { impossible: "a@b.co" },
+])
+  cases.push({ text: "😀", number: 0.3, ...validFormats, ...patch });
+assert.equal(
+  process.versions.node,
+  "24.2.0",
+  "URI acceptance oracle pins Node/Ada",
+);
+assert.equal(process.versions.ada, "3.2.4");
 const expected = cases.map((value) => validator.parse(source, value).ok);
 const env = {
   ...process.env,
@@ -88,7 +114,11 @@ try {
     sdk = await universalSdk({ host, registryOptions: { raw: doc } });
   for (let i = 0; i < cases.length; i++) {
     payload = cases[i];
-    if (expected[i]) assert.deepEqual((await sdk.value()).response, payload);
+    if (expected[i])
+      assert.deepEqual((await sdk.value()).response, {
+        impossible: undefined,
+        ...payload,
+      });
     else await assert.rejects(() => sdk.value());
   }
   assert.equal(requests, cases.length);
@@ -125,7 +155,7 @@ try {
   assert.notEqual(denied.status, 0);
   assert.equal(denied.stdout, "");
   assert.match(denied.stderr, /zod-checks feature/);
-  run("cargo", [...build, "--features", "zod-checks"]);
+  run("cargo", [...build, "--features", "zod-checks,zod-uri"]);
   const generated = JSON.parse(run(binary, [artifact, "all"]));
   mkdirSync(path.join(work, "src"));
   symlinkSync(
@@ -178,7 +208,7 @@ try {
   }
   writeFileSync(
     path.join(work, "Cargo.toml"),
-    `[package]\nname="fl-zod-check-consumers"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(root, "framework-rs/crates/forklaunch-ws"))},features=["transport","json-schema","zod-checks"]}\nserde={version="1",features=["derive"]}\nserde_json="=1.0.151"\ntokio={version="1",features=["net"]}\ntokio-tungstenite="0.30"\n`,
+    `[package]\nname="fl-zod-check-consumers"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(root, "framework-rs/crates/forklaunch-ws"))},features=["transport","json-schema","zod-checks","zod-uri"]}\nserde={version="1",features=["derive"]}\nserde_json="=1.0.151"\ntokio={version="1",features=["net"]}\ntokio-tungstenite="0.30"\n`,
   );
   writeFileSync(path.join(work, "src/lib.rs"), generated.rust.socket_checks);
   writeFileSync(

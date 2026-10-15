@@ -10675,3 +10675,30 @@ arithmetic and option selection, not post-await wall-clock equivalence. Resampli
 at upstream creation points remains work alongside deferred refresh, cookie cache,
 secondary storage, broader credential/organization options and plugin coverage.
 No broad checklist gate is closed by this feature group.
+
+
+### 2026-10-15 — ordered email, UUID and URI assertions
+
+The explicit Zod-check profile now preserves conjunctions of email, UUID and URI
+checks instead of losing earlier checks to the schema's single format field.
+Native email/UUID predicates share the established validation kernels; URI demand
+requires the existing `zod-uri` capability and pinned Ada behavior. Synthesized
+assertions respect ordinary explicit metadata overrides. Arbitrary regex patterns
+remain present and are not claimed equivalent by this feature. Transformations
+combined with synthesized format assertions fail explicitly.
+
+The final matrix passes 30,564 actual Zod/AJV comparisons and 30,564 native
+comparisons in ordinary and pure-input opt-in modes. Default-export byte-equivalence
+controls remain green. Nine actual HTTP responses and 36 generated TS/Rust socket
+codec outcomes pass, including impossible conjunctions. Native common/contract/
+validation tests (10/30/71), 81,036 existing format-kernel comparisons, prior
+length/remainder matrices, strict generated compilation, strict Clippy and all
+12 configured TypeScript roots pass. Canonical validation again passes 366 live
+outcomes with zero normalized OpenAPI differences. No dependencies or lock versions
+changed. CI pins Node 24.2.0/Ada 3.2.4 for the format and consumer fixtures and checks
+URI rejection when `zod-checks` is enabled without `zod-uri`.
+
+Regex and other format families remain open; this closes the named conjunction
+behavior, not the broad schema gate. The source inventory remains 623 entries and
+1,703 declaration records across 44 packages. Session-policy PostgreSQL cleanup
+also confirms zero owned fixture roles, records and audit rows after its passing run.

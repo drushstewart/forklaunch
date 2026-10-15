@@ -10,6 +10,23 @@ struct Checks {
     minimum: Option<u64>,
     maximum: Option<u64>,
     divisors: Vec<ZodMultipleOf>,
+    formats: Vec<Format>,
+}
+enum Format {
+    Email,
+    Uuid,
+    #[cfg(feature = "zod-uri")]
+    Uri,
+}
+impl Format {
+    fn accepts(&self, value: &str) -> bool {
+        match self {
+            Self::Email => forklaunch_common::zod_string_format::email(value),
+            Self::Uuid => forklaunch_common::zod_string_format::uuid(value),
+            #[cfg(feature = "zod-uri")]
+            Self::Uri => ada_url::Url::can_parse(value, None),
+        }
+    }
 }
 fn invalid<'a>() -> ValidationError<'a> {
     ValidationError::custom("invalid x-forklaunch-zod-checks version, fields or limits")
@@ -41,7 +58,7 @@ pub(super) fn compile<'a>(
         || fields.keys().any(|key| {
             !matches!(
                 key.as_str(),
-                "version" | "utf16MinLength" | "utf16MaxLength" | "multipleOf"
+                "version" | "utf16MinLength" | "utf16MaxLength" | "multipleOf" | "formats"
             )
         })
     {
@@ -49,6 +66,43 @@ pub(super) fn compile<'a>(
     }
     let minimum = bound(fields.get("utf16MinLength"))?;
     let maximum = bound(fields.get("utf16MaxLength"))?;
+    let raw_formats = fields
+        .get("formats")
+        .map(|value| {
+            value
+                .as_array()
+                .filter(|values| values.len() <= 10_000)
+                .ok_or_else(invalid)
+        })
+        .transpose()?;
+    let raw_divisors = fields
+        .get("multipleOf")
+        .map(|value| {
+            value
+                .as_array()
+                .filter(|values| values.len() <= 10_000)
+                .ok_or_else(invalid)
+        })
+        .transpose()?;
+    if raw_formats.map_or(0, Vec::len) + raw_divisors.map_or(0, Vec::len) > 10_000 {
+        return Err(invalid());
+    }
+    let mut formats = Vec::new();
+    for value in raw_formats.into_iter().flatten() {
+        formats.push(match value.as_str() {
+            Some("email") => Format::Email,
+            Some("uuid") => Format::Uuid,
+            #[cfg(feature = "zod-uri")]
+            Some("uri") => Format::Uri,
+            #[cfg(not(feature = "zod-uri"))]
+            Some("uri") => {
+                return Err(ValidationError::custom(
+                    "URI checks require the forklaunch-contract zod-uri feature",
+                ));
+            }
+            _ => return Err(invalid()),
+        });
+    }
     let mut divisors = Vec::new();
     if let Some(values) = fields.get("multipleOf") {
         let values = values
@@ -73,11 +127,15 @@ pub(super) fn compile<'a>(
         minimum,
         maximum,
         divisors,
+        formats,
     }))
 }
 impl<'i> Keyword<'i> for Checks {
     fn is_valid(&self, instance: &'i Value) -> bool {
         if let Some(value) = instance.as_str() {
+            if !self.formats.iter().all(|format| format.accepts(value)) {
+                return false;
+            }
             let length = value.encode_utf16().count() as u64;
             if self.minimum.is_some_and(|minimum| length < minimum)
                 || self.maximum.is_some_and(|maximum| length > maximum)

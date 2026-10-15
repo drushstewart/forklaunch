@@ -6,6 +6,7 @@ interface ZodChecks {
   version: 1;
   utf16MinLength?: number;
   utf16MaxLength?: number;
+  formats?: ('email' | 'uuid' | 'uri')[];
   multipleOf?: (number | 'NaN' | 'Infinity' | '-Infinity')[];
 }
 function compileZodChecks(input: unknown): (value: unknown) => boolean {
@@ -16,9 +17,13 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     value.version !== 1 ||
     Object.keys(value).some(
       (key) =>
-        !['version', 'utf16MinLength', 'utf16MaxLength', 'multipleOf'].includes(
-          key
-        )
+        ![
+          'version',
+          'utf16MinLength',
+          'utf16MaxLength',
+          'multipleOf',
+          'formats'
+        ].includes(key)
     )
   )
     throw new Error('Invalid Zod check profile version or fields');
@@ -43,6 +48,21 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
     )
       throw new Error('Invalid Zod multiple-of rules');
   }
+  if (
+    Object.prototype.hasOwnProperty.call(value, 'formats') &&
+    (!Array.isArray(value.formats) ||
+      value.formats.length > 10000 ||
+      value.formats.some(
+        (format) => !['email', 'uuid', 'uri'].includes(format)
+      ))
+  )
+    throw new Error('Invalid Zod format rules');
+  if (
+    (Array.isArray(value.formats) ? value.formats.length : 0) +
+      (Array.isArray(value.multipleOf) ? value.multipleOf.length : 0) >
+    10000
+  )
+    throw new Error('Zod check profile exceeds 10000 rules');
   const profile = value as unknown as ZodChecks;
   // Capture immutable admitted configuration; do not retain mutable user arrays.
   const minimum = profile.utf16MinLength,
@@ -50,7 +70,25 @@ function compileZodChecks(input: unknown): (value: unknown) => boolean {
   const divisors = profile.multipleOf?.map((divisor) =>
     typeof divisor === 'number' ? divisor : Number(divisor)
   );
+  const formatChecks = profile.formats?.slice();
+  const email =
+    /^(?!\.)(?!.*\.\.)([A-Z0-9_'+\-\.]*)[A-Z0-9_+-]@([A-Z0-9][A-Z0-9\-]*\.)+[A-Z]{2,}$/i;
+  const uuid =
+    /^[0-9a-fA-F]{8}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{4}\b-[0-9a-fA-F]{12}$/i;
   return (data: unknown) => {
+    if (typeof data === 'string' && formatChecks)
+      for (const format of formatChecks) {
+        if (format === 'email' && !email.test(data)) return false;
+        if (format === 'uuid' && !uuid.test(data)) return false;
+        if (format === 'uri') {
+          try {
+            new URL(data);
+          } catch {
+            return false;
+          }
+        }
+      }
+
     if (
       typeof data === 'string' &&
       ((minimum !== undefined && data.length < minimum) ||

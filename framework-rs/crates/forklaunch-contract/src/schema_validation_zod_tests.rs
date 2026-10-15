@@ -54,3 +54,40 @@ fn exact_assertions_reject_malformed_configs_and_preserve_input() {
         assert_eq!(compile(&json!({"type":"number","x-forklaunch-zod-checks":{"version":1,"multipleOf":divisors}})).unwrap()(&value).is_ok(),allowed);
     }
 }
+
+#[cfg(feature = "zod-checks")]
+#[test]
+fn format_checks_are_ordered_bounded_and_uri_requires_its_capability() {
+    for invalid in [
+        json!(null),
+        json!({}),
+        json!(["url"]),
+        json!(["EMAIL"]),
+        json!([null]),
+        json!(vec!["email"; 10001]),
+    ] {
+        assert!(
+            compile(&json!({"x-forklaunch-zod-checks":{"version":1,"formats":invalid}})).is_err()
+        );
+    }
+    assert!(compile(&json!({"x-forklaunch-zod-checks":{"version":1,"formats":vec!["email";5001],"multipleOf":vec![1;5000]}})).is_err());
+    let email =
+        compile(&json!({"x-forklaunch-zod-checks":{"version":1,"formats":["email","email"]}}))
+            .unwrap();
+    assert!(email(&json!("a'b@b-.co")).is_ok());
+    assert!(email(&json!("a%b@b.co")).is_err());
+    let mixed =
+        compile(&json!({"x-forklaunch-zod-checks":{"version":1,"formats":["email","uuid"]}}))
+            .unwrap();
+    assert!(mixed(&json!("a@b.co")).is_err());
+    assert!(mixed(&json!(true)).is_ok());
+    let uri = json!({"x-forklaunch-zod-checks":{"version":1,"formats":["uri"]}});
+    assert_eq!(compile(&uri).is_ok(), cfg!(feature = "zod-uri"));
+    for schema in [json!({"const":uri}), json!({"default":uri})] {
+        assert!(compile(&schema).is_ok());
+    }
+    assert_eq!(
+        compile(&json!({"default":uri,"$ref":"#/default"})).is_ok(),
+        cfg!(feature = "zod-uri")
+    );
+}

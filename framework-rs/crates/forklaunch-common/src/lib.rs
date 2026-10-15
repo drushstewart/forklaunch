@@ -324,3 +324,6 @@ mod tests {
         assert_eq!(error.to_string(), "validation_error: missing body");
     }
 }
+
+#[cfg(feature = "zod-checks")]
+pub mod zod_string_format;
