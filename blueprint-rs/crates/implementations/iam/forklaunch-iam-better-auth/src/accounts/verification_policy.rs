@@ -115,6 +115,7 @@ impl<S: AuthStore> CredentialService<S> {
                 callback,
                 &delivery.secret,
                 now,
+                self.token_lifetimes.email_verification_seconds(),
             )?;
             crate::background::run(
                 future,

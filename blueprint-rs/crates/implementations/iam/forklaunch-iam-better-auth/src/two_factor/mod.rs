@@ -70,6 +70,7 @@ use zeroize::Zeroizing;
 
 /// Trusted two-factor configuration. No Debug/Serialize: this holds signing secrets.
 pub struct TwoFactorService<S> {
+    credential_policy: crate::accounts::CredentialPolicy,
     session_policy: crate::sessions::SessionPolicy,
     pub(crate) store: Arc<S>,
     secret: Zeroizing<Vec<u8>>,
@@ -175,6 +176,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             ));
         }
         Ok(Self {
+            credential_policy: crate::accounts::CredentialPolicy::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
             store,
             secret: Zeroizing::new(secret),
@@ -310,6 +312,11 @@ mod tests;
 
 impl<S: AuthStore> TwoFactorService<S> {
     /// Installs trusted session policy independently of factor/proof lifetimes.
+    #[must_use]
+    pub fn with_credential_policy(mut self, policy: crate::accounts::CredentialPolicy) -> Self {
+        self.credential_policy = policy;
+        self
+    }
     #[must_use]
     pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
         self.session_policy = policy;

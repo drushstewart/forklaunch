@@ -48,6 +48,8 @@ pub use rate::{
     AuthRateLimitDecision, AuthRateLimitOptions, AuthRateLimitRequest, AuthRateLimitRule,
     AuthRateLimitStorageDecision,
 };
+#[cfg(test)]
+pub(crate) mod credential_policy_tests;
 #[cfg(feature = "application-http")]
 pub mod relay;
 mod request;
@@ -65,6 +67,8 @@ mod two_factor;
 // Independent trusted options; these flags do not encode mutually exclusive states.
 #[allow(clippy::struct_excessive_bools)]
 pub struct AuthHttp<S> {
+    credential_policy: crate::accounts::CredentialPolicy,
+    token_lifetimes: crate::accounts::AuthTokenLifetimes,
     session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
     google: Option<crate::oauth::google_client::GoogleClient>,
@@ -155,6 +159,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         let policy = OriginPolicy::new(&base_url, trusted)?;
         let secure = Url::parse(&base_url).is_ok_and(|url| url.scheme() == "https");
         Self {
+            credential_policy: crate::accounts::CredentialPolicy::default(),
+            token_lifetimes: crate::accounts::AuthTokenLifetimes::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
             store,
             google: None,

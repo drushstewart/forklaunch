@@ -1844,3 +1844,29 @@ exact parity with upstream post-await wall-clock sampling. With very short TTLs,
 that can shorten the useful lifetime of a newly returned session. Resampling at
 HTTP creation/refresh boundaries, with delayed-work and authority tests, remains
 queued; explicit-time domain APIs retain their existing contract.
+
+
+### Trusted credential and token options
+
+`CredentialPolicy::new(disable_signup, minimum, maximum)` installs the email/password
+signup switch and UTF-16 password-length limits through `CredentialService`, `AuthHttp`,
+and `TwoFactorService`. Zero limits select Better Auth's 8/128 defaults; effective
+limits are bounded to 1..=4096. Inverted bounds remain admissible: new-password checks
+report minimum failure before maximum failure, while existing-password proofs apply
+only the maximum. HTTP body validation still precedes the disabled-signup handler.
+The policy never comes from request fields. Installing the policy before or after MFA
+configuration preserves the other options.
+
+`AuthTokenLifetimes::new(reset_seconds, verification_seconds)` is a whole-second `u32`
+profile, installed with `with_token_lifetimes` on `AuthHttp`, `CredentialService`, or
+`PasswordResetService`. Reset zero selects 3600 seconds; verification zero is honored.
+Issuance uses checked UTC arithmetic. Existing proofs retain their issued expiry.
+Manual verification delivery and automatic signup/signin delivery share the configured
+verification lifetime. Native `/change-email` remains disabled and `/delete-user`
+remains unavailable; this group does not implement their upstream opt-in policies.
+Existing change-email proof processing does not issue new change-email tokens. Generic
+JavaScript negative/fractional option values are outside these typed constructors.
+
+These options preserve the explicit caller-supplied timestamp contract. Fresh clock
+sampling after hashing/provider/callback waits remains a separate HTTP orchestration
+follow-up; configuration/expiry arithmetic tests do not prove latency equivalence.

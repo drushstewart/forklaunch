@@ -141,7 +141,7 @@ impl<S: AuthStore> TwoFactorService<S> {
         }
         let optional = self.lifecycle_options.password_optional(action.path());
         if !optional {
-            crate::accounts::validate_length(&password, false)?;
+            self.credential_policy.validate(&password, false)?;
         }
         let user_id = text(&user, "id")?.to_owned();
         let account = crate::accounts::find_credential(&mut tx, &user_id).await?;
@@ -153,12 +153,13 @@ impl<S: AuthStore> TwoFactorService<S> {
         let expected = Zeroizing::new(expected.ok_or_else(invalid_password)?.to_owned());
         let account_id = text(account.as_ref().ok_or_else(invalid_password)?, "id")?.to_owned();
         if optional {
-            crate::accounts::validate_length(&password, false)?;
+            self.credential_policy.validate(&password, false)?;
         }
         tx.commit().await?;
         let supplied = Zeroizing::new(password);
         let hash = expected.clone();
         if !CredentialService::new(self.store.clone())
+            .with_credential_policy(self.credential_policy)
             .run_crypto(move || Ok(credentials::verify_password(&supplied, &hash)))
             .await?
         {

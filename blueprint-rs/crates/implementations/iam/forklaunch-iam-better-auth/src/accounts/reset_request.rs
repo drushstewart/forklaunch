@@ -41,6 +41,7 @@ pub trait PasswordResetDelivery: Send + Sync {
 }
 /// Tenant-bound reset request service. No delivery is enabled by default on HTTP.
 pub struct PasswordResetService<S> {
+    token_lifetimes: super::AuthTokenLifetimes,
     store: Arc<S>,
     base_url: String,
     policy: Arc<OriginPolicy>,
@@ -125,6 +126,11 @@ fn success() -> Value {
     json!({"status":true,"message":"If this email exists in our system, check your email for the reset link"})
 }
 impl<S: AuthStore> PasswordResetService<S> {
+    #[must_use]
+    pub fn with_token_lifetimes(mut self, lifetimes: super::AuthTokenLifetimes) -> Self {
+        self.token_lifetimes = lifetimes;
+        self
+    }
     /// # Errors
     /// Rejects non-HTTP(S), credential-bearing/query/fragment URLs or a base above8192 bytes.
     pub fn new(
@@ -145,6 +151,7 @@ impl<S: AuthStore> PasswordResetService<S> {
         }
         base_url.truncate(base_url.trim_end_matches('/').len());
         Ok(Self {
+            token_lifetimes: super::AuthTokenLifetimes::default(),
             store,
             base_url,
             policy,
@@ -160,7 +167,7 @@ impl<S: AuthStore> PasswordResetService<S> {
         self.dispatcher = Some(dispatcher);
         self
     }
-    /// Requests a one-hour reset link. Missing users get the same response without
+    /// Requests a reset link (one hour by default). Missing users get the same response without
     /// delivery; dummy work is timing mitigation, not a constant-time guarantee.
     /// # Errors
     /// Rejects invalid email/untrusted redirects before storage, persistence errors,
@@ -179,7 +186,9 @@ impl<S: AuthStore> PasswordResetService<S> {
             ));
         }
         let expires = now
-            .checked_add_signed(chrono::Duration::hours(1))
+            .checked_add_signed(chrono::Duration::seconds(i64::from(
+                self.token_lifetimes.password_reset_seconds(),
+            )))
             .ok_or_else(invalid)?;
         let mut tx = self.store.begin(true).await?;
         let user = tx

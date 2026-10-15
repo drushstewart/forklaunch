@@ -1,6 +1,6 @@
 use super::{AuthHttp, internal, set_cookie};
 use crate::{
-    accounts::{ChangePasswordInput, CredentialService, SigninInput, SignupInput, validate_length},
+    accounts::{ChangePasswordInput, CredentialService, SigninInput, SignupInput},
     store::AuthStore,
 };
 use axum::http::{HeaderMap, HeaderValue, header};
@@ -18,6 +18,8 @@ pub(super) async fn login<S: AuthStore + 'static>(
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
     let mut service = CredentialService::new(app.store.clone())
+        .with_credential_policy(app.credential_policy)
+        .with_token_lifetimes(app.token_lifetimes)
         .with_session_policy(app.session_policy)
         .with_email_verification_policy(app.email_verification_policy)
         .with_signup_auto_sign_in(app.signup_auto_sign_in);
@@ -31,7 +33,9 @@ pub(super) async fn login<S: AuthStore + 'static>(
     }
     let (ip, agent) = super::request::client_metadata(headers);
     let grant = if path == "/sign-up/email" {
-        validate_length(payload["password"].as_str().ok_or_else(internal)?, true)?;
+        app.credential_policy.check_signup()?;
+        app.credential_policy
+            .validate(payload["password"].as_str().ok_or_else(internal)?, true)?;
         let mut profile = serde_json::Map::new();
         let object = payload.as_object_mut().ok_or_else(internal)?;
         for field in ["firstName", "lastName", "phoneNumber"] {
@@ -148,7 +152,10 @@ pub(super) async fn authenticated<S: AuthStore + 'static>(
     pending: &mut HeaderMap,
     now: DateTime<Utc>,
 ) -> BlueprintResult<Value> {
-    let service = CredentialService::new(app.store.clone()).with_session_policy(app.session_policy);
+    let service = CredentialService::new(app.store.clone())
+        .with_credential_policy(app.credential_policy)
+        .with_token_lifetimes(app.token_lifetimes)
+        .with_session_policy(app.session_policy);
     let (token, transient) = session;
     match path {
         "/change-email" => {
@@ -253,6 +260,8 @@ async fn reset<S: AuthStore + 'static>(
         .or_else(|| query.get("token").and_then(Value::as_str))
         .unwrap_or("");
     let mut service = CredentialService::new(app.store.clone())
+        .with_credential_policy(app.credential_policy)
+        .with_token_lifetimes(app.token_lifetimes)
         .with_session_policy(app.session_policy)
         .with_revoke_sessions_on_password_reset(app.revoke_sessions_on_password_reset);
     if let Some(observer) = &app.password_reset_observer {
@@ -282,6 +291,7 @@ pub(super) async fn public<S: AuthStore + 'static>(
         return Some(match service {
             Err(error) => Err(error),
             Ok(mut service) => {
+                service = service.with_token_lifetimes(app.token_lifetimes);
                 if let Some(dispatcher) = &app.background_dispatcher {
                     service = service.with_background_dispatcher(dispatcher.clone());
                 }
@@ -302,6 +312,24 @@ pub(super) async fn public<S: AuthStore + 'static>(
 }
 
 impl<S: AuthStore + 'static> AuthHttp<S> {
+    /// Installs trusted signup and UTF-16 password-length options on all credential proofs.
+    #[must_use]
+    pub fn with_credential_policy(mut self, policy: crate::accounts::CredentialPolicy) -> Self {
+        self.credential_policy = policy;
+        if let Some(factor) = &self.two_factor {
+            self.two_factor = Some(std::sync::Arc::new(
+                factor.copy_configuration().with_credential_policy(policy),
+            ));
+        }
+        self
+    }
+    /// Installs whole-second reset and verification token issuance lifetimes.
+    #[must_use]
+    pub fn with_token_lifetimes(mut self, lifetimes: crate::accounts::AuthTokenLifetimes) -> Self {
+        self.token_lifetimes = lifetimes;
+        self
+    }
+
     /// Disables automatic signup sessions without disabling later password signin.
     #[must_use]
     pub fn with_signup_auto_sign_in(mut self, enabled: bool) -> Self {

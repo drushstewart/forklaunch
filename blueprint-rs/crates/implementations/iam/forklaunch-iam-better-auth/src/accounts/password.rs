@@ -1,5 +1,5 @@
 //! Authenticated password changes with authoritative rechecks after derivation.
-use super::{CredentialService, credentials, find_credential, text, validate_length};
+use super::{CredentialService, credentials, find_credential, text};
 use crate::sessions::{SessionService, load};
 use crate::store::{AuthStore, AuthTransaction, Model};
 use chrono::{DateTime, SecondsFormat, Utc};
@@ -47,7 +47,7 @@ impl<S: AuthStore> CredentialService<S> {
             .get(token, transient, false, now)
             .await?
             .ok_or_else(unauthorized)?;
-        validate_length(&password, false)?;
+        self.credential_policy.validate(&password, false)?;
         let mut tx = self.store.begin(false).await?;
         let account = find_credential(&mut tx, text(&view.user, "id")?).await?;
         tx.commit().await?;
@@ -101,8 +101,9 @@ impl<S: AuthStore> CredentialService<S> {
             .get(token, transient, false, now)
             .await?
             .ok_or_else(unauthorized)?;
-        validate_length(&input.new_password, true)?;
-        validate_length(&input.current_password, false)?;
+        self.credential_policy.validate(&input.new_password, true)?;
+        self.credential_policy
+            .validate(&input.current_password, false)?;
         let user_id = text(&view.user, "id")?;
         let mut tx = self.store.begin(false).await?;
         let account = find_credential(&mut tx, user_id).await?;

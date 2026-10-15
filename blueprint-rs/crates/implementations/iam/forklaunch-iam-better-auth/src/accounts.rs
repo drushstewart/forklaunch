@@ -13,6 +13,8 @@ use std::sync::{Arc, OnceLock};
 use tokio::sync::Semaphore;
 use zeroize::Zeroizing;
 
+mod credential_policy;
+pub use credential_policy::{AuthTokenLifetimes, CredentialPolicy};
 pub(crate) mod email_observer;
 pub use email_observer::{EmailVerificationObserver, EmailVerificationObserverContext};
 pub(crate) mod email_delivery;
@@ -88,6 +90,8 @@ impl AuthGrant {
     }
 }
 pub struct CredentialService<S> {
+    credential_policy: CredentialPolicy,
+    token_lifetimes: AuthTokenLifetimes,
     session_policy: crate::sessions::SessionPolicy,
     store: Arc<S>,
     workers: Arc<Semaphore>,
@@ -99,6 +103,16 @@ pub struct CredentialService<S> {
     pub(crate) verification_delivery: Option<verification_policy::Delivery>,
 }
 impl<S: AuthStore> CredentialService<S> {
+    #[must_use]
+    pub fn with_credential_policy(mut self, policy: CredentialPolicy) -> Self {
+        self.credential_policy = policy;
+        self
+    }
+    #[must_use]
+    pub fn with_token_lifetimes(mut self, lifetimes: AuthTokenLifetimes) -> Self {
+        self.token_lifetimes = lifetimes;
+        self
+    }
     /// Installs trusted session lifetime, refresh and freshness options.
     #[must_use]
     pub fn with_session_policy(mut self, policy: crate::sessions::SessionPolicy) -> Self {
@@ -112,6 +126,8 @@ impl<S: AuthStore> CredentialService<S> {
         // release capacity until its blocking hash job has actually completed.
         static WORKERS: OnceLock<Arc<Semaphore>> = OnceLock::new();
         Self {
+            credential_policy: CredentialPolicy::default(),
+            token_lifetimes: AuthTokenLifetimes::default(),
             session_policy: crate::sessions::SessionPolicy::default(),
             store,
             verification_policy: EmailVerificationPolicy::default(),
@@ -148,6 +164,7 @@ impl<S: AuthStore> CredentialService<S> {
         agent: &str,
         now: DateTime<Utc>,
     ) -> BlueprintResult<AuthGrant> {
+        self.credential_policy.check_signup()?;
         if self.verification_policy.require {
             return Err(verification_policy::required());
         }
@@ -174,8 +191,9 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
         callback: &str,
     ) -> BlueprintResult<SignupOutcome> {
+        self.credential_policy.check_signup()?;
         validate_email(&input.email)?;
-        validate_length(&input.password, true)?;
+        self.credential_policy.validate(&input.password, true)?;
         let email = input.email.to_lowercase();
         let mut tx = self.store.begin(false).await?;
         let exists = find_email(&mut tx, &email).await?.is_some();
@@ -318,7 +336,7 @@ impl<S: AuthStore> CredentialService<S> {
         now: DateTime<Utc>,
     ) -> BlueprintResult<crate::two_factor::CredentialSigninOutcome> {
         validate_email(&input.email)?;
-        validate_length(&input.password, false)?;
+        self.credential_policy.validate(&input.password, false)?;
         let mut tx = self.store.begin(false).await?;
         let user = find_email(&mut tx, &input.email.to_lowercase()).await?;
         let account = if let Some(user) = &user {
@@ -465,22 +483,6 @@ pub(crate) fn validate_email(email: &str) -> BlueprintResult<()> {
     } else {
         Err(BlueprintError::new("INVALID_EMAIL", "Invalid email"))
     }
-}
-pub(crate) fn validate_length(password: &str, minimum: bool) -> BlueprintResult<()> {
-    let length = password.encode_utf16().count();
-    if minimum && length < 8 {
-        return Err(BlueprintError::new(
-            "PASSWORD_TOO_SHORT",
-            "Password too short",
-        ));
-    }
-    if length > 128 {
-        return Err(BlueprintError::new(
-            "PASSWORD_TOO_LONG",
-            "Password too long",
-        ));
-    }
-    Ok(())
 }
 fn text<'a>(row: &'a Value, field: &str) -> BlueprintResult<&'a str> {
     row[field].as_str().ok_or_else(storage_error)

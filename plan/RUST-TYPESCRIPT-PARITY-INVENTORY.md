@@ -10828,3 +10828,23 @@ checks pass. The final ten-source manifest is
 `/private/tmp/fl-plan-creation-route-final.json`; logs use
 `/private/tmp/fl-plan-creation-route-{live-final,unit,artifacts,clippy,minimal}.log`.
 Subscription creation, managed creation and broader mutations remain open.
+
+
+### 2026-10-15 — Trusted credential policy and token lifetimes
+
+Added bounded native credential policy for disabling signup and UTF-16 password
+lengths, with upstream zero fallback, minimum-first new-password checks and
+maximum-only existing-password proofs. Effective limits are 1..4096 code units.
+Trusted whole-second reset and verification TTLs reach existing issuance paths;
+reset zero falls back to 3600 seconds while verification zero is preserved.
+HTTP request validation still precedes handler policy. No request can select policy.
+
+Actual Better Auth fixture: 17 observations passed. Focused native tests: 3 passed;
+full IAM: 217 passed, 3 PostgreSQL tests separately ignored; restricted PostgreSQL
+proof passed in 176.66 seconds and owned roles, records and audit rows returned to
+zero. Strict full and minimal Clippy passed. Frozen 20-source manifest:
+`/private/tmp/fl-credential-policy-freeze.json`; evidence logs:
+`/private/tmp/fl-credential-policy-{actual,native,full,pg,clippy,minimal-clippy}.log`.
+Change-email delivery and delete-user remain disabled. Fresh clock sampling after
+awaited work is a separate pending slice; unrestricted callbacks, broader plugins
+and full Better Auth parity remain open. Checklist remains 660/682 (96.8%).

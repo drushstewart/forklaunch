@@ -2703,3 +2703,5 @@ Logs /private/tmp/fl-payment-link-list-route-{live,artifacts,units-final,clippy-
 Existing CI direct-executable payment_link_read wrapper runs this expanded test
 without holding Cargo's lock across SDK compilation; no extra wrapper needed.
 Checklist660/682(96.8%),22broad gates remain open.
+
+- 2026-10-15: Bounded credential policy and reset/verification TTLs validated: actual17, focused3, full IAM217, restricted PostgreSQL and strict full/minimal Clippy pass. Fresh-clock timing and broader auth remain open; 660/682 unchanged.

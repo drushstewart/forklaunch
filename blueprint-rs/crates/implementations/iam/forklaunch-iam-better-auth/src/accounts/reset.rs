@@ -1,5 +1,5 @@
 //! Single-use password reset tokens over authoritative encrypted records.
-use super::{CredentialService, credentials, storage_error, text, validate_length};
+use super::{CredentialService, credentials, storage_error, text};
 use crate::store::{AuthStore, AuthTransaction, Model};
 use chrono::{DateTime, SecondsFormat, Utc};
 use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
@@ -42,7 +42,7 @@ impl<S: AuthStore> CredentialService<S> {
         if token.is_empty() {
             return Err(invalid_token());
         }
-        validate_length(&password, true)?;
+        self.credential_policy.validate(&password, true)?;
         let identifier = format!("reset-password:{token}");
         let mut tx = self.store.begin(true).await?;
         let mut latest: Option<(DateTime<Utc>, Value)> = None;

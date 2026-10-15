@@ -52,14 +52,26 @@ pub(crate) fn failure() -> BlueprintError {
         "Unable to deliver verification email",
     )
 }
-#[cfg(any(feature = "http", test))]
+#[cfg(test)]
 pub(crate) fn token(
     email: &str,
     secret: &[u8],
     now: DateTime<Utc>,
 ) -> BlueprintResult<Zeroizing<String>> {
+    token_with_lifetime(email, secret, now, 3600)
+}
+#[cfg(any(feature = "http", test))]
+pub(crate) fn token_with_lifetime(
+    email: &str,
+    secret: &[u8],
+    now: DateTime<Utc>,
+    lifetime: u32,
+) -> BlueprintResult<Zeroizing<String>> {
     let issued = now.timestamp();
-    let expires = issued.checked_add(3600).ok_or_else(failure)?;
+    let expires = now
+        .checked_add_signed(chrono::Duration::seconds(i64::from(lifetime)))
+        .ok_or_else(failure)?
+        .timestamp();
     let payload = Zeroizing::new(
         serde_json::to_vec(&json!({"email":email.to_lowercase(),"iat":issued,"exp":expires}))
             .map_err(|_| failure())?,
@@ -76,6 +88,7 @@ pub(crate) fn token(
     Ok(output)
 }
 #[cfg(feature = "http")]
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn deliver(
     hook: &dyn EmailVerificationDelivery,
     user: &Value,
@@ -83,12 +96,14 @@ pub(crate) async fn deliver(
     callback: &str,
     secret: &[u8],
     now: DateTime<Utc>,
+    lifetime: u32,
 ) -> BlueprintResult<()> {
-    prepare(hook, user, base, callback, secret, now)?
+    prepare(hook, user, base, callback, secret, now, lifetime)?
         .await
         .map_err(|_| failure())
 }
 #[cfg(feature = "http")]
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn prepare(
     hook: &dyn EmailVerificationDelivery,
     user: &Value,
@@ -96,9 +111,10 @@ pub(crate) fn prepare(
     callback: &str,
     secret: &[u8],
     now: DateTime<Utc>,
+    lifetime: u32,
 ) -> BlueprintResult<DeliveryFuture> {
     let public = super::reset_request::projection(user)?;
-    let token = token(super::text(user, "email")?, secret, now)?;
+    let token = token_with_lifetime(super::text(user, "email")?, secret, now, lifetime)?;
     let url = Zeroizing::new(format!(
         "{base}/verify-email?token={}&callbackURL={}",
         token.as_str(),

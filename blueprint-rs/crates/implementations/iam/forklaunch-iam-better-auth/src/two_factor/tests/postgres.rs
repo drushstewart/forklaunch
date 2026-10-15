@@ -83,6 +83,7 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
         crate::http::email_auto_tests::lifecycle(store.clone()).await;
         crate::sessions::policy_tests::exercise_policy(store.clone()).await;
         crate::http::session_policy_tests::lifecycle(store.clone()).await;
+        crate::http::credential_policy_tests::lifecycle(store.clone()).await;
         let before_view_audit:i64=sqlx::query_scalar("SELECT count(*) FROM fl_better_auth.audit WHERE tenant_id=$1").bind(&tenant).fetch_one(&reader).await.unwrap();
         let viewer=TwoFactorService::new(store.clone(),vec![42;32],"Read".into()).unwrap();
         assert_eq!(viewer.view_backup_codes_for_user("view-legacy").await.unwrap().len(),4);

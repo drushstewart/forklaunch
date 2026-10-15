@@ -1,5 +1,5 @@
 //! Server-only initial password assignment for an authoritative signed-in user.
-use super::{CredentialService, credentials, find_credential, text, validate_length};
+use super::{CredentialService, credentials, find_credential, text};
 use crate::{
     sessions::{SessionService, load},
     store::{AuthStore, AuthTransaction, Model},
@@ -28,7 +28,7 @@ impl<S: AuthStore> CredentialService<S> {
             .get(token, transient, false, now)
             .await?
             .ok_or_else(unauthorized)?;
-        validate_length(&password, true)?;
+        self.credential_policy.validate(&password, true)?;
         let password = Zeroizing::new(password);
         let hash = self
             .run_crypto(move || credentials::hash_password(&password))

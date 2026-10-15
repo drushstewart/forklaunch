@@ -1644,3 +1644,8 @@ uncertainty and do not permit duplicate redispatch. Inspection exposes IDs only,
 with no current ownership or monetary claim. Restricted-role HTTP/MCP and both
 SDKs exercise invalid inputs, grant denial, actor/request conflicts and repeat
 operations; fixture roles are cleaned after passing validation.
+
+
+### 2026-10-15 — Credential policy / TTL validation
+
+Trusted builders alone configure bounded UTF-16 password limits, signup disable and whole-second reset/verification expiry. Existing-password checks retain maximum-only semantics; new passwords check minimum first. Disabled signup reaches no store/hash work after HTTP schema validation. Checked expiry construction and existing authoritative password/MFA proofs remain enforced. Restricted PostgreSQL and full IAM217 pass; owned fixture roles/data/audit return to zero. Fresh clock resampling after awaited work remains an explicit follow-up, as do change-email/delete-user and broader plugins.

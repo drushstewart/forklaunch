@@ -486,6 +486,7 @@ pub(super) async fn send<S: AuthStore + 'static>(
             callback,
             &app.secret,
             now,
+            app.token_lifetimes.email_verification_seconds(),
         )
         .await?;
     } else {
@@ -504,10 +505,17 @@ pub(super) async fn send<S: AuthStore + 'static>(
                     callback,
                     &app.secret,
                     now,
+                    app.token_lifetimes.email_verification_seconds(),
                 )
                 .await
             }
-            None => crate::accounts::email_delivery::token(email, &app.secret, now).map(|_| ()),
+            None => crate::accounts::email_delivery::token_with_lifetime(
+                email,
+                &app.secret,
+                now,
+                app.token_lifetimes.email_verification_seconds(),
+            )
+            .map(|_| ()),
         };
         tokio::time::sleep_until(start + std::time::Duration::from_millis(500)).await;
         result?;

@@ -350,7 +350,8 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
                     "Better Auth".into(),
                 )?
                 .with_backup_code_storage(crate::two_factor::BackupCodeStorage::Encrypted)
-                .with_session_policy(self.session_policy),
+                .with_session_policy(self.session_policy)
+                .with_credential_policy(self.credential_policy),
             ));
             if let Some(dispatcher) = self.background_dispatcher.clone() {
                 self.two_factor = Some(Arc::new(

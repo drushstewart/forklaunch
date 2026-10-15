@@ -290,6 +290,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_email_verification_hooks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_verification_auto_signin.mjs'
       - 'cli/tests/fixtures/rust_better_auth_session_policy.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_credential_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_otp_async.mjs'
       - 'cli/tests/fixtures/rust_better_auth_seed.rs'
       - 'cli/tests/rust_better_auth_runtime.mjs'
@@ -703,6 +704,7 @@ on:
       - 'cli/tests/fixtures/rust_better_auth_email_verification_hooks.mjs'
       - 'cli/tests/fixtures/rust_better_auth_verification_auto_signin.mjs'
       - 'cli/tests/fixtures/rust_better_auth_session_policy.mjs'
+      - 'cli/tests/fixtures/rust_better_auth_credential_policy.mjs'
       - 'cli/tests/fixtures/rust_better_auth_otp_async.mjs'
       - 'cli/tests/fixtures/rust_better_auth_seed.rs'
       - 'cli/tests/rust_better_auth_runtime.mjs'
@@ -1799,6 +1801,9 @@ jobs:
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/fixtures/rust_better_auth_email_verification_hooks.mjs
+        env:
+          FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/fixtures/rust_better_auth_credential_policy.mjs
         env:
           FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/fixtures/rust_better_auth_session_policy.mjs
