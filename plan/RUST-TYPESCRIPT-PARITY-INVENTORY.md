@@ -11866,3 +11866,36 @@ Configurable access-control roles/statements, seven async policy variants,
 custom default-team creation, topology toggles, schema mappings and lifecycle
 hooks remain open. This closes the creator-role implementation slice, not the
 broader Better Auth gate; checklist660/682 is unchanged.
+
+
+### 2026-10-15: Bounded enums and discriminated JSON unions
+
+Commit `85e337314` adds raw Enum/NativeEnum leaves and DiscriminatedUnion to the
+finite JSON evaluator. The published enum factory retains its ordinary-union
+lowering. Native enum filtering follows actual Zod while dispatch uses raw own
+values; reverse names can select a branch whose enum leaf then rejects them.
+Registration preserves numeric own-key order, SameValueZero duplicates, absence,
+nullable and static-default semantics. Only the selected branch evaluates.
+Registration, comparisons, diagnostics and retained values debit shared budgets.
+
+Final validation90 full/85 minimal tests, strict validation/Axum all-feature
+all-target and minimal validation Clippy pass. Each numeric configuration passes
+5,838 actual/native discriminator comparisons (including2,358 registration
+rejections) and12,096 intersection regressions. Live checks pass327 exact HTTP
+comparisons,156 MCP comparisons with scoped error envelopes,3 safe operational500
+checks and6 calls through each generated SDK. TS-only75 HTTP/6 MCP checks pass.
+Live proof precedes behavior-preserving private helper extraction; final suites,
+Clippy and both differential oracles ran afterward. Commands and source order:
+`/private/tmp/fl-discriminated-receipt.md`; logs use `fl-discriminated-`.
+
+All9 integrated files match `/private/tmp/fl-discriminated-source.json` SHA256
+`a707eda1e6632df217eb2239eb2782e56d07b241b5f1cba2fda428a26c2df661`.
+Six explicit prototype-field boundaries retain existing rejection behavior;
+non-JSON values, arbitrary callbacks/lazy graphs and remaining transforms remain
+open. No dependency, lock or public TypeScript API changed. CI runs the new oracle
+and the expanded existing live fixture. Broader schema gates remain open.
+
+The clean committed worktree was removed after exact HEAD, all integrated hashes
+and zero open-path checks. `/private/tmp/fl-discriminated-cleanup.json` records
+4,198 regular files and44,987,559 logical bytes removed; its proof branch and
+external receipts remain. Native build caches are retained for active agents.
