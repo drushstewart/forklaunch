@@ -81,7 +81,7 @@ fn failure() -> super::BlueprintError {
         "Unable to decode backup codes",
     )
 }
-fn codes(value: &Value) -> BlueprintResult<Vec<String>> {
+pub(super) fn codes(value: &Value) -> BlueprintResult<Vec<String>> {
     let array = value.as_array().ok_or_else(failure)?;
     if array.len() > super::backup_options::MAX_CODES {
         return Err(failure());
@@ -103,12 +103,14 @@ impl<S> TwoFactorService<S> {
     /// still requires an encrypted durable tenant store.
     #[must_use]
     pub fn with_backup_code_storage(mut self, storage: BackupCodeStorage) -> Self {
+        self.backup_codec = None;
         self.backup_code_storage = storage;
         self
     }
     /// Installs independent keys and selects encrypted backup storage.
     #[must_use]
     pub fn with_backup_code_encryption_keys(mut self, keys: Arc<BackupCodeEncryptionKeys>) -> Self {
+        self.backup_codec = None;
         self.backup_code_encryption_keys = Some(keys);
         self.backup_code_storage = BackupCodeStorage::Encrypted;
         self
@@ -155,6 +157,7 @@ impl<S> TwoFactorService<S> {
         {
             return Err(failure());
         }
+        row["backupCodesRevision"] = json!(uuid::Uuid::new_v4().to_string());
         if self.backup_code_storage == BackupCodeStorage::LegacyArray {
             row["backupCodes"] = json!(codes);
             row.as_object_mut().ok_or_else(failure)?.remove(FORMAT);

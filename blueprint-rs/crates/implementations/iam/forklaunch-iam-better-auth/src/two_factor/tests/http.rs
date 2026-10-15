@@ -1472,3 +1472,155 @@ async fn http_backup_storage_default_explicit_preservation_and_failure_projectio
         assert_eq!(rows(store.as_ref(), Model::Session).await, sessions);
     }
 }
+
+#[tokio::test]
+#[allow(clippy::too_many_lines)]
+async fn http_async_backup_lifecycle_faults_and_default_builder_preservation() {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    struct Codec(Arc<AtomicU8>);
+    impl BackupCodeEncryptionCodec for Codec {
+        fn encrypt(&self, input: BackupCodeCodecText) -> BackupCodeCodecFuture {
+            let fail = self.0.load(Ordering::SeqCst) == 1;
+            Box::pin(async move {
+                if fail {
+                    Err(error("private-backup-error", "secret must never escape"))
+                } else {
+                    BackupCodeCodecText::new(format!("X{}", input.as_str()))
+                }
+            })
+        }
+        fn decrypt(&self, input: BackupCodeCodecText) -> BackupCodeCodecFuture {
+            let fail = self.0.load(Ordering::SeqCst) == 2;
+            Box::pin(async move {
+                if fail {
+                    Err(error("private-backup-error", "secret must never escape"))
+                } else {
+                    BackupCodeCodecText::new(input.as_str()[1..].into())
+                }
+            })
+        }
+    }
+    let store = Arc::new(MemoryAuthStore::default());
+    let now = DateTime::from_timestamp(1_800_000_000, 0).unwrap();
+    let origin = "http://auth.fixture.test";
+    let session = new_session("async-http-user", "", "", now).unwrap();
+    let cookie = crate::cookies::sign_cookie_value(text(&session, "token").unwrap(), &[42; 32]);
+    let mut tx = store.begin(true).await.unwrap();
+    tx.insert(
+        Model::User,
+        json!({"id":"async-http-user","email":"async-http@example.test","twoFactorEnabled":false}),
+    )
+    .await
+    .unwrap();
+    tx.insert(Model::Session, session).await.unwrap();
+    tx.commit().await.unwrap();
+    let mode = Arc::new(AtomicU8::new(0));
+    let router = AuthHttp::new(store.clone(), origin.into(), vec![42; 32], vec![])
+        .unwrap()
+        .with_clock(move || now)
+        .with_rate_limiting(false)
+        .with_two_factor_backup_code_encryption_codec(
+            Arc::new(Codec(mode.clone())),
+            BackupCodeCodecOptions::default(),
+        )
+        .unwrap()
+        .with_two_factor_totp_options(TotpOptions::default())
+        .unwrap()
+        .with_two_factor_otp_storage(OtpStorage::Hashed)
+        .unwrap()
+        .with_two_factor_lifecycle_options(
+            TwoFactorLifecycleOptions::default()
+                .with_passwordless(true)
+                .with_skip_verification_on_enable(true),
+        )
+        .unwrap()
+        .with_two_factor_backup_code_generator(Arc::new(|| Ok(vec!["one".into(), "two".into()])))
+        .unwrap()
+        .router();
+    let mut browser = Browser {
+        router,
+        origin: origin.into(),
+        jar: BTreeMap::from([("better-auth.session_token".into(), cookie)]),
+    };
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/enable",
+                Some(json!({"storeBackupCodes":"plain"}))
+            )
+            .await
+            .0,
+        200
+    );
+    let row = rows(store.as_ref(), Model::TwoFactor).await.remove(0);
+    assert_eq!(row["backupCodesFormat"], 2);
+    assert_eq!(row["backupCodes"], "X[\"one\",\"two\"]");
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/verify-backup-code",
+                Some(json!({"code":"one"}))
+            )
+            .await
+            .0,
+        200
+    );
+    let before = rows(store.as_ref(), Model::TwoFactor).await;
+    mode.store(2, Ordering::SeqCst);
+    let (status, body, headers) = browser
+        .call(
+            "/two-factor/verify-backup-code",
+            Some(json!({"code":"two"})),
+        )
+        .await;
+    assert_eq!(status, 500);
+    assert!(body.is_null());
+    assert!(headers.get("set-cookie").is_none());
+    assert!(headers.get("set-auth-jwt").is_none());
+    assert_eq!(rows(store.as_ref(), Model::TwoFactor).await, before);
+    let gate = TwoFactorService::new(store.clone(), vec![42; 32], "Gate".into()).unwrap();
+    let mut tx = store.begin(true).await.unwrap();
+    let user = tx
+        .get(Model::User, "async-http-user")
+        .await
+        .unwrap()
+        .unwrap();
+    let signin::SigninGate::Challenge(challenge) = gate
+        .gate(&mut tx, &user, None, true, "", "", now)
+        .await
+        .unwrap()
+    else {
+        panic!("challenge")
+    };
+    tx.commit().await.unwrap();
+    browser.jar.remove("better-auth.session_token");
+    browser.jar.insert(
+        "better-auth.two_factor".into(),
+        crate::cookies::sign_cookie_value(challenge.identifier(), &[42; 32]),
+    );
+    mode.store(1, Ordering::SeqCst);
+    let sessions = rows(store.as_ref(), Model::Session).await;
+    let (status, body, headers) = browser
+        .call(
+            "/two-factor/verify-backup-code",
+            Some(json!({"code":"two","trustDevice":true})),
+        )
+        .await;
+    assert_eq!(status, 500);
+    assert!(body.is_null());
+    assert!(headers.get("set-cookie").is_none());
+    assert!(headers.get("set-auth-jwt").is_none());
+    assert_eq!(rows(store.as_ref(), Model::TwoFactor).await, before);
+    assert_eq!(rows(store.as_ref(), Model::Session).await, sessions);
+    mode.store(0, Ordering::SeqCst);
+    assert_eq!(
+        browser
+            .call(
+                "/two-factor/verify-backup-code",
+                Some(json!({"code":"two"}))
+            )
+            .await
+            .0,
+        401
+    );
+}

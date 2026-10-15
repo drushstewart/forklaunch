@@ -112,6 +112,9 @@ impl<S: AuthStore> StateService<S> {
         loop {
             let page = tx.list_page(Model::Verification, after, 256).await?;
             for row in page.records {
+                if crate::two_factor::cleanup_backup_lease(&mut tx, &row, now).await? {
+                    continue;
+                }
                 if time(&row, "expiresAt")? < now {
                     tx.delete(Model::Verification, text(&row, "id")?).await?;
                 }

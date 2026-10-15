@@ -15,6 +15,15 @@ impl<S: AuthStore> TwoFactorService<S> {
         issuer: Option<&str>,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
+        if self.backup_codec.is_some() {
+            let start = std::time::Instant::now();
+            let clock = move || {
+                now + super::Duration::from_std(start.elapsed()).unwrap_or(super::Duration::MAX)
+            };
+            return self
+                .mutate_custom_backup(token, password, issuer, true, &clock)
+                .await;
+        }
         let issuer = self
             .lifecycle_options
             .enrollment_issuer(issuer, &self.issuer);
@@ -102,6 +111,15 @@ impl<S: AuthStore> TwoFactorService<S> {
         password: String,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
+        if self.backup_codec.is_some() {
+            let start = std::time::Instant::now();
+            let clock = move || {
+                now + super::Duration::from_std(start.elapsed()).unwrap_or(super::Duration::MAX)
+            };
+            return self
+                .mutate_custom_backup(token, password, None, false, &clock)
+                .await;
+        }
         let checked = self
             .password_snapshot(token, password, now, super::PasswordAction::Backup)
             .await?;
@@ -179,7 +197,7 @@ pub(super) async fn rotate<T: AuthTransaction>(
     tx.delete(Model::Session, text(old, "id")?).await?;
     Ok(session)
 }
-fn uri(issuer: &str, email: &str, secret: &[u8], options: super::TotpOptions) -> String {
+pub(super) fn uri(issuer: &str, email: &str, secret: &[u8], options: super::TotpOptions) -> String {
     // Path components use encodeURIComponent; query values use URLSearchParams.
     const COMPONENT: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
         .remove(b'-')

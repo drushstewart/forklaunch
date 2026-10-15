@@ -254,6 +254,7 @@ impl<S> TwoFactorService<S> {
             backup_code_generator: self.backup_code_generator.clone(),
             backup_code_storage: self.backup_code_storage,
             backup_code_encryption_keys: self.backup_code_encryption_keys.clone(),
+            backup_codec: self.backup_codec.clone(),
         }
     }
 }

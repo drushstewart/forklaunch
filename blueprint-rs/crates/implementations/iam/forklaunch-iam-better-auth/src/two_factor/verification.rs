@@ -1,8 +1,8 @@
 use super::{
-    AuthStore, AuthTransaction, BlueprintResult, DateTime, FactorResponse, Model, TwoFactorService,
-    Utc, authenticated, corrupt, crypto, empty_response, enabled, enrollment, error, expiry,
-    factor, invalid_challenge, json, new_session, output_user, secret, text, time, timestamp,
-    unauthorized, verification_row,
+    AuthStore, AuthTransaction, BlueprintResult, DateTime, Duration, FactorResponse, Model,
+    TwoFactorService, Utc, authenticated, corrupt, crypto, empty_response, enabled, enrollment,
+    error, expiry, factor, invalid_challenge, json, new_session, output_user, secret, text, time,
+    timestamp, unauthorized, verification_row,
 };
 /// Trusted recovery verification options. Defaults retain session issuance.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -80,6 +80,22 @@ impl<S: AuthStore> TwoFactorService<S> {
         disable_session: bool,
         now: DateTime<Utc>,
     ) -> BlueprintResult<FactorResponse> {
+        if recovery && self.backup_codec.is_some() {
+            let start = std::time::Instant::now();
+            let clock = move || now + Duration::from_std(start.elapsed()).unwrap_or(Duration::MAX);
+            return self
+                .verify_custom_backup(
+                    session_token,
+                    challenge,
+                    code,
+                    BackupVerificationOptions {
+                        disable_session,
+                        trust_device,
+                    },
+                    &clock,
+                )
+                .await;
+        }
         if !recovery && self.lifecycle_options.disable_totp {
             return Err(error("TOTP_NOT_CONFIGURED", "totp isn't configured"));
         }
@@ -186,7 +202,6 @@ impl<S: AuthStore> TwoFactorService<S> {
                 error("INVALID_CODE", "Invalid code")
             });
         }
-        let mut factor_changed = recovery;
         if recovery {
             let remaining: Vec<_> = backup_codes
                 .ok_or_else(corrupt)?
@@ -195,6 +210,38 @@ impl<S: AuthStore> TwoFactorService<S> {
                 .collect();
             self.write_backup_codes(&mut row, &remaining)?;
         }
+        let response = self
+            .complete_verification(
+                &mut tx,
+                row,
+                user,
+                session,
+                pending,
+                recovery,
+                trust_device,
+                disable_session,
+                now,
+            )
+            .await?;
+        tx.commit().await?;
+        Ok(response)
+    }
+
+    // Both builtin and asynchronous backup verification commit these mutations atomically.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) async fn complete_verification<T: AuthTransaction>(
+        &self,
+        tx: &mut T,
+        mut row: super::Value,
+        user: super::Value,
+        session: Option<super::Value>,
+        pending: Option<super::Value>,
+        recovery: bool,
+        trust_device: bool,
+        disable_session: bool,
+        now: DateTime<Utc>,
+    ) -> BlueprintResult<FactorResponse> {
+        let mut factor_changed = recovery;
         let mut response = empty_response(
             json!({"token":session.as_ref().map(|row|row["token"].clone()),"user":output_user(&user)}),
         );
@@ -213,7 +260,6 @@ impl<S: AuthStore> TwoFactorService<S> {
                     .ok_or_else(corrupt)?
                     .remove("token");
                 tx.replace(Model::TwoFactor, row).await?;
-                tx.commit().await?;
                 return Ok(response);
             }
             let mut next = new_session(
@@ -231,7 +277,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             response.session = Some(next);
             response.clear_challenge = true;
             if trust_device {
-                response.trust = Some(self.create_trust(&mut tx, &user, now).await?);
+                response.trust = Some(self.create_trust(tx, &user, now).await?);
             }
         } else if !recovery && row["verified"] != true {
             if !enabled(&user)? {
@@ -241,7 +287,7 @@ impl<S: AuthStore> TwoFactorService<S> {
                 tx.replace(Model::User, updated.clone()).await?;
                 response.session = Some(
                     enrollment::rotate(
-                        &mut tx,
+                        tx,
                         &updated,
                         session.as_ref().ok_or_else(unauthorized)?,
                         now,
@@ -257,7 +303,6 @@ impl<S: AuthStore> TwoFactorService<S> {
         if factor_changed {
             tx.replace(Model::TwoFactor, row).await?;
         }
-        tx.commit().await?;
         Ok(response)
     }
 }

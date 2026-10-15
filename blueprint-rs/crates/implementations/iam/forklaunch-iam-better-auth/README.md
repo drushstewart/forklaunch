@@ -1255,7 +1255,7 @@ stable-state ordering. Missing, null and empty credential-password strings count
 absent; malformed non-string values fail closed. Existing required-password paths
 retain the hash snapshot and mutation-time comparison. No email linking or new
 social-sign-in protection is implied. Lifetime and generation options are described
-below; custom backup storage codecs remain separate parity work.
+below; custom backup storage codecs are described below.
 
 `TwoFactorLifetimeOptions::new(challenge, trusted_device)` accepts independent
 whole-second `std::time::Duration` values from zero through 365 days. Defaults stay
@@ -1335,7 +1335,7 @@ and Unicode are preserved, matching the upstream custom-generator behavior. A
 successful verification consumes every exact duplicate of that proof atomically.
 Do not log generated proofs or callback error contents. Codes continue to use the
 existing encrypted tenant store; built-in backup field codecs are described below.
-Custom asynchronous backup codecs remain a separate, unimplemented extension. JavaScript negative/fractional generation sizes and
+Custom asynchronous backup codecs are described below. JavaScript negative/fractional generation sizes and
 positive amounts with zero length are outside this bounded typed profile.
 
 ### Backup code field storage and migration
@@ -1387,8 +1387,63 @@ remain 32 plaintext bytes and 192 stored bytes. Empty/Unicode codes and duplicat
 remain admitted, as with the trusted generator. Four fixed-nonce Node/Rust vectors,
 actual plugin policy/failure observations, HTTP defaults, and restricted PostgreSQL
 transaction/one-use tests cover this built-in subset. Custom asynchronous backup
-codecs still require a separate snapshot/CAS design; OTP consume-before-callback
-failure semantics must not be reused for them.
+codecs use the separate reservation protocol below.
+
+### Asynchronous backup field codecs
+
+Install a trusted `BackupCodeEncryptionCodec` with
+`TwoFactorService::with_backup_code_encryption_codec` or
+`AuthHttp::with_two_factor_backup_code_encryption_codec`, passing
+`BackupCodeCodecOptions::default()` (30 seconds). Its paired `encrypt` and
+`decrypt` methods receive owned `BackupCodeCodecText` and return
+`BackupCodeCodecFuture`, a fallible owned future. No user, password, session token,
+or database transaction is passed to the callback. Text is zeroized on drop and
+has no Debug/Serialize implementation. Callback errors become a static empty HTTP
+500; callback error contents and proofs must never be logged. Panics are outside
+this Result contract. Explicit builtin storage/key selection removes the hook;
+other configuration builders preserve it.
+
+Plaintext JSON is bounded to 77,101 UTF-8 bytes and 100 strings of at most 128
+UTF-8 bytes each; encoded callback text is bounded to 154,330 bytes. Empty and
+Unicode callback text are admitted. The existing supplied-proof HTTP bound remains
+128 bytes. Decryption uses the currently installed codec for marked strings;
+unmarked legacy arrays remain readable. Successful custom writes carry native
+`backupCodesFormat: 2`; every builtin/custom mutation also writes a fresh revision.
+Builtin readers reject format 2 instead of guessing its encoding. Upgrade every
+reader before enabling custom writers: these native envelopes/revisions are not
+upstream row interchange, and older binaries lack their concurrency protections.
+
+A versioned encrypted Verification reservation records an opaque owner, generation
+and authority digests, phase, and deadline. No transaction spans an awaited user
+future. Enrollment/regeneration reserve before encoding; verification reserves
+before decoding and records a second Reencoding phase before encoding remaining
+proofs. Final publication checks the same reservation, factor revision, current
+session/challenge, password policy, account lockout and fresh clock, then commits
+factor/challenge/session/trust mutations atomically. Stale signout, deletion,
+regeneration and competing consumption cannot resurrect or reissue proofs. These
+checks deliberately strengthen upstream races; they do not promise identical
+multi-adapter scheduling.
+
+Decode errors preserve proofs and attempts. Invalid decoded JSON proofs apply the
+ordinary failed-attempt policy. Reencoding failure preserves proofs but consumes
+only an unchanged pending challenge; authenticated sessions remain intact. A
+changed challenge is never deleted by an older reservation. Failed regeneration
+encoding preserves old proofs. Timeout/cancellation leaves a durable reservation
+for restart recovery; expired Decoding/encoding reservations release ownership,
+while expired Reencoding reservations additionally consume that exact unchanged
+challenge. Lazy recovery commits even when it invalidates the supplied challenge.
+`cleanup_backup_codec_states` offers explicit tenant-scoped pages of at most 256
+rows; ordinary expired-verification cleanup observes the same recovery rules.
+No background scheduler or detached callback is installed.
+
+The validated 1..=30,000 whole-millisecond lease covers both callback stages.
+Timeouts bound cooperative polling and publication checks, not synchronous method
+construction or blocking/non-yielding code. Clock checks occur after writer
+acquisition and immediately before commit; they cannot guarantee when a database
+COMMIT physically completes. Missing reservations, different owners, expired
+leases and upgraded instances without the codec fail closed. Server-only
+`viewBackupCodes` and arbitrary JavaScript callback/value semantics remain separate
+capabilities.
 
 ### OTP field storage policy
 
@@ -1410,7 +1465,7 @@ proofs; malformed non-string bodies fail validation before consuming attempts.
 
 Built-in encrypted OTP encoding and asynchronous custom OTP callbacks are described
 below. Their failure/consumption rules differ from this plain/hashed profile.
-Custom asynchronous backup codecs remain separate extension work.
+Custom asynchronous backup codecs are described below.
 
 
 ### Encrypted OTP field representation
@@ -1433,7 +1488,8 @@ invalid tags produce a sanitized empty 500 **after committing OTP consumption**,
 matching upstream. No new failed-attempt increment or session/trust issuance occurs;
 expired account-lock clearing that precedes consumption still commits. A failed
 transaction commit instead rolls back consumption and returns the storage failure.
-Async custom codecs remain unimplemented: no database lock spans a user callback.
+Asynchronous custom OTP codecs are described below; no database transaction
+spans their user futures.
 
 The admitted ciphertext payload is at most 32 bytes (the current maximum generated
 OTP width), with at most 192 bytes of stored envelope text. Version parsing admits

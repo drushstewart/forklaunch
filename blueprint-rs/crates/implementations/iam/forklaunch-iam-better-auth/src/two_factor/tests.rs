@@ -4,6 +4,8 @@ use crate::{
     store::{AuthCursor, AuthPage, AuthWindow, memory::MemoryAuthStore},
 };
 // Reuse the fault adapter while permitting this domain suite without the HTTP feature.
+mod backup_async;
+mod backup_commit_store;
 mod backup_options;
 mod backup_storage;
 #[allow(clippy::duplicate_mod)]

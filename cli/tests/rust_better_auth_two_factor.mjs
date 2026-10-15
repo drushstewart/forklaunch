@@ -581,3 +581,5 @@ await import('./fixtures/rust_better_auth_otp_encryption.mjs');
 await import('./fixtures/rust_better_auth_otp_async.mjs');
 
 await import('./fixtures/rust_better_auth_backup_storage.mjs');
+
+await import('./fixtures/rust_better_auth_backup_async.mjs');

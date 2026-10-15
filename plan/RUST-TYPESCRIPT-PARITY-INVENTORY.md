@@ -9614,3 +9614,36 @@ checked before deletion. Current compilation caches, source worktrees and retain
 proof archives preserved. Receipt
 /private/tmp/fl-oct14-old-checkpoint-executable-cleanup.json. No physical APFS-space
 claim.
+
+
+### Trusted asynchronous backup field codecs (2026-10-14)
+
+Owned Send encrypt/decrypt futures receive only zeroized bounded backup text
+(JSON77101/ciphertext154330), never session/user/token context. Total whole-ms
+lease1..30000 covers both callbacks and persistence; cooperative timeout cannot
+interrupt blocking code/panic/COMMIT. Durable encrypted Verification v1 per-user
+phase/owner/snapshot lease and backupCodesRevision reject concurrent/ABA final
+writes without holding transactions across callbacks. Format2 custom fields fail
+closed without codec; deploy upgraded readers/writers before enabling. Builtin
+format1 and unmarked-array compatibility remain. Builtin selection clears callback.
+Enroll/regen recheck password/authority/factor and cannot overwrite newer consumes.
+Decode failure preserves factor/attempt; invalid proof records normal failure;
+reencode failure preserves codes and consumes only exact unchanged pending challenge.
+Final writes session/trust/counters/code removal atomically under current authority,
+lockout and deadline sampled after waits and immediately before COMMIT. No absolute
+COMMIT-completion deadline guarantee. Native rejects upstream stale signout/expiry
+and unsafe regeneration races deliberately; not exact concurrency scheduling parity.
+Cancellation/restart uses bounded256-row cleanup and lazy recovery; expired
+Reencoding consumes only exact unchanged challenge. Root-found lazy-recovery
+rollback fixed by committing recovery before stale result; both generic OAuth
+expiry cleanup paths handle recognized leases correctly. Changed challenges and
+missing/new owner never resurrect or authorize callbacks. Default HTTP builtin
+clock behavior preserved; custom paths use fresh trusted clock.
+Frozen21 /private/tmp/fl-backup-async-freeze.json SHA256
+5ace0e877822ef11c51a8f7ac19acc425651e4797f588c88fb43949afa4addfb.
+Focused11/0.08s, fullIAM178/3ignored89.14s, restrictedPG1/49.50s, strict
+allfeature/alltarget+minimalClippy and actual12 observations pass; cleanup0/0/0.
+Logs /private/tmp/fl-backup-async-{native,full,pg,clippy,minimal-clippy,actual}.log.
+No IAM manifests/locks/migrations changed. Tested against main2813f0e28 plus frozen
+IAM and coherent optional Checkout graph; no new immutable/generated claim.
+Server-only viewBackupCodes remains separate;660/682 (96.8%),22open unchanged.

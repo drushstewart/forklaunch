@@ -45,6 +45,14 @@ async fn reset_response<S: AuthStore + 'static>(
         loop {
             let page = tx.list_page(Model::Verification, after, 256).await?;
             for row in page.records {
+                if row.get("backupCodecLease").is_some()
+                    || row["identifier"]
+                        .as_str()
+                        .is_some_and(|id| id.starts_with("2fa-backup-codec-"))
+                {
+                    crate::two_factor::cleanup_backup_lease(&mut tx, &row, (app.clock)()).await?;
+                    continue;
+                }
                 if row["identifier"].as_str() == Some(&format!("reset-password:{token}")) {
                     let created = time(&row, "createdAt")?;
                     if latest.as_ref().is_none_or(|(best, _)| created > *best) {

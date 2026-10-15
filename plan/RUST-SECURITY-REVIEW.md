@@ -1177,3 +1177,19 @@ CLI1121 tests pass; allfeature IAM library167 pass/3environment-gatedPGignored
 in88.02s. Generated billing date base/Stripe template compilation/artifact checks
 also pass against the patched graph. Separate restrictedPG receipts remain
 applicable, not relabeled as this run. No hosted CI/publication claim.
+
+
+### Async backup codec authority and cancellation review (2026-10-14)
+
+Trusted backup futures run outside transactions; durable owner/phase/lease and
+exact current factor/authority snapshots gate publication. Revision UUIDs reject
+same-ciphertext ABA. Failure and cleanup delete only an unchanged pending attempt,
+never recreate removed state or overwrite a newer factor. Initial/post-reservation,
+second-phase and final pre-COMMIT clock guards are tested, including expiry during
+Session writes and commit rollback. Root review found lazy cleanup could roll back
+its own challenge invalidation; corrected commit-before-stale result and actual
+OAuth generic-cleanup regression pass. Unknown/default readers reject customformat2;
+rolling upgrades require envelope-aware writers. Callback text is bounded/zeroized,
+no Debug/Serde secret wrappers; no forced interruption or arbitrary future panic
+containment promise. Actual12/focused11/fullIAM178 and restrictedPG pass. Native
+stale-authority behavior intentionally strengthens upstream race handling.

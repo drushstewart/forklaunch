@@ -257,6 +257,25 @@ impl<S: AuthStore + 'static> AuthHttp<S> {
         }
         schema
     }
+    /// Installs paired trusted asynchronous backup codecs. No database transaction
+    /// is held across callbacks; existing HTTP origin/cookie policy is unchanged.
+    /// # Errors
+    /// Rejects conflicting MFA routes or invalid configuration.
+    pub fn with_two_factor_backup_code_encryption_codec(
+        mut self,
+        codec: Arc<dyn crate::two_factor::BackupCodeEncryptionCodec>,
+        options: crate::two_factor::BackupCodeCodecOptions,
+    ) -> BlueprintResult<Self> {
+        self = self.with_two_factor()?;
+        self.two_factor = Some(Arc::new(
+            self.two_factor
+                .as_ref()
+                .ok_or_else(internal)?
+                .copy_configuration()
+                .with_backup_code_encryption_codec(codec, options),
+        ));
+        Ok(self)
+    }
     /// Selects trusted backup field storage. The first MFA opt-in otherwise uses
     /// encrypted JSON; later builders preserve this explicit selection.
     /// # Errors
@@ -490,6 +509,35 @@ pub(super) async fn handle<S: AuthStore + 'static>(
         }
         "/two-factor/enable" if body["method"] == "otp" => {
             service.enable_otp(&token, password(), now).await
+        }
+        "/two-factor/enable" if service.has_custom_backup_codec() => {
+            service
+                .enable_with_backup_clock(
+                    &token,
+                    password(),
+                    body["issuer"].as_str(),
+                    app.clock.as_ref(),
+                )
+                .await
+        }
+        "/two-factor/generate-backup-codes" if service.has_custom_backup_codec() => {
+            service
+                .regenerate_backup_codes_with_clock(&token, password(), app.clock.as_ref())
+                .await
+        }
+        "/two-factor/verify-backup-code" if service.has_custom_backup_codec() => {
+            service
+                .verify_backup_with_clock(
+                    &token,
+                    &signed(app, headers, "two_factor").unwrap_or_default(),
+                    body["code"].as_str().unwrap_or(""),
+                    BackupVerificationOptions {
+                        disable_session: body["disableSession"] == true,
+                        trust_device: body["trustDevice"] == true,
+                    },
+                    app.clock.as_ref(),
+                )
+                .await
         }
         "/two-factor/enable" => {
             service

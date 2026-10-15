@@ -806,6 +806,7 @@ fn failure_response(error: &BlueprintError) -> Response {
             | "TWO_FACTOR_GENERATION_FAILED"
             | "TWO_FACTOR_STORAGE_DECODE_FAILED"
             | "TWO_FACTOR_BACKUP_STORAGE_FAILED"
+            | "TWO_FACTOR_BACKUP_CODEC_FAILED"
             | "TWO_FACTOR_CUSTOM_CODEC_FAILED"
     ) {
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
@@ -837,7 +838,9 @@ fn failure_response(error: &BlueprintError) -> Response {
         | "OTP_NOT_CONFIGURED"
         | "TOO_MANY_ATTEMPTS_REQUEST_NEW_CODE" => StatusCode::BAD_REQUEST,
         "PROVIDER_NOT_FOUND" => StatusCode::NOT_FOUND,
-        "SOCIAL_ACCOUNT_ALREADY_LINKED" => StatusCode::CONFLICT,
+        "SOCIAL_ACCOUNT_ALREADY_LINKED" | "TWO_FACTOR_BACKUP_CODEC_CONFLICT" => {
+            StatusCode::CONFLICT
+        }
         "INVALID_CODE"
         | "INVALID_BACKUP_CODE"
         | "INVALID_TWO_FACTOR_COOKIE"

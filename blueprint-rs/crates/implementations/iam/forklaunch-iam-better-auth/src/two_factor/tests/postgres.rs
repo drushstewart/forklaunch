@@ -69,6 +69,8 @@ async fn restricted_postgres_totp_lifecycle_encryption_tenant_and_atomicity() {
         lockout_options::lifecycle(store.clone()).await;
         backup_options::lifecycle(store.clone()).await;
         backup_storage::lifecycle(store.clone()).await;
+        backup_async::lifecycle(store.clone()).await;
+        backup_async::rollback(store.clone()).await;
         otp_storage::lifecycle(store.clone()).await;
         otp_encryption::lifecycle(store.clone()).await;
         otp_async::lifecycle(store.clone()).await;

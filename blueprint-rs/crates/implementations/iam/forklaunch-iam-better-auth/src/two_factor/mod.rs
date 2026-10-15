@@ -10,8 +10,16 @@
 //! Optional delivered OTP uses a trusted server hook; `TotpOptions` supports bounded
 //! six/eight-digit periods while preserving SHA-1 and the one-step window. Recovery values are authorized disclosures and
 //! must not be logged; this module intentionally provides no secret-bearing Debug.
+mod backup_async;
+mod backup_codec;
+mod backup_codec_state;
+pub(crate) use backup_codec_state::cleanup_backup_lease;
 mod backup_options;
 mod backup_storage;
+pub use backup_async::BackupCodecCleanup;
+pub use backup_codec::{
+    BackupCodeCodecFuture, BackupCodeCodecOptions, BackupCodeCodecText, BackupCodeEncryptionCodec,
+};
 pub use backup_storage::{BackupCodeEncryptionKeys, BackupCodeStorage};
 mod crypto;
 mod enrollment;
@@ -72,6 +80,7 @@ pub struct TwoFactorService<S> {
     backup_code_generator: Option<Arc<dyn BackupCodeGenerator>>,
     backup_code_storage: BackupCodeStorage,
     backup_code_encryption_keys: Option<Arc<BackupCodeEncryptionKeys>>,
+    backup_codec: Option<Arc<backup_codec::Codec>>,
 }
 /// A successful state transition. Explicit wire projection can contain recovery
 /// credentials and must only be returned to the authorized browser.
@@ -174,6 +183,7 @@ impl<S: AuthStore> TwoFactorService<S> {
             backup_code_generator: None,
             backup_code_storage: BackupCodeStorage::default(),
             backup_code_encryption_keys: None,
+            backup_codec: None,
         })
     }
 }
