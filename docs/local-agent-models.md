@@ -6,8 +6,10 @@ After this CLI/framework version is installed:
 
 ```sh
 forklaunch login
-export FORKLAUNCH_APPLICATION_ID="<your saved application UUID>"
+# Run your agent from its integrated ForkLaunch project directory.
 ```
+
+The CLI discovers the application ID from the current project manifest. Outside the project directory, set `FORKLAUNCH_APPLICATION_ID` explicitly. It never creates or selects a different app silently.
 
 In server-side agent code:
 

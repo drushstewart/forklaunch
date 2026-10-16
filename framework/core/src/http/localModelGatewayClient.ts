@@ -75,24 +75,16 @@ export function createLocalModelGatewayClient(
   const applicationId =
     options.applicationId ?? process.env.FORKLAUNCH_APPLICATION_ID;
   const model = options.model ?? process.env.AGENT_MODEL;
-  if (
-    !options.credentialProvider &&
-    (!applicationId || !/^[a-f0-9-]{36}$/i.test(applicationId))
-  ) {
+  if (applicationId && !/^[a-f0-9-]{36}$/i.test(applicationId)) {
     throw new Error(
-      'Set FORKLAUNCH_APPLICATION_ID to your saved app ID before connecting a local agent.'
+      'FORKLAUNCH_APPLICATION_ID must be a saved application UUID.'
     );
   }
   const provider =
     options.credentialProvider ??
     (async () => {
-      const args = [
-        'model',
-        'credential',
-        '--application-id',
-        applicationId!,
-        '--json'
-      ];
+      const args = ['model', 'credential', '--json'];
+      if (applicationId) args.push('--application-id', applicationId);
       if (model) args.push('--model', model);
       try {
         const { stdout } = await execute('forklaunch', args, {

@@ -60,10 +60,11 @@ impl CliCommand for ModelCommand {
             .subcommand(
                 Command::new("credential")
                     .about("Issue a bounded local model credential (not your account token)")
+                    .arg(Arg::new("application-id").long("application-id"))
                     .arg(
-                        Arg::new("application-id")
-                            .long("application-id")
-                            .required(true),
+                        Arg::new("base_path")
+                            .long("path")
+                            .help("Application root; defaults to the current project"),
                     )
                     .arg(Arg::new("model").long("model"))
                     .arg(
@@ -83,8 +84,14 @@ impl CliCommand for ModelCommand {
                 "Model credentials are secret. Use this helper through the framework client or pipe it to a trusted process."
             );
         }
-        let app = args.get_one::<String>("application-id").unwrap();
-        uuid::Uuid::parse_str(app)
+        let app = match args.get_one::<String>("application-id") {
+            Some(id) => id.clone(),
+            None => {
+                let (_, manifest) = crate::core::validate::require_manifest(args)?;
+                crate::core::validate::require_integration(&manifest)?
+            }
+        };
+        uuid::Uuid::parse_str(&app)
             .map_err(|_| anyhow::anyhow!("A saved ForkLaunch application ID is required."))?;
         let base = get_studio_orchestrator_api_url()
             .trim_end_matches('/')
@@ -178,6 +185,16 @@ impl CliCommand for ModelCommand {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn credential_can_discover_current_project_without_an_id_flag() {
+        let matches = ModelCommand
+            .command()
+            .try_get_matches_from(["model", "credential", "--json"])
+            .unwrap();
+        let args = matches.subcommand().unwrap().1;
+        assert!(args.get_one::<String>("application-id").is_none());
+        assert!(args.get_flag("json"));
+    }
     #[test]
     fn local_credentials_reject_wrong_origin_expiry_and_scope() {
         let base = "https://studio-orchestrator.forklaunch.com";
