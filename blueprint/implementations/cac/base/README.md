@@ -84,8 +84,14 @@ real, licensed CPT data:
 
    That's it — no code change, no redeploy, no flag to flip per-request.
 
-The per-organization runtime switch **is wired up**: `CodeSetProviderResolver`
-(`cac-base/services/codeSetProviderResolver.service.ts`) resolves it fresh on
+Steps 1-4 describe the end state, and they take effect once the `cac-base`
+module ships the resolver that reads those rows. That resolver is not part of
+this package: until it lands, `cac-base` registers `MockProcedureCodeProvider`
+directly and an active `CodeSetLicense` row switches nothing. What this package
+contributes is the `CptCodeProvider` adapter the resolver selects.
+
+The per-organization runtime switch itself is `CodeSetProviderResolver`
+(`cac-base/services/codeSetProviderResolver.service.ts`), which resolves fresh on
 every request, reading `organizationId` off the caller's session. This is
 deliberately **not** built on `hasFeatureChecks`/`surfaceFeatures` (the
 mechanism `billing-base` uses for entitlement gating) — that guard *blocks*
