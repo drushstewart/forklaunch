@@ -259,7 +259,10 @@ pub(crate) const MESSAGING_BASE_VERSION: &str = "~1.1.7";
 // @forklaunch/implementation-messaging-twilio
 pub(crate) const MESSAGING_TWILIO_VERSION: &str = "~1.1.7";
 // @forklaunch/implementation-cac-base
-pub(crate) const CAC_BASE_VERSION: &str = "~0.2.7";
+// 0.2.9 is the first release carrying ScrubbingService, CptCodeProvider,
+// CptCodeSource, ScrubbingFinding and DenialReasonCategory, which the
+// scaffolded cac module imports. 0.2.7 and 0.2.8 resolve but do not compile.
+pub(crate) const CAC_BASE_VERSION: &str = "~0.2.9";
 // @forklaunch/implementation-worker-bullmq
 pub(crate) const WORKER_BULLMQ_VERSION: &str = "~1.0.38";
 // @forklaunch/implementation-worker-redis
