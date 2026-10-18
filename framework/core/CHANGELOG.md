@@ -1,5 +1,12 @@
 # @forklaunch/core
 
+## Unreleased
+
+### Patch Changes
+
+- **Behaviour fix:** `createStripeClient({ apiKey })` now uses that key directly even when `PLATFORM_GATEWAY_URL`, `INSTANCE_ID` and `INSTANCE_HMAC_KEY` are set. Before, the environment won and Stripe calls went through the platform gateway, ignoring the key. Only explicit gateway options (`gatewayUrl`/`instanceId`/`hmacKey`) now outrank an explicit key. Managed instances that pass no key are unaffected. This matters because regular deployments now receive those three variables on components that use platform email. The billing-stripe blueprint follows the same rule (`STRIPE_API_KEY`, when set, wins).
+- `createEmailClient`'s missing-settings error no longer says email is only for managed instances.
+
 ## 3.0.1
 
 ### Patch Changes

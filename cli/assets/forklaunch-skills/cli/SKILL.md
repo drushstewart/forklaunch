@@ -527,6 +527,7 @@ reformats a customized service; prefer `infra add|remove`.) It takes one change:
 forklaunch infra add <service> object-store   # or: s3
 forklaunch infra add <service> cache          # or: redis
 forklaunch infra add <service> email          # platform-held email (SES); see /integrations
+forklaunch infra add <worker> email           # email is the one capability a worker can hold
 forklaunch infra add <service> sms            # texts via the platform; see /integrations
 forklaunch infra add <service> whatsapp       # WhatsApp through the platform (see /integrations)
 forklaunch infra add <service> voice          # managed apps: outbound calls via the platform (Amazon Connect)
@@ -537,7 +538,9 @@ forklaunch score --offline                    # afterwards: the wiring checks sh
 ```
 
 Run it from the app root (or pass `-p <app-root>`). It refuses a type the
-service already has, a type it lacks on remove, and projects that aren't services.
+project already has, a type it lacks on remove, and projects that aren't
+services — except `email`, which a worker may also hold (its worker and server
+containers both get the gateway settings; the server receives the events).
 
 `voice` is a platform-held capability: it registers `VoiceClient`
 (`createVoiceClient()`, keyless), writes `api/platformEvents/voice.ts` for call
