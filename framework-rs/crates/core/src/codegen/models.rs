@@ -6,6 +6,9 @@ use convert_case::{Case, Casing};
 use ramhorns::Content;
 use serde_json::Value as JsonValue;
 
+// This source is also compiled inside the CLI SDK module.
+pub(super) const MODEL_IDENTITY_KEY: &str = "x-forklaunch-model";
+
 #[derive(Content, Debug, Clone, PartialEq, Eq)]
 #[allow(clippy::struct_excessive_bools)]
 pub struct RustModelTemplate {
@@ -409,7 +412,7 @@ pub(crate) fn non_null_schema(schema: &JsonValue) -> Option<JsonValue> {
         // The identity describes the complete nullable model. Its synthesized
         // non-null payload is a different type; an explicit identity on an
         // anyOf/oneOf child above still belongs to that child and is retained.
-        variant.as_object_mut()?.remove(super::identity::KEY);
+        variant.as_object_mut()?.remove(MODEL_IDENTITY_KEY);
         Some(variant)
     } else {
         None
@@ -472,7 +475,7 @@ pub(crate) fn build_rust_type(
                 variant["type"] = kind.clone();
                 // Each synthesized branch projects part of the named union;
                 // it must not alias its payload back to the entire union.
-                variant.as_object_mut().unwrap().remove(super::identity::KEY);
+                variant.as_object_mut().unwrap().remove(MODEL_IDENTITY_KEY);
                 variant
             })
             .collect::<Vec<_>>();

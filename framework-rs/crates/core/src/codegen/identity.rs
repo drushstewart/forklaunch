@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use anyhow::{Result, bail};
 use serde_json::Value;
 
-pub(super) const KEY: &str = "x-forklaunch-model";
+pub(super) const KEY: &str = super::models::MODEL_IDENTITY_KEY;
 
 pub(super) fn model(schema: &Value) -> Result<Option<(String, String)>> {
     let Some(metadata) = schema.get(KEY) else {
