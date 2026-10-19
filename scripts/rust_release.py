@@ -81,11 +81,12 @@ def release_plan(root: Path = ROOT, scope: str = "framework") -> list[dict]:
                     raise ValueError(f"Public crate depends on private sample: {name}/{alias}")
                 if spec.get("package", alias) != target_name:
                     raise ValueError(f"Dependency package name mismatch: {name}/{alias}")
-                if spec.get("version", "").removeprefix("=") != target_package["version"]:
+                local_dev = kind == "dev-dependencies" and "version" not in spec
+                if not local_dev and spec.get("version", "").removeprefix("=") != target_package["version"]:
                     raise ValueError(f"Missing or stale path dependency version: {name}/{alias}")
-                # Dev dependencies are not built by downstream consumers. Macro
-                # crates can test their public facade without a publication cycle.
-                if kind != "dev-dependencies":
+                # Cargo omits unversioned dev paths when packaging. Versioned
+                # dev dependencies must exist when `publish` resolves its lock.
+                if not local_dev:
                     dependencies.add(target_name)
         packages[name] = {
             "name": name, "version": package["version"],

@@ -74,6 +74,10 @@ class ReleaseTests(unittest.TestCase):
         manifest = tomllib.loads(macro.read_text())
         manifest["dev-dependencies"] = {"forklaunch-core": {"path": "../forklaunch-core", "version": "0.1.0"}}
         macro.write_bytes(registry.manifest_text(manifest))
+        with self.assertRaisesRegex(ValueError, "cycle"):
+            release.release_plan(self.root)
+        del manifest["dev-dependencies"]["forklaunch-core"]["version"]
+        macro.write_bytes(registry.manifest_text(manifest))
         self.assertEqual([p["name"] for p in release.release_plan(self.root)],
                          ["forklaunch-macros", "forklaunch-core"])
 

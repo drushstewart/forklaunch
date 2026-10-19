@@ -22,4 +22,6 @@ workspace = true
 
 [dev-dependencies]
 serde_json = "=1.0.151"
-forklaunch-core = { version = "0.1.0", path = "../core", features = ["typed-schema", "schema-validation"] }
+# Repository-only backedge: Cargo omits unversioned dev paths from published
+# metadata, allowing the macro crate to be published before its public facade.
+forklaunch-core = { path = "../core", features = ["typed-schema", "schema-validation"] }

@@ -105,9 +105,11 @@ Encryption is implemented in core; native worker support belongs to the existing
 blueprint worker-interface crate. Blueprint crates stay local in this framework-only
 release; generated workers retain their implementation snapshot and consume the
 published framework dependencies.
-Publication order includes runtime and build dependencies; development-only test
-backedges (for example a derive macro testing its public facade) do not create a
-publication cycle. Development dependency paths and versions are still validated.
+Publication order includes runtime, build and versioned development dependencies.
+The macro crate tests its public facade through an unversioned local development
+path, which Cargo omits from published metadata. This repository-only backedge
+avoids a first-publication cycle; its target is still validated and repository
+tests retain the full facade. A versioned development backedge fails release planning.
 
 A prepared archive or passing dependency inventory is not a public release. Before
 changing CLI templates to registry dependencies, verify all of the following:
