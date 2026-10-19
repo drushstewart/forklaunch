@@ -405,7 +405,15 @@ pub(crate) fn non_null_schema(schema: &JsonValue) -> Option<JsonValue> {
                 .cloned();
         }
     }
-    nullable.then_some(variant)
+    if nullable {
+        // The identity describes the complete nullable model. Its synthesized
+        // non-null payload is a different type; an explicit identity on an
+        // anyOf/oneOf child above still belongs to that child and is retained.
+        variant.as_object_mut()?.remove(super::identity::KEY);
+        Some(variant)
+    } else {
+        None
+    }
 }
 
 fn reference_type(name: &str, schema: &JsonValue) -> String {
@@ -462,6 +470,9 @@ pub(crate) fn build_rust_type(
             .map(|kind| {
                 let mut variant = schema.clone();
                 variant["type"] = kind.clone();
+                // Each synthesized branch projects part of the named union;
+                // it must not alias its payload back to the entire union.
+                variant.as_object_mut().unwrap().remove(super::identity::KEY);
                 variant
             })
             .collect::<Vec<_>>();

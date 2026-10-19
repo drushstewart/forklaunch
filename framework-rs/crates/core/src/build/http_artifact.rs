@@ -291,6 +291,52 @@ mod tests {
     }
 
     #[test]
+    fn imported_named_nullable_and_union_payloads_keep_distinct_identities() {
+        use serde_json::json;
+        let person = json!({"type":"object","properties":{"name":{"type":"string","minLength":1}},
+            "required":["name"],"additionalProperties":false});
+        let variants = [
+            json!({"type":["object","null"],"properties":{"name":{"type":"string","minLength":1}},
+                "required":["name"],"additionalProperties":false}),
+            json!({"type":"object","nullable":true,"properties":{"name":{"type":"string","minLength":1}},
+                "required":["name"],"additionalProperties":false}),
+            json!({"anyOf":[{"$ref":"#/components/schemas/Person"},{"type":"null"}]}),
+            json!({"type":["object","string"],"properties":{"name":{"type":"string","minLength":1}},
+                "required":["name"],"additionalProperties":false}),
+        ];
+        for payload in variants {
+            let nullable = payload["nullable"] == true || payload.get("anyOf").is_some()
+                || payload["type"].as_array().is_some_and(|types| types.iter().any(|kind| kind == "null"));
+            let document = json!({"openapi":"3.1.0","components":{"schemas":{"Nullable":payload,"Person":person}},
+                "paths":{
+                    "/nullable":{"post":{"operationId":"writeNullable",
+                        "requestBody":{"required":true,"content":{"application/json":{"schema":{"$ref":"#/components/schemas/Nullable"}}}},
+                        "responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Nullable"}}}}}}},
+                    "/person":{"get":{"operationId":"readPerson",
+                        "responses":{"200":{"description":"ok","content":{"application/json":{"schema":{"$ref":"#/components/schemas/Person"}}}}}}}
+                }});
+            let original = document.clone();
+            let compiled = openapi_artifact_sources(&document.to_string(), "identity").unwrap();
+            assert_eq!(document, original, "Import must preserve the source schema graph");
+            assert_eq!(compiled.sources.rust.matches("pub struct Person {").count(), 1);
+            assert!(!compiled.sources.rust.contains("pub type NullableValue = Nullable;"));
+            let contract: serde_json::Value = serde_json::from_str(&compiled.contract).unwrap();
+            let plan = crate::codegen::SdkGenerationPlan::from_artifact_json(
+                crate::codegen::SdkTarget::Rust, &compiled.contract,
+            ).unwrap();
+            assert_eq!(plan.operations.len(), 2);
+            let response = &contract["routes"].as_array().unwrap().iter()
+                .find(|route| route["operationName"] == "writeNullable").unwrap()["responses"][0]["body"]["schema"]["jsonSchema"];
+            let validator = crate::contract::schema_validation::compile_checked(response).unwrap();
+            assert!(validator(&json!({"name":"Ada"})).is_ok());
+            assert!(validator(&json!({"name":""})).is_err());
+            assert!(validator(&json!({"name":"Ada","extra":true})).is_err());
+            assert_eq!(validator(&serde_json::Value::Null).is_ok(), nullable);
+            assert_eq!(validator(&json!("scalar")).is_ok(), !nullable);
+        }
+    }
+
+    #[test]
     fn service_local_artifact_emits_types_without_a_copied_transport() {
         let mut registry = ContractRegistry::for_service(ServiceContract::new("notes", "1"));
         registry.register(RouteContract::get("Health", "Health", "/health").with_response(204, None));
