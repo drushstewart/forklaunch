@@ -92,7 +92,14 @@ pub fn compile_response(
     }
     let rust_response_type = match decoder {
         "sse" => format!("Box<SdkEventStream<{}>>", models.rust_type),
-        "json" if !models.rust_models.is_empty() => format!("Box<{}>", models.rust_type),
+        "json" => json_response_type(
+            &models.rust_type,
+            !models.rust_models.is_empty(),
+            models
+                .rust_aliases
+                .iter()
+                .map(|alias| (alias.name.as_str(), alias.target_type.as_str())),
+        ),
         _ => models.rust_type.clone(),
     };
     let response_body_type = match decoder {
@@ -211,6 +218,40 @@ pub fn compile_response(
     ))
 }
 
+/// Choose a status-enum payload type from already compiled Rust model metadata.
+/// Collections already allocate their elements; inline records and unions are
+/// boxed to bound enum size. This does not parse or validate schema annotations.
+#[must_use]
+pub fn json_response_type<'a>(
+    rust_type: &'a str,
+    has_models: bool,
+    aliases: impl IntoIterator<Item = (&'a str, &'a str)>,
+) -> String {
+    let aliases: Vec<_> = aliases.into_iter().collect();
+    let mut payload = rust_type;
+    for _ in 0..aliases.len() {
+        let Some((_, target)) = aliases.iter().find(|(name, _)| *name == payload) else {
+            break;
+        };
+        payload = target;
+    }
+    let collection = [
+        "Vec<",
+        "::std::vec::Vec<",
+        "BTreeMap<",
+        "::std::collections::BTreeMap<",
+        "HashMap<",
+        "::std::collections::HashMap<",
+    ]
+    .iter()
+    .any(|prefix| payload.starts_with(prefix));
+    if has_models && !collection {
+        format!("Box<{rust_type}>")
+    } else {
+        rust_type.into()
+    }
+}
+
 pub use crate::codegen::media::normalized_media_type;
 
 /// Normalize a schema type name for Rust declarations.
@@ -274,4 +315,58 @@ pub fn response_media_name(media: &str) -> String {
         .filter(|part| !part.is_empty())
         .map(type_identifier)
         .collect()
+}
+
+#[cfg(test)]
+mod response_box_tests {
+    use super::*;
+
+    fn response(schema: &serde_json::Value) -> (SdkResponseVariant, SchemaModels) {
+        compile_response(
+            HttpMethod::Get,
+            &SdkResponse {
+                status_code: 200,
+                body: Some("Response".into()),
+                body_json_schema: Some(schema.to_string()),
+                body_kind: Some(BodyKind::Json),
+                body_content_type: None,
+                headers: Vec::new(),
+            },
+            "Response",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn recursive_and_record_collections_avoid_redundant_response_allocations() {
+        let record = json!({"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false});
+        for schema in [
+            json!({"type":"array","items":{"$ref":"#"}}),
+            json!({"type":"array","items":record}),
+            json!({"type":"object","additionalProperties":record}),
+        ] {
+            let (variant, models) = response(&schema);
+            assert!(
+                !models.rust_models.is_empty(),
+                "fixture must include nested models"
+            );
+            assert_eq!(variant.rust_response_type, models.rust_type);
+        }
+    }
+
+    #[test]
+    fn inline_records_nullable_records_and_unions_remain_boxed() {
+        let record = json!({"type":"object","required":["id"],"properties":{"id":{"type":"string"}},"additionalProperties":false});
+        for schema in [
+            record.clone(),
+            json!({"anyOf":[record.clone(),{"type":"null"}]}),
+            json!({"oneOf":[record,{"type":"boolean"}]}),
+        ] {
+            let (variant, models) = response(&schema);
+            assert_eq!(
+                variant.rust_response_type,
+                format!("Box<{}>", models.rust_type)
+            );
+        }
+    }
 }

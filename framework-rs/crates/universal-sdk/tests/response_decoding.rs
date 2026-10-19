@@ -74,6 +74,41 @@ struct Count {
 const COUNT: &str = r#"{"type":"object","required":["count"],"additionalProperties":false,"properties":{"count":{"type":"integer","minimum":0,"maximum":10}}}"#;
 
 #[tokio::test]
+async fn json_helper_matches_nullable_generated_models_and_rejects_invalid_values() {
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct Label {
+        label: Option<String>,
+    }
+    let schema = r#"{"type":"object","required":["label"],"properties":{"label":{"type":"string","nullable":true,"minLength":2}}}"#;
+    for (body, label) in [
+        (r#"{"label":null}"#, None),
+        (r#"{"label":"valid"}"#, Some("valid".into())),
+    ] {
+        assert_eq!(
+            decode_json_response::<Label>(
+                response(200, "application/json", body).await,
+                schema,
+                None
+            )
+            .await
+            .unwrap(),
+            Label { label }
+        );
+    }
+    for body in [r#"{"label":7}"#, r#"{"label":"x"}"#, "{}"] {
+        assert!(matches!(
+            decode_json_response::<Label>(
+                response(200, "application/json", body).await,
+                schema,
+                None
+            )
+            .await,
+            Err(SdkError::Contract("response violates contract"))
+        ));
+    }
+}
+
+#[tokio::test]
 async fn json_helper_validates_before_typed_deserialization() {
     let good = response(200, "application/json", r#"{"count":3}"#).await;
     assert_eq!(

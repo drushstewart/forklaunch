@@ -28,14 +28,14 @@ try{
  for(const kind of ['file','binary'])for(const body of ['','水💬\u0000bytes',{active:false,ids:[0,null]},[0,255],false,null])cases.push({kind,arguments:{body}});
  for(const body of [{a:'a+b & 水',ids:['a,b','水'],empty:[],filter:{active:false},nil:null,zero:0,flag:false},{}])cases.push({kind:'form',arguments:{body}});
  for(const body of ['plain 水','a\nb\r\nc',''])cases.push({kind:'text',arguments:{body}});
- for(const body of [{active:false,ids:[0,null]},[false,0,null],false,null,'','plain','{"flag":"ok"}','水💬'])cases.push({kind:'json',arguments:{body}});
+ for(const body of [{active:false,ids:[0,null]},[false,0,null],42,false,null,'','plain','{"flag":"ok"}','水💬','"quoted"\n\\tail'])cases.push({kind:'json',arguments:{body}});
  cases.push({kind:'text',method:'delete',arguments:{body:''}},{kind:'text',method:'delete',arguments:{body:'水'}},{kind:'json',method:'delete',arguments:{body:null}});
  cases.push({kind:'text',method:'options',arguments:{body:''}},{kind:'text',method:'options',arguments:{body:'水'}},{kind:'json',method:'options',arguments:{body:null}});
  for(const method of ['get','post','put','patch','delete','options'])cases.push({kind:'none',method,arguments:{}});
  cases.push({kind:'none',method:'post',arguments:{headers:{'content-type':'application/custom','x-test':'keep'}}},{kind:'none',method:'delete',arguments:{headers:{'Content-Type':'text/custom'}}},{kind:'json',arguments:{body:{ok:true},headers:{'Content-Type':'text/ignored'}}});
  cases.push({kind:'json',contentType:'application/vnd.fixture+json',arguments:{body:{ok:true}}});
  await writeFile(path.join(temporary,'input.json'),JSON.stringify(cases));
- execFileSync('cargo',['test','--quiet','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-mcp','--all-features','native_mcp_body_transport_conformance'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_MCP_BODY_INPUT:path.join(temporary,'input.json'),FORKLAUNCH_TEST_MCP_BODY_OUTPUT:path.join(temporary,'native.json')},encoding:'utf8',timeout:300000});
+ execFileSync('cargo',['test','--quiet','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','rmcp-server,zod-regex,zod-checks,zod-uri','native_mcp_body_transport_conformance'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_MCP_BODY_INPUT:path.join(temporary,'input.json'),FORKLAUNCH_TEST_MCP_BODY_OUTPUT:path.join(temporary,'native.json')},encoding:'utf8',timeout:300000});
  const native=JSON.parse(await readFile(path.join(temporary,'native.json'),'utf8'));
  const typed={json:'json',text:'text',file:'file',binary:'file',multipart:'multipartForm',form:'urlEncodedForm'};
  for(let index=0;index<cases.length;index++){
@@ -56,13 +56,14 @@ try{
    const normalize=(body,mime)=>body.toString().replaceAll(mime.split('boundary=')[1],'BOUNDARY').replace(/\r\n$/,'');
    assert.equal(normalize(nativeBody,native[index].contentType),normalize(captured.body,captured.contentType),`Multipart framing ${index}`);
   }else{assert.equal(native[index].contentType,captured.contentType,`Content type ${index}`);assert.deepEqual(nativeBody,captured.body,`Body bytes ${index}`);}
+  if(input.kind==='json')assert.deepEqual(JSON.parse(captured.body.toString()),input.arguments.body,`Typed JSON value ${index}`);
  }
  let optionalBoundaries=0;
  for(const kind of ['text','json'])for(const args of [{},{body:null},{body:''}]) {
  const app={basePath:'/',routers:[],routes:[{method:'delete',path:'/body',contractDetails:{name:'Optional',summary:'Optional',body:{[typed[kind]]:{}},responses:{200:{json:{}}},options:{mcp:true}}}]};
  const server=generateMcpServer(new ZodSchemaValidator(),'http','127.0.0.1',9000,'1.0.0',app);captured=undefined;await server.tools[0].execute(args);assert.ok(captured);
  if(args.body===undefined||(kind==='text'&&args.body===null)){assert.equal(captured.contentLength,null);assert.equal(captured.body.length,0);}else{
- const expected=kind==='json'?safeStringify(args.body):args.body;assert.equal(captured.body.toString(),expected);assert.equal(captured.contentLength,expected===''?null:String(Buffer.byteLength(expected)));}
+ const expected=kind==='json'?JSON.stringify(args.body):args.body;assert.equal(captured.body.toString(),expected);assert.equal(captured.contentLength,expected===''?null:String(Buffer.byteLength(expected)));}
  optionalBoundaries++;
  }
  console.log(`PASS ${optionalBoundaries} actual DELETE omitted/null/empty body characterization cases; native Missing body and text-null rejection remain explicit admission differences`);

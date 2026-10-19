@@ -25,7 +25,12 @@ pub(crate) fn metadata(operation: &SdkOperation) -> Result<String> {
             schema.get("type").and_then(Value::as_str) == Some("object"),
             "Request group schema must be an object"
         );
-        crate::contract::schema_validation::compile_checked(&schema).map_err(anyhow::Error::msg)?;
+        // The lightweight runtime receives resolved graphs from Rust emission;
+        // admission must validate that same graph before emitting either SDK.
+        // Preserve the original metadata for the TypeScript AJV compiler.
+        let checked = super::schema::bundle_document_resources(&schema, "")?;
+        crate::contract::schema_validation::compile_checked(checked.as_ref().unwrap_or(&schema))
+            .map_err(anyhow::Error::msg)?;
         let rules = fields
             .iter()
             .map(|field| {

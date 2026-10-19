@@ -529,8 +529,10 @@ fn encode_body(
             return Ok(Vec::new());
         };
         match contract.kind {
-            BodyKind::Json | BodyKind::Unknown => match body.as_str() {
-                // TypeScript MCP uses safeStringify: strings are already wire text.
+            // MCP arguments are typed values. JSON strings need their JSON quotes;
+            // callers that own signed wire bytes use an explicit Text/File contract.
+            BodyKind::Json => serde_json::to_vec(body).map_err(|_| "Invalid JSON body")?,
+            BodyKind::Unknown => match body.as_str() {
                 Some(value) => value.as_bytes().to_vec(),
                 None => serde_json::to_vec(body).map_err(|_| "Invalid JSON body")?,
             },

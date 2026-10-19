@@ -19,9 +19,9 @@ mod versioned_body;
 pub use versioned_body::{OptionalVersionedBody, VersionedBody};
 #[cfg(feature = "cookie-session")]
 pub mod cookie_session;
-#[cfg(feature = "adapter")]
+#[cfg(any(feature = "adapter", feature = "native"))]
 mod docs;
-#[cfg(feature = "adapter")]
+#[cfg(any(feature = "adapter", feature = "native"))]
 pub use docs::{ScalarDocument, ScalarSource};
 #[cfg(feature = "mcp")]
 mod mcp_runtime;

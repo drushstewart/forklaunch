@@ -8,6 +8,10 @@ mod service;
 pub mod service_package;
 pub use service::{ServiceSdkPaths, application_root, service_sdks, service_sdks_at};
 mod http_artifact;
+#[cfg(feature = "asyncapi-import")]
+mod socket_artifact;
+#[cfg(feature = "asyncapi-import")]
+pub use socket_artifact::socket_artifact_sources;
 pub mod imports;
 #[cfg(feature = "typescript-source")]
 mod typescript_source;

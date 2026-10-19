@@ -15,6 +15,9 @@ use forklaunch_core::codegen::{
 
 use crate::rust_sdk::RustSdkOptions;
 
+#[path = "http_runtime_schemas.rs"]
+mod runtime_schemas;
+
 /// Generate a reqwest client with typed status responses and owned SSE streams.
 ///
 /// The generated crate requires reqwest (`json`, `query`, and `multipart` when
@@ -122,7 +125,7 @@ fn prepare_http_sdk(
                 if metadata.is_empty() {
                     String::new()
                 } else {
-                    serde_json::to_string(&metadata)?
+                    serde_json::to_string(&runtime_schemas::request_objects(&metadata)?)?
                 }
             },
             typed_fields: !params_type.is_empty()
@@ -138,7 +141,7 @@ fn prepare_http_sdk(
                 if metadata.is_empty() {
                     String::new()
                 } else {
-                    serde_json::to_string(&metadata)?
+                    serde_json::to_string(&runtime_schemas::versions(&metadata)?)?
                 }
             },
             request_type,
@@ -338,6 +341,17 @@ fn compile_responses(
             format!("{prefix}Status{status}Response")
         };
         let (mut variant, mut compiled) = compile_response(op.method, response, &root)?;
+        // Model compilation already resolves this resource graph. Feed the same
+        // checked graph to runtime validators instead of unresolved anchors.
+        if variant.json_response || variant.text_response || variant.streaming_response {
+            variant.rust_body_schema = format!(
+                "{:?}",
+                runtime_schemas::schema(&serde_json::from_str(&variant.body_schema_json)?)?
+                    .to_string()
+            );
+        }
+        variant.rust_header_rules =
+            format!("{:?}", runtime_schemas::fields(&variant.header_rules)?);
         variant.shared_response_decoders = modern;
         if modern
             && let Some(alias) = compiled

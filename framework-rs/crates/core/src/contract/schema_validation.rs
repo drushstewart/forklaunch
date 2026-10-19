@@ -2,6 +2,9 @@
 use serde_json::Value;
 use std::sync::Arc;
 
+#[path = "schema_validation_nullable.rs"]
+mod nullable;
+
 #[cfg(feature = "zod-regex")]
 #[path = "schema_validation_regex.rs"]
 mod bounded_regex;
@@ -248,11 +251,9 @@ fn build_profile(
                 "forklaunch-whatwg-url requires the forklaunch-core zod-uri feature".to_owned(),
             );
         }
-        if multipart {
-            file::rewrite(schema)
-        } else {
-            Ok(None)
-        }
+        let file = if multipart { file::rewrite(schema)? } else { None };
+        let object = file.as_ref().and_then(Value::as_object).unwrap_or(schema);
+        Ok(nullable::rewrite(object)?.or(file))
     });
     if schema.get("$schema").is_none() {
         options = options.with_draft(jsonschema::Draft::Draft7);

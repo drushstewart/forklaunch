@@ -6,7 +6,7 @@ pub use axum::{Router, extract::State};
 mod bindings;
 mod contracts;
 mod docs;
-pub use docs::with_openapi;
+pub use docs::{DocumentationUi, with_docs, with_docs_ui, with_openapi};
 mod endpoint;
 pub use endpoint::{
     ContractRouter, EndpointError, EndpointPolicy, NativeBody, PolicyCapabilities,

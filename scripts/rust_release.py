@@ -7,10 +7,11 @@ import hashlib
 import io
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import subprocess
 import tarfile
+import tempfile
 import time
 import tomllib
 from urllib.error import HTTPError
@@ -111,8 +112,165 @@ def run(command: list[str], **kwargs):
     subprocess.run(command, check=True, **kwargs)
 
 
-def prepare(output: Path, allow_dirty: bool, scope: str = "framework"):
+def hydrate_verified_release(output: Path, repository: str, tag: str):
+    """Retrieve exact prior archives from an explicitly selected public release."""
+    from rust_registry import checked_archive
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository):
+        raise ValueError("Expected an explicit GitHub owner/repository")
+    if not re.fullmatch(r"rust-v\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?", tag):
+        raise ValueError("Expected an explicit rust-vVERSION release tag")
+    metadata = json.loads(subprocess.check_output([
+        "gh", "release", "view", tag, "--repo", repository, "--json", "tagName,isDraft,url"], text=True))
+    url = f"https://github.com/{repository}/releases/tag/{tag}"
+    if metadata.get("tagName") != tag or metadata.get("isDraft") is not False or metadata.get("url") != url:
+        raise ValueError("Prior release must be the requested public tagged release")
+    commit = json.loads(subprocess.check_output([
+        "gh", "api", f"repos/{repository}/commits/{tag}"], text=True)).get("sha")
+    output.mkdir(parents=True, exist_ok=False)
+    run(["gh", "release", "download", tag, "--repo", repository, "--dir", str(output),
+         "--pattern", "release.json", "--pattern", "verification.json", "--pattern", "publication.json"])
+    previous = verified_release_archives(output)
+    if previous["commit"] != commit:
+        raise ValueError("Prior release report must match the selected tag commit")
+    with tempfile.TemporaryDirectory(prefix="download-", dir=output) as temporary:
+        downloads = Path(temporary)
+        for package in previous["packages"].values():
+            relative = PurePosixPath(package["archive"])
+            asset = f"{package['name']}-{package['version']}.crate"
+            if (relative.is_absolute() or ".." in relative.parts or "\\" in str(relative)
+                    or relative.name != asset or not re.fullmatch(r"[A-Za-z0-9_.+-]+\.crate", asset)):
+                raise ValueError("Prior release has an unsafe or noncanonical package asset path")
+            run(["gh", "release", "download", tag, "--repo", repository, "--dir", str(downloads),
+                 "--pattern", asset])
+            data = checked_archive(downloads, {**package, "archive": asset})
+            comparable_package_files(data, package)  # Validate archive identity and members as well.
+            destination = output / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+    receipt = {"schemaVersion": 1, "repository": repository, "tag": tag, "url": url,
+               "commit": commit, "releaseSha256": previous["reportSha256"],
+               "archives": [{"name": package["name"], "version": package["version"], "sha256": package["sha256"]}
+                            for package in previous["packages"].values()]}
+    (output / "hydration.json").write_text(json.dumps(receipt, indent=2) + "\n")
+    print(f"Retrieved {len(receipt['archives'])} exact verified archives from {url}")
+
+
+def verified_release_archives(directory: Path) -> dict:
+    """Load an explicitly selected, completely verified and published release."""
+    report_bytes = (directory / "release.json").read_bytes()
+    report = json.loads(report_bytes)
+    verification = json.loads((directory / "verification.json").read_text())
+    publication = json.loads((directory / "publication.json").read_text())
+    checksum = hashlib.sha256(report_bytes).hexdigest()
+    packages = report.get("packages", [])
+    if (report.get("schemaVersion") != 1 or report.get("scope") != "framework"
+            or report.get("dirty") is not False or not report.get("commit")
+            or verification.get("schemaVersion") != 1
+            or verification.get("releaseSha256") != checksum
+            or verification.get("packages") != len(packages)
+            or verification.get("httpMcpStartup") is not True
+            or publication.get("schemaVersion") != 1
+            or publication.get("scope") != "framework"
+            or publication.get("releaseSha256") != checksum
+            or publication.get("complete") is not True):
+        raise ValueError("Archive reuse requires a clean, verified and completely published prior release")
+    if any(package["name"] == "forklaunch-regress" for package in packages) and verification.get("boundedRegex") is not True:
+        raise ValueError("Prior release lacks bounded regex verification")
+    if any(package["name"] == "forklaunch-worker-interface" for package in packages) and verification.get("nativeHttpWorkerFeatures") is not True:
+        raise ValueError("Prior release lacks native HTTP/worker verification")
+    entries = {(package["name"], package["version"]): package for package in packages}
+    receipts = {(package["name"], package["version"]): package for package in publication.get("packages", [])}
+    if (len(entries) != len(packages) or len(receipts) != len(publication.get("packages", []))
+            or entries.keys() != receipts.keys()
+            or any(not re.fullmatch(r"[0-9a-f]{64}", entry.get("registrySha256", "")) for entry in receipts.values())):
+        raise ValueError("Prior release publication inventory does not match its verified packages")
+    result = {"directory": directory, "reportSha256": checksum, "commit": report["commit"],
+              "packages": entries, "publication": receipts}
+    hydration = directory / "hydration.json"
+    if hydration.is_file():
+        public = json.loads(hydration.read_text())
+        if public.get("commit") != report["commit"] or public.get("releaseSha256") != checksum:
+            raise ValueError("Public release retrieval receipt does not match verified release")
+        result["publicRelease"] = {key: public[key] for key in ("repository", "tag", "url", "commit", "releaseSha256")}
+    return result
+
+
+def comparable_package_files(data: bytes, package: dict) -> dict:
+    """Compare packaged contents, excluding only Cargo-generated lock/VCS files."""
+    from rust_registry import safe_members
+    prefix = f"{package['name']}-{package['version']}"
+    files = {}
+    seen = set()
+    with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+        for member in safe_members(archive):
+            path = PurePosixPath(member.name)
+            if not path.parts or path.parts[0] != prefix:
+                raise ValueError("Package archive has unexpected root")
+            relative = str(PurePosixPath(*path.parts[1:]))
+            if relative in seen:
+                raise ValueError(f"Duplicate package archive member: {member.name}")
+            seen.add(relative)
+            if member.isfile() and relative not in ("Cargo.lock", ".cargo_vcs_info.json"):
+                files[relative] = {"sha256": hashlib.sha256(archive.extractfile(member).read()).hexdigest(),
+                                   "mode": member.mode & 0o777}
+        manifest = tomllib.loads(archive.extractfile(f"{prefix}/Cargo.toml").read().decode())
+        if (manifest["package"]["name"], manifest["package"]["version"]) != (package["name"], package["version"]):
+            raise ValueError("Archive package identity mismatch")
+    return files
+
+
+def reuse_verified_archive(output: Path, package: dict, previous: dict):
+    """Retain the old exact archive only after fresh packaging proves equality."""
+    from rust_registry import checked_archive
+    key = (package["name"], package["version"])
+    prior = previous["packages"].get(key)
+    if prior is None:
+        return
+    old_bytes = checked_archive(previous["directory"], prior)
+    fresh_bytes = checked_archive(output, package)
+    fresh_files = comparable_package_files(fresh_bytes, package)
+    if fresh_files != comparable_package_files(old_bytes, package):
+        raise ValueError(f"Cannot reuse changed package at unchanged version: {package['name']} {package['version']}; bump its version")
+    fresh = output / "fresh-packages" / f"{package['name']}-{package['version']}.crate"
+    fresh.parent.mkdir(exist_ok=True)
+    fresh.write_bytes(fresh_bytes)
+    package["verifiedArchiveReuse"] = {
+        "sourceRelease": str(previous["directory"]),
+        "sourceReleaseSha256": previous["reportSha256"],
+        "sourceCommit": previous["commit"],
+        "sourceArchiveSha256": prior["sha256"],
+        "sourceRegistrySha256": previous["publication"][key]["registrySha256"],
+        "freshArchive": str(fresh.relative_to(output)),
+        "freshArchiveSha256": package["sha256"],
+        "comparedFiles": len(fresh_files),
+        "packagedContentSha256": hashlib.sha256(json.dumps(fresh_files, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+        "ignoredGeneratedFiles": ["Cargo.lock", ".cargo_vcs_info.json"],
+    }
+    if "publicRelease" in previous:
+        package["verifiedArchiveReuse"]["sourcePublicRelease"] = previous["publicRelease"]
+    (output / package["archive"]).write_bytes(old_bytes)
+    package["sha256"] = prior["sha256"]
+
+
+def validate_archive_reuse(output: Path, package: dict):
+    from rust_registry import checked_archive
+    provenance = package.get("verifiedArchiveReuse")
+    if provenance is None:
+        return
+    fresh = checked_archive(output, {"archive": provenance["freshArchive"], "sha256": provenance["freshArchiveSha256"]})
+    files = comparable_package_files(fresh, package)
+    digest = hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    if (files != comparable_package_files(checked_archive(output, package), package)
+            or provenance.get("sourceArchiveSha256") != package["sha256"]
+            or provenance.get("comparedFiles") != len(files)
+            or provenance.get("packagedContentSha256") != digest
+            or provenance.get("ignoredGeneratedFiles") != ["Cargo.lock", ".cargo_vcs_info.json"]):
+        raise ValueError("Reused archive provenance does not match fresh packaged contents")
+
+
+def prepare(output: Path, allow_dirty: bool, scope: str = "framework", reuse_verified_release: Path | None = None):
     plan = release_plan(scope=scope)
+    previous = verified_release_archives(reuse_verified_release) if reuse_verified_release is not None else None
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT).strip())
     if not allow_dirty and dirty:
         raise ValueError("Release preparation requires a clean checkout (or explicit --allow-dirty for local validation)")
@@ -133,6 +291,8 @@ def prepare(output: Path, allow_dirty: bool, scope: str = "framework"):
             for _, _, table in dependency_tables(normalized):
                 if any(isinstance(spec, dict) and "path" in spec for spec in table.values()):
                     raise ValueError(f"Packaged path dependency remains: {package['name']}")
+        if previous is not None:
+            reuse_verified_archive(output, package, previous)
     parser = ROOT / "framework-rs/crates/vendor/serde_json"
     parser_archive = output / "serde_json-1.0.151-forklaunch-literal-keys.tar.gz"
     with tarfile.open(parser_archive, "w:gz") as archive:
@@ -192,6 +352,7 @@ def publication_preflight(output: Path, tag: str):
         raise ValueError("Publication requires a clean checkout")
     for package in report["packages"]:
         checked_archive(output, package)
+        validate_archive_reuse(output, package)
     checked_archive(output, report["requiredRootPatch"])
     return report
 
@@ -280,21 +441,33 @@ def publish(output: Path, tag: str, upload: bool):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["plan", "prepare", "verify", "publish"])
+    parser.add_argument("command", choices=["plan", "prepare", "verify", "publish", "hydrate"])
     parser.add_argument("--output", type=Path)
     parser.add_argument("--target-dir", type=Path)
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--reuse-verified-release", type=Path,
+                        help="Prepare only: reuse exact prior verified/published archives after fresh packaged-content comparison")
     parser.add_argument("--scope", choices=["framework", "all"], default="framework",
                         help="Package inventory scope; uploads are restricted to framework")
     parser.add_argument("--tag")
+    parser.add_argument("--repository", help="Hydrate only: explicit GitHub owner/repository")
     parser.add_argument("--upload", action="store_true", help="Actually upload crates (publish only)")
     args = parser.parse_args()
+    if args.reuse_verified_release is not None and args.command != "prepare":
+        parser.error("--reuse-verified-release applies only to prepare")
+    if args.repository is not None and args.command != "hydrate":
+        parser.error("--repository applies only to hydrate")
     if args.command == "plan":
         print(json.dumps(release_plan(scope=args.scope), indent=2))
+    elif args.command == "hydrate":
+        if args.output is None or args.repository is None or args.tag is None:
+            parser.error("hydrate requires --output (a new directory), --repository and --tag")
+        hydrate_verified_release(args.output.resolve(), args.repository, args.tag)
     elif args.command == "prepare":
         if args.output is None:
             parser.error("prepare requires --output (a new directory)")
-        prepare(args.output.resolve(), args.allow_dirty, args.scope)
+        prepare(args.output.resolve(), args.allow_dirty, args.scope,
+                args.reuse_verified_release.resolve() if args.reuse_verified_release is not None else None)
     elif args.command == "verify":
         if args.output is None or args.target_dir is None:
             parser.error("verify requires --output (prepared release) and --target-dir")

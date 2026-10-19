@@ -17,6 +17,10 @@ on:
         description: 'Upload to crates.io (select an existing rust-vVERSION tag and public GitHub release)'
         type: boolean
         default: false
+      reuse_verified_release_tag:
+        description: 'Optional prior public rust-vVERSION release for unchanged package versions; fresh packaged contents must match'
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -45,7 +49,16 @@ jobs:
       - name: Test release graph, integrity, registry and upload boundaries
         run: python3 -m unittest discover -s scripts -p test_rust_release.py -v
       - name: Package framework crates only and required parser patch
-        run: python3 scripts/rust_release.py prepare --scope framework --output "$RUNNER_TEMP/rust-release"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRIOR_RELEASE_TAG: ${{ inputs.reuse_verified_release_tag || '' }}
+        run: |
+          reuse=()
+          if [ -n "$PRIOR_RELEASE_TAG" ]; then
+            python3 scripts/rust_release.py hydrate --repository "$GITHUB_REPOSITORY" --tag "$PRIOR_RELEASE_TAG" --output "$RUNNER_TEMP/prior-rust-release"
+            reuse=(--reuse-verified-release "$RUNNER_TEMP/prior-rust-release")
+          fi
+          python3 scripts/rust_release.py prepare --scope framework --output "$RUNNER_TEMP/rust-release" "${reuse[@]}"
       - name: Install registry crates, build service and verify HTTP/MCP startup
         run: python3 scripts/rust_release.py verify --output "$RUNNER_TEMP/rust-release" --target-dir "$RUNNER_TEMP/rust-release-target"
       - uses: actions/upload-artifact@v4
@@ -58,6 +71,7 @@ jobs:
             ${{ runner.temp }}/rust-release/verification.json
             ${{ runner.temp }}/rust-release/serde_json-*-forklaunch-literal-keys.tar.gz
             ${{ runner.temp }}/rust-release/cargo-target/package/*.crate
+            ${{ runner.temp }}/rust-release/fresh-packages/*.crate
 
   publish:
     if: github.event_name == 'workflow_dispatch' && inputs.publish
@@ -84,18 +98,28 @@ jobs:
         run: |
           test "$GITHUB_REF_TYPE" = tag
           python3 scripts/rust_release.py publish --output "$RUNNER_TEMP/rust-release" --tag "$RELEASE_TAG"
-      - name: Preserve required parser patch and verification on existing public release
+      - name: Preserve exact verified archives, parser patch and comparison evidence on public release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           test "$(gh release view "$RELEASE_TAG" --json isDraft --jq .isDraft)" = false
-          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/rust-release/"serde_json-*-forklaunch-literal-keys.tar.gz "$RUNNER_TEMP/rust-release/release.json" "$RUNNER_TEMP/rust-release/verification.json" --clobber
+          evidence=()
+          if [ -d "$RUNNER_TEMP/rust-release/fresh-packages" ]; then
+            tar -C "$RUNNER_TEMP/rust-release" -czf "$RUNNER_TEMP/rust-release/fresh-package-comparisons.tar.gz" fresh-packages
+            evidence=("$RUNNER_TEMP/rust-release/fresh-package-comparisons.tar.gz")
+          fi
+          gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/rust-release/"serde_json-*-forklaunch-literal-keys.tar.gz "$RUNNER_TEMP/rust-release/release.json" "$RUNNER_TEMP/rust-release/verification.json" "$RUNNER_TEMP/rust-release/cargo-target/package/"*.crate "${evidence[@]}" --clobber
       - name: Publish crates in dependency order
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: python3 scripts/rust_release.py publish --scope framework --output "$RUNNER_TEMP/rust-release" --tag "$RELEASE_TAG" --upload
+      - name: Preserve complete publication receipt for future verified reuse
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: gh release upload "$RELEASE_TAG" "$RUNNER_TEMP/rust-release/publication.json" --clobber
       - name: Preserve publication receipt, including partial releases
         if: always()
         uses: actions/upload-artifact@v4

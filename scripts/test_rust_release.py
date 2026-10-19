@@ -184,6 +184,174 @@ class ReleaseTests(unittest.TestCase):
         with patch.object(release, "urlopen", return_value=io.BytesIO(changed)):
             with self.assertRaisesRegex(ValueError, "differs from verified"):
                 release.verify_published_archive(self.root, package, {"cksum": hashlib.sha256(changed).hexdigest()})
+        changed_vcs = self.archive(self.manifest(), {"forklaunch-a-0.1.0/.cargo_vcs_info.json": b'{"git":{"sha1":"new"}}'})
+        with patch.object(release, "urlopen", return_value=io.BytesIO(changed_vcs)):
+            with self.assertRaisesRegex(ValueError, "differs from verified"):
+                release.verify_published_archive(self.root, package, {"cksum": hashlib.sha256(changed_vcs).hexdigest()})
+
+    def previous_release(self, archive, archive_name="a.crate"):
+        previous = self.root / "previous"
+        previous.mkdir()
+        (previous / archive_name).parent.mkdir(parents=True, exist_ok=True)
+        (previous / archive_name).write_bytes(archive)
+        package = {"name": "forklaunch-a", "version": "0.1.0", "archive": archive_name,
+                   "sha256": hashlib.sha256(archive).hexdigest(), "manifest": "framework-rs/crates/forklaunch-a/Cargo.toml", "dependencies": []}
+        report = {"schemaVersion": 1, "scope": "framework", "dirty": False, "commit": "a" * 40, "packages": [package]}
+        contents = json.dumps(report).encode()
+        (previous / "release.json").write_bytes(contents)
+        checksum = hashlib.sha256(contents).hexdigest()
+        (previous / "verification.json").write_text(json.dumps({"schemaVersion": 1, "releaseSha256": checksum,
+            "packages": 1, "httpMcpStartup": True}))
+        (previous / "publication.json").write_text(json.dumps({"schemaVersion": 1, "scope": "framework",
+            "releaseSha256": checksum, "complete": True, "packages": [{"name": "forklaunch-a", "version": "0.1.0", "registrySha256": package["sha256"]}]}))
+        return previous, package
+
+    def public_download_fixture(self, previous, package, archive):
+        def download(command, **kwargs):
+            self.assertEqual(command[:4], ["gh", "release", "download", "rust-v0.1.0"])
+            self.assertEqual(command[command.index("--repo") + 1], "owner/repository")
+            directory = Path(command[command.index("--dir") + 1])
+            patterns = [command[index + 1] for index, value in enumerate(command) if value == "--pattern"]
+            for pattern in patterns:
+                data = archive if pattern.endswith(".crate") else (previous / pattern).read_bytes()
+                (directory / pattern).write_bytes(data)
+        metadata = json.dumps({"tagName": "rust-v0.1.0", "isDraft": False,
+            "url": "https://github.com/owner/repository/releases/tag/rust-v0.1.0"})
+        return download, [metadata, json.dumps({"sha": "a" * 40})]
+
+    def test_hydration_restores_exact_public_assets_and_binds_tag_commit(self):
+        archive = self.archive(self.manifest())
+        previous, package = self.previous_release(archive, "cargo-target/package/forklaunch-a-0.1.0.crate")
+        download, metadata = self.public_download_fixture(previous, package, archive)
+        output = self.root / "hydrated"
+        with patch.object(release, "run", side_effect=download), \
+                patch.object(release.subprocess, "check_output", side_effect=metadata):
+            release.hydrate_verified_release(output, "owner/repository", "rust-v0.1.0")
+        self.assertEqual((output / package["archive"]).read_bytes(), archive)
+        hydrated = release.verified_release_archives(output)
+        self.assertEqual(hydrated["publicRelease"]["tag"], "rust-v0.1.0")
+        self.assertEqual(hydrated["publicRelease"]["commit"], "a" * 40)
+        next_output = self.root / "next"
+        destination = next_output / package["archive"]
+        destination.parent.mkdir(parents=True)
+        destination.write_bytes(archive)
+        release.reuse_verified_archive(next_output, package, hydrated)
+        self.assertEqual(package["verifiedArchiveReuse"]["sourcePublicRelease"], hydrated["publicRelease"])
+        release.validate_archive_reuse(next_output, package)
+
+    def test_hydration_rejects_corrupt_assets_wrong_commit_and_nonpublic_release(self):
+        archive = self.archive(self.manifest())
+        previous, package = self.previous_release(archive, "cargo-target/package/forklaunch-a-0.1.0.crate")
+        for case in ("checksum", "commit", "draft", "tag"):
+            with self.subTest(case=case):
+                download, metadata = self.public_download_fixture(previous, package,
+                    b"tampered archive" if case == "checksum" else archive)
+                if case == "commit":
+                    metadata[1] = json.dumps({"sha": "b" * 40})
+                elif case in ("draft", "tag"):
+                    detail = json.loads(metadata[0])
+                    detail["isDraft" if case == "draft" else "tagName"] = True if case == "draft" else "rust-v9.0.0"
+                    metadata[0] = json.dumps(detail)
+                with patch.object(release, "run", side_effect=download), \
+                        patch.object(release.subprocess, "check_output", side_effect=metadata), self.assertRaises(ValueError):
+                    release.hydrate_verified_release(self.root / case, "owner/repository", "rust-v0.1.0")
+        for repository, tag in (("--repo", "rust-v0.1.0"), ("owner/repository", "main"), ("owner/repository", "../tag")):
+            with self.subTest(repository=repository, tag=tag), patch.object(release.subprocess, "check_output") as read:
+                with self.assertRaises(ValueError):
+                    release.hydrate_verified_release(self.root / "invalid", repository, tag)
+                read.assert_not_called()
+
+    def test_hydration_rejects_archive_path_escape_before_downloading_package(self):
+        archive = self.archive(self.manifest())
+        previous, package = self.previous_release(archive)
+        report = json.loads((previous / "release.json").read_text())
+        report["packages"][0]["archive"] = "../forklaunch-a-0.1.0.crate"
+        contents = json.dumps(report).encode()
+        (previous / "release.json").write_bytes(contents)
+        for name in ("verification.json", "publication.json"):
+            receipt = json.loads((previous / name).read_text())
+            receipt["releaseSha256"] = hashlib.sha256(contents).hexdigest()
+            (previous / name).write_text(json.dumps(receipt))
+        download, metadata = self.public_download_fixture(previous, package, archive)
+        with patch.object(release, "run", side_effect=download) as run, \
+                patch.object(release.subprocess, "check_output", side_effect=metadata), self.assertRaisesRegex(ValueError, "unsafe"):
+            release.hydrate_verified_release(self.root / "hydrated", "owner/repository", "rust-v0.1.0")
+        self.assertEqual(run.call_count, 1)  # Reports only; never follows the archive path.
+
+    def test_prepare_reuses_exact_verified_archive_only_after_fresh_package_comparison(self):
+        old = self.archive(self.manifest(), {"forklaunch-a-0.1.0/.cargo_vcs_info.json": b"old commit"})
+        fresh = self.archive(self.manifest(), {"forklaunch-a-0.1.0/.cargo_vcs_info.json": b"new commit",
+                                               "forklaunch-a-0.1.0/Cargo.lock": b"generated lock"})
+        previous, prior = self.previous_release(old)
+        output = self.root / "next"
+        package = {key: prior[key] for key in ("name", "version", "manifest", "dependencies")}
+        def package_current(command, **kwargs):
+            self.assertIn("--exclude-lockfile", command)
+            archive = output / "cargo-target/package/forklaunch-a-0.1.0.crate"
+            archive.parent.mkdir(parents=True)
+            archive.write_bytes(fresh)
+        with patch.object(release, "ROOT", self.root), patch.object(release, "release_plan", return_value=[package]), \
+                patch.object(release, "run", side_effect=package_current) as run, \
+                patch.object(release.subprocess, "check_output", side_effect=[b"", "b" * 40]):
+            release.prepare(output, False, reuse_verified_release=previous)
+            run.assert_called_once()  # Reuse never skips current Cargo packaging.
+        entry = json.loads((output / "release.json").read_text())["packages"][0]
+        self.assertEqual((output / entry["archive"]).read_bytes(), old)
+        self.assertEqual(entry["sha256"], prior["sha256"])
+        proof = entry["verifiedArchiveReuse"]
+        self.assertEqual((output / proof["freshArchive"]).read_bytes(), fresh)
+        self.assertEqual(proof["sourceCommit"], "a" * 40)
+        self.assertEqual(proof["sourceRegistrySha256"], prior["sha256"])
+        self.assertEqual(proof["comparedFiles"], 2)
+        release.validate_archive_reuse(output, entry)
+        (output / proof["freshArchive"]).write_bytes(b"tampered comparison evidence")
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            release.validate_archive_reuse(output, entry)
+
+    def test_reuse_rejects_changed_files_and_requires_bound_complete_prior_receipts(self):
+        old = self.archive(self.manifest(), {"forklaunch-a-0.1.0/.cargo_vcs_info.json": b"old"})
+        previous, prior = self.previous_release(old)
+        trusted = release.verified_release_archives(previous)
+        output = self.root / "next"
+        output.mkdir()
+        for name, content in [("src/lib.rs", b"changed code"), ("Cargo.toml.orig", b"added original manifest"),
+                              ("assets/data.json", b"added asset"), ("nested/Cargo.lock", b"nested lock is source"),
+                              ("nested/.cargo_vcs_info.json", b"nested VCS file is source")]:
+            with self.subTest(file=name):
+                fresh = self.archive(self.manifest(), {f"forklaunch-a-0.1.0/{name}": content})
+                (output / "a.crate").write_bytes(fresh)
+                package = {**prior, "sha256": hashlib.sha256(fresh).hexdigest()}
+                with self.assertRaisesRegex(ValueError, "bump its version"):
+                    release.reuse_verified_archive(output, package, trusted)
+                self.assertEqual((output / "a.crate").read_bytes(), fresh)
+        for filename, changes in [("verification.json", {"releaseSha256": "wrong"}),
+                                  ("publication.json", {"complete": False}),
+                                  ("publication.json", {"packages": []})]:
+            path = previous / filename
+            original = path.read_text()
+            path.write_text(json.dumps({**json.loads(original), **changes}))
+            with self.subTest(receipt=filename, changes=changes), self.assertRaises(ValueError):
+                release.verified_release_archives(previous)
+            path.write_text(original)
+        (previous / prior["archive"]).write_bytes(b"tampered prior archive")
+        with self.assertRaisesRegex(ValueError, "checksum"):
+            release.reuse_verified_archive(output, prior, trusted)
+
+    def test_package_comparison_rejects_unsafe_members_and_compares_modes(self):
+        package = {"name": "forklaunch-a", "version": "0.1.0"}
+        for member in ("../escape", "other-root/file"):
+            with self.subTest(member=member), self.assertRaises(ValueError):
+                release.comparable_package_files(self.archive(self.manifest(), {member: b"bad"}), package)
+        original = self.archive(self.manifest())
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=io.BytesIO(original)) as source, tarfile.open(fileobj=buffer, mode="w:gz") as target:
+            for member in source.getmembers():
+                content = source.extractfile(member).read()
+                if member.name.endswith("src/lib.rs"):
+                    member.mode = 0o755
+                target.addfile(member, io.BytesIO(content))
+        self.assertNotEqual(release.comparable_package_files(original, package),
+                            release.comparable_package_files(buffer.getvalue(), package))
 
     def test_registry_wait_is_bounded(self):
         with patch.object(release, "published_version", return_value=None), patch.object(release.time, "monotonic", side_effect=[0, 181]):

@@ -356,7 +356,7 @@ mod tests {
 
     #[test]
     fn type_formatting_preserves_punctuation_inside_literals() {
-        let source = r#"{ 'odd;|{}': 'a;|{}'; nested: { value: string; }; }"#;
+        let source = r"{ 'odd;|{}': 'a;|{}'; nested: { value: string; }; }";
         let formatted = readable_type(source, 0);
         assert!(formatted.contains("'odd;|{}': 'a;|{}';\n"));
         assert!(formatted.contains("nested: {\n    value: string;\n  }"));

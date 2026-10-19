@@ -6,28 +6,39 @@
  * @returns {TypedController} - The SDK proxy with methods for HTTP requests.
  */
 import { ResponseContentParserType } from './src/types/contentTypes.types';
-import { RegistryOptions } from './src/types/sdk.types';
+import { RegistryOptions, type UniversalSdkTransportOptions } from './src/types/sdk.types';
 import { UniversalSdk } from './src/universalSdk';
 import type { ZodRegexExecution } from './src/core/zodRegex';
 
-export const universalSdk = async <TypedController>(options: {
+export type UniversalSdkOptions = {
   host: string;
   registryOptions: RegistryOptions;
   contentTypeParserMap?: Record<string, ResponseContentParserType>;
   /** Host RegExp execution is synchronous and has no interruptible work budget. */
   zodRegexExecution?: ZodRegexExecution;
-}) => {
+} & UniversalSdkTransportOptions;
+
+export const universalSdk = async <TypedController>(options: UniversalSdkOptions) => {
   const sdkInternal = await UniversalSdk.create(
     options.host,
     options.registryOptions,
     'contentTypeParserMap' in options ? options.contentTypeParserMap : undefined,
-    options.zodRegexExecution
+    options.zodRegexExecution,
+    { fetch: options.fetch, maxSseEventBytes: options.maxSseEventBytes,
+      maxMultipartResponseBytes: options.maxMultipartResponseBytes,
+      headers: options.headers, beforeRequest: options.beforeRequest,
+      allowPlaintextDevelopment: options.allowPlaintextDevelopment,
+      serviceBaseUrls: options.serviceBaseUrls }
   );
 
   const proxyInternal = new Proxy(sdkInternal, {
     get(target, prop) {
       if (prop === 'then' || prop === 'catch' || prop === 'finally') {
         return undefined;
+      }
+
+      if (typeof prop === 'string' && sdkInternal.isPortableSdkPath(prop)) {
+        return createSdkProxy([prop]);
       }
 
       if (prop === 'fetch') {
@@ -51,6 +62,10 @@ export const universalSdk = async <TypedController>(options: {
       get(_target, prop) {
         if (prop === 'then' || prop === 'catch' || prop === 'finally') {
           return undefined;
+        }
+
+        if (typeof prop === 'string' && sdkInternal.isPortableSdkPath([...path, prop].join('.'))) {
+          return createSdkProxy([...path, prop]);
         }
 
         // TODO: revisit this to export fetch as a separate SDK client, when performance is figured out
@@ -93,3 +108,9 @@ export { RegistryOptions };
 export type { ResponseAjvFactory, ResponseSchemaContext } from './src/core/responseDialect';
 
 export type { ZodRegexExecution } from './src/core/zodRegex';
+
+export type { ForkLaunchSdkRequest, ForkLaunchSdkResponse, ForkLaunchErrorResponses, ForkLaunchHeaders, ForkLaunchSdkRequestMeta } from './src/portableRuntime';
+
+export { ForkLaunchSdkHttpError, forkLaunchQueryOptions, forkLaunchMutationOptions } from './src/portableRuntime';
+export type { ForkLaunchQuerySuccess } from './src/portableRuntime';
+export type { UniversalSdkTransportOptions } from './src/types/sdk.types';

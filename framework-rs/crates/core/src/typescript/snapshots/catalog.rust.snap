@@ -357,7 +357,7 @@ pub struct GetItemRequest {
     pub params: GetItemParams,
     pub query: GetItemQuery,
     pub headers: GetItemHeaders,
-    pub body: Option<String>,
+
 }
 
 
@@ -367,7 +367,7 @@ impl fmt::Debug for GetItemRequest {
             .field("params", &"<redacted>")
             .field("query", &"<redacted>")
             .field("headers", &"<redacted>")
-            .field("has_body", &self.body.is_some())
+
             .finish_non_exhaustive()
     }
 }
@@ -433,7 +433,7 @@ pub struct WatchItemsRequest {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
-    pub body: Option<String>,
+
 }
 
 
@@ -443,7 +443,7 @@ impl fmt::Debug for WatchItemsRequest {
             .field("params", &"<redacted>")
             .field("query", &"<redacted>")
             .field("headers", &"<redacted>")
-            .field("has_body", &self.body.is_some())
+
             .finish_non_exhaustive()
     }
 }
@@ -462,7 +462,7 @@ pub struct NativeEventsRequest {
     pub params: BTreeMap<String, String>,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
-    pub body: Option<String>,
+
 }
 
 
@@ -472,7 +472,7 @@ impl fmt::Debug for NativeEventsRequest {
             .field("params", &"<redacted>")
             .field("query", &"<redacted>")
             .field("headers", &"<redacted>")
-            .field("has_body", &self.body.is_some())
+
             .finish_non_exhaustive()
     }
 }
@@ -491,7 +491,7 @@ pub struct DeleteItemRequest {
     pub params: DeleteItemParams,
     pub query: BTreeMap<String, String>,
     pub headers: BTreeMap<String, String>,
-    pub body: Option<String>,
+
 }
 
 
@@ -501,7 +501,7 @@ impl fmt::Debug for DeleteItemRequest {
             .field("params", &"<redacted>")
             .field("query", &"<redacted>")
             .field("headers", &"<redacted>")
-            .field("has_body", &self.body.is_some())
+
             .finish_non_exhaustive()
     }
 }
@@ -591,13 +591,14 @@ impl ForkLaunchClient {
             url: format!("{}{}", self.runtime.base_url(), path),
             query: runtime::request_fields(&input.query)?,
             headers: runtime::request_fields(&input.headers)?,
-            body: input.body,
+            body: None,
             body_bytes: None,
 
             multipart: None,
             content_type: "application/json",
         })
     }
+
 
     pub async fn get_item(&self, input: GetItemRequest) -> Result<GetItemResponses, SdkError> {
         let request = self.get_item_request(input).map_err(SdkError::Encode)?;
@@ -728,6 +729,7 @@ impl ForkLaunchClient {
         }
     }
 
+
     pub async fn create_item_raw(&self, input: CreateItemRequest<String>) -> Result<CreateItemResponses, SdkError> {
         let request = self.create_item_raw_request(input);
 
@@ -766,13 +768,14 @@ impl ForkLaunchClient {
             url: format!("{}{}", self.runtime.base_url(), path),
             query: input.query,
             headers: input.headers,
-            body: input.body,
+            body: None,
             body_bytes: None,
 
             multipart: None,
             content_type: "application/json",
         }
     }
+
 
     pub async fn watch_items(&self, input: WatchItemsRequest) -> Result<WatchItemsResponses, SdkError> {
         let request = self.watch_items_request(input);
@@ -809,13 +812,14 @@ impl ForkLaunchClient {
             url: format!("{}{}", self.runtime.base_url(), path),
             query: input.query,
             headers: input.headers,
-            body: input.body,
+            body: None,
             body_bytes: None,
 
             multipart: None,
             content_type: "application/json",
         }
     }
+
 
     pub async fn native_events(&self, input: NativeEventsRequest) -> Result<NativeEventsResponses, SdkError> {
         let request = self.native_events_request(input);
@@ -851,13 +855,14 @@ impl ForkLaunchClient {
             url: format!("{}{}", self.runtime.base_url(), path),
             query: input.query,
             headers: input.headers,
-            body: input.body,
+            body: None,
             body_bytes: None,
 
             multipart: None,
             content_type: "application/json",
         })
     }
+
 
     pub async fn delete_item(&self, input: DeleteItemRequest) -> Result<DeleteItemResponses, SdkError> {
         let request = self.delete_item_request(input).map_err(SdkError::Encode)?;

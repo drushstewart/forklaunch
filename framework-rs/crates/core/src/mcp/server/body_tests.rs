@@ -90,6 +90,47 @@ fn native_mcp_body_transport_conformance() {
     }
 }
 
+#[test]
+fn typed_json_scalar_encoding_preserves_values_and_explicit_raw_body_bytes() {
+    for value in [
+        json!("scalar 水"),
+        json!(""),
+        json!("\"quoted\"\n\\tail"),
+        json!("{\"flag\":true}"),
+        json!(42),
+        json!(false),
+        Value::Null,
+        json!(["水", false, null]),
+        json!({"literal":"__proto__"}),
+    ] {
+        let result = encoded(&json!({"kind":"json","arguments":{"body":value}}));
+        let bytes = base64::engine::general_purpose::STANDARD
+            .decode(result["body"].as_str().unwrap())
+            .unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&bytes).unwrap(), value);
+        assert_eq!(result["contentLength"], bytes.len().to_string());
+    }
+    let raw = "{\n  \"event\": \"水💬\"\n}";
+    for kind in [BodyKind::Text, BodyKind::Unknown] {
+        let route = RouteContract::post("raw", "raw", "/raw").with_request_body(BodyContract {
+            kind,
+            content_type: Some("application/json".into()),
+            schema: SchemaRef::named("Raw"),
+        });
+        let args = json!({"body":raw});
+        assert_eq!(
+            encode_body(
+                &route,
+                args.as_object().unwrap(),
+                &mut HeaderMap::new(),
+                false
+            )
+            .unwrap(),
+            raw.as_bytes()
+        );
+    }
+}
+
 async fn call(app: &Router, name: &str, body: Value, token: Option<&str>) -> Value {
     let mut request = Request::builder()
         .method("POST")

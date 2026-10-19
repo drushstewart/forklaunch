@@ -14,7 +14,7 @@ pub(crate) mod schema;
 mod sse_models;
 #[cfg(any(feature = "typescript", feature = "rust-sdk"))]
 pub(crate) mod version_responses;
-mod versions;
+pub(crate) mod versions;
 pub mod websocket;
 
 pub use models::{
@@ -379,10 +379,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(compiled.rust_type, "Self_");
-        assert_eq!(
-            compiled.typescript_type,
-            "{ next?: SelfSchemaRef1 }"
-        );
+        assert_eq!(compiled.typescript_type, "{ next?: SelfSchemaRef1 }");
         assert!(
             compiled
                 .typescript_definitions

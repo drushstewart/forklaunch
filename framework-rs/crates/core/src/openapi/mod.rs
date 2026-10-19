@@ -246,31 +246,114 @@ pub fn generate_portable_openapi_json(registry: &ContractRegistry) -> anyhow::Re
         &crate::typescript::TypeScriptHttpSdkOptions::new(service),
     )?;
     let mut document: serde_json::Value = serde_json::from_str(&generate_openapi_json(&public))?;
-    if let Some(paths) = document
+    attach_portable_operation_descriptors(&mut document, &descriptors)?;
+    Ok(crate::codegen::canonical_json(document).to_string())
+}
+
+/// Attach checked compiler operations to a standard `OpenAPI` document.
+/// Versioned routes retain one HTTP operation and expose each typed projection
+/// in `x-forklaunch-operations`; unversioned routes retain the singular extension.
+/// Existing descriptors must match the compiled contract exactly.
+///
+/// # Errors
+/// Rejects missing operations, invalid version lists and conflicting descriptors.
+pub fn attach_portable_operation_descriptors(
+    document: &mut serde_json::Value,
+    descriptors: &std::collections::BTreeMap<String, serde_json::Value>,
+) -> anyhow::Result<()> {
+    fn attach(
+        operation: &mut serde_json::Value,
+        descriptors: &std::collections::BTreeMap<String, serde_json::Value>,
+    ) -> anyhow::Result<()> {
+        let Some(name) = operation
+            .get("operationId")
+            .and_then(serde_json::Value::as_str)
+        else {
+            return Ok(());
+        };
+        let name = name.to_owned();
+        let versions = operation.get("x-forklaunch-versions");
+        let (key, other_key, value) = if let Some(versions) = versions {
+            let versions = versions
+                .as_array()
+                .ok_or_else(|| anyhow::anyhow!("Operation versions must be an array"))?;
+            anyhow::ensure!(!versions.is_empty(), "Operation versions cannot be empty");
+            let mut names = std::collections::BTreeSet::new();
+            let mut values = Vec::new();
+            for version in versions {
+                let version = version
+                    .as_str()
+                    .ok_or_else(|| anyhow::anyhow!("Operation version must be a string"))?;
+                let projected = crate::codegen::versions::operation_name(&name, version);
+                anyhow::ensure!(
+                    names.insert(projected.clone()),
+                    "Duplicate projected operation {projected}"
+                );
+                values.push(
+                    descriptors
+                        .get(&projected)
+                        .ok_or_else(|| {
+                            anyhow::anyhow!("Missing checked operation descriptor {projected}")
+                        })?
+                        .clone(),
+                );
+            }
+            (
+                "x-forklaunch-operations",
+                "x-forklaunch-operation",
+                serde_json::Value::Array(values),
+            )
+        } else {
+            (
+                "x-forklaunch-operation",
+                "x-forklaunch-operations",
+                descriptors
+                    .get(&name)
+                    .ok_or_else(|| anyhow::anyhow!("Missing checked operation descriptor {name}"))?
+                    .clone(),
+            )
+        };
+        anyhow::ensure!(
+            operation.get(other_key).is_none(),
+            "Conflicting portable operation extensions for {name}"
+        );
+        if let Some(existing) = operation.get(key) {
+            anyhow::ensure!(
+                existing == &value,
+                "OpenAPI descriptor does not match exported contract for {name}"
+            );
+        }
+        operation
+            .as_object_mut()
+            .ok_or_else(|| anyhow::anyhow!("OpenAPI operation must be an object"))?
+            .insert(key.into(), value);
+        Ok(())
+    }
+    let paths = document
         .get_mut("paths")
         .and_then(serde_json::Value::as_object_mut)
+        .ok_or_else(|| anyhow::anyhow!("OpenAPI paths missing"))?;
+    for path in paths
+        .values_mut()
+        .filter_map(serde_json::Value::as_object_mut)
     {
-        for path in paths
-            .values_mut()
-            .filter_map(serde_json::Value::as_object_mut)
+        for method in [
+            "get", "put", "post", "delete", "options", "head", "patch", "trace",
+        ] {
+            if let Some(operation) = path.get_mut(method) {
+                attach(operation, descriptors)?;
+            }
+        }
+        if let Some(methods) = path
+            .get_mut("x-forklaunch-http-methods")
+            .and_then(serde_json::Value::as_object_mut)
         {
-            for operation in path
-                .values_mut()
-                .filter_map(serde_json::Value::as_object_mut)
-            {
-                if let Some(name) = operation
-                    .get("operationId")
-                    .and_then(serde_json::Value::as_str)
-                {
-                    let descriptor = descriptors.get(name).ok_or_else(|| {
-                        anyhow::anyhow!("Missing checked operation descriptor {name}")
-                    })?;
-                    operation.insert("x-forklaunch-operation".into(), descriptor.clone());
-                }
+            for operation in methods.values_mut() {
+                attach(operation, descriptors)?;
             }
         }
     }
-    Ok(crate::codegen::canonical_json(document).to_string())
+    Ok(())
 }
 
 /// Export the TypeScript-compatible document collection: the empty key holds
@@ -878,6 +961,91 @@ fn security_schemes_json(routes: &[&RouteContract]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portable_version_projections_preserve_standard_document_and_checked_metadata() {
+        use crate::contract::{BodyContract, RequestContract, ResponseContract, VersionedContract};
+        let mut route = RouteContract::post("Write", "Versioned input", "/versions");
+        for (version, kind, status) in [("v1", "string", 201), ("v2", "integer", 202)] {
+            let mut body = BodyContract::json("VersionValue");
+            body.schema = body.schema.with_json_schema(format!(
+                r#"{{"type":"object","additionalProperties":false,"required":["value"],"properties":{{"value":{{"type":"{kind}"}}}}}}"#
+            ));
+            route = route.with_version(VersionedContract {
+                version: version.into(),
+                request: RequestContract::default().with_body(body.clone()),
+                responses: vec![ResponseContract::new(status, Some(body))],
+            });
+        }
+        let mut registry = ContractRegistry::new();
+        registry.register(route);
+        registry
+            .register(RouteContract::get("Health", "Health", "/health").with_response(200, None));
+        let mut private = RouteContract::get("Secret", "Secret", "/secret");
+        private.options.openapi = false;
+        registry.register(private);
+        let document: serde_json::Value =
+            serde_json::from_str(&generate_portable_openapi_json(&registry).unwrap()).unwrap();
+        assert_eq!(
+            document["paths"]["/versions"]["post"]["operationId"],
+            "write"
+        );
+        assert_eq!(
+            document["paths"]["/versions"]["post"]["x-forklaunch-version-contracts"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        let projections = document["paths"]["/versions"]["post"]["x-forklaunch-operations"]
+            .as_array()
+            .unwrap();
+        assert_eq!(projections.len(), 2);
+        assert_eq!(projections[0]["operation"], "writeVersionV1");
+        assert_eq!(projections[1]["operation"], "writeVersionV2");
+        assert_eq!(
+            projections[0]["requestSchema"]["properties"]["value"]["type"],
+            "string"
+        );
+        assert_eq!(
+            projections[1]["requestSchema"]["properties"]["value"]["type"],
+            "integer"
+        );
+        assert!(
+            projections
+                .iter()
+                .all(|projection| projection.get("versionMetadata").is_some())
+        );
+        assert!(
+            document["paths"]["/versions"]["post"]
+                .get("x-forklaunch-operation")
+                .is_none()
+        );
+        assert!(
+            document["paths"]["/health"]["get"]
+                .get("x-forklaunch-operation")
+                .is_some()
+        );
+        assert!(document["paths"].get("/secret").is_none());
+        let plan = crate::codegen::SdkGenerationPlan::from_registry(
+            crate::codegen::SdkTarget::TypeScript,
+            &registry,
+        );
+        let descriptors = crate::typescript::generate_typescript_operation_descriptors(
+            &plan,
+            &crate::typescript::TypeScriptHttpSdkOptions::new("service"),
+        )
+        .unwrap();
+        let mut repeated = document.clone();
+        attach_portable_operation_descriptors(&mut repeated, &descriptors).unwrap();
+        assert_eq!(repeated, document);
+        repeated["paths"]["/versions"]["post"]["x-forklaunch-operations"][0]["path"] =
+            "/forged".into();
+        assert!(attach_portable_operation_descriptors(&mut repeated, &descriptors).is_err());
+        let mut missing = descriptors;
+        missing.remove("writeVersionV2");
+        assert!(attach_portable_operation_descriptors(&mut document.clone(), &missing).is_err());
+    }
+
     use forklaunch_core::contract::{
         AuthConfig, BodyContract, FieldContract, HmacAuth, HttpMethod, RouteContract,
         ServiceContract,
