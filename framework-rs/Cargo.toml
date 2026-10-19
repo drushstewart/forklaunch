@@ -2,26 +2,7 @@
 resolver = "3"
 exclude = ["crates/vendor/jsonschema", "crates/vendor/referencing", "crates/vendor/serde_json", "crates/vendor/regress"]
 members = [
-    "crates/forklaunch-common",
-    "crates/forklaunch-contract",
-    "crates/forklaunch-contract-macros",
-    "crates/forklaunch-core",
-    "crates/forklaunch-core-macros",
-    "crates/forklaunch-http",
-    "crates/forklaunch-validation",
-    "crates/forklaunch-auth",
-    "crates/forklaunch-axum",
-    "crates/forklaunch-openapi",
-    "crates/forklaunch-asyncapi",
-    "crates/forklaunch-mcp",
-    "crates/forklaunch-sdk-codegen",
-    "crates/forklaunch-sdk-rust",
-    "crates/forklaunch-sdk-typescript",
-    "crates/forklaunch-ws",
-    "crates/forklaunch-infrastructure-redis",
-    "crates/forklaunch-infrastructure-s3",
-    "crates/forklaunch-testing",
-]
+    "crates/universal-sdk","crates/common", "crates/core", "crates/core-macros", "crates/validator", "crates/axum", "crates/ws", "crates/redis", "crates/s3", "crates/testing"]
 
 [workspace.package]
 version = "0.1.0"

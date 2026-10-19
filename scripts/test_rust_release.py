@@ -39,6 +39,17 @@ class ReleaseTests(unittest.TestCase):
         self.crate("forklaunch-sample", publish=False)
         self.assertEqual([p["name"] for p in release.release_plan(self.root)], ["forklaunch-base", "forklaunch-app"])
 
+    def test_framework_default_excludes_blueprint_and_all_is_explicit(self):
+        self.crate("forklaunch-base")
+        blueprint = self.root / "blueprint-rs/crates/worker/Cargo.toml"
+        blueprint.parent.mkdir()
+        blueprint.write_text('[package]\nname="forklaunch-worker"\nversion="0.1.0"\nlicense="MIT"\nrepository="https://example.test/repo"\ndescription="worker"\n')
+        self.assertEqual([p["name"] for p in release.release_plan(self.root)], ["forklaunch-base"])
+        self.assertEqual([p["name"] for p in release.release_plan(self.root, "all")], ["forklaunch-base", "forklaunch-worker"])
+        self.crate("forklaunch-base", {"forklaunch-worker": {"path": "../../../blueprint-rs/crates/worker", "version": "0.1.0"}})
+        with self.assertRaisesRegex(ValueError, "outside framework release scope"):
+            release.release_plan(self.root)
+
     def test_rejects_unpublishable_dependencies(self):
         self.crate("forklaunch-base")
         invalid = [
@@ -56,6 +67,15 @@ class ReleaseTests(unittest.TestCase):
         self.crate("forklaunch-app", {"forklaunch-base": {"path": "../forklaunch-base", "version": "0.1.0"}})
         with self.assertRaisesRegex(ValueError, "private sample"):
             release.release_plan(self.root)
+
+    def test_dev_dependency_backedge_does_not_create_publication_cycle(self):
+        macro = self.crate("forklaunch-macros")
+        self.crate("forklaunch-core", {"forklaunch-macros": {"path": "../forklaunch-macros", "version": "0.1.0"}})
+        manifest = tomllib.loads(macro.read_text())
+        manifest["dev-dependencies"] = {"forklaunch-core": {"path": "../forklaunch-core", "version": "0.1.0"}}
+        macro.write_bytes(registry.manifest_text(manifest))
+        self.assertEqual([p["name"] for p in release.release_plan(self.root)],
+                         ["forklaunch-macros", "forklaunch-core"])
 
     def test_cycle_fails(self):
         self.crate("forklaunch-a", {"forklaunch-b": {"path": "../forklaunch-b", "version": "0.1.0"}})
@@ -122,13 +142,49 @@ class ReleaseTests(unittest.TestCase):
             registry.checked_archive(self.root, {**package, "archive": "../outside"})
 
     def test_publish_defaults_to_no_upload(self):
-        report = {"packages": [{"manifest": "framework-rs/crates/forklaunch-a/Cargo.toml"}]}
+        report = {"packages": [{"name": "forklaunch-a", "version": "0.1.0", "manifest": "framework-rs/crates/forklaunch-a/Cargo.toml"}]}
         with patch.object(release, "publication_preflight", return_value=report), patch.object(release, "run") as run:
             release.publish(self.root, "rust-v0.1.0", False)
             run.assert_not_called()
-        with patch.object(release, "publication_preflight", return_value=report), patch.dict(release.os.environ, {}, clear=True):
-            with self.assertRaisesRegex(ValueError, "TOKEN"):
+        (self.root / "release.json").write_text(json.dumps(report))
+        with patch.object(release, "publication_preflight", return_value=report), patch.dict(release.os.environ, {}, clear=True), patch.object(release, "run") as run, patch.object(release, "published_version", return_value=None), patch.object(release, "wait_for_version", return_value={}), patch.object(release, "verify_published_archive", return_value="checked"):
+            release.publish(self.root, "rust-v0.1.0", True)
+            run.assert_called_once()  # Cargo's credential provider resolves cargo-login credentials.
+        progress = json.loads((self.root / "publication.json").read_text())
+        self.assertTrue(progress["complete"])
+        self.assertFalse(progress["packages"][0]["reusedMatchingVersion"])
+
+    def test_resume_only_reuses_verified_existing_archives(self):
+        report = {"packages": [{"name": "forklaunch-a", "version": "0.1.0", "manifest": "framework-rs/crates/forklaunch-a/Cargo.toml"}]}
+        (self.root / "release.json").write_text(json.dumps(report))
+        with patch.object(release, "publication_preflight", return_value=report), patch.object(release, "run") as run, patch.object(release, "published_version", return_value={"cksum": "checked"}), patch.object(release, "verify_published_archive", return_value="checked") as verify:
+            release.publish(self.root, "rust-v0.1.0", True)
+            run.assert_not_called()
+            verify.assert_called_once()
+        progress = json.loads((self.root / "publication.json").read_text())
+        self.assertTrue(progress["packages"][0]["reusedMatchingVersion"])
+        with patch.object(release, "publication_preflight", return_value=report), patch.object(release, "run") as run, patch.object(release, "published_version", return_value={}), patch.object(release, "verify_published_archive", side_effect=ValueError("different sources")):
+            with self.assertRaisesRegex(ValueError, "different sources"):
                 release.publish(self.root, "rust-v0.1.0", True)
+            run.assert_not_called()
+
+    def test_registry_archive_allows_only_generated_lockfile_difference(self):
+        original = self.archive(self.manifest())
+        (self.root / "a.crate").write_bytes(original)
+        package = {"name": "forklaunch-a", "version": "0.1.0", "archive": "a.crate", "sha256": hashlib.sha256(original).hexdigest()}
+        published = self.archive(self.manifest(), {"forklaunch-a-0.1.0/Cargo.lock": b"generated lock"})
+        checksum = hashlib.sha256(published).hexdigest()
+        with patch.object(release, "urlopen", return_value=io.BytesIO(published)):
+            self.assertEqual(release.verify_published_archive(self.root, package, {"cksum": checksum}), checksum)
+        changed = self.archive(self.manifest(), {"forklaunch-a-0.1.0/src/lib.rs": b"different source"})
+        with patch.object(release, "urlopen", return_value=io.BytesIO(changed)):
+            with self.assertRaisesRegex(ValueError, "differs from verified"):
+                release.verify_published_archive(self.root, package, {"cksum": hashlib.sha256(changed).hexdigest()})
+
+    def test_registry_wait_is_bounded(self):
+        with patch.object(release, "published_version", return_value=None), patch.object(release.time, "monotonic", side_effect=[0, 181]):
+            with self.assertRaisesRegex(ValueError, "rerun to resume"):
+                release.wait_for_version({"name": "forklaunch-a", "version": "0.1.0"})
 
     def test_dirty_or_unverified_release_cannot_publish(self):
         for report in ({"schemaVersion": 1, "dirty": True}, {"schemaVersion": 1, "dirty": False, "packages": []}):
@@ -152,6 +208,21 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "bounded regex"):
                     release.publication_preflight(self.root, "rust-v0.1.0")
 
+    def test_native_worker_release_requires_optional_feature_proof(self):
+        report = {"schemaVersion": 1, "dirty": False,
+                  "packages": [{"name": "forklaunch-worker-interface"}]}
+        contents = json.dumps(report).encode()
+        (self.root / "release.json").write_bytes(contents)
+        for proof in (None, False, "true"):
+            with self.subTest(proof=proof):
+                (self.root / "verification.json").write_text(json.dumps({
+                    "schemaVersion": 1, "httpMcpStartup": True, "packages": 1,
+                    "releaseSha256": hashlib.sha256(contents).hexdigest(),
+                    "nativeHttpWorkerFeatures": proof,
+                }))
+                with self.assertRaisesRegex(ValueError, "native HTTP/worker"):
+                    release.publication_preflight(self.root, "rust-v0.1.0")
+
     def test_publication_binds_clean_tag_graph_and_artifacts(self):
         self.crate("forklaunch-a")
         def git(*args):
@@ -165,7 +236,7 @@ class ReleaseTests(unittest.TestCase):
             output = Path(artifacts)
             (output / "package.crate").write_bytes(b"fixture archive")
             artifact = {"archive": "package.crate", "sha256": hashlib.sha256(b"fixture archive").hexdigest()}
-            report = {"schemaVersion": 1, "commit": commit, "dirty": False,
+            report = {"schemaVersion": 1, "scope": "framework", "commit": commit, "dirty": False,
                       "packages": [{**release.release_plan(self.root)[0], **artifact}], "requiredRootPatch": artifact}
             def save():
                 contents = json.dumps(report).encode()
@@ -173,8 +244,19 @@ class ReleaseTests(unittest.TestCase):
                 (output / "verification.json").write_text(json.dumps({"schemaVersion": 1, "httpMcpStartup": True,
                     "releaseSha256": hashlib.sha256(contents).hexdigest(), "packages": 1}))
             save()
-            with patch.object(release, "ROOT", self.root), patch.object(release, "release_plan", side_effect=lambda: original_plan(self.root)):
+            with patch.object(release, "ROOT", self.root), patch.object(release, "release_plan", side_effect=lambda **kwargs: original_plan(self.root, **kwargs)):
                 self.assertEqual(release.publication_preflight(output, "rust-v0.1.0"), report)
+                report["scope"] = "all"
+                save()
+                with self.assertRaisesRegex(ValueError, "Only framework"):
+                    release.publication_preflight(output, "rust-v0.1.0")
+                report["scope"] = "framework"
+                report["packages"][0]["manifest"] = "blueprint-rs/crates/forklaunch-a/Cargo.toml"
+                save()
+                with self.assertRaisesRegex(ValueError, "Only framework"):
+                    release.publication_preflight(output, "rust-v0.1.0")
+                report["packages"][0]["manifest"] = "framework-rs/crates/forklaunch-a/Cargo.toml"
+                save()
                 with self.assertRaisesRegex(ValueError, "tag"):
                     release.publication_preflight(output, "rust-v9.0.0")
                 (self.root / "untracked").write_text("dirty")

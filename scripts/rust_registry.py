@@ -160,8 +160,13 @@ def verify(directory: Path, target: Path):
         for package in report["packages"]
     }
     for name in ("forklaunch-jsonschema-protocol", "forklaunch-referencing-protocol", "forklaunch-bullmq-protocol"):
-        dependencies[name]["default-features"] = False
-    dependencies["forklaunch-axum"]["features"] = ["mcp"]
+        if name in dependencies:
+            dependencies[name]["default-features"] = False
+    dependencies["forklaunch-axum"]["features"] = ["mcp", "native-server", "native-streams"]
+    dependencies["forklaunch-core"]["features"] = ["postgres", "postgres09", "encryption", "otlp", "build", "typed-schema", "mappers"]
+    native_worker = "forklaunch-worker-interface" in dependencies
+    if native_worker:
+        dependencies["forklaunch-worker-interface"]["features"] = ["native", "apalis", "schema", "telemetry"]
     bounded_regex = "forklaunch-regress" in dependencies
     if bounded_regex:
         dependencies["forklaunch-common"]["features"] = ["zod-regex"]
@@ -196,7 +201,9 @@ def verify(directory: Path, target: Path):
         "schemaVersion": 1, "releaseSha256": hashlib.sha256((directory / "release.json").read_bytes()).hexdigest(),
         "packages": len(report["packages"]), "httpMcpStartup": True,
         "boundedRegex": bounded_regex,
-        "scope": "local sparse registry, default features plus Axum MCP" +
+        "nativeHttpWorkerFeatures": native_worker,
+        "scope": "local sparse registry, default features plus core PostgreSQL0.8+0.9/protected disclosure/OTLP, Axum MCP/native-server/native-streams " +
+                 (" and native worker lifecycle/Apalis/schema/telemetry" if native_worker else "") +
                  (" and checked common regex" if bounded_regex else "") +
                  "; owned dependency registry metadata rewritten",
     }, indent=2) + "\n")

@@ -4,21 +4,28 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import tarfile
+import time
 import tomllib
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 REGISTRY = "https://github.com/rust-lang/crates.io-index"
 
 
-def cargo_manifests(root: Path) -> dict[str, tuple[Path, dict]]:
+def cargo_manifests(root: Path, scope: str = "framework") -> dict[str, tuple[Path, dict]]:
     result = {}
-    for workspace in ("framework-rs", "blueprint-rs"):
+    if scope not in ("framework", "all"):
+        raise ValueError(f"Unsupported release scope: {scope}")
+    workspaces = ("framework-rs",) if scope == "framework" else ("framework-rs", "blueprint-rs")
+    for workspace in workspaces:
         inherited = tomllib.loads((root / workspace / "Cargo.toml").read_text())["workspace"]["package"]
         for path in sorted((root / workspace / "crates").rglob("Cargo.toml")):
             manifest = tomllib.loads(path.read_text())
@@ -43,8 +50,8 @@ def dependency_tables(manifest: dict):
             yield kind, target, values.get(kind, {})
 
 
-def release_plan(root: Path = ROOT) -> list[dict]:
-    manifests = cargo_manifests(root)
+def release_plan(root: Path = ROOT, scope: str = "framework") -> list[dict]:
+    manifests = cargo_manifests(root, scope)
     paths = {path.resolve(): name for name, (path, _) in manifests.items()}
     packages = {}
     for name, (path, manifest) in manifests.items():
@@ -57,7 +64,7 @@ def release_plan(root: Path = ROOT) -> list[dict]:
             if not isinstance(package.get(key), str) or not package[key]:
                 raise ValueError(f"Missing {key}: {name}")
         dependencies = set()
-        for _, _, table in dependency_tables(manifest):
+        for kind, _, table in dependency_tables(manifest):
             for alias, spec in table.items():
                 if not isinstance(spec, dict):
                     continue
@@ -67,7 +74,7 @@ def release_plan(root: Path = ROOT) -> list[dict]:
                     continue
                 target = (path.parent / spec["path"] / "Cargo.toml").resolve()
                 if target not in paths:
-                    raise ValueError(f"Uninventoried path dependency: {name}/{alias}")
+                    raise ValueError(f"Uninventoried path dependency outside {scope} release scope: {name}/{alias}")
                 target_name = paths[target]
                 target_package = manifests[target_name][1]["package"]
                 if target_package.get("publish") is False:
@@ -76,7 +83,10 @@ def release_plan(root: Path = ROOT) -> list[dict]:
                     raise ValueError(f"Dependency package name mismatch: {name}/{alias}")
                 if spec.get("version", "").removeprefix("=") != target_package["version"]:
                     raise ValueError(f"Missing or stale path dependency version: {name}/{alias}")
-                dependencies.add(target_name)
+                # Dev dependencies are not built by downstream consumers. Macro
+                # crates can test their public facade without a publication cycle.
+                if kind != "dev-dependencies":
+                    dependencies.add(target_name)
         packages[name] = {
             "name": name, "version": package["version"],
             "manifest": str(path.relative_to(root)),
@@ -100,8 +110,8 @@ def run(command: list[str], **kwargs):
     subprocess.run(command, check=True, **kwargs)
 
 
-def prepare(output: Path, allow_dirty: bool):
-    plan = release_plan()
+def prepare(output: Path, allow_dirty: bool, scope: str = "framework"):
+    plan = release_plan(scope=scope)
     dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT).strip())
     if not allow_dirty and dirty:
         raise ValueError("Release preparation requires a clean checkout (or explicit --allow-dirty for local validation)")
@@ -130,6 +140,7 @@ def prepare(output: Path, allow_dirty: bool):
                 archive.add(path, arcname=str(Path("serde_json") / path.relative_to(parser)))
     report = {
         "schemaVersion": 1,
+        "scope": scope,
         "commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
         "dirty": dirty,
         "packages": plan,
@@ -156,7 +167,15 @@ def publication_preflight(output: Path, tag: str):
     if (any(package["name"] == "forklaunch-regress" for package in report["packages"])
             and verified.get("boundedRegex") is not True):
         raise ValueError("Missing bounded regex registry verification")
-    plan = release_plan()
+    if (any(package["name"] == "forklaunch-worker-interface" for package in report["packages"])
+            and verified.get("nativeHttpWorkerFeatures") is not True):
+        raise ValueError("Missing native HTTP/worker feature registry verification")
+    if report.get("scope") != "framework" or any(
+        not package["manifest"].startswith("framework-rs/crates/")
+        for package in report["packages"]
+    ):
+        raise ValueError("Only framework publication is enabled; blueprint crates cannot be uploaded")
+    plan = release_plan(scope="framework")
     prepared = [{key: package[key] for key in ("name", "version", "manifest", "dependencies")}
                 for package in report["packages"]]
     if prepared != plan:
@@ -176,15 +195,83 @@ def publication_preflight(output: Path, tag: str):
     return report
 
 
+def published_version(package: dict):
+    name = package["name"]
+    url = f"https://index.crates.io/{name[:2]}/{name[2:4]}/{name}"
+    try:
+        with urlopen(url, timeout=20) as response:
+            entries = response.read(8 * 1024 * 1024).decode().splitlines()
+    except HTTPError as error:
+        if error.code == 404:
+            return None
+        raise
+    for line in entries:
+        entry = json.loads(line)
+        if entry["vers"] == package["version"]:
+            if entry.get("yanked"):
+                raise ValueError(f"Refusing to reuse yanked version: {name} {package['version']}")
+            return entry
+    return None
+
+
+def wait_for_version(package: dict, timeout: float = 180):
+    deadline = time.monotonic() + timeout
+    while True:
+        entry = published_version(package)
+        if entry is not None:
+            return entry
+        if time.monotonic() >= deadline:
+            raise ValueError(f"Published version is not yet available: {package['name']}; rerun to resume")
+        time.sleep(2)
+
+
+def verify_published_archive(output: Path, package: dict, entry: dict) -> str:
+    from rust_registry import checked_archive, safe_members
+    name, version = package["name"], package["version"]
+    with urlopen(f"https://static.crates.io/crates/{name}/{name}-{version}.crate", timeout=30) as response:
+        published = response.read(32 * 1024 * 1024)
+    checksum = hashlib.sha256(published).hexdigest()
+    if checksum != entry["cksum"]:
+        raise ValueError(f"Published archive checksum mismatch: {name}")
+
+    def files(data):
+        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+            return {member.name: archive.extractfile(member).read()
+                    for member in safe_members(archive)
+                    if member.isfile() and member.name != f"{name}-{version}/Cargo.lock"}
+
+    # Cargo may add a resolved lockfile when publishing after dependencies become
+    # available. Every source/manifest/VCS-info file must match the verified package.
+    if files(published) != files(checked_archive(output, package)):
+        raise ValueError(f"Existing registry version differs from verified release: {name} {version}")
+    return checksum
+
+
 def publish(output: Path, tag: str, upload: bool):
     report = publication_preflight(output, tag)
-    if upload and not os.environ.get("CARGO_REGISTRY_TOKEN"):
-        raise ValueError("Publishing requires CARGO_REGISTRY_TOKEN")
+    # Cargo resolves credentials through its configured provider, including
+    # cargo login and registry-specific environment variables. Never print them.
+    receipts = []
     for package in report["packages"]:
         command = ["cargo", "publish", "--manifest-path", str(ROOT / package["manifest"]),
                    "--registry", "crates-io", "--no-verify"]
         if upload:
-            run(command, cwd=ROOT)
+            entry = published_version(package)
+            reused = entry is not None
+            if entry is None:
+                print(f"Publishing {package['name']} {package['version']}", flush=True)
+                run(command, cwd=ROOT)
+                entry = wait_for_version(package)
+            checksum = verify_published_archive(output, package, entry)
+            receipts.append({"name": package["name"], "version": package["version"],
+                             "registrySha256": checksum, "reusedMatchingVersion": reused})
+            progress = {"schemaVersion": 1, "scope": "framework", "tag": tag,
+                        "releaseSha256": hashlib.sha256((output / "release.json").read_bytes()).hexdigest(),
+                        "packages": receipts, "complete": len(receipts) == len(report["packages"])}
+            temporary = output / "publication.json.tmp"
+            temporary.write_text(json.dumps(progress, indent=2) + "\n")
+            temporary.replace(output / "publication.json")
+            print(f"Verified registry archive {package['name']} ({len(receipts)}/{len(report['packages'])})", flush=True)
         else:
             print(" ".join(command))
     print("Published release in dependency order" if upload else "Preflight passed; commands shown only, no uploads performed")
@@ -196,21 +283,25 @@ def main():
     parser.add_argument("--output", type=Path)
     parser.add_argument("--target-dir", type=Path)
     parser.add_argument("--allow-dirty", action="store_true")
+    parser.add_argument("--scope", choices=["framework", "all"], default="framework",
+                        help="Package inventory scope; uploads are restricted to framework")
     parser.add_argument("--tag")
     parser.add_argument("--upload", action="store_true", help="Actually upload crates (publish only)")
     args = parser.parse_args()
     if args.command == "plan":
-        print(json.dumps(release_plan(), indent=2))
+        print(json.dumps(release_plan(scope=args.scope), indent=2))
     elif args.command == "prepare":
         if args.output is None:
             parser.error("prepare requires --output (a new directory)")
-        prepare(args.output.resolve(), args.allow_dirty)
+        prepare(args.output.resolve(), args.allow_dirty, args.scope)
     elif args.command == "verify":
         if args.output is None or args.target_dir is None:
             parser.error("verify requires --output (prepared release) and --target-dir")
         from rust_registry import verify
         verify(args.output.resolve(), args.target_dir.resolve())
     else:
+        if args.scope != "framework":
+            parser.error("Only framework publication is enabled")
         if args.output is None or args.tag is None:
             parser.error("publish requires --output (verified release) and --tag")
         publish(args.output.resolve(), args.tag, args.upload)

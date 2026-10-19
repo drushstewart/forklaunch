@@ -1,7 +1,7 @@
 //! Installed-registry smoke service; no repository path dependencies.
 use axum::Json;
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::{BodyContract, RouteContract};
+use forklaunch_core::contract::{BodyContract, RouteContract};
 use forklaunch_core::ServiceInfo;
 use serde_json::{Value, json};
 

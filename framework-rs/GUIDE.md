@@ -10,25 +10,22 @@ a feature makes its API available but does not configure credentials or start a 
 
 | Crate | Responsibility | Optional features and defaults |
 | --- | --- | --- |
-| [forklaunch-common](crates/forklaunch-common/src/lib.rs) | Path, naming, UTF-16 string hash, JSON formatting and error utilities. | —; default: none |
-| [forklaunch-contract](crates/forklaunch-contract/src/lib.rs) | Route, schema, authentication, service and socket metadata; contract artifacts. | `json-schema`; default: none |
-| [forklaunch-contract-macros](crates/forklaunch-contract-macros/src/lib.rs) | Attribute/derive macros for contract declarations. | —; default: none |
-| [forklaunch-core](crates/forklaunch-core/src/lib.rs) | Runtime/service configuration, persistence/compliance and telemetry. | `otlp`, `postgres`, `encryption`; default: none |
-| [forklaunch-core-macros](crates/forklaunch-core-macros/src/lib.rs) | Compliance metadata derive. | —; default: none |
-| [forklaunch-http](crates/forklaunch-http/src/lib.rs) | Transport-neutral requests, responses, errors and SSE framing. | —; default: none |
-| [forklaunch-validation](crates/forklaunch-validation/src/lib.rs) | Serde/garde and JSON Schema validation with bounded diagnostics. | —; default: none |
-| [forklaunch-auth](crates/forklaunch-auth/src/lib.rs) | Basic, HMAC, JWT/JWKS verification and role/permission/scope authorization. | `remote-jwks`; default: none |
-| [forklaunch-axum](crates/forklaunch-axum/src/lib.rs) | HTTP routing, middleware, docs, authenticated sessions, MCP and optional media adapters. | `cookie-session`, `multipart`, `sse`, `websocket`, `mcp`, `remote-jwks`, `adapter`; default: `adapter` |
-| [forklaunch-openapi](crates/forklaunch-openapi/src/lib.rs) | OpenAPI documents derived from registered contracts. | —; default: none |
-| [forklaunch-asyncapi](crates/forklaunch-asyncapi/src/lib.rs) | AsyncAPI documents and optional external-document import. | `import`; default: none |
-| [forklaunch-mcp](crates/forklaunch-mcp/src/lib.rs) | Contract-to-tool conversion and optional Streamable HTTP server. | `rmcp-server`; default: none |
-| [forklaunch-sdk-codegen](crates/forklaunch-sdk-codegen/src/lib.rs) | Shared bounded schema/model compiler and SDK generation types. | —; default: none |
-| [forklaunch-sdk-rust](crates/forklaunch-sdk-rust/src/lib.rs) | Rust HTTP/stream/socket client generation. | —; default: none |
-| [forklaunch-sdk-typescript](crates/forklaunch-sdk-typescript/src/lib.rs) | TypeScript HTTP/stream/socket client generation. | —; default: none |
-| [forklaunch-ws](crates/forklaunch-ws/src/lib.rs) | Typed socket contracts, framing, validation and transport support. | `json-schema`, `transport`, `validation`; default: none |
-| [forklaunch-infrastructure-redis](crates/forklaunch-infrastructure-redis/src/lib.rs) | Cache interfaces and optional Redis/encryption adapters. | `redis-client`, `encryption`; default: none |
-| [forklaunch-infrastructure-s3](crates/forklaunch-infrastructure-s3/src/lib.rs) | Object storage interfaces and optional AWS/encryption adapters. | `encryption`, `aws-sdk`; default: none |
-| [forklaunch-testing](crates/forklaunch-testing/src/lib.rs) | Contract/test utilities and optional performance measurements. | `benchmarks`; default: none |
+| [forklaunch-common](crates/common/src/lib.rs) | Path, naming, UTF-16 string hash, JSON formatting and error utilities. | —; default: none |
+| [forklaunch-core](crates/core/src/lib.rs) | Contracts/schema macros, HTTP/auth, OpenAPI/MCP, encryption, persistence, telemetry and optional SDK/build compilers. | `json-schema`, `typed-schema`, `schema-validation`, `http`, `auth`, `openapi`, `mcp`, `rmcp-server`, `build`, `asyncapi-import`; default: none |
+| [forklaunch-core-macros](crates/core-macros/src/lib.rs) | Internal procedural-macro implementation for core contracts and compliance. Consume macros through core. | — |
+| [forklaunch-validator](crates/validator/src/lib.rs) | Serde/garde and JSON Schema validation with bounded diagnostics. | —; default: none |
+| [forklaunch-axum](crates/axum/src/lib.rs) | HTTP routing, middleware, docs, authenticated sessions, MCP and optional media adapters. | `cookie-session`, `multipart`, `sse`, `websocket`, `mcp`, `remote-jwks`, `adapter`; default: `adapter` |
+| [core::asyncapi](crates/core/src/asyncapi/mod.rs) | AsyncAPI documents and optional external-document import. | core `asyncapi-import`; default: none |
+| [core::mcp](crates/core/src/mcp/mod.rs) | Contract-to-tool conversion and optional Streamable HTTP server. | core `mcp` / `rmcp-server`; default: none |
+| [core::codegen](crates/core/src/codegen/mod.rs) | Shared bounded schema/model compiler and SDK generation types. | —; default: none |
+| [core::rust_sdk](crates/core/src/rust_sdk/mod.rs) | Rust HTTP/stream/socket client generation. | —; default: none |
+| [core::typescript](crates/core/src/typescript/mod.rs) | TypeScript HTTP/stream/socket client generation. | —; default: none |
+| [core::ws](crates/core/src/ws/mod.rs) | Socket contracts, artifacts, typed descriptors and bounded payload codecs. | core `ws`, `typed-schema`, `schema-validation`, `ws-validation` |
+| [forklaunch-universal-sdk](crates/universal-sdk/src/lib.rs) | Shared Rust HTTP client transport, checked responses, SSE and multipart runtime used by generated clients. | Native runtime; source extraction regression checks pending |
+| [forklaunch-ws](crates/ws/src/lib.rs) | Native connection/session transport using core-owned contracts and codecs. | `transport`; forwards schema/validation features; default: none |
+| [forklaunch-infrastructure-redis](crates/redis/src/lib.rs) | Cache interfaces and optional Redis/encryption adapters. | `redis-client`, `encryption`; default: none |
+| [forklaunch-infrastructure-s3](crates/s3/src/lib.rs) | Object storage interfaces and optional AWS/encryption adapters. | `encryption`, `aws-sdk`; default: none |
+| [forklaunch-testing](crates/testing/src/lib.rs) | Contract/test utilities and optional performance measurements. | `benchmarks`; default: none |
 
 ## Start with a generated application
 
@@ -68,7 +65,9 @@ cancellation are part of the protocol: preserve them when adding custom raw
 handlers. The remaining request-stream/media conformance gate is tracked in
 [the implementation checklist](../plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md).
 
-`forklaunch-http` separates transport data from Axum. `forklaunch-validation`
+HTTP and authentication are modules of the core project, matching TypeScript core ownership. Enable `forklaunch-core` feature `http` for `forklaunch_core::http`, or `auth` (which includes HTTP) for `forklaunch_core::auth`. Session and OIDC/JWKS network clients remain opt-in. The former HTTP/auth standalone crates are removed.
+
+`forklaunch-core::http` separates transport data from Axum. `forklaunch-validator`
 validates schema/model inputs and produces bounded diagnostics; schema metadata
 alone does not validate application-owned internal handlers. HTTP errors use a
 structured native envelope and correlation ID. Declared business errors retain
