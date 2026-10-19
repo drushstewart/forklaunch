@@ -216,6 +216,33 @@ fn response_modes_never_hide_malformed_wire_or_operational_validation_failure() 
     }
 }
 
+// Tracing caches callsite interest process-wide, while these capture subscribers
+// are thread-local. Run each capture assertion alone so parallel router probes
+// cannot register its first callsite under a different subscriber.
+pub(super) fn isolated_capture_test() -> bool {
+    const MARKER: &str = "FORKLAUNCH_WARNING_CAPTURE_TEST";
+    let name = std::thread::current()
+        .name()
+        .expect("capture must run in a named test thread")
+        .to_owned();
+    if std::env::var(MARKER).ok().as_deref() == Some(name.as_str()) {
+        return false;
+    }
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .args(["--exact", &name, "--test-threads=1", "--nocapture"])
+        .env(MARKER, &name)
+        .output()
+        .expect("launch isolated warning capture test");
+    assert!(
+        output.status.success(),
+        "isolated warning capture failed: {}\n{}\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    true
+}
+
 pub(super) fn capture_warnings(run: impl FnOnce()) -> String {
     use std::sync::Mutex;
     #[derive(Clone)]
@@ -252,6 +279,9 @@ pub(super) fn capture_warnings(run: impl FnOnce()) -> String {
 }
 #[test]
 fn response_modes_warning_emits_only_non_sensitive_metadata() {
+    if isolated_capture_test() {
+        return;
+    }
     let output = capture_warnings(|| {
         let route = endpoint(ValidationMode::Warning).contract();
         let plans = responses::configure(responses::plans(&route.responses).unwrap(), &route);

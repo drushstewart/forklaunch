@@ -222,6 +222,17 @@ pub fn generate_openapi_json_with_options(
 /// # Errors
 /// Rejects contracts the shared portable compiler cannot enforce faithfully.
 pub fn generate_portable_openapi_json(registry: &ContractRegistry) -> anyhow::Result<String> {
+    generate_portable_openapi_json_with_options(registry, &OpenApiOptions::from_registry(registry))
+}
+
+/// Export checked SDK discovery while preserving configured documentation options.
+///
+/// # Errors
+/// Rejects contracts the shared portable compiler cannot enforce faithfully.
+pub fn generate_portable_openapi_json_with_options(
+    registry: &ContractRegistry,
+    options: &OpenApiOptions,
+) -> anyhow::Result<String> {
     let mut public = registry
         .service()
         .map_or_else(ContractRegistry::new, |service| {
@@ -245,7 +256,8 @@ pub fn generate_portable_openapi_json(registry: &ContractRegistry) -> anyhow::Re
         &plan,
         &crate::typescript::TypeScriptHttpSdkOptions::new(service),
     )?;
-    let mut document: serde_json::Value = serde_json::from_str(&generate_openapi_json(&public))?;
+    let mut document: serde_json::Value =
+        serde_json::from_str(&generate_openapi_json_with_options(&public, options))?;
     attach_portable_operation_descriptors(&mut document, &descriptors)?;
     Ok(crate::codegen::canonical_json(document).to_string())
 }
@@ -830,10 +842,19 @@ fn collect_request_schemas(fields: &[FieldContract], schemas: &mut BTreeMap<Stri
 
 fn body_document_schema(body: &BodyContract) -> SchemaRef {
     if body.kind == BodyKind::ServerSentEvent {
-        forklaunch_core::contract::sse_event_schema(&body.schema)
-    } else {
-        body.schema.clone()
+        return forklaunch_core::contract::sse_event_schema(&body.schema);
     }
+    let mut schema = body.schema.clone();
+    if schema.json_schema.is_none() {
+        schema.json_schema = match body.kind {
+            BodyKind::Text => Some(r#"{"type":"string"}"#.into()),
+            BodyKind::Binary | BodyKind::File => {
+                Some(r#"{"type":"string","format":"binary"}"#.into())
+            }
+            _ => None,
+        };
+    }
+    schema
 }
 
 fn collect_body_schema(body: &BodyContract, schemas: &mut BTreeMap<String, String>) {
@@ -961,6 +982,39 @@ fn security_schemes_json(routes: &[&RouteContract]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portable_document_options_preserve_standard_metadata_and_error_policy() {
+        let mut registry = ContractRegistry::for_service(ServiceContract::new("notes", "1.2.3"));
+        registry.register(
+            RouteContract::get("Read", "Read note", "/notes/:id")
+                .with_param(FieldContract::required("id", "String"))
+                .with_auth(AuthConfig::cookie("session"))
+                .with_response(200, None),
+        );
+        let options = OpenApiOptions::from_registry(&registry)
+            .with_description("Configured description")
+            .with_server(OpenApiServer::new("https://notes.example").with_description("Primary"))
+            .with_typescript_auth_errors()
+            .with_typescript_path_errors();
+        let plain: serde_json::Value =
+            serde_json::from_str(&generate_openapi_json_with_options(&registry, &options)).unwrap();
+        let mut portable: serde_json::Value = serde_json::from_str(
+            &generate_portable_openapi_json_with_options(&registry, &options).unwrap(),
+        )
+        .unwrap();
+        let operation = portable["paths"]["/notes/{id}"]["get"]
+            .as_object_mut()
+            .unwrap();
+        assert!(operation.remove("x-forklaunch-operation").is_some());
+        assert_eq!(portable, plain);
+        for status in ["400", "401", "403"] {
+            assert!(
+                portable["paths"]["/notes/{id}"]["get"]["responses"][status]["content"]
+                    .get("text/plain")
+                    .is_some()
+            );
+        }
+    }
     #[test]
     fn portable_version_projections_preserve_standard_document_and_checked_metadata() {
         use crate::contract::{BodyContract, RequestContract, ResponseContract, VersionedContract};

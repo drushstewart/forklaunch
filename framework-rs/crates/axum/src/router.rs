@@ -36,7 +36,10 @@ use forklaunch_core::http::{
     match_path_checked, typescript_parser_error_response, validate_framework_request,
     validation_error_response, validation_error_response_with_parser_format,
 };
-use forklaunch_core::openapi::{OpenApiOptions, OpenApiServer, generate_openapi_json_with_options};
+use forklaunch_core::openapi::{
+    OpenApiOptions, OpenApiServer, generate_openapi_json_with_options,
+    generate_portable_openapi_json_with_options,
+};
 use forklaunch_core::{ServiceInfo, telemetry::OpenTelemetryCollector};
 use opentelemetry::trace::FutureExt;
 #[cfg(test)]
@@ -107,7 +110,10 @@ pub struct RouterConfig {
     pub cookie_sessions: Option<crate::cookie_session::CookieSessions>,
     /// Whether the generated `OpenAPI` document is served.
     pub openapi_enabled: bool,
-    /// Path the `OpenAPI` JSON document is served from.
+    /// Path the checked `OpenAPI` JSON document is served from.
+    /// Its `<path>-hash` endpoint supports SDK discovery and schema refresh.
+    /// Runtime-only contracts retain standard documentation; their hash endpoint
+    /// returns 503 when checked SDK metadata cannot be compiled.
     pub openapi_path: String,
     /// Whether the Scalar documentation UI is served.
     pub docs_enabled: bool,
@@ -335,6 +341,8 @@ impl RouterConfig {
     }
 }
 
+#[cfg(test)]
+mod documentation_discovery_tests;
 mod internal;
 #[cfg(test)]
 mod response_status_tests;
@@ -816,6 +824,7 @@ impl ForkLaunchRouter {
             .collect::<Vec<_>>();
         if config.openapi_enabled {
             protected.push(config.openapi_path.clone());
+            protected.push(format!("{}-hash", config.openapi_path));
         }
         if config.docs_enabled {
             protected.push(config.docs_path.clone());
@@ -908,7 +917,9 @@ impl ForkLaunchRouter {
         }) {
             return Err("MCP endpoint conflicts with an internal HTTP namespace".into());
         }
-        if (self.config.openapi_enabled && options.path == self.config.openapi_path)
+        if (self.config.openapi_enabled
+            && (options.path == self.config.openapi_path
+                || options.path == format!("{}-hash", self.config.openapi_path)))
             || (self.config.openapi_enabled
                 && self.config.docs_enabled
                 && options.path == self.config.docs_path)
@@ -1839,9 +1850,60 @@ fn mount_documentation(
     registry: &ContractRegistry,
 ) -> Router {
     if config.openapi_enabled {
+        let hash_path = format!("{}-hash", config.openapi_path);
+        let paths = [
+            Some(config.openapi_path.as_str()),
+            Some(hash_path.as_str()),
+            config.docs_enabled.then_some(config.docs_path.as_str()),
+            config
+                .swagger_enabled
+                .then_some(config.swagger_path.as_str()),
+        ];
+        assert!(
+            !registry.routes().iter().any(|route| {
+                matches!(route.method, HttpMethod::Get | HttpMethod::Head)
+                    && paths
+                        .iter()
+                        .flatten()
+                        .any(|path| *path == route.openapi_path)
+            }),
+            "documentation path collides with a declared operation"
+        );
         let options = config.openapi_options(registry);
-        let document = generate_openapi_json_with_options(registry, &options);
-        router = router.route(&config.openapi_path, openapi_handler(document));
+        let (document, fingerprint) =
+            match generate_portable_openapi_json_with_options(registry, &options) {
+                Ok(document) => {
+                    let fingerprint = crate::docs::document_hash(&document);
+                    (document, Some(fingerprint))
+                }
+                Err(error) => {
+                    // The adapter supports runtime-only declarations as well as
+                    // checked SDK contracts. Keep their existing HTTP/docs behavior,
+                    // but reject SDK discovery rather than publishing partial types.
+                    tracing::warn!(%error, "checked SDK documentation is unavailable");
+                    (generate_openapi_json_with_options(registry, &options), None)
+                }
+            };
+        router = router
+            .route(&config.openapi_path, openapi_handler(document))
+            .route(
+                &format!("{}-hash", config.openapi_path),
+                axum::routing::get(move || {
+                    let fingerprint = fingerprint.clone();
+                    async move {
+                        fingerprint.map_or_else(
+                            || {
+                                (
+                                    StatusCode::SERVICE_UNAVAILABLE,
+                                    "Contract cannot produce checked SDK documentation",
+                                )
+                                    .into_response()
+                            },
+                            IntoResponse::into_response,
+                        )
+                    }
+                }),
+            );
 
         if config.docs_enabled {
             let html = crate::docs::scalar_html(

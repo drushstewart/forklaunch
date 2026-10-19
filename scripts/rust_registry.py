@@ -145,6 +145,10 @@ def registry(directory, report):
         thread.join()
 
 
+def sdk_discovery_supported(version: str) -> bool:
+    return tuple(map(int, version.split("-")[0].split("."))) >= (0, 1, 1)
+
+
 def verify(directory: Path, target: Path):
     report = json.loads((directory / "release.json").read_text())
     consumer = directory / "registry-consumer"
@@ -196,10 +200,16 @@ def verify(directory: Path, target: Path):
         for package in metadata["packages"]:
             if package["source"] is None and package["name"] not in ("forklaunch-registry-smoke", "serde_json"):
                 raise ValueError(f"Unexpected local dependency: {package['name']}")
-        run(["node", str(ROOT / "cli/tests/rust_mcp_service_startup.mjs"), str(target / "debug/forklaunch-registry-smoke")], cwd=consumer)
+        # The 0.1.1 adapter publishes checked SDK metadata and its discovery
+        # fingerprint. Retain verification compatibility with published 0.1.0.
+        core_version = resolved["forklaunch-core"]["version"]
+        sdk_discovery = sdk_discovery_supported(core_version)
+        run(["node", str(ROOT / "cli/tests/rust_mcp_service_startup.mjs"), str(target / "debug/forklaunch-registry-smoke"),
+             *(["--verify-sdk-discovery"] if sdk_discovery else [])], cwd=consumer)
     (directory / "verification.json").write_text(json.dumps({
         "schemaVersion": 1, "releaseSha256": hashlib.sha256((directory / "release.json").read_bytes()).hexdigest(),
         "packages": len(report["packages"]), "httpMcpStartup": True,
+        "installedSdkDiscovery": sdk_discovery,
         "boundedRegex": bounded_regex,
         "nativeHttpWorkerFeatures": native_worker,
         "scope": "local sparse registry, default features plus core PostgreSQL0.8+0.9/protected disclosure/OTLP, Axum MCP/native-server/native-streams " +

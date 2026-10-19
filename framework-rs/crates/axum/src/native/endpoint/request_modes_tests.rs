@@ -142,6 +142,9 @@ async fn request_modes_allow_body_assertions_but_never_operational_failures() {
 
 #[test]
 fn request_modes_warning_is_redacted() {
+    if super::response_modes_tests::isolated_capture_test() {
+        return;
+    }
     let output = super::response_modes_tests::capture_warnings(|| {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()

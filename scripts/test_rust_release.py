@@ -395,6 +395,21 @@ class ReleaseTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "native HTTP/worker"):
                     release.publication_preflight(self.root, "rust-v0.1.0")
 
+    def test_patch_release_requires_installed_sdk_discovery_proof(self):
+        report = {"schemaVersion": 1, "dirty": False,
+                  "packages": [{"name": "forklaunch-core", "version": "0.1.1"}]}
+        contents = json.dumps(report).encode()
+        (self.root / "release.json").write_bytes(contents)
+        for proof in (None, False, "true"):
+            with self.subTest(proof=proof):
+                (self.root / "verification.json").write_text(json.dumps({
+                    "schemaVersion": 1, "httpMcpStartup": True, "packages": 1,
+                    "releaseSha256": hashlib.sha256(contents).hexdigest(),
+                    "installedSdkDiscovery": proof,
+                }))
+                with self.assertRaisesRegex(ValueError, "installed SDK discovery"):
+                    release.publication_preflight(self.root, "rust-v0.1.1")
+
     def test_publication_binds_clean_tag_graph_and_artifacts(self):
         self.crate("forklaunch-a")
         def git(*args):

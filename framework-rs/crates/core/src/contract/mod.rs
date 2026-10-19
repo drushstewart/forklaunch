@@ -1640,6 +1640,7 @@ mod tests {
         assert!(!route.request.body_optional);
     }
 
+    #[cfg(feature = "json-schema")]
     #[test]
     fn socket_registration_exports_raw_metadata_and_rejects_duplicates_without_replacement() {
         let socket = serde_json::json!({"path":"/chat","clientMessages":{"request":{"shape":{"type":"string","const":"water 水"}}}});

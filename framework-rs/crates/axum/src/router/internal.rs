@@ -111,10 +111,12 @@ pub(super) fn validate(
     registry: &ContractRegistry,
     config: &RouterConfig,
 ) -> Result<(), &'static str> {
+    let hash_path = format!("{}-hash", config.openapi_path);
     let docs = [
         config
             .openapi_enabled
             .then_some(config.openapi_path.as_str()),
+        config.openapi_enabled.then_some(hash_path.as_str()),
         (config.openapi_enabled && config.docs_enabled).then_some(config.docs_path.as_str()),
         (config.openapi_enabled && config.swagger_enabled).then_some(config.swagger_path.as_str()),
     ];

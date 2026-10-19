@@ -315,7 +315,7 @@ def prepare(output: Path, allow_dirty: bool, scope: str = "framework", reuse_ver
 
 
 def publication_preflight(output: Path, tag: str):
-    from rust_registry import checked_archive
+    from rust_registry import checked_archive, sdk_discovery_supported
     report_bytes = (output / "release.json").read_bytes()
     report = json.loads(report_bytes)
     verified = json.loads((output / "verification.json").read_text())
@@ -331,6 +331,10 @@ def publication_preflight(output: Path, tag: str):
     if (any(package["name"] == "forklaunch-worker-interface" for package in report["packages"])
             and verified.get("nativeHttpWorkerFeatures") is not True):
         raise ValueError("Missing native HTTP/worker feature registry verification")
+    if (any(package["name"] == "forklaunch-core" and sdk_discovery_supported(package["version"])
+            for package in report["packages"])
+            and verified.get("installedSdkDiscovery") is not True):
+        raise ValueError("Missing installed SDK discovery registry verification")
     if report.get("scope") != "framework" or any(
         not package["manifest"].startswith("framework-rs/crates/")
         for package in report["packages"]

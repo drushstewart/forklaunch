@@ -179,7 +179,7 @@ impl EnvelopeKey {
             Aes256Gcm::new_from_slice(cipher_key).map_err(|_| SecurityError::Encryption)?;
         let encrypted = cipher
             .encrypt(
-                Nonce::from_slice(&nonce),
+                &Nonce::from(nonce),
                 Payload {
                     msg: plaintext,
                     aad: &aad,
@@ -233,9 +233,10 @@ impl EnvelopeKey {
         let ciphertext = URL_SAFE_NO_PAD
             .decode(parts.next().ok_or(SecurityError::Encryption)?)
             .map_err(|_| SecurityError::Encryption)?;
-        if parts.next().is_some() || nonce.len() != 12 {
+        if parts.next().is_some() {
             return Err(SecurityError::Encryption);
         }
+        let nonce: [u8; 12] = nonce.try_into().map_err(|_| SecurityError::Encryption)?;
         let derived = if version == "v3" {
             Some(self.tenant_key(key.as_ref(), tenant)?)
         } else {
@@ -246,7 +247,7 @@ impl EnvelopeKey {
             Aes256Gcm::new_from_slice(cipher_key).map_err(|_| SecurityError::Encryption)?;
         cipher
             .decrypt(
-                Nonce::from_slice(&nonce),
+                &Nonce::from(nonce),
                 Payload {
                     msg: &ciphertext,
                     aad: &aad,
@@ -266,6 +267,34 @@ fn valid_id(id: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn malformed_nonce_lengths_are_rejected_without_panicking() {
+        let tenant = Uuid::new_v4();
+        let resource = Uuid::new_v4();
+        let legacy = EnvelopeKey::new(EnvelopeProfile::new("fieldnotes").unwrap(), [7; 32]);
+        let rotated = EnvelopeKey::with_rotation(
+            EnvelopeProfile::new("fieldnotes").unwrap(),
+            "primary".into(),
+            [7; 32],
+            vec![],
+            Some([7; 32]),
+        )
+        .unwrap();
+        for key in [&legacy, &rotated] {
+            let envelope = key.seal(tenant, resource, "note-body", b"private").unwrap();
+            let mut parts: Vec<_> = envelope.split('.').map(str::to_owned).collect();
+            let nonce_index = parts.len() - 2;
+            for length in [0, 1, 11, 13, 24] {
+                parts[nonce_index] = URL_SAFE_NO_PAD.encode(vec![9; length]);
+                assert!(
+                    rotated
+                        .open(tenant, resource, "note-body", &parts.join("."))
+                        .is_err(),
+                    "nonce length {length} must be rejected"
+                );
+            }
+        }
+    }
     #[test]
     fn blind_indexes_separate_tenants_fields_and_rotation_keys() {
         let tenant = Uuid::new_v4();

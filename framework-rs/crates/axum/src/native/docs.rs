@@ -112,9 +112,7 @@ where
     }
     let document = forklaunch_core::openapi::generate_portable_openapi_json(registry)
         .map_err(|_| "contract cannot produce checked SDK documentation")?;
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    std::hash::Hasher::write(&mut hasher, document.as_bytes());
-    let fingerprint = format!("{:016x}", std::hash::Hasher::finish(&hasher));
+    let fingerprint = crate::docs::document_hash(&document);
     let hash = get(move || {
         let fingerprint = fingerprint.clone();
         async move { fingerprint }

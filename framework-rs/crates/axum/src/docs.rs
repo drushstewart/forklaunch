@@ -2,6 +2,12 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+pub(crate) fn document_hash(document: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    std::hash::Hasher::write(&mut hasher, document.as_bytes());
+    format!("{:016x}", std::hash::Hasher::finish(&hasher))
+}
+
 /// A Scalar source loads either a remote document or an inline JSON document.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]

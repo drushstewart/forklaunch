@@ -138,3 +138,100 @@ fn path_error_inference_is_conservative_and_preserves_explicit_contracts() {
             .is_none()
     );
 }
+
+#[test]
+fn body_kind_defaults_preserve_wire_schemas_and_explicit_constraints() {
+    let cases = [
+        (BodyKind::Text, "text/plain", None, json!({"type":"string"})),
+        (
+            BodyKind::Binary,
+            "application/octet-stream",
+            None,
+            json!({"type":"string","format":"binary"}),
+        ),
+        (
+            BodyKind::File,
+            "application/pdf",
+            None,
+            json!({"type":"string","format":"binary"}),
+        ),
+        (
+            BodyKind::Text,
+            "text/html",
+            Some(json!({"type":"string","minLength":2})),
+            json!({"type":"string","minLength":2}),
+        ),
+        (
+            BodyKind::Json,
+            "application/json",
+            None,
+            json!({"type":"object"}),
+        ),
+    ];
+    let mut registry = ContractRegistry::new();
+    for (index, (kind, media, explicit, _)) in cases.iter().enumerate() {
+        let mut schema = SchemaRef::named(format!("Payload{index}"));
+        schema.json_schema = explicit.as_ref().map(Value::to_string);
+        let body = BodyContract {
+            kind: *kind,
+            content_type: Some((*media).into()),
+            schema,
+        };
+        registry.register(
+            RouteContract::post(format!("Echo{index}"), "Echo", format!("/echo{index}"))
+                .with_request_body(body.clone())
+                .with_response(200, Some(body)),
+        );
+    }
+    let source = generate_openapi_json(&registry);
+    let document: Value = serde_json::from_str(&source).unwrap();
+    for (index, (_, media, explicit, expected)) in cases.iter().enumerate() {
+        let operation = &document["paths"][format!("/echo{index}")]["post"];
+        for schema in [
+            &operation["requestBody"]["content"][*media]["schema"],
+            &operation["responses"]["200"]["content"][*media]["schema"],
+        ] {
+            let reference = schema["$ref"].as_str().unwrap();
+            assert_eq!(
+                document
+                    .pointer(reference.strip_prefix('#').unwrap())
+                    .unwrap(),
+                expected
+            );
+        }
+        assert_eq!(
+            registry.routes()[index]
+                .request
+                .body
+                .as_ref()
+                .unwrap()
+                .schema
+                .json_schema,
+            explicit.as_ref().map(Value::to_string),
+            "Export must not mutate the runtime contract"
+        );
+    }
+    #[cfg(feature = "build")]
+    {
+        let imported = crate::build::openapi_artifact_sources(&source, "wire").unwrap();
+        let contract: Value = serde_json::from_str(&imported.contract).unwrap();
+        for (index, (_, _, _, expected)) in cases.iter().enumerate() {
+            let route = contract["routes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|route| route["path"] == format!("/echo{index}"))
+                .unwrap();
+            for schema in [
+                &route["request"]["body"]["schema"]["jsonSchema"],
+                &route["responses"][0]["body"]["schema"]["jsonSchema"],
+            ] {
+                assert_eq!(schema["type"], expected["type"]);
+                assert_eq!(schema["format"], expected["format"]);
+                assert_eq!(schema["minLength"], expected["minLength"]);
+            }
+        }
+        assert!(!imported.sources.typescript.is_empty());
+        assert!(!imported.sources.rust.is_empty());
+    }
+}
