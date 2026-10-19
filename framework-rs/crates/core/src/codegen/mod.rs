@@ -10,6 +10,8 @@ pub mod render;
 #[cfg(any(feature = "typescript", feature = "rust-sdk"))]
 pub(crate) mod request_objects;
 pub mod response;
+#[cfg(any(feature = "typescript", feature = "rust-sdk"))]
+pub(crate) mod runtime_schemas;
 pub(crate) mod schema;
 mod sse_models;
 #[cfg(any(feature = "typescript", feature = "rust-sdk"))]

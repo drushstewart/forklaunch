@@ -355,7 +355,22 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
   const draft2020 =
     typeof dialect === 'string' && dialect.includes('/draft/2020-12/');
   const legacy = draft4 || draft6 || draft7;
+  const hasResourceId = (object: Record<string, unknown>, resource: unknown): boolean => {
+    const id = object[draft4 ? 'id' : '$id'];
+    // Legacy fragment IDs name anchors within the enclosing resource. They do
+    // not change the document against which a JSON Pointer fragment resolves.
+    if (typeof id !== 'string' || id === '' || id.startsWith('#')) return false;
+    const parentId = resource && typeof resource === 'object'
+      ? (resource as Record<string, unknown>)[draft4 ? 'id' : '$id'] : undefined;
+    // The absolute spelling of an anchor in this same document has identical
+    // scope. A distinct document URI still starts a nested resource.
+    return !(id.includes('#') && typeof parentId === 'string' &&
+      id.split('#', 1)[0] === parentId.split('#', 1)[0]);
+  };
   const ignored = new Set([
+    // Model identity is an annotation. AJV's resource walk also visits unknown
+    // keywords and otherwise mistakes its repeated `id` for a Draft 4 resource.
+    'x-forklaunch-model',
     ...(draft4 ? ['const', 'contains', 'propertyNames'] : []),
     ...(draft4 || draft6 ? ['if', 'then', 'else'] : []),
     ...(legacy
@@ -376,6 +391,7 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
   // would change const/enum equality or defaults, so reject the dual-use case.
   const literalRanges: string[][] = [];
   const repairPaths: string[][] = [];
+  const schemaLocations = new Map<object, { path: string[]; resourcePath: string[]; resource: unknown }>();
   const checked = new Set<string>();
   const inspect: Array<{ node: unknown; path: string[]; resource: unknown; resourcePath: string[] }> = [
     { node: copy, path: [], resource: copy, resourcePath: [] },
@@ -390,9 +406,10 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
       throw new Error('Socket schema inspection budget exceeded');
     if (!node || typeof node !== 'object' || Array.isArray(node)) continue;
     const object = node as Record<string, unknown>;
-    const ownsResource = typeof object[draft4 ? 'id' : '$id'] === 'string';
+    const ownsResource = hasResourceId(object, resource);
     const base = ownsResource ? node : resource;
     const basePath = ownsResource ? path : resourcePath;
+    schemaLocations.set(node, { path, resourcePath: basePath, resource: base });
     for (const key of ['default', 'const', 'enum']) {
       if (Object.prototype.hasOwnProperty.call(object, key)) literalRanges.push([...path, key]);
     }
@@ -402,12 +419,15 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
       if (inspect.length >= remaining) throw new Error('Socket schema inspection budget exceeded');
       inspect.push({ node: child, path: childPath, resource: base, resourcePath: basePath });
     };
-    if (typeof object.$ref === 'string' && object.$ref.startsWith('#/')) {
-      const tokens = decodeURIComponent(object.$ref.slice(2)).split('/').map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'));
-      let target: unknown = base;
-      for (const key of tokens) target = target && typeof target === 'object' &&
-        Object.prototype.hasOwnProperty.call(target, key) ? (target as Record<string, unknown>)[key] : undefined;
-      push(target, [...basePath, ...tokens]);
+    if (typeof object.$ref === 'string' && object.$ref.startsWith('#')) {
+      const pointer = decodeURIComponent(object.$ref.slice(1));
+      if (pointer.startsWith('/')) {
+        const tokens = pointer.slice(1).split('/').map(key => key.replace(/~1/g, '/').replace(/~0/g, '~'));
+        let target: unknown = base;
+        for (const key of tokens) target = target && typeof target === 'object' &&
+          Object.prototype.hasOwnProperty.call(target, key) ? (target as Record<string, unknown>)[key] : undefined;
+        push(target, [...basePath, ...tokens]);
+      }
     }
     for (const [key, child] of Object.entries(object)) {
       if (ignored.has(key)) continue;
@@ -420,22 +440,25 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
       }
     }
   }
-  for (const path of repairPaths) for (const range of literalRanges) {
-    if (--remaining < 0) throw new Error('Socket schema inspection budget exceeded');
-    if (range.length <= path.length && range.every((key, index) => path[index] === key))
-      throw new Error('Socket own-property repair cannot rewrite a schema inside literal default/const/enum data');
+  function assertNotLiteral(path: string[], operation: string): void {
+    for (const range of literalRanges) {
+      if (--remaining < 0) throw new Error('Socket schema inspection budget exceeded');
+      if (range.length <= path.length && range.every((key, index) => path[index] === key))
+        throw new Error(`Socket ${operation} cannot rewrite literal default/const/enum data`);
+    }
   }
+  for (const path of repairPaths) assertNotLiteral(path, 'own-property repair');
   let activeSchemas: WeakSet<object> | undefined;
   if (ignored.size) {
     const active = new WeakSet<object>();
     activeSchemas = active;
-    const pending: unknown[] = [copy];
-    const annotations: unknown[] = [];
+    const pending: Array<{ node: unknown; resource: unknown }> = [{ node: copy, resource: copy }];
+    const annotations: Array<{ value: unknown; path: string[] }> = [];
     // AJV discovers resource IDs before consulting its dialect vocabulary.
     // Identify real schema positions, including explicit local references into
     // ignored annotation storage, before cleaning its private compilation copy.
     while (pending.length) {
-      const node = pending.pop();
+      const { node, resource } = pending.pop()!;
       if (
         !node ||
         typeof node !== 'object' ||
@@ -445,9 +468,11 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
         continue;
       active.add(node);
       const object = node as Record<string, unknown>;
+      const base = schemaLocations.get(node)?.resource ?? resource;
+      const push = (child: unknown) => pending.push({ node: child, resource: base });
       if (typeof object.$ref === 'string' && object.$ref.startsWith('#')) {
         const pointer = decodeURIComponent(object.$ref.slice(1));
-        let target: unknown = copy;
+        let target: unknown = base;
         if (pointer.startsWith('/')) {
           for (const segment of pointer.slice(1).split('/')) {
             const key = segment.replace(/~1/g, '/').replace(/~0/g, '~');
@@ -459,58 +484,74 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
                 : undefined;
           }
         } else if (pointer !== '') target = undefined;
-        pending.push(target);
+        push(target);
       }
       for (const [key, child] of Object.entries(object)) {
-        if (ignored.has(key)) annotations.push(child);
+        if (ignored.has(key)) {
+          const location = schemaLocations.get(node);
+          if (!location) throw new Error('Socket schema location unavailable');
+          annotations.push({ value: child, path: [...location.path, key] });
+        }
         else if (
           dictionaries.has(key) &&
           child &&
           typeof child === 'object' &&
           !Array.isArray(child)
         ) {
-          for (const value of Object.values(child)) pending.push(value);
-        } else if (singles.has(key)) pending.push(child);
+          for (const value of Object.values(child)) push(value);
+        } else if (singles.has(key)) push(child);
         else if (
           ['items', 'prefixItems', 'allOf', 'anyOf', 'oneOf'].includes(key)
         ) {
           if (Array.isArray(child)) {
-            for (const value of child) pending.push(value);
-          } else pending.push(child);
+            for (const value of child) push(value);
+          } else push(child);
         }
       }
     }
-    function cleanAnnotation(value: unknown): void {
+    function cleanAnnotation(value: unknown, path: string[]): void {
       if (!value || typeof value !== 'object' || active.has(value)) return;
       if (Array.isArray(value)) {
-        value.forEach(cleanAnnotation);
+        value.forEach((child, index) => cleanAnnotation(child, [...path, String(index)]));
         return;
       }
       const object = value as Record<string, unknown>;
       for (const keyword of ['$id', 'id', '$anchor', '$dynamicAnchor']) {
-        if (typeof object[keyword] === 'string') delete object[keyword];
+        if (typeof object[keyword] !== 'string') continue;
+        assertNotLiteral(path, 'annotation cleanup');
+        delete object[keyword];
       }
-      Object.values(object).forEach(cleanAnnotation);
+      for (const [key, child] of Object.entries(object)) cleanAnnotation(child, [...path, key]);
     }
-    annotations.forEach(cleanAnnotation);
+    for (const annotation of annotations) cleanAnnotation(annotation.value, annotation.path);
   }
+  const visited = new WeakSet<object>();
   function visit(node: unknown, location: string[]): void {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
     if (activeSchemas && !activeSchemas.has(node)) return;
+    if (visited.has(node)) return;
+    visited.add(node);
     const object = node as Record<string, unknown>;
     if (typeof object.$schema === 'string') {
+      let normalized = object.$schema;
       if (object.$schema.includes('/draft-04/'))
-        object.$schema = 'http://json-schema.org/draft-04/schema#';
+        normalized = 'http://json-schema.org/draft-04/schema#';
       else if (object.$schema.includes('/draft-06/'))
-        object.$schema = 'http://json-schema.org/draft-06/schema#';
+        normalized = 'http://json-schema.org/draft-06/schema#';
       else if (object.$schema.includes('/draft-07/'))
-        object.$schema = 'http://json-schema.org/draft-07/schema#';
+        normalized = 'http://json-schema.org/draft-07/schema#';
       else if (object.$schema.includes('/draft/2019-09/'))
-        object.$schema = 'https://json-schema.org/draft/2019-09/schema';
+        normalized = 'https://json-schema.org/draft/2019-09/schema';
       else if (object.$schema.includes('/draft/2020-12/'))
-        object.$schema = 'https://json-schema.org/draft/2020-12/schema';
+        normalized = 'https://json-schema.org/draft/2020-12/schema';
+      if (normalized !== object.$schema) {
+        const path = schemaLocations.get(node)?.path;
+        if (!path) throw new Error('Socket schema location unavailable');
+        assertNotLiteral(path, 'dialect normalization');
+        object.$schema = normalized;
+      }
     }
-    const base = typeof object[draft4 ? 'id' : '$id'] === 'string' ? [] : location;
+    const base = schemaLocations.get(node)?.resource === node ? [] : location;
     const properties = object.properties as Record<string, unknown> | undefined;
     if (
       properties &&
@@ -552,6 +593,10 @@ function socketAjvSchema(schema: AnySchema): AnySchema {
     }
   }
   visit(copy, []);
+  // Explicit local pointers can select schemas under unknown annotation keys.
+  // Those targets need the same own-property repair as ordinary schema fields.
+  for (const [node, location] of schemaLocations)
+    visit(node, location.path.slice(location.resourcePath.length));
   return copy;
 }
 // Explicit portable date metadata; ordinary date-looking strings stay strings.

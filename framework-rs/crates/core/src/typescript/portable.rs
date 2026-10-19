@@ -278,7 +278,9 @@ pub fn generate_typescript_operation_descriptors(
             kinds.insert(key.clone(), json!(response.response_kind));
             schemas.insert(
                 key.clone(),
-                serde_json::from_str(&response.body_schema_json)?,
+                crate::codegen::runtime_schemas::schema(&serde_json::from_str(
+                    &response.body_schema_json,
+                )?)?,
             );
             if !response.headers_type.is_empty() {
                 headers.insert(key, serde_json::from_str(&response.header_rules)?);
@@ -291,7 +293,7 @@ pub fn generate_typescript_operation_descriptors(
             "operation":op.name, "method":op.method.as_str(), "path":op.path,
             "requestKind":compiled.request_kind,
             "requestContentType":super::http::request_body(op, "Descriptor", &mut std::collections::BTreeMap::new())?.1,
-            "requestSchema":serde_json::from_str::<Value>(op.request_body_json_schema.as_deref().unwrap_or("true"))?,
+            "requestSchema":crate::codegen::runtime_schemas::schema(&serde_json::from_str::<Value>(op.request_body_json_schema.as_deref().unwrap_or("true"))?)?,
             "responseKinds":kinds, "responseSchemas":schemas, "responseHeaders":headers
         });
         for (key, metadata) in [
@@ -305,6 +307,11 @@ pub fn generate_typescript_operation_descriptors(
             ),
         ] {
             if !metadata.is_empty() {
+                let metadata = if key == "requestObjects" {
+                    crate::codegen::runtime_schemas::request_objects(&metadata)?
+                } else {
+                    crate::codegen::runtime_schemas::versions(&metadata)?
+                };
                 descriptor[key] = serde_json::from_str(&metadata)?;
             }
         }

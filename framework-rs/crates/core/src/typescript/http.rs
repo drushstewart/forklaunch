@@ -113,9 +113,13 @@ pub(super) fn prepare_http_sdk(
             .entry(router_key)
             .or_default()
             .push(TypeScriptOperationTemplate {
-                version_metadata: escape(&crate::codegen::version_responses::metadata(op)?),
+                version_metadata: escape(&crate::codegen::runtime_schemas::versions(
+                    &crate::codegen::version_responses::metadata(op)?,
+                )?),
                 request_schema: canonical_request_schema(op)?,
-                request_objects: escape(&crate::codegen::request_objects::metadata(op)?),
+                request_objects: escape(&crate::codegen::runtime_schemas::request_objects(
+                    &crate::codegen::request_objects::metadata(op)?,
+                )?),
                 operation_key,
                 request_type,
                 responses_type,
@@ -329,6 +333,15 @@ fn response_types(
         };
         reserve_name(names, &root)?;
         let (mut variant, compiled) = compile_response(op.method, response, &root)?;
+        // Keep authored schemas for type identity; only validator constants
+        // cross the bounded resource/dialect normalization boundary.
+        variant.body_schema = escape(
+            &crate::codegen::runtime_schemas::schema(&serde_json::from_str(
+                &variant.body_schema_json,
+            )?)?
+            .to_string(),
+        );
+        variant.header_rules = crate::codegen::runtime_schemas::fields(&variant.header_rules)?;
         variant.media_discriminator = multiple;
         if multiple {
             variant.status_variant = format!("Status{status}{media_name}");
@@ -413,7 +426,9 @@ fn validate_date_request_kind(op: &SdkOperation) -> Result<()> {
 fn canonical_request_schema(op: &SdkOperation) -> Result<String> {
     let schema: serde_json::Value =
         serde_json::from_str(op.request_body_json_schema.as_deref().unwrap_or("true"))?;
-    Ok(escape(&crate::codegen::canonical_json(schema).to_string()))
+    Ok(escape(
+        &crate::codegen::runtime_schemas::schema(&schema)?.to_string(),
+    ))
 }
 
 /// Generate the standalone compatibility source from the canonical template model.
@@ -496,3 +511,7 @@ pub(crate) fn generate_typescript_http_sdk_files_with_runtime(
         ("runtime.ts".into(), runtime),
     ]))
 }
+
+#[cfg(test)]
+#[path = "http_runtime_schemas_tests.rs"]
+mod runtime_schemas_tests;

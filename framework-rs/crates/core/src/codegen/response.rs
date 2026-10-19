@@ -219,8 +219,9 @@ pub fn compile_response(
 }
 
 /// Choose a status-enum payload type from already compiled Rust model metadata.
-/// Collections already allocate their elements; inline records and unions are
-/// boxed to bound enum size. This does not parse or validate schema annotations.
+/// Collections and boxed schema references already allocate their payloads;
+/// inline records and unions are boxed to bound enum size. This does not parse
+/// or validate schema annotations.
 #[must_use]
 pub fn json_response_type<'a>(
     rust_type: &'a str,
@@ -235,7 +236,9 @@ pub fn json_response_type<'a>(
         };
         payload = target;
     }
-    let collection = [
+    let allocated = [
+        "Box<",
+        "::std::boxed::Box<",
         "Vec<",
         "::std::vec::Vec<",
         "BTreeMap<",
@@ -245,7 +248,7 @@ pub fn json_response_type<'a>(
     ]
     .iter()
     .any(|prefix| payload.starts_with(prefix));
-    if has_models && !collection {
+    if has_models && !allocated {
         format!("Box<{rust_type}>")
     } else {
         rust_type.into()
@@ -368,5 +371,51 @@ mod response_box_tests {
                 format!("Box<{}>", models.rust_type)
             );
         }
+    }
+
+    #[test]
+    fn referenced_recursive_response_with_siblings_keeps_one_box() {
+        let schema = json!({
+            "$id": "https://schemas.fixture.test/Mutual/index.json",
+            "$ref": "nodes/a#MutualA",
+            "minProperties": 1,
+            "$defs": {
+                "A": {
+                    "$id": "nodes/a", "$anchor": "MutualA",
+                    "type": "object", "additionalProperties": false,
+                    "required": ["id", "peer"],
+                    "properties": {
+                        "id": {"type": "string"},
+                        "peer": {"$ref": "b#MutualB"}
+                    }
+                },
+                "B": {
+                    "$id": "nodes/b", "$anchor": "MutualB",
+                    "type": "object", "additionalProperties": false,
+                    "required": ["children"],
+                    "properties": {
+                        "children": {"type": "array", "items": {"$ref": "a#MutualA"}}
+                    }
+                }
+            }
+        });
+        let (variant, models) = response(&schema);
+        let payload = models
+            .rust_aliases
+            .iter()
+            .find(|alias| alias.name == models.rust_type)
+            .expect("reference response retains its named alias");
+        assert!(
+            payload.target_type.starts_with("::std::boxed::Box<"),
+            "{}",
+            payload.target_type
+        );
+        assert!(!models.rust_models.is_empty());
+        assert_eq!(variant.rust_response_type, models.rust_type);
+        assert_eq!(payload.target_type.matches("Box<").count(), 1);
+        assert_eq!(
+            variant.body_schema_json,
+            super::super::canonical_json(schema).to_string()
+        );
     }
 }

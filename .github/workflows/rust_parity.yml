@@ -74,6 +74,7 @@ on:
       - 'cli/tests/rust_zod_never_openapi.mjs'
       - 'cli/tests/rust_zod_record_openapi.mjs'
       - 'cli/tests/rust_ajv_own_properties.mjs'
+      - 'cli/tests/rust_portable_model_metadata.mjs'
       - 'cli/tests/rust_sdk_tuple_coercion.mjs'
       - 'cli/tests/rust_zod_tuple_openapi.mjs'
       - 'cli/tests/rust_zod_pure_input_openapi.mjs'
@@ -561,6 +562,7 @@ on:
       - 'cli/tests/rust_zod_never_openapi.mjs'
       - 'cli/tests/rust_zod_record_openapi.mjs'
       - 'cli/tests/rust_ajv_own_properties.mjs'
+      - 'cli/tests/rust_portable_model_metadata.mjs'
       - 'cli/tests/rust_sdk_tuple_coercion.mjs'
       - 'cli/tests/rust_zod_tuple_openapi.mjs'
       - 'cli/tests/rust_zod_pure_input_openapi.mjs'
@@ -1261,7 +1263,7 @@ jobs:
       - run: cargo test --locked --manifest-path framework-rs/crates/vendor/regress/Cargo.toml --features utf16
       - run: cargo test --locked --manifest-path framework-rs/crates/vendor/regress/Cargo.toml --no-default-features --features std,utf16 --lib --test forklaunch_budget
       - name: Regex demand fails closed without its native feature
-        run: cargo test --locked --manifest-path framework-rs/Cargo.toml -p forklaunch-contract --no-default-features --features schema-validation --lib regex
+        run: cargo test --locked --manifest-path framework-rs/Cargo.toml -p forklaunch-core --no-default-features --features schema-validation --lib regex
       - run: node cli/tests/rust_zod_regex_profile.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1383,9 +1385,9 @@ jobs:
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
           FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - name: Zod format profile rejects URI without its native capability
-        run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-contract --no-default-features --features zod-checks format_checks_are_ordered_bounded_and_uri_requires_its_capability
+        run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-core --no-default-features --features zod-checks format_checks_are_ordered_bounded_and_uri_requires_its_capability
       - name: Explicit feature-off URI schema rejection
-        run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-contract --no-default-features
+        run: cargo test --manifest-path framework-rs/Cargo.toml -p forklaunch-core --no-default-features
       - name: Live HTTP, MCP and SDK URL compatibility
         run: node cli/tests/rust_json_composition_runtime.mjs
         env:
@@ -1415,6 +1417,9 @@ jobs:
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
           FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
+          FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
+      - run: node cli/tests/rust_portable_model_metadata.mjs
+        env:
           FORKLAUNCH_TEST_SOCKET_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       - run: node cli/tests/rust_ajv_own_properties.mjs
         env:

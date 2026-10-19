@@ -13,7 +13,7 @@ const {generateSchema}=load(path.join(root,'framework/validator/shims/zod-v3-ope
 
 const {UniversalSdk}=load(root+'/framework/universal-sdk/src/universalSdk.ts');
 const {ajvSchema}=load(root+'/framework/universal-sdk/src/core/ajvSchema.ts');
-const own=await UniversalSdk.create('https://example.invalid',{});
+const own=await UniversalSdk.create('https://example.invalid',{static:true});
 let count=0;
 for(const version of ['3.0','3.1'])for(const wrap of [x=>x,x=>z.array(x),x=>z.object({value:x}),x=>z.union([x,z.string()])]){
  const schema=generateSchema(wrap(z.record(z.enum(['__proto__','constructor','prototype']),z.number())),false,version);
@@ -28,9 +28,10 @@ for(const version of ['3.0','3.1'])for(const wrap of [x=>x,x=>z.array(x),x=>z.ob
  }
 }
 const {readFileSync}=await import('node:fs');const vm=await import('node:vm');
-const runtime=readFileSync(root+'/framework-rs/crates/forklaunch-sdk-typescript/src/websocket-runtime.ts','utf8')+'\nexport {socketValidator,socketAjvSchema};';
+const runtimeDirectory=root+'/framework-rs/crates/core/src/typescript/';
+const runtime=['schema-runtime.ts','date-codec.ts','zod-checks.ts','zod-regex.ts'].map(name=>readFileSync(runtimeDirectory+name,'utf8').replace("import type Ajv from 'ajv';",'')).join('\n')+'\nexport {socketValidator,socketAjvSchema};';
 const ts=socketRequire('typescript');const compiled=ts.transpileModule(runtime,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-const socket={};vm.runInNewContext(compiled,{socketDraft6MetaSchema:JSON.parse(readFileSync(root+'/framework-rs/crates/forklaunch-sdk-typescript/src/draft6-schema.json','utf8')),exports:socket,require:socketRequire,Buffer,URL,AbortSignal,TextDecoder,setTimeout,clearTimeout});
+const socket={};vm.runInNewContext(compiled,{socketDraft6MetaSchema:JSON.parse(readFileSync(root+'/framework-rs/crates/core/src/typescript/draft6-schema.json','utf8')),exports:socket,require:socketRequire,Buffer,URL,AbortSignal,TextDecoder,setTimeout,clearTimeout});
 for(const dialect of ['http://json-schema.org/draft-04/schema#','http://json-schema.org/draft-06/schema#','http://json-schema.org/draft-07/schema#','https://json-schema.org/draft/2019-09/schema','https://json-schema.org/draft/2020-12/schema',undefined])for(const nestedId of [false,true]){
  const inner=JSON.parse('{"type":"object","properties":{"__proto__":{"type":"number"}},"patternProperties":{"^__proto__(?![\\\\s\\\\S])":{"minimum":0}},"additionalProperties":false}');
  const idKey=dialect?.includes('04')?'id':'$id';if(nestedId)inner[idKey]='https://example.invalid/inner';
