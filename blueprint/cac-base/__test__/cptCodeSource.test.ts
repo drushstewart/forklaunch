@@ -22,14 +22,14 @@ function fakeEm(findOneResult: unknown): EntityManager {
 
 describe('EntityManagerCptCodeSource', () => {
   it('looks up a code scoped to the given organization', async () => {
-    const em = fakeEm({ code: '10001', description: 'Synthetic code' });
+    const em = fakeEm({ code: '69991', description: 'Synthetic code' });
     const source = new EntityManagerCptCodeSource(em, 'org-1');
 
-    const result = await source.lookup('10001');
+    const result = await source.lookup('69991');
 
-    expect(result).toEqual({ code: '10001', description: 'Synthetic code' });
+    expect(result).toEqual({ code: '69991', description: 'Synthetic code' });
     expect(em.findOne).toHaveBeenCalledWith(CptCode, {
-      code: '10001',
+      code: '69991',
       organizationId: 'org-1'
     });
   });
@@ -47,10 +47,10 @@ describe('EntityManagerCptCodeSource', () => {
     const em = fakeEm(null);
     const source = new EntityManagerCptCodeSource(em, 'org-2');
 
-    await source.lookup('10001');
+    await source.lookup('69991');
 
     expect(em.findOne).toHaveBeenCalledWith(CptCode, {
-      code: '10001',
+      code: '69991',
       organizationId: 'org-2'
     });
   });

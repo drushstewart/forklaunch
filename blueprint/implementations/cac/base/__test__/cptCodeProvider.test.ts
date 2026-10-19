@@ -31,14 +31,14 @@ describe('CptCodeProvider', () => {
 
   it('resolves a code from whatever source it is given', async () => {
     const provider = new CptCodeProvider(
-      new FakeCptCodeSource({ '10001': 'Synthetic surgery-range code' }),
+      new FakeCptCodeSource({ '69991': 'Synthetic Category I code' }),
       openTelemetryCollector
     );
 
-    const result = await provider.lookupProcedureCode({ code: '10001' });
+    const result = await provider.lookupProcedureCode({ code: '69991' });
     expect(result).toEqual({
-      code: '10001',
-      description: 'Synthetic surgery-range code'
+      code: '69991',
+      description: 'Synthetic Category I code'
     });
   });
 

@@ -22,7 +22,7 @@ yourself.
 
 ## `CodeSetProvider` — the extension point
 
-```
+```text
 CodeSetProvider (interface, @forklaunch/interfaces-cac)
  ├─ MockProcedureCodeProvider   — free, built-in, fully functional today.
  │                                 Three placeholder codes (PROC-001/002/003).
@@ -144,6 +144,7 @@ below are done:
   rule data.
 
 TODO:
+
 1. Make the rule tables a constructor dependency of `ScrubbingService` (a
    `ScrubbingRuleSource`, defaulting to the mock tables), so an adopter can
    load CMS NCCI PTP/MUE files and their MAC's LCD crosswalks.

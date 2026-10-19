@@ -3,10 +3,13 @@
  * entity module is imported — same requirement as
  * diagnosis.entity.test.ts/patient.entity.test.ts.
  */
-import { FieldEncryptor, registerEncryptor } from '@forklaunch/core/persistence';
+import {
+  FieldEncryptor,
+  registerEncryptor
+} from '@forklaunch/core/persistence';
 registerEncryptor(new FieldEncryptor('0'.repeat(64)));
 
-import { DateTimeType, DoubleType, StringType } from '@mikro-orm/core';
+import { DateTimeType, DecimalType, StringType } from '@mikro-orm/core';
 import { Remittance } from '../persistence/entities/remittance.entity';
 
 // Remittance has no service or controller writing to it yet — see
@@ -26,11 +29,18 @@ import { Remittance } from '../persistence/entities/remittance.entity';
 // each property's declared Type class plus its array/nullable flags —
 // exactly the values a compliance-tag or builder-method change would alter.
 describe('Remittance entity schema', () => {
-  it('keeps paidAmount a real double, not string/encrypted', () => {
+  it('keeps paidAmount exact numeric with a number runtime type, not string/encrypted', () => {
+    // numeric(12,2), not double precision: this is money reconciled against
+    // a claim, and binary floating point can't hold most cent values
+    // exactly. The two things this pins are (1) it is not encrypted or
+    // coerced to text by a compliance-tag change, and (2) mode is 'number',
+    // since MikroORM's decimal defaults to returning strings — flipping
+    // that default would silently change every read of this column.
     const paidAmount = Remittance.meta.properties.paidAmount as unknown as {
       type: unknown;
     };
-    expect(paidAmount.type).toBe(DoubleType);
+    expect(paidAmount.type).toBeInstanceOf(DecimalType);
+    expect((paidAmount.type as DecimalType).mode).toBe('number');
   });
 
   it('keeps receivedAt a real datetime, not string/encrypted — compliance is none, not phi', () => {

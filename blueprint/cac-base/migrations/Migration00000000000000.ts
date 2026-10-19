@@ -32,7 +32,7 @@ export class Migration00000000000000 extends Migration {
     );
 
     this.addSql(
-      `create table "charge" ("id" uuid not null, "created_at" timestamptz not null, "updated_at" timestamptz not null, "retention_anonymized_at" timestamptz null, "organization_id" uuid not null, "encounter_id" uuid not null, "procedure_code" text not null, "units" int not null, "amount" double precision not null, constraint "charge_pkey" primary key ("id"));`
+      `create table "charge" ("id" uuid not null, "created_at" timestamptz not null, "updated_at" timestamptz not null, "retention_anonymized_at" timestamptz null, "organization_id" uuid not null, "encounter_id" uuid not null, "procedure_code" text not null, "units" int not null, "amount" numeric(12,2) not null, constraint "charge_pkey" primary key ("id"));`
     );
 
     this.addSql(
@@ -48,7 +48,7 @@ export class Migration00000000000000 extends Migration {
     );
 
     this.addSql(
-      `create table "remittance" ("id" uuid not null, "created_at" timestamptz not null, "updated_at" timestamptz not null, "retention_anonymized_at" timestamptz null, "organization_id" uuid not null, "claim_id" uuid not null, "paid_amount" double precision not null, "carc_codes" text[] null, "rarc_codes" text[] null, "received_at" timestamptz not null, constraint "remittance_pkey" primary key ("id"));`
+      `create table "remittance" ("id" uuid not null, "created_at" timestamptz not null, "updated_at" timestamptz not null, "retention_anonymized_at" timestamptz null, "organization_id" uuid not null, "claim_id" uuid not null, "paid_amount" numeric(12,2) not null, "carc_codes" text[] null, "rarc_codes" text[] null, "received_at" timestamptz not null, constraint "remittance_pkey" primary key ("id"));`
     );
 
     this.addSql(

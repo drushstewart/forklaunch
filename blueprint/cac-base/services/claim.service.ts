@@ -244,5 +244,17 @@ function mapMockCategory(
       return DenialReasonCategory.LCD_NCD;
     case 'required_fields':
       return DenialReasonCategory.REQUIRED_FIELDS;
+    default: {
+      // The switch is the only thing making this total. Without a default,
+      // a new MockDenialReasonCategory member compiles fine here and the
+      // function silently returns undefined where a DenialReasonCategory
+      // is declared — the denial then persists with no category and drops
+      // out of AnalyticsService.denialsByCategory. The never assignment
+      // turns that into a compile error instead.
+      const unhandled: never = category;
+      throw new Error(
+        `Unhandled mock denial reason category: ${String(unhandled)}`
+      );
+    }
   }
 }

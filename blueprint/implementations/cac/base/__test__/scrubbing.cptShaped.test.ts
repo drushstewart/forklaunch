@@ -12,8 +12,8 @@ describe('ScrubbingService against the CPT-shaped fixture', () => {
   it('flags an NCCI PTP conflict between two synthetic Category I codes', () => {
     const result = scrubbing.scrub(
       [
-        { procedureCode: '10001', units: 1 },
-        { procedureCode: '10002', units: 1 }
+        { procedureCode: '69991', units: 1 },
+        { procedureCode: '69992', units: 1 }
       ],
       ['Z00.00']
     );
@@ -26,7 +26,7 @@ describe('ScrubbingService against the CPT-shaped fixture', () => {
 
   it('flags an NCCI MUE violation for a synthetic Category III code', () => {
     const result = scrubbing.scrub(
-      [{ procedureCode: '0001T', units: 3 }],
+      [{ procedureCode: '9999T', units: 3 }],
       ['Z00.00']
     );
 
