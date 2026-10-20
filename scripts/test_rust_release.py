@@ -426,6 +426,26 @@ class ReleaseTests(unittest.TestCase):
                 else:
                     self.assertIn("native HTTP/worker", str(raised.exception))
 
+    def test_blueprint_inventory_check_includes_framework_pins(self):
+        package = {"name": "forklaunch-iam-interface", "version": "0.1.0", "dependencies": [],
+                   "manifest": "blueprint-rs/crates/interfaces/iam-interface/Cargo.toml",
+                   "externalDependencies": ["forklaunch-core@0.1.2"]}
+        report = {"schemaVersion": 1, "dirty": False, "scope": "blueprint", "packages": [package]}
+        contents = json.dumps(report).encode()
+        (self.root / "release.json").write_bytes(contents)
+        (self.root / "verification.json").write_text(json.dumps({
+            "schemaVersion": 1, "packages": 1, "allFeatures": True, "frameworkFromCratesIo": True,
+            "releaseSha256": hashlib.sha256(contents).hexdigest(),
+        }))
+        for pins, matches in ((["forklaunch-core@0.1.2"], True), (["forklaunch-core@0.1.1"], False)):
+            with (self.subTest(pins=pins),
+                  patch.object(release, "release_plan", return_value=[{**package, "externalDependencies": pins}]),
+                  patch.object(release, "published_version", return_value={}),
+                  patch.object(release.subprocess, "check_output", side_effect=ValueError("checkout"))):
+                with self.assertRaises(ValueError) as raised:
+                    release.publication_preflight(self.root, "rust-blueprint-v0.1.0")
+                (self.assertNotIn if matches else self.assertIn)("differs from checkout", str(raised.exception))
+
     def test_regex_release_requires_optional_feature_proof(self):
         report = {"schemaVersion": 1, "dirty": False,
                   "packages": [{"name": "forklaunch-regress"}]}

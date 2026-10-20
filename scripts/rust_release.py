@@ -359,9 +359,10 @@ def publication_preflight(output: Path, tag: str):
         for package in report["packages"]
     ):
         raise ValueError("A release publishes exactly one scope: framework or blueprint")
-    plan = release_plan(scope=scope)
-    prepared = [{key: package[key] for key in ("name", "version", "manifest", "dependencies")}
-                for package in report["packages"]]
+    # Compare the same fields on both sides, including the framework pins.
+    fields = ("name", "version", "manifest", "dependencies", "externalDependencies")
+    plan = [{key: package.get(key, []) for key in fields} for package in release_plan(scope=scope)]
+    prepared = [{key: package.get(key, []) for key in fields} for package in report["packages"]]
     if prepared != plan:
         raise ValueError("Prepared package inventory differs from checkout")
     version = scope_version(scope)
