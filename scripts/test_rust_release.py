@@ -407,6 +407,25 @@ class ReleaseTests(unittest.TestCase):
             release.publication_preflight(self.root, "rust-blueprint-v0.1.0")
         self.assertNotIn("registry/startup verification", str(raised.exception))
 
+    def test_blueprint_worker_release_requires_native_worker_proof(self):
+        report = {"schemaVersion": 1, "dirty": False, "scope": "blueprint",
+                  "packages": [{"name": "forklaunch-worker-interface", "manifest": "elsewhere/Cargo.toml"}]}
+        contents = json.dumps(report).encode()
+        (self.root / "release.json").write_bytes(contents)
+        for proof in (None, False, True):
+            with self.subTest(proof=proof):
+                (self.root / "verification.json").write_text(json.dumps({
+                    "schemaVersion": 1, "packages": 1, "allFeatures": True, "frameworkFromCratesIo": True,
+                    "releaseSha256": hashlib.sha256(contents).hexdigest(),
+                    "nativeHttpWorkerFeatures": proof,
+                }))
+                with self.assertRaises(ValueError) as raised:
+                    release.publication_preflight(self.root, "rust-blueprint-v0.1.0")
+                if proof is True:
+                    self.assertNotIn("native HTTP/worker", str(raised.exception))
+                else:
+                    self.assertIn("native HTTP/worker", str(raised.exception))
+
     def test_regex_release_requires_optional_feature_proof(self):
         report = {"schemaVersion": 1, "dirty": False,
                   "packages": [{"name": "forklaunch-regress"}]}

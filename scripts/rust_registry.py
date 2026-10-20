@@ -165,6 +165,11 @@ def verify_blueprint(directory: Path, target: Path, framework: Path | None = Non
             manifest = tomllib.loads(archive.extractfile(f"{package['name']}-{package['version']}/Cargo.toml").read().decode())
         features = sorted(feature for feature in manifest.get("features", {}) if feature != "default")
         dependencies[package["name"]] = {"version": "=" + package["version"], "registry": "forklaunch-staging", "features": features}
+    # Building worker-interface with every feature covers the native worker proof.
+    worker = dependencies.get("forklaunch-worker-interface")
+    native_worker = worker is not None and {"native", "apalis", "schema", "telemetry"} <= set(worker["features"])
+    if worker is not None and not native_worker:
+        raise ValueError("forklaunch-worker-interface lacks native/apalis/schema/telemetry features")
     (consumer / "Cargo.toml").write_bytes(manifest_text({
         "package": {"name": "forklaunch-blueprint-registry-smoke", "version": "0.0.0", "edition": "2024", "publish": False},
         "dependencies": dependencies,
@@ -201,6 +206,7 @@ def verify_blueprint(directory: Path, target: Path, framework: Path | None = Non
     (directory / "verification.json").write_text(json.dumps({
         "schemaVersion": 1, "releaseSha256": hashlib.sha256((directory / "release.json").read_bytes()).hexdigest(),
         "packages": len(report["packages"]), "allFeatures": True, "frameworkFromCratesIo": framework_report is None,
+        "nativeHttpWorkerFeatures": native_worker,
         "scope": "local sparse registry; every blueprint crate with all non-default features, framework from "
                  + ("the prepared framework release" if framework_report else "crates.io"),
     }, indent=2) + "\n")
