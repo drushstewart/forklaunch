@@ -167,15 +167,16 @@ describe('agent', () => {
     const listing = await agent([]).agent.listTools(context());
     expect(listing.agent).toBe('assistant');
     expect(listing.model).toBe('luna');
+    // Sorted by name, like the Rust runtime.
     expect(listing.tools.map((t) => [t.name, t.requiresApproval])).toEqual([
-      ['lookup_order', false],
-      ['cancel_order', true]
+      ['cancel_order', true],
+      ['lookup_order', false]
     ]);
-    expect(listing.tools[0]!.inputSchema).toMatchObject({
+    expect(listing.tools[1]!.inputSchema).toMatchObject({
       type: 'object',
       properties: { orderId: { type: 'string' } }
     });
-    expect(listing.tools[0]!.source).toEqual({
+    expect(listing.tools[1]!.source).toEqual({
       kind: 'local',
       name: 'assistant'
     });
@@ -219,6 +220,9 @@ describe('agent', () => {
     );
     expect(ran).toEqual(['cancel:B2']);
     expect(second.answer).toBe('Cancelled B2.');
+    expect(second.toolCalls).toEqual([
+      { id: first.approval!.id, name: 'cancel_order', ok: true }
+    ]);
   });
 
   it('tells the model when the user declines, without running the tool', async () => {
@@ -424,10 +428,10 @@ describe('agent', () => {
     });
     const listing = await a.listTools(context());
     expect(listing.tools.map((t) => [t.name, t.available])).toEqual([
-      ['lookup_order', true],
-      ['billing__unavailable', false]
+      ['billing__unavailable', false],
+      ['lookup_order', true]
     ]);
-    expect(listing.tools[1]!.unavailableReason).toMatch(/billing/);
+    expect(listing.tools[0]!.unavailableReason).toMatch(/billing/);
   });
 });
 

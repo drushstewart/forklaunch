@@ -11,7 +11,7 @@ import {
   type Continuation,
   type PendingToolCall
 } from './continuation';
-import { requiresApproval } from './tools';
+import { requiresApproval, TOOL_NAME } from './tools';
 import {
   AgentError,
   type AgentEvent,
@@ -119,13 +119,13 @@ export function defineAgent(definition: AgentDefinition): Agent {
   const streaming = () =>
     definition.streaming ?? process.env.FORKLAUNCH_MODEL_STREAMING === '1';
 
-  async function resolveTools(context: AgentToolContext) {
+  async function resolveTools(context: AgentToolContext, fresh = false) {
     const tools = new Map<string, Resolved>();
     const unavailable: ListedTool[] = [];
     const listed = await Promise.all(
       definition.sources.map(async (source) => {
         try {
-          return { source, tools: await source.list(context) };
+          return { source, tools: await source.list(context, { fresh }) };
         } catch (error) {
           return { source, error: summarize(error) };
         }
@@ -146,6 +146,13 @@ export function defineAgent(definition: AgentDefinition): Agent {
         continue;
       }
       for (const tool of entry.tools ?? []) {
+        // Remote names that still don't fit after snake_casing are skipped, not fatal.
+        if (!TOOL_NAME.test(tool.name)) {
+          console.warn(
+            `[agent] Skipping tool "${tool.name}" from ${entry.source.name}: names must match ${TOOL_NAME}.`
+          );
+          continue;
+        }
         if (tools.has(tool.name))
           throw new Error(
             `Two agent tools are named "${tool.name}" (${tools.get(tool.name)!.source.name} and ${entry.source.name}).`
@@ -448,7 +455,7 @@ export function defineAgent(definition: AgentDefinition): Agent {
   return {
     name: definition.name,
     async listTools(context) {
-      const { tools, unavailable } = await resolveTools(context);
+      const { tools, unavailable } = await resolveTools(context, true);
       let alias: string | null = null;
       try {
         alias = model();
@@ -471,7 +478,7 @@ export function defineAgent(definition: AgentDefinition): Agent {
             unavailableReason: null
           })),
           ...unavailable
-        ]
+        ].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
       };
     },
     stream,
@@ -479,6 +486,15 @@ export function defineAgent(definition: AgentDefinition): Agent {
       let answer = '';
       let alias = '';
       const toolCalls: AgentTaskResult['toolCalls'] = [];
+      const names = new Map<string, string>();
+      if ('continuation' in request) {
+        const state = openContinuation(
+          request.continuation,
+          secret(),
+          context.userId
+        );
+        for (const call of state?.pending ?? []) names.set(call.id, call.name);
+      }
       for await (const event of stream(request, context)) {
         switch (event.type) {
           case 'delta':
@@ -487,9 +503,14 @@ export function defineAgent(definition: AgentDefinition): Agent {
           case 'tool_call':
             // A turn that calls tools may also stream preamble text; keep only the final answer.
             answer = '';
+            names.set(event.id, event.name);
             break;
           case 'tool_result':
-            toolCalls.push({ id: event.id, name: '', ok: event.ok });
+            toolCalls.push({
+              id: event.id,
+              name: names.get(event.id) ?? '',
+              ok: event.ok
+            });
             break;
           case 'approval_required':
             return {

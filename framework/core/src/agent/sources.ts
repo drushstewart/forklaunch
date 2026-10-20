@@ -31,8 +31,8 @@ type OpenApiDocument = {
 
 function cached<T>(load: () => Promise<T>) {
   let value: { at: number; data: T } | undefined;
-  return async () => {
-    if (value && Date.now() - value.at < CACHE_MS) return value.data;
+  return async (fresh = false) => {
+    if (!fresh && value && Date.now() - value.at < CACHE_MS) return value.data;
     const data = await load();
     value = { at: Date.now(), data };
     return data;
@@ -127,8 +127,8 @@ export function serviceTools(
   return {
     kind: 'service',
     name: service,
-    async list() {
-      const doc = await load();
+    async list(_context, listOptions) {
+      const doc = await load(listOptions?.fresh);
       const tools: AgentTool[] = [];
       for (const [path, methods] of Object.entries(doc.paths ?? {})) {
         if (SKIPPED_PATH.test(path)) continue;
@@ -302,8 +302,8 @@ export function mcpServer(options: {
   return {
     kind: 'mcp',
     name: options.name,
-    async list() {
-      return (await load()).map((tool) => ({
+    async list(_context, listOptions) {
+      return (await load(listOptions?.fresh)).map((tool) => ({
         name: `${prefix}__${toolNameSegment(tool.name)}`.slice(0, 64),
         title: tool.title ?? tool.annotations?.title,
         description: tool.description || tool.name,

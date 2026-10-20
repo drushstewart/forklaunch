@@ -39,7 +39,11 @@ export interface ToolSource {
   kind: ToolSourceKind;
   name: string;
   /** Tool definitions. Called with the caller's context; may be cached by the source. */
-  list(context: AgentToolContext): Promise<AgentTool[]>;
+  /** `fresh` skips any cache; `GET /tools` asks for it, runs reuse the 5-minute cache. */
+  list(
+    context: AgentToolContext,
+    options?: { fresh?: boolean }
+  ): Promise<AgentTool[]>;
 }
 
 /** One entry of `GET /api/v1/agent/tools`. */

@@ -215,6 +215,25 @@ without tools so the model must answer. Local tools are not prefixed; service
 tools are `<service>__<tool>` and MCP tools `<server>__<tool>`, all matching
 `^[a-z][a-z0-9_]{0,63}$`.
 
+## Details both runtimes match
+
+- operationIds: `ListAgentTools` (GET /tools), `RunAgentTask` (POST /tasks),
+  `StreamAgentTask` (POST /tasks/stream). Because agents are services, /tools
+  and /tasks are also exposed over MCP; the SSE route need not be.
+- `POST /tasks` statuses: 400 invalid task or expired/foreign continuation,
+  401 not signed in, 403 role, 429 model allowance reached, 502 model call
+  failed or interrupted, 503 not connected to AI or missing setting (including
+  `HMAC_SECRET_KEY`). The stream route reports the same failures as `error`
+  events after a 200.
+- `toolCalls[].name` is always filled in.
+- Local tools report `source: { kind: "local", name: <agent name> }`.
+- The `GET /tools` listing is sorted by tool name and bypasses the 5-minute
+  source cache; runs reuse the cache.
+- Remote tools whose names still don't match `^[a-z][a-z0-9_]{0,63}$` after
+  snake_casing and truncation are skipped with a warning; duplicate names fail.
+- Tool results passed to the model are capped at about 64 KiB (TS counts
+  UTF-16 units, Rust bytes at a char boundary), with a `[truncated]` marker.
+
 ## Settings and credentials
 
 The model connection uses the existing settings: `AGENT_MODEL`,
