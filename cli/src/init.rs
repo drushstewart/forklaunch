@@ -1,3 +1,4 @@
+use agent::AgentCommand;
 use anyhow::Result;
 use application::ApplicationCommand;
 use clap::{ArgMatches, Command};
@@ -9,6 +10,7 @@ use worker::WorkerCommand;
 
 use crate::{CliCommand, core::command::command};
 
+pub(crate) mod agent;
 pub(crate) mod application;
 pub(crate) mod library;
 pub(crate) mod module;
@@ -21,6 +23,7 @@ pub(crate) mod worker;
 // TODO: add injected token into struct
 #[derive(Debug)]
 pub(crate) struct InitCommand {
+    agent: AgentCommand,
     application: ApplicationCommand,
     library: LibraryCommand,
     module: ModuleCommand,
@@ -32,6 +35,7 @@ pub(crate) struct InitCommand {
 impl InitCommand {
     pub(crate) fn new() -> Self {
         Self {
+            agent: AgentCommand::new(),
             application: ApplicationCommand::new(),
             library: LibraryCommand::new(),
             module: ModuleCommand::new(),
@@ -47,6 +51,7 @@ impl CliCommand for InitCommand {
         command("init", "Initialize a new forklaunch project")
             .alias("add")
             .subcommand_required(true)
+            .subcommand(self.agent.command())
             .subcommand(self.application.command())
             .subcommand(self.library.command())
             .subcommand(self.module.command())
@@ -57,6 +62,7 @@ impl CliCommand for InitCommand {
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
         match matches.subcommand() {
+            Some(("agent", sub_matches)) => self.agent.handler(sub_matches),
             Some(("application", sub_matches)) => self.application.handler(sub_matches),
             Some(("library", sub_matches)) => self.library.handler(sub_matches),
             Some(("module", sub_matches)) => self.module.handler(sub_matches),
