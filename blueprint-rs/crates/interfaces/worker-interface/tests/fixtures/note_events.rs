@@ -1,0 +1,1 @@
+../../../../../../experimental/rust-native/templates/fieldnotes/src/notes/domain/events/insight.rs

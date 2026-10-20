@@ -8,6 +8,25 @@ This workspace implements contract registration, validation primitives, an Axum 
 
 The CLI can generate runnable Rust backends with bundled framework source. See [Rust backend generation](../docs/adding-projects/rust.md) for setup, contract exports, SDKs, and current boundaries.
 
+New native services and worker producer services separate reusable composition
+in `application.rs` from process configuration, resource registration and listener
+startup in `bootstrapper.rs`. `error.rs` holds service/domain errors; controllers
+translate them into public endpoint errors. The existing
+`forklaunch_axum::native::run_application` handles offline contract export before
+startup and telemetry flushing afterward. PostgreSQL services use
+`forklaunch_axum::native::with_cleanup` to close their repository after serving
+returns either success or an error. Asynchronous cleanup is not guaranteed if the
+entire bootstrap future is cancelled or panics. Independent worker consumers keep
+their worker runtime lifecycle.
+
+Controller build hosts record source provenance relative to the owning service,
+so same-named generated applications can share Cargo caches across locations.
+Generated build scripts resolve output directories from Cargo's execution-time
+package environment, keeping compliance and SDK assets inside that application.
+See the [startup validation receipt](../plan/RUST-NATIVE-BOOTSTRAP-RECEIPTS.json)
+and [crate release plan](../plan/RUST-CRATE-RELEASE-PLAN.html) for current checks
+and remaining work before registry-only generated applications are available.
+
 Scalar docs accept additional documents through `RouterConfig.docs_sources`.
 Use `ScalarSource::url("External API", "https://example.com/openapi.json")` or
 `ScalarSource::inline("Authentication", schema)`; optional `slug` and `default`
@@ -22,8 +41,8 @@ routes remain outside generated application contracts and SDK/MCP operations.
 Persistence adapters can derive `forklaunch_core::persistence::compliance::ComplianceMetadata`
 on named structs. Field attributes such as `#[compliance(level = "pii", nullable,
 name = "email_address")]` declare classification, storage nullability and storage
-name. Supported levels are `none`, `pii`, `phi`, and `pci`; unannotated fields
-default to `none` and non-nullable. Only explicitly classified nullable fields
+name. Supported levels are `none`, `pii`, `phi`, and `pci`; all fields
+must declare a level explicitly. Only explicitly classified nullable fields
 qualify for anonymization. Metadata does not turn on encryption or perform
 export, erasure, or retention writes: adapters must verify their storage schema
 and enforce tenant boundaries. Rust `Option`, serde renames and encryption
@@ -39,14 +58,19 @@ must implement atomic tenant-scoped batches, oldest-first selection and storage
 metadata validation; anonymization clears only classified nullable fields and
 records its timestamp even when no field qualifies. Batch sizes and pass lengths
 are bounded. Duplicate scopes, future cutoffs and counter overflow fail explicitly.
-Calendar-duration parsing, timezone selection and concrete database adapters remain
-application responsibilities. The [in-memory conformance adapter](crates/forklaunch-core/examples/retention_hooks.rs)
+Calendar-duration parsing and timezone selection remain application responsibilities.
+The opt-in `retention::postgres` adapter provides bounded PostgreSQL enforcement
+for explicit service-owned column mappings. The [in-memory conformance adapter](crates/core/examples/retention_hooks.rs)
 illustrates the hook boundary; 24 cases compare it with the actual TypeScript
 retention service. This does not claim generic SQL/ORM retention parity.
 
+See [protected persistence and subject lifecycle](crates/core/PERSISTENCE.md) for
+audited fields, explicit partial disclosures, durable exports with physical
+cleanup, SQL erasure and transactional external-erasure reconciliation.
+
 ## JWT authentication
 
-`forklaunch_auth::issue_jwt_hs256(&claims, secret)` issues typed `JwtClaims`
+`forklaunch_core::auth::issue_jwt_hs256(&claims, secret)` issues typed `JwtClaims`
 through `jsonwebtoken`. Supply a server-owned subject, expiry in UNIX seconds,
 roles, permissions, scopes, features and subscription state. The function rejects
 empty subjects/keys; applications own expiry policy, secret generation, rotation
@@ -65,7 +89,7 @@ session rejection remains 401. Native HTTP error bodies retain their structured
 JSON envelope; complete TypeScript error-envelope parity is still tracked.
 Better Auth JWT formats and provider/cookie/OIDC flows use their own adapter.
 
-Enable `forklaunch-auth` feature `oidc` for the reusable
+Enable the `forklaunch-core` feature `oidc` for the reusable
 `oidc::OidcProvider` authorization-code adapter built on `oauth2` 5 and
 `openidconnect` 4. Configure a trusted issuer, registered client credentials and
 callback URL with `OidcProvider::discover`. Discovery checks the issuer and
@@ -104,7 +128,7 @@ audience, optional nonce and authentication time; an omitted ID token yields
 Applications own atomic rotation persistence and concurrent refresh coordination.
 Never accept the original claims from a request.
 
-`forklaunch_auth::typescript::TypeScriptRbacPolicy` is an explicit compatibility
+`forklaunch_core::auth::typescript::TypeScriptRbacPolicy` is an explicit compatibility
 policy for verified, server-enriched JWT/Basic sessions. It preserves omitted
 versus empty rule sets, permission-before-role precedence, access-level bypass
 of those checks, exact scope membership, and subscription-before-feature checks.
@@ -128,7 +152,7 @@ session; ensure the subsequent router authorizer uses the same complete policy.
 The helper does not issue credentials, create principals or implement a schema
 validator. Callback cancellation does not retry work or begin subsequent lookups.
 
-`forklaunch_validation::ParseError` retains the TypeScript validator's ordered
+`forklaunch_validator::ParseError` retains the TypeScript validator's ordered
 string path segments and public message. `pretty_print_parse_errors` matches
 `prettyPrintParseErrors`, including absent/empty lists, empty versus absent
 prefixes, root paths and multiline numbered messages. A session resolver can
@@ -138,7 +162,7 @@ validator output; it does not equate native/Garde schema rules with Zod/TypeBox
 or change the default JSON error envelope. Use `AuthErrorFormat::TypeScriptText`
 when the application also needs TypeScript's auth wire representation.
 
-`forklaunch_auth::typescript::basic::verify_basic` explicitly enables the
+`forklaunch_core::auth::typescript::basic::verify_basic` explicitly enables the
 TypeScript synchronous Basic-login parsing profile. It matches case-sensitive
 prefixes, first-space token selection, Node base64 decoding, replacement UTF-8
 and the first two colon-delimited fields. Thus `user:pass:extra` checks password
@@ -198,7 +222,7 @@ The default retains the native JSON envelope. This option does not catch panics,
 rewrite ordinary Axum handler responses, or change request validation errors.
 
 When an application validator supplies public `ParseError` diagnostics,
-`forklaunch_validation::typescript_request_validation_error_response` emits the
+`forklaunch_core::http::typescript_request_validation_error_response` emits the
 TypeScript request validation 400 response, formatted paths/messages and
 correlation suffix as `text/plain; charset=utf-8`. Although upstream request
 middleware initially selects JSON media, its enriched send applies the default
@@ -315,7 +339,7 @@ The existing `insert_json_transform` API treats its errors as validation failure
 The bounded `typescript_coerce::zod_json` evaluator supports typed JSON scalar
 rules, strict typed literals, optional/nullable values, static defaults, ordered unions, arrays and ordered object fields
 with unknown-field stripping. Map `ZodJsonOutcome::Invalid` to validation failure
-and evaluator errors to operational failure. The [live composition example](crates/forklaunch-axum/examples/json_composition_runtime.rs)
+and evaluator errors to operational failure. The [live composition example](crates/axum/examples/json_composition_runtime.rs)
 shows this mapping with `ParsedJsonBody`; its [runtime fixture](../cli/tests/rust_json_composition_runtime.mjs)
 checks HTTP, registered MCP forwarding and both generated SDKs. Define supported
 schemas explicitly; this API does not load arbitrary Zod callbacks or interpret
@@ -451,7 +475,7 @@ cargo doc --workspace --no-deps
 
 ## Additional MCP tools
 
-Enable `forklaunch-mcp`'s `rmcp-server` feature and append a `server::ManualTool::typed` binding to `McpServerOptions.manual_tools` before calling `ForkLaunchRouter::into_router_with_mcp(options)` (or `server::mount_http`). Input types implement `forklaunch_validation::FrameworkSchema`: serde parses arguments, garde validates them and schemars describes discovery metadata. Declare matching schemars constraints when a garde rule should appear in the schema. Unknown-field behavior follows the input type's serde configuration.
+Enable `forklaunch-core`'s `rmcp-server` feature and use `forklaunch_core::mcp` and append a `server::ManualTool::typed` binding to `McpServerOptions.manual_tools` before calling `ForkLaunchRouter::into_router_with_mcp(options)` (or `server::mount_http`). Input types implement `forklaunch_validator::FrameworkSchema`: serde parses arguments, garde validates them and schemars describes discovery metadata. Declare matching schemars constraints when a garde rule should appear in the schema. Unknown-field behavior follows the input type's serde configuration.
 
 ```rust,ignore
 let tool = ManualTool::typed::<LookupInput, serde_json::Value, _, _>(
@@ -529,7 +553,7 @@ select this mode automatically; native entries created with `new` retain the
 TypeScript-compatible raw-string behavior. Exported explicit JSON messages always
 carry `application/json` media.
 
-`SocketOptions` bounds frame/message/write buffers and handshake/write deadlines. Invalid incoming payloads close with 1008 before application delivery; invalid outgoing payloads fail locally. Automatic pong replies retain exact bytes and satisfy the outgoing pong schema. `recv()` returns typed message/control events; after `close(code, reason)`, continue receiving to finish the handshake. Dropping a connection releases it; cancelling a pending receive preserves subsequent messages. With `forklaunch-axum` feature `websocket`, `websocket::upgrade(upgrade, schemas, options, handler)` adapts an authorized Axum `WebSocketUpgrade` into `AxumTypedSocket`, using the same validation/control runtime. Compose that route with the HTTP/MCP router on one listener. Select subprotocols or an upgrade-failure callback on the extractor before passing it in; `transport::connect_with_response` retains the negotiated client response. Apply authorization in the HTTP handler before upgrading and propagate application shutdown to active connection tasks. HTTP server handshake timeouts apply before upgrade; socket write deadlines apply afterward. Cancelling an in-progress write releases a partial connection. `SocketContract`/`SocketSchemaEntry` retain raw payload schemas, channel/operation enrichment, controls and context/user-data metadata. `SocketSchemaEntry::framework::<T>()` derives framework schema metadata. `forklaunch_asyncapi::generate_raw_socket_asyncapi_json` exports raw payloads using TypeScript channel fan-out and singular/plural precedence; `_with_options` accepts description, ID and content type. Errors are documented without operations; ping/pong/close controls are omitted, matching TypeScript. JSON-schema document-local pointers relocate to each embedded payload while literal `$ref` data remains intact. Conflicting definitions, invalid addresses, unresolved/external references and unsupported resource scopes fail explicitly. Bundled IDs, static anchors and declared dynamic/recursive scopes are resolved before payload relocation. Schema recursion is bounded to 64 levels, and boolean schemas use AsyncAPI's object form. This raw exporter is separate from tagged-envelope exports. CLI socket-contract generation below uses this checked exporter.
+`SocketOptions` bounds frame/message/write buffers and handshake/write deadlines. Invalid incoming payloads close with 1008 before application delivery; invalid outgoing payloads fail locally. Automatic pong replies retain exact bytes and satisfy the outgoing pong schema. `recv()` returns typed message/control events; after `close(code, reason)`, continue receiving to finish the handshake. Dropping a connection releases it; cancelling a pending receive preserves subsequent messages. With `forklaunch-axum` feature `websocket`, `websocket::upgrade(upgrade, schemas, options, handler)` adapts an authorized Axum `WebSocketUpgrade` into `AxumTypedSocket`, using the same validation/control runtime. Compose that route with the HTTP/MCP router on one listener. Select subprotocols or an upgrade-failure callback on the extractor before passing it in; `transport::connect_with_response` retains the negotiated client response. Apply authorization in the HTTP handler before upgrading and propagate application shutdown to active connection tasks. HTTP server handshake timeouts apply before upgrade; socket write deadlines apply afterward. Cancelling an in-progress write releases a partial connection. `SocketContract`/`SocketSchemaEntry` retain raw payload schemas, channel/operation enrichment, controls and context/user-data metadata. `SocketSchemaEntry::framework::<T>()` derives framework schema metadata. `forklaunch_core::asyncapi::generate_raw_socket_asyncapi_json` exports raw payloads using TypeScript channel fan-out and singular/plural precedence; `_with_options` accepts description, ID and content type. Errors are documented without operations; ping/pong/close controls are omitted, matching TypeScript. JSON-schema document-local pointers relocate to each embedded payload while literal `$ref` data remains intact. Conflicting definitions, invalid addresses, unresolved/external references and unsupported resource scopes fail explicitly. Bundled IDs, static anchors and declared dynamic/recursive scopes are resolved before payload relocation. Schema recursion is bounded to 64 levels, and boolean schemas use AsyncAPI's object form. This raw exporter is separate from tagged-envelope exports. CLI socket-contract generation below uses this checked exporter.
 
 Enable the optional `json-schema` feature for `PayloadCodec::<T>::json_schema(&schema)`. It compiles constraints once, checks incoming JSON before serde can discard unknown fields, and checks serialized outgoing values before raw string encoding. Missing dialect declarations use Draft 7; declared 2020-12 schemas, recursive pointers and in-document resource IDs are supported. File and network retrieval always fail, even when another dependency enables resolver features. Schema compilation bounds depth, nodes, bytes and regex execution. Email uses the AJV full-format profile (dotted domains), and UUID assertions apply in Draft 7 too. Compiled codecs accept safe integral decimal/exponent spellings for schema checks and typed integers, while float/JSON-value targets preserve negative zero. Strings and fractional values are not coerced; larger numbers retain Rust representation/range limits. Decimal `multipleOf` checks are exact; a TypeScript AJV consumer needs the equivalent exact decimal keyword rather than floating-point tolerance. Valid JSON beyond serde's numeric/depth representation limits is rejected instead of becoming plain text. The raw string ambiguity remains: sending a schema-valid string `"42"` emits `42`, which a receiving JSON-first decoder interprets as a number. This codec does not add binary schemas or change the checked exporter's reference restrictions.
 
@@ -537,13 +561,16 @@ The actual TypeScript wrappers also validate automatic control replies before ty
 
 `rust_ws_jsonschema_parity.mjs` checks 4,104 encode/decode cases against actual TypeScript WebSocket helpers with AJV and an exact decimal keyword. The separate Zod fixture checks 168 cases, including JSON representation-limit rejection.
 
-`forklaunch_sdk_codegen::websocket::SocketSdkPlan::from_contract(&contract)` prepares checked client directions, protocol controls and recursive message unions. `forklaunch_sdk_rust::generate_rust_websocket_sdk_source(&plan, &RustSdkOptions::new("chat-sdk"))` emits a native client with typed `send`, `recv`, `ping`, `pong` and `close`. `connect(request, options)` returns the client and HTTP upgrade response; caller requests retain authorization headers and subprotocols. The generated source needs `forklaunch-ws` features `transport,json-schema`, serde `derive`, `serde_json`, tokio `net` and tokio-tungstenite 0.30. `SOCKET_PATH` exposes the declared path; callers supply the complete request URL. `schemas()` prepares reusable validated codecs, and socket accessors allow composition with the native runtime. Error/context/user-data metadata describe framework events, rather than extra wire messages. Unions retain each standalone schema's recursive references and require a common dialect; bundled resource IDs and declared dynamic/recursive references are resolved independently before union relocation. Messages may reuse resource IDs without sharing bindings. CLI socket-contract generation below reuses this generator.
+`forklaunch_core::codegen::websocket::SocketSdkPlan::from_contract(&contract)` prepares checked client directions, protocol controls and recursive message unions. `forklaunch_core::rust_sdk::generate_rust_websocket_sdk_source(&plan, &RustSdkOptions::new("chat-sdk"))` emits a native client with typed `send`, `recv`, `ping`, `pong` and `close`. `connect(request, options)` returns the client and HTTP upgrade response; caller requests retain authorization headers and subprotocols. The generated source needs `forklaunch-ws` features `transport,json-schema`, serde `derive`, `serde_json`, tokio `net` and tokio-tungstenite 0.30. `SOCKET_PATH` exposes the declared path; callers supply the complete request URL. `schemas()` prepares reusable validated codecs, and socket accessors allow composition with the native runtime. Error/context/user-data metadata describe framework events, rather than extra wire messages. Unions retain each standalone schema's recursive references and require a common dialect; bundled resource IDs and declared dynamic/recursive references are resolved independently before union relocation. Messages may reuse resource IDs without sharing bindings. CLI socket-contract generation below reuses this generator.
 
-`forklaunch_sdk_typescript::generate_typescript_websocket_sdk_source(&plan, &TypeScriptWebSocketSdkOptions::new("ChatClient"))` emits a Node client using ws 8.22, AJV 8, ajv-draft-04 1 and ajv-formats 3, with Node/ws type declarations for TypeScript consumers. `await ChatClient.connect(url, options)` retains upgrade headers and negotiated protocol in `response`/`protocol`. `send`, `ping` and `pong` return promises; `close(code, reason)` starts a handshake, and `recv()` yields typed `{ type, value }` message/control events or `{ type: 'close', code, reason }`. After a terminal error is reported, receiving ends with `null`. Consume close events to finish a graceful handshake, or call `terminate()` to release the connection immediately. Breaking an async iterator releases it too.
+`forklaunch_core::typescript::generate_typescript_websocket_sdk_source(&plan, &TypeScriptWebSocketSdkOptions::new("ChatClient"))` emits a Node client using ws 8.22, AJV 8, ajv-draft-04 1 and ajv-formats 3, with Node/ws type declarations for TypeScript consumers. `await ChatClient.connect(url, options)` retains upgrade headers and negotiated protocol in `response`/`protocol`. `send`, `ping` and `pong` return promises; `close(code, reason)` starts a handshake, and `recv()` yields typed `{ type, value }` message/control events or `{ type: 'close', code, reason }`. After a terminal error is reported, receiving ends with `null`. Consume close events to finish a graceful handshake, or call `terminate()` to release the connection immediately. Breaking an async iterator releases it too.
+
+`build::typescript_websocket` also emits a sibling `<name>.browser.ts`. Generated service SDK packages expose `./<service>/<name>` with a browser condition and the explicit `./<service>/<name>/browser` subpath. The browser client uses native WebSocket and cookies, validates the same canonical payload schemas, bounds queues and buffers, and supports `send`, `recv`, typed `close` and cancellation. Browser control frames and upgrade headers are unavailable; it does not expose Node `ping`, `pong`, custom headers or TLS overrides. Browser `send` resolves after queuing in the browser, not a peer acknowledgment. Both transports apply explicit UTC Date codec metadata; ordinary timestamp-looking strings remain strings.
+
 
 The Node client bounds message bytes (1 MiB), queued events (128), queued wire payload bytes (4 MiB), handshake time (10 seconds), write/automatic-pong time (5 seconds) and close time (5 seconds); options override these positive limits within Node's timer range. Receive abort/timeouts preserve the next event, while cancelling a partial write releases the connection. One explicit receive and one explicit write may be pending at a time. The raw JSON profile uses exact decimal multiples, own-property checks and reference-safe normalization for AJV's excluded `__proto__` properties. Literal schema data and existing pattern/reference targets remain unchanged. These generated clients use JSON/raw UTF-8 strings; explicit raw binary SDK metadata is still tracked separately.
 
-Generated services also export sockets registered in `contract_registry()`. With `forklaunch-contract/json-schema` enabled (already enabled through generated OpenAPI dependencies), register a `forklaunch_ws::SocketContract`:
+Generated services also export sockets registered in `contract_registry()`. With `forklaunch-core/json-schema` enabled (already enabled through generated OpenAPI dependencies), register a `forklaunch_ws::SocketContract`:
 
 ```rust
 registry.register_socket("chat", &chat_contract).expect("register chat socket");
@@ -567,7 +594,7 @@ The CLI runs the checked generators from the application's bundled Rust framewor
 
 `rust_ws_metadata_parity.mjs` compares 34 documents with the actual TypeScript generator and validates all against the official AsyncAPI JSON Schema. Parser 3.6.3 also accepts 63 documents; eleven cases expose its percent/prototype map-key and literal `$ref` limitations, so those retain direct specification-schema and pointer/AJV checks. Recursive structural schemas and explicitly referenced legacy annotation storage additionally pass the parser without changing unreferenced literal data. Schema traversal follows reachable local pointers exactly once, decodes percent escapes once, and enforces 64-step/100,000-location bounds. Checked exports now bundle schemas referenced from active const/enum/default/example data into collision-checked definitions, preserving the original literal values and recursive references. Copying and final output share 64-level, 100,000-node and 32 MiB bounds; repeated bundling is stable. The same relocation helper protects OpenAPI/MCP schemas and generated socket unions, preserving embedded resource bases. Checked unscoped socket export bundles references to entire schema dictionaries in separate schema/literal interpretation contexts; resource-preserving relocation retains its conservative alias restrictions. Declared Draft 4/6/2019-09/2020-12 payloads use AsyncAPI Multi Format Schema Objects; the parser accepts these custom formats but leaves their schema validation to the independently checked native/codecs. This preserves older boolean exclusive bounds and avoids imposing Draft 7 semantics.
 
-`forklaunch_contract::bundle_document_schema(&document, "/components/schemas/Message")` extracts a standalone JSON Schema from a containing document. It bundles transitive local references, including recursive and literal-data targets, into collision-checked definitions. It preserves literal values and rejects missing/external references and active resource IDs/dynamic scope under shared copy/output limits. Dictionary references use separate interpretation contexts: a property named `const` can remain a schema in the original dictionary and literal data in a referenced copy. Recursive edges are rebased without rewriting annotation data. `forklaunch_sdk_codegen::bundle_document_schema_resources` adds offline resource IDs, anchors and dynamic/recursive roots to document extraction; resource-free documents retain the unscoped path. Ambiguous resource-aware dictionary aliases still fail explicitly. The checked AsyncAPI importer uses this shared resolver with explicit operation roles.
+`forklaunch_core::contract::bundle_document_schema(&document, "/components/schemas/Message")` extracts a standalone JSON Schema from a containing document. It bundles transitive local references, including recursive and literal-data targets, into collision-checked definitions. It preserves literal values and rejects missing/external references and active resource IDs/dynamic scope under shared copy/output limits. Dictionary references use separate interpretation contexts: a property named `const` can remain a schema in the original dictionary and literal data in a referenced copy. Recursive edges are rebased without rewriting annotation data. `forklaunch_core::codegen::bundle_document_schema_resources` adds offline resource IDs, anchors and dynamic/recursive roots to document extraction; resource-free documents retain the unscoped path. Ambiguous resource-aware dictionary aliases still fail explicitly. The checked AsyncAPI importer uses this shared resolver with explicit operation roles.
 
 Import an AsyncAPI **3.0.0 WebSocket server** document with:
 
@@ -578,7 +605,7 @@ forklaunch sdk watch --from asyncapi --target all --service realtime
 
 The input defaults to `.forklaunch/asyncapi/<service>/asyncapi.json`; project metadata `asyncapiArtifactPath` selects another contained path. Generation/check/watch preserve the input document. SDK ownership records retain their source through service rename; standard input paths move with the service without changing document bytes, while custom paths remain custom. Regeneration removes obsolete unchanged modules and preserves edited files and compiler settings. All services validate before outputs are written, and outputs cannot overwrite input artifacts. Importing a formerly generated AsyncAPI file releases its export ownership without deleting it.
 
-The native API is `forklaunch_asyncapi::import_server_websocket_asyncapi` with the `import` feature. Server `receive` operations become client outgoing messages, and server `send` operations become client incoming messages. Channels need unique absolute paths, explicit operation message subsets, JSON or `application/octet-stream` media and ws/wss servers; GET bindings without upgrade parameter schemas are supported. An offline, licensed official specification schema validates the input before bounded local-reference extraction. Declared payload constraints are preserved, multiple messages retain `oneOf`, and undeclared directions reject payloads. Channel message schemas must have provably disjoint root types or required string discriminators. Bundled component/payload resource IDs, URI aliases, static/dynamic anchors and recursive roots are resolved offline. Different messages may declare different supported dialects, but each message must retain one dialect across its reachable resource graph. Missing external resources, duplicate IDs, mixed runtime dialects, headers/security, dynamic reply addresses, parameterized paths and other protocols fail checked import. Binary messages require the exact payload `{ "type": "string", "format": "binary" }`, inline or through bounded local references, and `application/octet-stream` on the message or document default. Each binary direction selects exactly one message. Send and receive may use different wire types; mixed JSON/binary alternatives within one direction and extra byte-schema assertions fail explicitly. The generated clients use `Vec<u8>` and `Uint8Array`, preserving invalid UTF-8 and JSON-looking byte sequences. Binary schema annotations alone never select a binary codec for JSON media. Message and operation traits merge in order using JSON Merge Patch, with the target taking precedence. Local trait references are resolved offline; inherited content types and bindings pass the same wire checks as explicit fields. Arrays replace earlier arrays and nested null members remove inherited fields. Trait lists are bounded to 64 entries per object and share the import byte budget. Traits cannot supply payloads or bypass unsupported headers/security/bindings. Fixed operation replies are supported on the same channel or a different declared channel, inline or through bounded local reply references: a server receive operation's replies become client incoming messages on the reply channel, and a server send operation's replies become client outgoing messages there. Replies must explicitly name a root channel and a nonempty message subset within it. The same schema, message-disjointness and binary-direction checks apply. The SDK exposes send/receive streams; applications own request correlation, reply deadlines and sequencing. Different paths generate independent socket clients; applications must open their connections and route messages explicitly. Dynamic reply addresses remain rejected. This follows the [AsyncAPI 3 reply model](https://www.asyncapi.com/docs/reference/specification/v3.0.0#operationReplyObject) within the supported WebSocket profile. Broader event projects and profiles remain open. The relocated `rust_asyncapi_import_runtime.sh` fixture compiles both SDKs, runs live peers, exercises watch recovery and rename, and validates generated HTTP/MCP listener startup and shutdown.
+The native API is `forklaunch_core::asyncapi::import_server_websocket_asyncapi` with the `import` feature. Server `receive` operations become client outgoing messages, and server `send` operations become client incoming messages. Channels need unique absolute paths, explicit operation message subsets, JSON or `application/octet-stream` media and ws/wss servers; GET bindings without upgrade parameter schemas are supported. An offline, licensed official specification schema validates the input before bounded local-reference extraction. Declared payload constraints are preserved, multiple messages retain `oneOf`, and undeclared directions reject payloads. Channel message schemas must have provably disjoint root types or required string discriminators. Bundled component/payload resource IDs, URI aliases, static/dynamic anchors and recursive roots are resolved offline. Different messages may declare different supported dialects, but each message must retain one dialect across its reachable resource graph. Missing external resources, duplicate IDs, mixed runtime dialects, headers/security, dynamic reply addresses, parameterized paths and other protocols fail checked import. Binary messages require the exact payload `{ "type": "string", "format": "binary" }`, inline or through bounded local references, and `application/octet-stream` on the message or document default. Each binary direction selects exactly one message. Send and receive may use different wire types; mixed JSON/binary alternatives within one direction and extra byte-schema assertions fail explicitly. The generated clients use `Vec<u8>` and `Uint8Array`, preserving invalid UTF-8 and JSON-looking byte sequences. Binary schema annotations alone never select a binary codec for JSON media. Message and operation traits merge in order using JSON Merge Patch, with the target taking precedence. Local trait references are resolved offline; inherited content types and bindings pass the same wire checks as explicit fields. Arrays replace earlier arrays and nested null members remove inherited fields. Trait lists are bounded to 64 entries per object and share the import byte budget. Traits cannot supply payloads or bypass unsupported headers/security/bindings. Fixed operation replies are supported on the same channel or a different declared channel, inline or through bounded local reply references: a server receive operation's replies become client incoming messages on the reply channel, and a server send operation's replies become client outgoing messages there. Replies must explicitly name a root channel and a nonempty message subset within it. The same schema, message-disjointness and binary-direction checks apply. The SDK exposes send/receive streams; applications own request correlation, reply deadlines and sequencing. Different paths generate independent socket clients; applications must open their connections and route messages explicitly. Dynamic reply addresses remain rejected. This follows the [AsyncAPI 3 reply model](https://www.asyncapi.com/docs/reference/specification/v3.0.0#operationReplyObject) within the supported WebSocket profile. Broader event projects and profiles remain open. The relocated `rust_asyncapi_import_runtime.sh` fixture compiles both SDKs, runs live peers, exercises watch recovery and rename, and validates generated HTTP/MCP listener startup and shutdown.
 
 
 Multi Format JSON payloads support Draft 4, Draft 6, Draft 7, 2019-09 and 2020-12.
@@ -593,7 +620,7 @@ import. Draft 4 message discrimination requires `enum` tags because its `const`
 keyword is only an annotation. `rust_asyncapi_dialects_runtime.mjs` compiles both
 SDKs for all five dialects, tests live roundtrips and rejects invalid numeric bounds.
 
-`forklaunch_asyncapi::RuntimeExpression::parse` checks message header/payload
+`forklaunch_core::asyncapi::RuntimeExpression::parse` checks message header/payload
 locations and RFC6901 URI-fragment pointers with4096-byte/64-segment limits.
 `resolve(headers, payload)` borrows the referenced value with its original type,
 including present null; a missing source/path returns None. URI percent escapes
@@ -625,8 +652,8 @@ regressions; the cross-language conformance fixtures remain separate.
 For an intentional generator change, run from this workspace:
 
 ```bash
-FORKLAUNCH_UPDATE_SNAPSHOTS=1 cargo test -p forklaunch-sdk-typescript snapshots
-cargo test -p forklaunch-sdk-typescript snapshots
+FORKLAUNCH_UPDATE_SNAPSHOTS=1 cargo test -p forklaunch-core --features build,asyncapi-import snapshots
+cargo test -p forklaunch-core --features build,asyncapi-import snapshots
 ```
 
 Review the source and snapshot diffs together before committing. CI refuses the
@@ -681,37 +708,28 @@ and [TypeScript integration](https://tanstack.com/query/latest/docs/framework/re
 interfaces. Configure `FORKLAUNCH_TEST_TANSTACK_DEPENDENCIES` to an isolated npm
 prefix containing the pinned dependencies listed in the Rust parity workflow.
 
-### Literal JSON object keys
+### JSON parser
 
-The framework workspace and generated applications select a pinned, vendored
-Serde JSON 1.0.151 patch. Literal object keys named `$serde_json::private::Number`
-or `$serde_json::private::RawValue` remain object data even when dependency
-features enable exact numbers and raw JSON. Axum, MCP, typed request fields and
-encrypted JSON record codecs all use that same parser. Real exact numbers and
-RawValue conversions retain their existing behavior.
-
-Generated roots contain a `[patch.crates-io]` entry pointing at
-`.forklaunch/framework-rs/crates/vendor/serde_json`. Generation/sync adds a missing
-entry in existing applications and preserves explicit user patches. Standalone
-consumers outside these roots must apply an equivalent workspace patch; Cargo
-does not inherit patches from dependencies. The checked package versions remain
-pinned so later registry releases cannot silently bypass the patch.
+The framework and generated applications use upstream `serde_json` without a
+workspace patch. Axum and SQLx enable its `raw_value` feature, so, as in every
+Axum or SQLx application, an object whose first key is exactly
+`$serde_json::private::RawValue` is read as an embedded raw JSON value rather
+than as object data. `arbitrary_precision` is not enabled, so the
+`$serde_json::private::Number` key remains ordinary data.
 
 The [JSON boundary audit](../plan/RUST-JSON-BOUNDARY-AUDIT.md) records coverage and
 remaining limits, including unpaired surrogates, bounded nesting, and independent
-JavaScript/ORM normalization semantics. This does not claim upstream adoption or
-registry publication of the patched parser.
+JavaScript/ORM normalization semantics.
 
 The [crate release guide](../docs/adding-projects/rust-releases.md) documents
-packaging, registry installation checks, the standalone parser artifact and
-explicit publication. A passing local registry check does not mean the crates
+packaging, registry installation checks and explicit publication. A passing local registry check does not mean the crates
 have been published publicly.
 
 
 ### Typed multipart requests
 
 Text fields use strict UTF-8 by default. For the pinned TypeScript/Busboy text
-profile, install `Extension(forklaunch_http::BusboyTextOptions::default())` on
+profile, install `Extension(forklaunch_core::http::BusboyTextOptions::default())` on
 typed extractors and `VersionBodyHooksRegistry::enable_busboy_text` on versioned
 contracts. `with_default_charset` changes the fallback charset; an explicit
 part charset takes precedence. Byte limits apply before decoding. This profile
@@ -876,7 +894,7 @@ modern ID fragments, non-root recursive anchors, non-`#` recursive references,
 and resource-aware references into literal data/schema dictionaries. WebSocket
 SDK unions and raw AsyncAPI export resolve each standalone resource graph before
 relocation; resource-free schemas retain their original annotation/pointer layout.
-`forklaunch_sdk_codegen::bundle_schema_resources` exposes this bounded operation.
+`forklaunch_core::codegen::bundle_schema_resources` exposes this bounded operation.
 Mixed reachable Draft 4/6/7/2019-09/2020-12 resources and mixed-draft message
 unions are translated to 2020-12 after resolving original resource identities.
 Draft 4 exclusive bounds and legacy tuple/tail rules retain their validation
@@ -943,7 +961,7 @@ invalid multipart limits return 500. Streamed request-body limits also return
 413, while ordinary body-read failures return 400 without exposing I/O details.
 
 Local handlers read `FrameworkRequest.version`; Axum handlers can extract
-`Extension<forklaunch_http::SelectedVersion>`. This contains `version` and
+`Extension<forklaunch_core::http::SelectedVersion>`. This contains `version` and
 `matched_versions`. MCP exposes each version as `operation [v<version>]` when
 there is more than one version, with its own input/output schema; calls still go
 through normal HTTP selection and authentication. Calling an earlier tool with
@@ -1116,6 +1134,29 @@ validation is disabled. Callback execution is synchronous; errors omit callback
 text. These hooks do not implement mutable JavaScript holders, sparse arrays or
 cross-field callback side-effect ordering.
 
+### Explicit PostgreSQL service generation
+
+`forklaunch init service records --language rust -d postgresql` generates a
+service-owned SQLx 0.8 repository, migrations, database configuration, protected
+record schema, and `make migrate`. It uses the framework's restricted runtime
+connection helper, transaction-local tenant context, forced row-level security,
+and authenticated protected-field storage. Health checks query the repository.
+The same build emits compliance metadata, OpenAPI, and both SDK languages.
+
+Provision a separate database per service and distinct migration/runtime roles.
+Set `MIGRATION_DATABASE_URL` for migration commands; runtime requires
+`DATABASE_URL`, trusted `TENANT_ID`, stable `STORAGE_ENCRYPTION_NAMESPACE`, and
+configured encryption keys. Remote connections require verified TLS unless the
+explicit development transport override is enabled. The generated migration
+README describes grants and key rotation. Compilation does not connect to the
+database, and startup never performs migrations implicitly.
+
+Omitting `-d` keeps the lightweight memory starter. Unsupported explicit database
+choices fail before generation; existing memory services require deliberate
+storage migration. This starter supplies a protected repository, not domain CRUD
+HTTP endpoints or automatic production role provisioning. Its ignored integration
+tests run against a migrated isolated database with the restricted runtime role.
+
 ### Test environment compatibility
 
 `forklaunch_testing::setup_test_environment` builds the same environment values as
@@ -1163,6 +1204,13 @@ including a false result when a scanned key disappears before the existence
 transaction. `backend`, `backend_mut`, `RedisTtlCache::config` and
 `connection_mut` expose configuration and native client access. Raw commands
 bypass the outer key/TTL/JSON/encryption wrappers.
+
+`JsonRecordCodec` writes tenant-bound cache, queue and object values with fresh
+random nonces in the TypeScript-readable v4 field envelope. Repeated values do
+not produce identical ciphertext. Authenticated legacy v1/v2/v3 readers and key
+rotation remain supported. These field envelopes are a separate protocol from
+the worker channel v3 envelope; their version numbers are not interchangeable.
+Passing no tenant still selects the explicitly unencrypted JSON path.
 
 `JsonRecordCodec::with_typescript_safe_values()` explicitly enables TypeScript's
 `safeStringify`/`safeParse` behavior for JSON-compatible values. It writes top-level
@@ -1422,3 +1470,22 @@ execution model is acceptable. The compatibility oracle pins Node24.2/Unicode16;
 other JavaScript engines may support different syntax or Unicode versions.
 Native Rust strings cannot represent lone UTF-16 surrogates even though the
 underlying kernel's explicit UTF-16 API can test them.
+
+Validator package ownership: `forklaunch-validator` depends on common diagnostic
+DTOs, not core HTTP or route contracts. Use `forklaunch_core::http::FrameworkSchema`
+(with core's `validator` feature) for the `schema_ref()` contract adapter and
+`forklaunch_core::http::zod_provenance::register_zod_version_parsers` for bounded,
+atomic HTTP version-parser registration. Pure validators export JSON Schema and
+validate values without linking the HTTP runtime.
+
+WebSocket ownership follows the TypeScript project split: `core::ws` owns socket
+contracts, artifacts, typed descriptors and bounded payload/schema validation;
+`forklaunch-ws` owns connection and session transport and reexports those shared
+types. Host-side AsyncAPI and SDK generation depend on core's optional `ws`
+feature without importing the WebSocket transport runtime. Core's `ws-validation`
+feature adds pure validator-backed payload checks; `schema-validation` enables
+bounded JSON Schema evaluation and `typed-schema` enables typed descriptors.
+
+### Typed URL forms
+
+`FormBody<T>` decodes nested bracket fields and indexed arrays with the shared bounded form parser. The TypeScript client accepts typed object values; the Rust client generates a request DTO and encodes it through the universal SDK. String values remain strings, while native destination types request numeric/boolean coercion. Both encoders cap nesting at 32, parameters at 1,000, and encoded size at 100 KiB. Null and empty collections have no lossless default form representation and are rejected; use JSON for these shapes. Date codecs remain JSON-only for requests. Existing explicitly encoded compatibility methods remain available.

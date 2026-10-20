@@ -1,38 +1,26 @@
 [workspace]
 resolver = "3"
-exclude = ["crates/vendor/bullmq-official"]
+exclude = []
 members = [
-    "crates/forklaunch-blueprint-core",
-    "crates/interfaces/forklaunch-iam-interface",
-    "crates/interfaces/forklaunch-cac-interface",
-    "crates/interfaces/forklaunch-messaging-interface",
-    "crates/interfaces/forklaunch-ecommerce-interface",
-    "crates/interfaces/forklaunch-billing-interface",
-    "crates/interfaces/forklaunch-worker-interface",
-    "crates/interfaces/forklaunch-monitoring-interface",
-    "crates/implementations/iam/forklaunch-iam-base",
-    "crates/implementations/iam/forklaunch-iam-better-auth",
-    "crates/implementations/cac/forklaunch-cac-base",
-    "crates/implementations/messaging/forklaunch-messaging-base",
-    "crates/implementations/ecommerce/forklaunch-ecommerce-base",
-    "crates/implementations/ecommerce/forklaunch-ecommerce-axum",
-    "crates/implementations/ecommerce/forklaunch-ecommerce-stripe",
-    "crates/implementations/ecommerce/forklaunch-ecommerce-paypal",
-    "crates/implementations/messaging/forklaunch-messaging-twilio",
-    "crates/implementations/messaging/forklaunch-messaging-axum",
-    "crates/implementations/cac/forklaunch-cac-axum",
-    "crates/implementations/iam/forklaunch-iam-axum",
-    "crates/implementations/billing/forklaunch-billing-base",
-    "crates/implementations/billing/forklaunch-billing-stripe",
-    "crates/implementations/billing/forklaunch-billing-axum",
-    "crates/implementations/billing/forklaunch-billing-axum",
-    "crates/implementations/worker/forklaunch-worker-database",
-    "crates/implementations/worker/forklaunch-worker-redis",
-    "crates/implementations/worker/forklaunch-worker-kafka",
-    "crates/client-sdk",
-    "crates/sample-app",
-    "crates/sample-service",
-    "crates/sample-worker",
+    "crates/interfaces/iam-interface",
+    "crates/interfaces/cac-interface",
+    "crates/interfaces/ecommerce-interface",
+    "crates/interfaces/billing-interface",
+    "crates/interfaces/worker-interface",
+    "crates/implementations/iam/iam-base",
+    "crates/implementations/cac/cac-base",
+    "crates/implementations/ecommerce/ecommerce-base",
+    "crates/implementations/ecommerce/ecommerce-axum",
+    "crates/implementations/ecommerce/ecommerce-stripe",
+    "crates/implementations/ecommerce/ecommerce-paypal",
+    "crates/implementations/cac/cac-axum",
+    "crates/implementations/iam/iam-axum",
+    "crates/implementations/billing/billing-base",
+    "crates/implementations/billing/billing-stripe",
+    "crates/implementations/billing/billing-axum",
+    "crates/implementations/worker/worker-database",
+    "crates/implementations/worker/worker-redis",
+    "crates/implementations/worker/worker-kafka",
 ]
 
 [workspace.package]
@@ -46,8 +34,8 @@ repository = "https://github.com/forklaunch/forklaunch-js"
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = "warn"
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Implementations satisfy async traits even when one has nothing to await.
+unused_async_trait_impl = "allow"
 
-[patch.crates-io]
-serde_json = { path = "../framework-rs/crates/vendor/serde_json" }

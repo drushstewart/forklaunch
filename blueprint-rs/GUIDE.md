@@ -8,47 +8,44 @@ The source links expose the public API. Build the searchable Rust API reference
 with the commands below. Feature names come from each crate's `Cargo.toml`; enabling
 a feature makes its API available but does not configure credentials or start a service.
 
+Shared module types (errors, paging, audit and session context) and managed
+platform clients live in the framework, as they do for TypeScript in
+`@forklaunch/core/http`: `forklaunch_core::domain` and `forklaunch_core::http`
+behind the `domain`, `provider-http`, `stripe-webhook` and `instance-gateway`
+features. Module HTTP layers (`*-axum`) are not published; generation copies
+them into each application, as TypeScript modules copy their routes.
+
 | Crate | Responsibility | Optional features and defaults |
 | --- | --- | --- |
-| [forklaunch-blueprint-core](crates/forklaunch-blueprint-core/src/lib.rs) | Shared identifiers, pagination, audit/error types and managed provider clients. | `instance-gateway`, `stripe-webhook`, `provider-http`; default: none |
-| [forklaunch-iam-interface](crates/interfaces/forklaunch-iam-interface/src/lib.rs) | IAM identities, sessions, roles, permissions and service DTOs/traits. | —; default: none |
-| [forklaunch-cac-interface](crates/interfaces/forklaunch-cac-interface/src/lib.rs) | Code-set/category contracts and service types. | —; default: none |
-| [forklaunch-messaging-interface](crates/interfaces/forklaunch-messaging-interface/src/lib.rs) | Messaging contracts and service/provider types. | —; default: none |
-| [forklaunch-ecommerce-interface](crates/interfaces/forklaunch-ecommerce-interface/src/lib.rs) | Product, variant, inventory, cart, order and payment contracts/types. | —; default: none |
-| [forklaunch-billing-interface](crates/interfaces/forklaunch-billing-interface/src/lib.rs) | Customer, plan, subscription, checkout and billing contracts/types. | —; default: none |
-| [forklaunch-worker-interface](crates/interfaces/forklaunch-worker-interface/src/lib.rs) | Queue/job, lease, administration and handler types. | —; default: none |
-| [forklaunch-monitoring-interface](crates/interfaces/forklaunch-monitoring-interface/src/lib.rs) | Monitoring contracts/types; does not scaffold a standalone module. | —; default: none |
-| [forklaunch-iam-base](crates/implementations/iam/forklaunch-iam-base/src/lib.rs) | Directory/auth service implementations and optional PostgreSQL persistence. | `postgres`; default: none |
-| [forklaunch-iam-better-auth](crates/implementations/iam/forklaunch-iam-better-auth/src/lib.rs) | Native configured Better Auth behavior, encrypted store, HTTP and relay. | `http`, `postgres`, `application-http`; default: none |
-| [forklaunch-cac-base](crates/implementations/cac/forklaunch-cac-base/src/lib.rs) | Code-set service implementations. | —; default: none |
-| [forklaunch-messaging-base](crates/implementations/messaging/forklaunch-messaging-base/src/lib.rs) | Persistent messaging lifecycle, callbacks and store seams. | `postgres`; default: none |
-| [forklaunch-ecommerce-base](crates/implementations/ecommerce/forklaunch-ecommerce-base/src/lib.rs) | Atomic local commerce storage/business rules, compliance and retention. | `worker`, `postgres`; default: none |
-| [forklaunch-ecommerce-axum](crates/implementations/ecommerce/forklaunch-ecommerce-axum/src/lib.rs) | Commerce HTTP/MCP contracts and request mapping. | —; default: none |
-| [forklaunch-ecommerce-stripe](crates/implementations/ecommerce/forklaunch-ecommerce-stripe/src/lib.rs) | Stripe checkout/capture/webhook integration. | —; default: none |
-| [forklaunch-ecommerce-paypal](crates/implementations/ecommerce/forklaunch-ecommerce-paypal/src/lib.rs) | PayPal checkout/capture integration. | —; default: none |
-| [forklaunch-messaging-twilio](crates/implementations/messaging/forklaunch-messaging-twilio/src/lib.rs) | Twilio transport and callback integration. | —; default: none |
-| [forklaunch-messaging-axum](crates/implementations/messaging/forklaunch-messaging-axum/src/lib.rs) | Messaging HTTP/MCP contracts and request mapping. | —; default: none |
-| [forklaunch-cac-axum](crates/implementations/cac/forklaunch-cac-axum/src/lib.rs) | CAC HTTP/MCP contracts and request mapping. | —; default: none |
-| [forklaunch-iam-axum](crates/implementations/iam/forklaunch-iam-axum/src/lib.rs) | Directory IAM HTTP/MCP contracts and request mapping. | —; default: none |
-| [forklaunch-billing-base](crates/implementations/billing/forklaunch-billing-base/src/lib.rs) | Billing services, store seams and optional PostgreSQL persistence. | `postgres`; default: none |
-| [forklaunch-billing-stripe](crates/implementations/billing/forklaunch-billing-stripe/src/lib.rs) | Stripe provider and optional remote client. | `stripe-client`; default: none |
-| [forklaunch-billing-axum](crates/implementations/billing/forklaunch-billing-axum/src/lib.rs) | Billing HTTP/MCP contracts and request mapping. | —; default: none |
-| [forklaunch-worker-database](crates/implementations/worker/forklaunch-worker-database/src/lib.rs) | Database queue, shared runtime/control/retention and PostgreSQL adapter. | `http-control`, `runtime`, `postgres`; default: none |
-| [forklaunch-worker-redis](crates/implementations/worker/forklaunch-worker-redis/src/lib.rs) | Native leased Redis queue and optional official BullMQ protocol adapter. | `bullmq`, `redis-client`; default: none |
-| [forklaunch-worker-kafka](crates/implementations/worker/forklaunch-worker-kafka/src/lib.rs) | Kafka worker interfaces and optional broker adapter. | `kafka-client`; default: none |
-| [forklaunch-blueprint-client-sdk](crates/client-sdk/src/lib.rs) | SDK generation from blueprint contract registries. | —; default: none |
-| [forklaunch-blueprint-sample-app](crates/sample-app/src/lib.rs) | Reference application composition. | —; default: none |
-| [forklaunch-blueprint-sample-service](crates/sample-service/src/lib.rs) | Reference service and conformance examples. | `postgres`; default: none |
-| [forklaunch-blueprint-sample-worker](crates/sample-worker/src/lib.rs) | Reference worker composition. | —; default: none |
+| [forklaunch-iam-interface](crates/interfaces/iam-interface/src/lib.rs) | IAM identities, sessions, roles, permissions and service DTOs/traits. | —; default: none |
+| [forklaunch-cac-interface](crates/interfaces/cac-interface/src/lib.rs) | Code-set/category contracts and service types. | —; default: none |
+| [forklaunch-ecommerce-interface](crates/interfaces/ecommerce-interface/src/lib.rs) | Product, variant, inventory, cart, order and payment contracts/types. | —; default: none |
+| [forklaunch-billing-interface](crates/interfaces/billing-interface/src/lib.rs) | Customer, plan, subscription, checkout and billing contracts/types. | —; default: none |
+| [forklaunch-worker-interface](crates/interfaces/worker-interface/src/lib.rs) | Queue/job, lease, administration and handler types. | —; default: none |
+| [forklaunch-iam-base](crates/implementations/iam/iam-base/src/lib.rs) | Directory/auth service implementations and optional PostgreSQL persistence. | `postgres`; default: none |
+| [forklaunch-cac-base](crates/implementations/cac/cac-base/src/lib.rs) | Code-set service implementations. | —; default: none |
+| [forklaunch-ecommerce-base](crates/implementations/ecommerce/ecommerce-base/src/lib.rs) | Atomic local commerce storage/business rules, compliance and retention. | `worker`, `postgres`; default: none |
+| [forklaunch-ecommerce-axum](crates/implementations/ecommerce/ecommerce-axum/src/lib.rs) | Commerce HTTP/MCP contracts and request mapping. | —; default: none |
+| [forklaunch-ecommerce-stripe](crates/implementations/ecommerce/ecommerce-stripe/src/lib.rs) | Stripe checkout/capture/webhook integration. | —; default: none |
+| [forklaunch-ecommerce-paypal](crates/implementations/ecommerce/ecommerce-paypal/src/lib.rs) | PayPal checkout/capture integration. | —; default: none |
+| [forklaunch-cac-axum](crates/implementations/cac/cac-axum/src/lib.rs) | CAC HTTP/MCP contracts and request mapping. | —; default: none |
+| [forklaunch-iam-axum](crates/implementations/iam/iam-axum/src/lib.rs) | Directory IAM HTTP/MCP contracts and request mapping. | —; default: none |
+| [forklaunch-billing-base](crates/implementations/billing/billing-base/src/lib.rs) | Billing services, store seams and optional PostgreSQL persistence. | `postgres`; default: none |
+| [forklaunch-billing-stripe](crates/implementations/billing/billing-stripe/src/lib.rs) | Stripe provider and optional remote client. | `stripe-client`; default: none |
+| [forklaunch-billing-axum](crates/implementations/billing/billing-axum/src/lib.rs) | Billing HTTP/MCP contracts and request mapping. | —; default: none |
+| [forklaunch-worker-database](crates/implementations/worker/worker-database/src/lib.rs) | Database queue, shared runtime/control/retention and PostgreSQL adapter. | `http-control`, `runtime`, `postgres`; default: none |
+| [forklaunch-worker-redis](crates/implementations/worker/worker-redis/src/lib.rs) | Native leased Redis queue and optional official BullMQ protocol adapter. | `bullmq`, `redis-client`; default: none |
+| [forklaunch-worker-kafka](crates/implementations/worker/worker-kafka/src/lib.rs) | Kafka worker interfaces and optional broker adapter. | `kafka-client`; default: none |
 
 ## Choose a generated module
 
 The [generation guide](../docs/adding-projects/rust.md) covers application init,
 adding modules, migrations, development, SDKs and mixed-language lifecycle.
-Available presets are `iam-base`, `iam-better-auth`, `cac-base`, `messaging-base`,
-`messaging-twilio`, `ecommerce-stripe`, `billing-base` and `billing-stripe`.
-Relay extends an existing Better Auth service; it is not a new standalone
-service. Storefront capture similarly has its own lifecycle outside Cargo APIs.
+Rust modules are `iam-base`, `cac-base`, `ecommerce-stripe`, `billing-base` and
+`billing-stripe`. Better Auth and relay are TypeScript modules; Rust services call
+them through generated Rust SDKs. Messaging is not a module in either language:
+services send email and SMS through the managed gateway (`forklaunch infra add`).
+Storefront capture has its own lifecycle outside Cargo APIs.
 
 Interfaces own contracts, DTOs and service traits; base crates implement local
 business behavior and storage seams; provider crates implement external effects;
@@ -56,41 +53,24 @@ Axum crates connect those services to registered HTTP/MCP operations. Choose the
 implementation explicitly. Reference memory stores are useful for tests but do
 not establish production durability or cross-process isolation.
 
-## IAM and Better Auth
+## IAM
 
-Directory IAM and Better Auth are different implementations. The
-[PostgreSQL IAM guide](../docs/adding-projects/rust.md#postgresql-iam) documents the
+The [PostgreSQL IAM guide](../docs/adding-projects/rust.md#postgresql-iam) documents the
 base module's runtime environment. Directory CRUD does not turn an ignored
 password field into a credential: provider integration and generic mapper/filter
 extensions remain tracked separately. Use the authentication service's credential
 and session lifecycle rather than inserting directory records to simulate login.
+Better Auth and relay are TypeScript modules.
 
-The [Better Auth adapter guide](crates/implementations/iam/forklaunch-iam-better-auth/README.md)
-is the reference for its configured endpoints, cookies, encrypted PostgreSQL,
-Google flow, callbacks, key rotation, compliance/retention and relay hooks.
-Registered application routes are exported to SDKs/MCP; raw auth routes remain
-in their reserved HTTP namespace. Configure trusted origins and the auth base URL
-explicitly. Broader plugin/options/client behavior is not implied by the
-configured adapter's passing conformance suite.
-
-For relay, add `init module --language rust -m relay` to the application path.
-Customize the preserved `src/relay_hooks.rs` to resolve the owner and optionally
-mint app claim links. The safe default signs in nobody. Run migrations before
-starting the new endpoints; signed ingest and claim operations are available
-through HTTP/MCP and generated SDKs, while the browser handoff remains HTTP-only.
-
-## CAC and messaging
+## CAC
 
 [CAC](../docs/adding-projects/rust.md#cac-module) exposes code-set operations through
-the service interface and Axum contract adapter. Keep custom route registration
+the service interface and its generated HTTP layer. Keep custom route registration
 in application source so exported contracts and serving behavior agree.
 
-[Messaging](../docs/adding-projects/rust.md#sms-messaging-modules) separates durable
-local message state from the provider transport. Configure the base or Twilio
-preset and its callback credentials explicitly. Provider acceptance and final
-delivery are different states; process authenticated callbacks through the
-persistent lifecycle. Managed capability clients in `forklaunch-blueprint-core`
-use the instance gateway; see the [capability configuration guide](../docs/adding-projects/rust.md#managed-capabilities).
+Managed capability clients (email, SMS, voice, WhatsApp, payments and models) are
+`forklaunch_core::http` modules that use the instance gateway; see the
+[capability configuration guide](../docs/adding-projects/rust.md#managed-capabilities).
 Provider HTTP transport, Stripe webhook verification and gateway clients each
 have independent feature gates.
 
@@ -164,7 +144,7 @@ cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
 cargo clippy --manifest-path blueprint-rs/Cargo.toml --workspace --all-targets --all-features -- -D warnings
 ```
 
-Open `blueprint-rs/target/doc/forklaunch_blueprint_core/index.html` and select a
+Open `blueprint-rs/target/doc/forklaunch_iam_base/index.html` and select a
 crate to browse its API. Real PostgreSQL/Redis/Kafka/provider-fixture checks need
 the environment specified in `cli/tests/rust_*` scripts; memory tests and ignored
 integration tests do not replace those checks. See

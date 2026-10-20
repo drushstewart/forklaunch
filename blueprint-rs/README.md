@@ -5,7 +5,7 @@ See the [workspace guide](GUIDE.md) for the complete crate/feature catalog, deve
 Rust blueprint crates for ForkLaunch.
 
 The [crate release guide](../docs/adding-projects/rust-releases.md) covers public
-package validation, the required workspace parser patch and the publishing workflow.
+package validation and the publishing workflow.
 
 This workspace mirrors the TypeScript `blueprint` style with shared core primitives, contract and interface crates, SDK generation, and reference implementations for IAM, CAC, messaging, billing, and workers. IAM provides an optional PostgreSQL backend with tenant RLS, Argon2id credentials, persistent sessions, an async Axum adapter, and generated modules. The database worker provides an optional PostgreSQL queue implementing async leases, acknowledgments, retry backoff, crash recovery, and failed-job retention. Both integrations use the `postgres` feature. The database worker also provides a `runtime` feature with a polling runner, lease renewal, bounded queue operations, configurable concurrent deliveries, and graceful drain; newly generated PostgreSQL workers use both features.
 
@@ -80,8 +80,8 @@ Worker handlers can override `JobHandler::process_batch` to return failures per 
 
 ## Messaging
 
-`forklaunch-messaging-interface` defines SMS DTOs, asynchronous service/store traits and base/Twilio module contracts. `forklaunch-messaging-base` provides the TypeScript-compatible hooks-only service and an optional encrypted Postgres store. `forklaunch-messaging-twilio` performs bounded, single-attempt Messages REST dispatch and signed delivery callbacks. `forklaunch-messaging-axum` mounts request-HMAC SMS routes, asymmetric-JWT/system-role compliance routes, public health and verified callbacks. Generated modules, both SDKs, tenant RLS, audit failures, key rotation and persistence are exercised by the [messaging fixture](../cli/tests/rust_messaging_runtime.sh). See [setup and behavioral boundaries](../docs/adding-projects/rust.md#sms-messaging-modules).
-
+There are no messaging crates. Services send email and SMS through the managed
+gateway clients in `forklaunch_core::http` (`forklaunch infra add`).
 
 ## Ecommerce providers
 
@@ -95,7 +95,7 @@ The ecommerce base `worker` feature exposes `events::OrderInventoryHandler` for 
 
 With both `postgres` and `worker` enabled, `PostgresEcommerceStore::transition_order_with_event` updates the order and enqueues its inventory event in one tenant-bound transaction. Apply both ecommerce and database-worker migrations with an owner connection. Runtime roles need the documented table/sequence grants for both schemas. Queue-write failures roll back the transition and its PII read audit. The underlying `PostgresWorkerQueue::enqueue_in_transaction` checks the caller transaction's tenant and leaves commit/rollback ownership with the caller.
 
-`forklaunch-ecommerce-axum::ecommerce_router` mounts 31 application routes plus health, including import, checkout and provider callbacks. It creates request-scoped audited stores from verified principals, selects Stripe/PayPal from the payment request and uses atomic order/event production for transitions. `contracts::module_registry()` adds the health route and documented validation/storage/provider errors to the core TypeScript-compatible route registry. Checked JSON bodies return 400 for invalid typed inputs; query arrays use the SDK/MCP JSON wire form. The [live adapter fixture](crates/implementations/ecommerce/forklaunch-ecommerce-axum/tests/http.rs) starts HTTP and MCP against restricted-role PostgreSQL and owned provider endpoints. Generated module fixtures cover checkout/import/provider callbacks, both SDKs, worker delivery and lifecycle. Compliance and automated worker orchestration remain in the implementation plan.
+`forklaunch-ecommerce-axum::ecommerce_router` mounts 31 application routes plus health, including import, checkout and provider callbacks. It creates request-scoped audited stores from verified principals, selects Stripe/PayPal from the payment request and uses atomic order/event production for transitions. `contracts::module_registry()` adds the health route and documented validation/storage/provider errors to the core TypeScript-compatible route registry. Checked JSON bodies return 400 for invalid typed inputs; query arrays use the SDK/MCP JSON wire form. The [live adapter fixture](crates/implementations/ecommerce/ecommerce-axum/tests/http.rs) starts HTTP and MCP against restricted-role PostgreSQL and owned provider endpoints. Generated module fixtures cover checkout/import/provider callbacks, both SDKs, worker delivery and lifecycle. Compliance and automated worker orchestration remain in the implementation plan.
 
 Billing base services are available in `forklaunch_billing_base::services` with typed asynchronous interfaces in `forklaunch_billing_interface::services`. Plans and subscriptions are durable; checkout sessions, payment links and portal sessions use a configurable TTL cache independent of provider expiry, with optional database backups. The memory and PostgreSQL stores preserve TypeScript lifecycle differences: checkout completion retains backup status, payment completion removes backup rows, and explicit portal/checkout expiry removes only the cache entry. PostgreSQL requires a restricted runtime role, encrypts provider payloads and opaque session URIs, and commits plaintext reads with actor audits. Provider-ID lookup reads only indexed metadata. The [actual TS base comparison](../cli/tests/rust_billing_base_parity.mjs) covers 168 operations over generic mapper/cache/ORM boundaries. Configured Stripe mappers, real Stripe service wiring and generated billing HTTP/MCP modules remain tracked; the older root-level billing classes are reference scaffolds.
 
@@ -139,7 +139,7 @@ operations return an error through the router. Direct service callers must check
 A subject field other than `id` must contain an explicit scalar string ID.
 These lookups use the directory store's bounded listing (currently 4,096 records
 for PostgreSQL); relation inference and scalable indexed traversal remain
-separate work. See the [executable example](crates/implementations/iam/forklaunch-iam-base/examples/directory_compliance.rs).
+separate work. See the [executable example](crates/implementations/iam/iam-base/examples/directory_compliance.rs).
 
 
 BullMQ queue metadata options are available as
@@ -378,14 +378,14 @@ Direct bound BillingPortal creation is available through the Stripe crate's
 evidence, retains a separate public UUID and uses durable dependency claims plus
 separate-role atomic publication. Historical inspection never refreshes a bearer
 URL; uncertain dispatch remains inspectable without automatic POST retry. See
-[the provider guide](crates/implementations/billing/forklaunch-billing-stripe/README.md#direct-bound-portal-creation)
+[the provider guide](crates/implementations/billing/billing-stripe/README.md#direct-bound-portal-creation)
 for migrations12/13, caller authorization and publication-role requirements.
 
 The same explicit Stripe profile supports bound Checkout creation from registered
 Customer and completed Plan provenance. Migrations14/15 add four durable dependency
 claims and separate-role UUID publication. Exact Price/line-item evidence and
 provider expiry are preserved; open-session creation does not grant entitlement.
-See [the Checkout provider guide](crates/implementations/billing/forklaunch-billing-stripe/README.md#direct-bound-checkout-creation).
+See [the Checkout provider guide](crates/implementations/billing/billing-stripe/README.md#direct-bound-checkout-creation).
 
 Generated billing services default to legacy request dates. Set
 `BILLING_REQUEST_DATE_PROFILE=utc-iso-and-epoch` (or use
@@ -408,7 +408,7 @@ legacy. Application-defined custom routes are unaffected by package date project
 Generated Stripe billing can explicitly select `BILLING_IDENTITY_PROFILE=bound-checkout-v1`
 with bounded `BILLING_BOUND_CHECKOUT_CONFIG` and a separate
 `BILLING_PUBLISHER_DATABASE_URL`. See the
-[Axum profile guide](crates/implementations/billing/forklaunch-billing-axum/README.md).
+[Axum profile guide](crates/implementations/billing/billing-axum/README.md).
 The profile adds create/get/inspect Checkout operations over HTTP/MCP and both
 SDKs, preserving local UUIDs and durable creation evidence. Unknown outcomes return
 202 without redispatch; historical inspection returns IDs without reviving URLs.

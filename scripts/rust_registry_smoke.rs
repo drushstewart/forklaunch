@@ -1,23 +1,14 @@
 //! Installed-registry smoke service; no repository path dependencies.
 use axum::Json;
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::{BodyContract, RouteContract};
+use forklaunch_core::contract::{BodyContract, RouteContract};
 use forklaunch_core::ServiceInfo;
-use serde_json::{Value, json};
+use serde_json::json;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "bounded-regex")]
     check_bounded_regex();
-    for literal in [
-        "$serde_json::private::Number",
-        "$serde_json::private::RawValue",
-    ] {
-        let expected = json!({literal: "literal user data"});
-        assert!(expected.get(literal).is_some());
-        let roundtrip: Value = serde_json::from_str(&expected.to_string())?;
-        assert_eq!(roundtrip, expected, "required parser patch was not applied");
-    }
     let host = std::env::var("SERVICE_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let port = std::env::var("SERVICE_PORT").unwrap_or_else(|_| "0".into());
     let listener = tokio::net::TcpListener::bind(format!("{host}:{port}")).await?;

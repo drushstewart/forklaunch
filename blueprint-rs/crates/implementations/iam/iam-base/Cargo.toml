@@ -1,0 +1,40 @@
+[package]
+description = "ForkLaunch Rust iam base APIs and runtime support"
+name = "forklaunch-iam-base"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = []
+postgres = ["dep:sqlx", "forklaunch-core/postgres", "forklaunch-core/encryption", "dep:sha2", "tokio/rt-multi-thread", "tokio/macros"]
+oidc-sessions = ["postgres", "forklaunch-core/auth"]
+jwt-sessions = ["postgres", "dep:jsonwebtoken"]
+browser-sessions = ["postgres", "dep:tower-sessions", "dep:async-trait"]
+
+[dependencies]
+tower-sessions = { version = "0.15", optional = true }
+async-trait = { version = "0.1", optional = true }
+forklaunch-iam-interface = { version = "=0.1.0", path = "../../../interfaces/iam-interface" }
+
+argon2 = "0.5"
+rand_core = { version = "0.6", features = ["getrandom"] }
+uuid = { version = "1", features = ["v4"] }
+
+forklaunch-core = { version = "=0.1.2", path = "../../../../../framework-rs/crates/core", features = ["auth", "oidc", "http", "domain"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "migrate", "macros"], optional = true }
+serde_json = "1"
+serde = { version = "1", features = ["derive"] }
+regex = "1"
+tokio = { version = "1", default-features = false, features = ["sync"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+sha2 = { version = "0.10", optional = true }
+jsonwebtoken = { version = "9", optional = true }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }

@@ -635,4 +635,3 @@ pub(crate) fn add_legacy_icase_code_points(input: CodePointSet) -> CodePointSet 
     }
     CodePointSet::from_sorted_disjoint_intervals(ranges)
 }
-

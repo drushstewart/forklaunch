@@ -1,30 +1,11 @@
 [workspace]
 resolver = "3"
-exclude = ["crates/vendor/jsonschema", "crates/vendor/referencing", "crates/vendor/serde_json", "crates/vendor/regress"]
+exclude = ["crates/vendor/jsonschema", "crates/vendor/referencing", "crates/vendor/regress"]
 members = [
-    "crates/forklaunch-common",
-    "crates/forklaunch-contract",
-    "crates/forklaunch-contract-macros",
-    "crates/forklaunch-core",
-    "crates/forklaunch-core-macros",
-    "crates/forklaunch-http",
-    "crates/forklaunch-validation",
-    "crates/forklaunch-auth",
-    "crates/forklaunch-axum",
-    "crates/forklaunch-openapi",
-    "crates/forklaunch-asyncapi",
-    "crates/forklaunch-mcp",
-    "crates/forklaunch-sdk-codegen",
-    "crates/forklaunch-sdk-rust",
-    "crates/forklaunch-sdk-typescript",
-    "crates/forklaunch-ws",
-    "crates/forklaunch-infrastructure-redis",
-    "crates/forklaunch-infrastructure-s3",
-    "crates/forklaunch-testing",
-]
+    "crates/universal-sdk","crates/common", "crates/core", "crates/core-macros", "crates/validator", "crates/axum", "crates/ws", "crates/redis", "crates/s3", "crates/testing"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.2"
 edition = "2024"
 license = "MIT"
 authors = ["Forklift Technologies, Inc. <engineering@forklaunch.com>"]
@@ -34,8 +15,8 @@ repository = "https://github.com/forklaunch/forklaunch-js"
 unsafe_code = "forbid"
 
 [workspace.lints.clippy]
-all = "warn"
-pedantic = "warn"
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Implementations satisfy async traits even when one has nothing to await.
+unused_async_trait_impl = "allow"
 
-[patch.crates-io]
-serde_json = { path = "crates/vendor/serde_json" }
