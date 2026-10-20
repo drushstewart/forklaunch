@@ -114,3 +114,33 @@ describe('compliant field read audit', () => {
     });
   });
 });
+
+describe('sensitive record change audit', () => {
+  it('records each change with entity, id, action and sensitive field names', () => {
+    const collector = otel();
+    const remove = auditComplianceAccess(collector);
+    const listeners = (globalThis as Record<symbol, unknown>)[
+      Symbol.for('forklaunch.compliance.changeListeners')
+    ] as Set<(event: unknown) => void>;
+    for (const listener of listeners)
+      listener({
+        entity: 'Patient',
+        id: 'p1',
+        action: 'update',
+        fields: ['status', 'diagnosis'],
+        sensitiveFields: ['diagnosis'],
+        tenantId: 'org-1'
+      });
+    remove();
+    const records = attributes(collector).filter(
+      (a) => a['audit.eventType'] === 'data_change'
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      'audit.route': 'Patient#p1',
+      'audit.method': 'UPDATE',
+      'audit.tenantId': 'org-1',
+      'audit.redactedFields': 'diagnosis'
+    });
+  });
+});

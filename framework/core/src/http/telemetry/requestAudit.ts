@@ -1,4 +1,5 @@
 import { getEnvVar } from '@forklaunch/common';
+import { onComplianceChange } from '../../persistence/complianceChanges';
 import { onComplianceAccess } from '../../persistence/compliantField';
 import { MetricsDefinition } from '../types/openTelemetryCollector.types';
 import { AuditEntry, AuditLogger } from './auditLogger';
@@ -83,7 +84,8 @@ let accessAudit: (() => void) | undefined;
 
 /**
  * Every `.deanon` read of a compliant field becomes an audit record (field,
- * level, tenant). It is emitted inside the request's trace, which ties it to
+ * level, tenant), and every create/update/delete of a record holding sensitive
+ * fields a `data_change` record (entity#id, action, sensitive field names). It is emitted inside the request's trace, which ties it to
  * the request's own audit record and so to the user. Registered once per
  * process; returns a function that removes it.
  */
@@ -106,8 +108,23 @@ export function auditComplianceAccess(
         eventType: 'data_access'
       })
     );
+    const removeChanges = onComplianceChange((event) =>
+      logger.append({
+        timestamp: new Date().toISOString(),
+        userId: null,
+        tenantId: event.tenantId,
+        route: `${event.entity}#${event.id}`,
+        method: event.action.toUpperCase(),
+        bodyHash: '',
+        status: 0,
+        duration: 0,
+        redactedFields: event.sensitiveFields,
+        eventType: 'data_change'
+      })
+    );
     accessAudit = () => {
       remove();
+      removeChanges();
       accessAudit = undefined;
     };
   }
