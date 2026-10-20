@@ -10,11 +10,6 @@
 
 - `createStripeClient`: an explicit `apiKey` now wins over a managed contract detected in the environment (`PLATFORM_GATEWAY_URL`, `INSTANCE_ID`, `INSTANCE_HMAC_KEY`). Only explicit gateway options outrank it. Before, a service that held both its own Stripe key and the gateway variables (for example, a regular app that added managed email) silently sent Stripe calls to the platform gateway. Behaviour fix: a managed service that passes `apiKey` now uses that key.
 
-### Minor Changes
-
-- **Default audit trail.** Every request handled through ForkLaunch appends one audit record (`log.type: audit`) when its response finishes: user, tenant, method, route, status, duration and a SHA-256 of the body (never the body itself). Refused requests are recorded as `auth_failure` (401), `rbac_deny` (403) or `rate_limit` (429). Every `.deanon` read of a compliant field adds a `data_access` record (field, level, tenant), and every create, update or delete of a record holding pii, phi or pci fields adds a `data_change` record (entity and id, action, sensitive field names, tenant). Entities defined with `defineComplianceEntity` get the change hooks automatically. Set `FORKLAUNCH_AUDIT=off` to turn it off.
-- `onComplianceChange(listener)` reports changes to sensitive records, for apps that want their own audit sink.
-
 ### Patch Changes
 
 - Managed email is available to regular app deployments as well as managed instances: `createEmailClient`'s error no longer says it is managed-instance only. The local gateway mock (`forklaunch-gateway-mock`) delivers each event to every address in `MOCK_EVENTS_URL_<FEATURE>` (comma-separated), so a service and a worker that both hold email each receive their events.
