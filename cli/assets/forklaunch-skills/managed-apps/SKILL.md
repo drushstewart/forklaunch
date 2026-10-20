@@ -297,16 +297,20 @@ Messages are rate-limited per phone (5/hr) and per instance (20/hr, 100/day),
 and every send is audited via `SmsDispatchEntity`. (A `log-sms` provider prints
 the code in dev when no Twilio creds are configured.)
 
-**Do not ship your own model provider keys in a template either.** Managed mode
-has a **platform model gateway**: an instance calls platform-hosted AI models
-(Azure AI Foundry) with no provider key, signing each request with the same
-per-instance HMAC key.
+**Do not ship your own model provider keys in a template either.** The
+managed gateway has a **platform model gateway**: an instance calls
+platform-hosted AI models (Azure AI Foundry) with no provider key, signing each
+request with the same per-instance HMAC key. It is not limited to managed
+instances: `forklaunch infra add <service> models` declares it for any app
+(release resource type `models`) and writes the registration and local mock;
+see `/integrations` (*Models*).
 
 ```typescript
 import { createModelGatewayClient } from '@forklaunch/core/http';
 
 // Reads PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY, which the
-// platform injects into every hosted instance. Throws outside managed mode.
+// platform injects into every hosted instance (and, at deploy, into a component
+// that declares models). Throws without them.
 const models = createModelGatewayClient();
 
 const reply = await models.chat.completions.create({
@@ -333,7 +337,11 @@ for await (const chunk of models.chat.completions.stream({ model: 'luna', messag
 - **Usage**: `forklaunch managed instance model-usage --id <id> [--month
   YYYY-MM]` shows calls, tokens and cost per model. Prompts and completions are
   never stored.
-- **Local development**: there is no platform locally, so run the mock that
+- **Local development**: `forklaunch infra add <service> models` writes this
+  for you: the all-features `gateway-mock` (`forklaunch-gateway-mock`, host port
+  18088) in docker-compose and the local settings (`INSTANCE_ID=local-instance`,
+  `INSTANCE_HMAC_KEY=local-dev-instance-key`). For a client built by hand
+  without the capability, there is no platform locally, so run the mock that
   ships with `@forklaunch/core` (`forklaunch-model-gateway-mock`). It speaks the
   same contract, verifies your signatures exactly as the platform does, and
   answers deterministically (`[mock <model>] <your last message>`). Add to the
