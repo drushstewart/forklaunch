@@ -20,7 +20,7 @@ pub fn expand(arguments: &TokenStream, input: TokenStream) -> TokenStream {
 }
 fn descriptor(function: &syn::ItemFn) -> syn::Result<&Type> {
     if function.sig.asyncness.is_some()
-        || function.sig.unsafety.is_some()
+        || matches!(function.sig.safety, syn::Safety::Unsafe(_))
         || function.sig.abi.is_some()
         || !function.sig.inputs.is_empty()
         || !function.sig.generics.params.is_empty()

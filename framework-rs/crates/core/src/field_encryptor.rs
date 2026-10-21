@@ -14,7 +14,6 @@ use base64::{
 };
 use hkdf::Hkdf;
 use hmac::{Hmac, Mac};
-use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use zeroize::Zeroizing;
 
@@ -243,7 +242,7 @@ impl FieldEncryptor {
     pub fn seal(&self, plaintext: &str, tenant: &str, anon: &str) -> FrameworkResult<String> {
         let key = Self::derive_key(&self.ring[0], tenant)?;
         let mut iv = [0_u8; 12];
-        OsRng.try_fill_bytes(&mut iv).map_err(|_| crypto_error())?;
+        getrandom::fill(&mut iv).map_err(|_| crypto_error())?;
         Ok(format!(
             "v4:{}:{}:{}",
             self.ring[0].id,

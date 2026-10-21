@@ -6,7 +6,6 @@ use aes_gcm::{
     aead::{Aead, Payload},
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand::{RngCore, rngs::OsRng};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -168,7 +167,7 @@ impl EnvelopeKey {
         };
         let aad = self.aad(version, id, tenant, resource, purpose)?;
         let mut nonce = [0u8; 12];
-        OsRng.fill_bytes(&mut nonce);
+        getrandom::fill(&mut nonce).map_err(|_| SecurityError::Encryption)?;
         let derived = if version == "v3" {
             Some(self.tenant_key(key.as_ref(), tenant)?)
         } else {

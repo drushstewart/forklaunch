@@ -10,8 +10,6 @@ use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rand::RngCore;
-use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -74,7 +72,7 @@ pub fn seal_continuation(value: &Continuation, secret: &str) -> Result<String, C
         return Err(ContinuationError::TooLarge);
     }
     let mut iv = [0_u8; IV];
-    OsRng.fill_bytes(&mut iv);
+    getrandom::fill(&mut iv).map_err(|_| ContinuationError::Encoding)?;
     let sealed = cipher(secret)
         .encrypt(Nonce::from_slice(&iv), plain.as_slice())
         .map_err(|_| ContinuationError::Encoding)?;

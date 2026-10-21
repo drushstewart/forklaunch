@@ -9,7 +9,7 @@ use std::{collections::BTreeSet, time::Duration};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
 
-fn backend_error(_: redis::RedisError) -> FrameworkError {
+fn backend_error<E>(_: E) -> FrameworkError {
     // Server error strings and connection URLs can contain credentials or data.
     FrameworkError::new("redis_backend_error", "Redis operation failed")
 }
@@ -152,8 +152,8 @@ impl RedisTtlCache {
             .iter()
             .map(|pair| {
                 live_record(
-                    Option::<Vec<u8>>::from_redis_value(&pair[0]).map_err(backend_error)?,
-                    i64::from_redis_value(&pair[1]).map_err(backend_error)?,
+                    Option::<Vec<u8>>::from_redis_value_ref(&pair[0]).map_err(backend_error)?,
+                    i64::from_redis_value_ref(&pair[1]).map_err(backend_error)?,
                 )
             })
             .collect()

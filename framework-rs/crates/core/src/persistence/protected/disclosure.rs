@@ -7,7 +7,6 @@ use super::{
     ProtectedMember, Serializer, unavailable,
 };
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,9 +196,7 @@ pub(super) fn seal(
 fn project(policy: DisclosurePolicy, plaintext: &[u8]) -> FrameworkResult<String> {
     if policy == DisclosurePolicy::RandomToken {
         let mut random = [0u8; 16];
-        OsRng
-            .try_fill_bytes(&mut random)
-            .map_err(|_| unavailable())?;
+        getrandom::fill(&mut random).map_err(|_| unavailable())?;
         return Ok(format!("tok_{}", URL_SAFE_NO_PAD.encode(random)));
     }
     let value = std::str::from_utf8(plaintext).map_err(|_| unavailable())?;
