@@ -9,6 +9,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const temporary=mkdtempSync(path.join(tmpdir(),'fl-billing-bound-checkout-artifacts-'));
 const target=process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target');
 const template=readFileSync(path.join(root,'cli/src/templates/rust/billing/lib.rs'),'utf8');
+const crateVersions=Object.fromEntries([...readFileSync(path.join(root,'cli/src/core/cargo_toml/cargo_toml_constants.rs'),'utf8').matchAll(/\("([^"]+)", "([^"]+)"\)/g)].map(match=>[match[1],match[2]]));
 function run(command,args,env={}) {
  const result=spawnSync(command,args,{cwd:temporary,env:{...Object.fromEntries(Object.entries(process.env).filter(([key])=>!['BILLING_BOUND_CHECKOUT_CONFIG','BILLING_BOUND_BILLING_CONFIG','BILLING_PUBLISHER_DATABASE_URL'].includes(key))),CARGO_TARGET_DIR:target,CARGO_INCREMENTAL:'0',...env},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
  assert.equal(result.status,0,result.stderr);return result.stdout;
@@ -155,7 +156,14 @@ try {
  const manifest=manifestTemplate.replaceAll('{{{name}}}','fl-billing-bound-checkout-artifacts').replaceAll('{{{description}}}','Owned template compilation proof')
   .replace('version.workspace = true','version = "0.1.0"').replace('edition.workspace = true','edition = "2024"')
   .replace('license.workspace = true','license = "MIT"').replace('authors.workspace = true','authors = []')
-  .replaceAll('../../.forklaunch/',`${root}/`);
+  .replaceAll('../../.forklaunch/',`${root}/`)
+  // Templates leave third-party versions to the CLI's registry; fill them the same way.
+  .replace(/^([A-Za-z0-9_-]+) = \{(.*)\}$/gm,(line,name,spec)=>{
+   if(/\b(path|version|git|workspace)\s*=/.test(spec))return line;
+   const version=crateVersions[name];
+   assert.ok(version,`no registry version for ${name}`);
+   return spec.trim()?`${name} = { version = "${version}",${spec.replace(/^\s*/,' ')}}`:`${name} = "${version}"`;
+  });
  writeFileSync(path.join(temporary,'Cargo.toml'),`${manifest}`);
  writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] } pub fn register_router(router: forklaunch_axum::router::ForkLaunchRouter) -> forklaunch_axum::router::ForkLaunchRouter { router }');
  for(const stripe of [false,true]) {
