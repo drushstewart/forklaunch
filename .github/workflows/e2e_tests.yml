@@ -136,6 +136,11 @@ jobs:
         if: matrix.group >= 7
         uses: dtolnay/rust-toolchain@stable
 
+      # rdkafka-sys (generated Kafka workers) builds librdkafka, which needs libcurl headers.
+      - name: Install native build dependencies for generated workers
+        if: matrix.group >= 7
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libcurl4-openssl-dev libsasl2-dev
+
       - name: Reuse Cargo artifacts across generated Rust workspaces
         if: matrix.group >= 7
         run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/forklaunch-generated-target" >> "$GITHUB_ENV"
