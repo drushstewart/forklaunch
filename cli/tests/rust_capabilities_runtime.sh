@@ -14,10 +14,9 @@ FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-$REPO_ROOT/cli/target/debug/forklaunch}"
 mkdir -p "$SCRIPT_DIR/output/rust-capabilities-runtime"
 RUN_ROOT="$(mktemp -d "$SCRIPT_DIR/output/rust-capabilities-runtime/run.XXXXXX")"
 trap 'rm -rf "$RUN_ROOT"' EXIT
-# Native undo records live in the gitignored .forklaunch/local-state.json.
-state_has() { python3 -c 'import json,pathlib,sys;p=pathlib.Path(".forklaunch/local-state.json");sys.exit(0 if p.exists() and sys.argv[1] in json.loads(p.read_text()) else 1)' "$1"; }
-state_absent() { if state_has "$1"; then echo "unexpected local state record $1" >&2; return 1; fi; }
-state_drop() { python3 -c 'import json,pathlib,sys;p=pathlib.Path(".forklaunch/local-state.json");d=json.loads(p.read_text());d.pop(sys.argv[1]);p.write_text(json.dumps(d))' "$1"; }
+# Capability edits are stateless: besides `openapi export` output, the
+# manifest is all .forklaunch/ holds.
+manifest_only() { python3 -c 'import pathlib,sys;s=sorted(str(p) for p in pathlib.Path(".forklaunch").rglob("*") if p.is_file() and not p.is_relative_to(".forklaunch/openapi"));sys.exit(0 if s==[".forklaunch/manifest.toml"] else f"unexpected .forklaunch state: {s}")'; }
 "$FORKLAUNCH_CLI" init application capability-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D Capabilities -A ForkLaunch -L MIT
 "$FORKLAUNCH_CLI" init service messages --path "$RUN_ROOT/app" --language rust -D Messages
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
@@ -29,20 +28,11 @@ cp src/messages/.forklaunch/contracts/lib.rs "$RUN_ROOT/original-registry.rs"
 cp src/messages/api/routes/mod.rs "$RUN_ROOT/original-routes.rs"
 "$FORKLAUNCH_CLI" infra add messages email --path . --dryrun
 test ! -e src/messages/capabilities/mod.rs
-state_absent messages/capabilities
+manifest_only
 for feature in email sms whatsapp voice payments; do
     "$FORKLAUNCH_CLI" infra add messages "$feature" --path .
 done
-python3 - <<'PY'
-from pathlib import Path
-import os,stat
-import json
-state=Path('.forklaunch/local-state.json')
-assert 'messages/capabilities' in json.loads(state.read_text())
-assert '/.forklaunch/local-state.json' in Path('.gitignore').read_text().splitlines()
-assert not Path('.forklaunch/native-capabilities').exists()
-if os.name=='posix': assert stat.S_IMODE(state.stat().st_mode)==0o600
-PY
+manifest_only
 mkdir -p src/messages/examples
 cat > src/messages/examples/capabilities.rs <<'RUST'
 use messages::capabilities::*;
@@ -81,8 +71,7 @@ printf '\n// Human main customization\n' >> "$RUN_ROOT/original-main.rs"
 printf '\npub const CONFIG_MARKER: &str = "preserved";\n' >> src/messages/config.rs
 "$FORKLAUNCH_CLI" sync service messages --path .
 "$FORKLAUNCH_CLI" change service --path src/messages -N renamed-messages --confirm
-state_absent messages/capabilities
-state_has renamed-messages/capabilities
+manifest_only
 grep -q 'http://renamed-messages:8000' docker-compose.yaml
 grep -q 'Human main customization' src/renamed-messages/server.rs
 grep -q CONFIG_MARKER src/renamed-messages/config.rs
@@ -101,7 +90,7 @@ printf '\nCUSTOM_SETTING=preserved\n' >> src/messages/.env.local
 for feature in sms payments email voice whatsapp; do
     "$FORKLAUNCH_CLI" infra remove messages "$feature" --path .
 done
-state_absent messages/capabilities
+manifest_only
 test ! -e src/messages/capabilities/mod.rs
 test -e src/messages/capabilities/email.rs
 grep -q 'Human handler customization' src/messages/capabilities/email.rs
@@ -129,7 +118,6 @@ cmp "$RUN_ROOT/pristine-lib.rs" src/pristine/lib.rs
 cmp "$RUN_ROOT/pristine-main.rs" src/pristine/server.rs
 test ! -e src/pristine/capabilities/nonce_store.rs
 "$FORKLAUNCH_CLI" infra add pristine email --path .
-state_drop pristine/capabilities
 python3 - <<'PY'
 from pathlib import Path
 p=Path('src/pristine/Cargo.toml')
@@ -140,7 +128,7 @@ PY
 "$FORKLAUNCH_CLI" infra remove pristine email --path .
 "$FORKLAUNCH_CLI" infra remove pristine sms --path .
 test ! -e src/pristine/capabilities/mod.rs
-state_absent pristine/capabilities
+manifest_only
 grep -q stripe-webhook src/pristine/Cargo.toml
 cargo check -p pristine
 mkdir -p services/team
@@ -165,6 +153,6 @@ test -e services/team/relocated-pristine/capabilities/mod.rs
 test ! -d src/relocated-pristine
 cargo test -p relocated-pristine
 "$FORKLAUNCH_CLI" delete service relocated-pristine --path . --continue
-state_absent relocated-pristine/capabilities
+manifest_only
 if grep -q 'gateway-mock:' docker-compose.yaml; then echo 'FAIL deleted service retained the gateway mock'; exit 1; fi
 echo 'PASS native capability generation, relocation, HTTP/MCP startup, SDKs, dry run and source/configuration preservation'

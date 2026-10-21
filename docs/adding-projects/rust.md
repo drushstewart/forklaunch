@@ -228,7 +228,7 @@ The CLI creates editable factories in `src/infrastructure/redis.rs` and `src/inf
 
 HTTP and MCP startup do not connect these factories automatically. Call `redis_infrastructure::connect()`, `s3_infrastructure::object_store()`, or `s3_infrastructure::configured_object_store().await` where your application needs storage. Both S3 factories honor `S3_PREFIX`, `S3_PRESIGN_MAX_UPLOAD_SECONDS` and `S3_PRESIGN_MAX_DOWNLOAD_SECONDS`; default presign caps are 900 and 300 seconds. These factories expose the raw adapters; application encryption/compliance policies must be supplied separately.
 
-Use `infra remove accounts redis` or `infra remove accounts s3` to undo owned settings. `change service --path src/accounts --infrastructure redis` replaces the enabled local infrastructure list; an empty `--infrastructure` removes both. Custom factories and settings survive sync, rename and removal, and a shared backend remains while another service uses it. Restoration records are private local files; after a Git clone, removal retains settings and dependencies whose ownership is unknown.
+Use `infra remove accounts redis` or `infra remove accounts s3` to undo owned settings. `change service --path src/accounts --infrastructure redis` replaces the enabled local infrastructure list; an empty `--infrastructure` removes both. Removal takes back the factory, dependency, settings and Compose backend while they still have their generated form; custom factories and settings survive sync, rename and removal, and a shared backend remains while another service uses it. No local state is kept, so removal behaves the same after a Git clone.
 
 `forklaunch_infrastructure_redis::client::RedisQueue::connect` uses the same `LPUSH`/`RPOP` FIFO layout as TypeScript, including peeks in dequeue order. For a list written by the earlier native `RPUSH`/`LPOP` implementation, use `connect_with_layout(url, key, RedisQueueLayout::LegacyNative)` consistently for its producers and consumers. Drain an existing backlog using its original layout before switching it.
 
@@ -257,7 +257,7 @@ Client factories resolve trusted `PLATFORM_GATEWAY_URL`, `INSTANCE_ID`, and `INS
 
 `src/capabilities/nonce_store.rs` supplies one replay store shared by every feature in the service process. Its default is bounded process-local memory. For multiple replicas, return an implementation of `PlatformEventNonceStore` backed by shared atomic storage. Changes to this factory and event handlers survive capability additions, sync and rename.
 
-Use `forklaunch infra remove accounts email --path .` to remove a capability. Restoration records under `.forklaunch/native-capabilities` are ignored by Git and private on Unix because they can contain prior local settings. Removal after a Git clone still cleans generated hooks, while retaining dependency/settings entries whose earlier ownership is unknown. The local mock has one callback destination per feature; removing its active owner promotes another registered service.
+Use `forklaunch infra remove accounts email --path .` to remove a capability. Removal keeps no records: it takes back what `infra add` writes for the service (generated files, the marked `FORKLAUNCH MANAGED CAPABILITIES` sections, hooks, dependency features and `KEY=value` settings) wherever they still have their generated form, so it works the same in a fresh clone. Anything edited since stays, with a note naming it. The local mock has one callback destination per feature; removing its active owner promotes another registered service.
 
 ## Export contracts and SDKs
 
