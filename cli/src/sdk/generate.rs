@@ -2160,6 +2160,8 @@ fn rust_sdk_cargo_for_layout(
     } else {
         root.join(".forklaunch/framework-rs")
     };
+    // `diff_paths` gives no answer for one relative and one absolute path.
+    let (framework, directory) = (std::path::absolute(&framework)?, std::path::absolute(&directory)?);
     let relative = pathdiff::diff_paths(framework.join("crates/core"), &directory)
         .context("SDK framework dependency path")?;
     let mut document = cargo.parse::<toml_edit::DocumentMut>()?;
