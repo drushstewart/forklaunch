@@ -207,7 +207,53 @@ pub(crate) fn prepare_default_service(
     _protected: bool,
 ) -> Result<()> {
     ensure!(matches!(runtime, "node" | "bun"), "Unsupported TypeScript runtime");
+    if !uses_rust(root)? {
+        return Ok(());
+    }
     prepare_new_service(root, name)
+}
+
+/// Contract hooks exist so Rust code can consume TypeScript services. A
+/// TypeScript-only application keeps `tsc -b` and needs no Rust toolchain.
+fn uses_rust(root: &Path) -> Result<bool> {
+    let manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
+    Ok(matches!(
+        manifest.get("language").and_then(toml::Value::as_str),
+        Some("mixed" | "rust")
+    ))
+}
+
+/// Install contract hooks for TypeScript services written before the
+/// application gained a Rust project. Services without contract modules are
+/// left as they are.
+pub(crate) fn prepare_existing_services(root: &Path) -> Result<()> {
+    if !uses_rust(root)? {
+        return Ok(());
+    }
+    let manifest: toml::Value =
+        toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
+    let Some(modules) = manifest.get("modules_path").and_then(toml::Value::as_str) else {
+        return Ok(());
+    };
+    let Ok(entries) = fs::read_dir(root.join(modules)) else {
+        return Ok(());
+    };
+    let mut names: Vec<String> = entries
+        .filter_map(|entry| entry.ok())
+        .filter(|entry| {
+            let path = entry.path();
+            path.join("api/contracts").is_dir() && path.join("package.json").is_file()
+        })
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    for name in names {
+        if forklaunch_state::contract_plan(root, &name)?.is_none() {
+            prepare_new_service(root, &name)?;
+        }
+    }
+    Ok(())
 }
 
 /// Scaffold consumers without inventing a portable contract before compilation.
@@ -714,5 +760,36 @@ mod tests {
         assert_eq!(original, fingerprint(root.path()).unwrap());
         fs::write(schema, "export const size = 2;").unwrap();
         assert_ne!(original, fingerprint(root.path()).unwrap());
+    }
+
+    #[test]
+    fn typescript_only_applications_keep_tsc_without_contract_hooks() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+        let service = root.path().join("src/iam");
+        fs::create_dir_all(service.join("api/contracts")).unwrap();
+        let package = r#"{"scripts":{"build":"tsc -b"}}"#;
+        fs::write(service.join("package.json"), package).unwrap();
+        fs::write(
+            root.path().join(".forklaunch/manifest.toml"),
+            "language = \"typescript\"\nmodules_path = \"src\"\n",
+        )
+        .unwrap();
+        prepare_default_service(root.path(), "iam", "node", true).unwrap();
+        prepare_existing_services(root.path()).unwrap();
+        assert_eq!(fs::read_to_string(service.join("package.json")).unwrap(), package);
+        assert!(!root.path().join("Cargo.toml").exists());
+        assert!(!root.path().join(".forklaunch/build.json").exists());
+        assert!(uses_rust_manifest(root.path(), "mixed"));
+        assert!(uses_rust_manifest(root.path(), "rust"));
+    }
+
+    fn uses_rust_manifest(root: &Path, language: &str) -> bool {
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            format!("language = \"{language}\"\n"),
+        )
+        .unwrap();
+        uses_rust(root).unwrap()
     }
 }

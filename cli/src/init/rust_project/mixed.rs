@@ -301,7 +301,8 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
             manifest.as_table_mut().unwrap().remove("dockerfile");
         }
     }
-    write_manifest_value(&manifest_path, &manifest)
+    write_manifest_value(&manifest_path, &manifest)?;
+    crate::sdk::typescript_build::prepare_existing_services(root)
 }
 
 /// The Cargo workspace root owns build outputs that the TypeScript workspace's

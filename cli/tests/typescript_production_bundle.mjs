@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const root = await mkdtemp(path.join(os.tmpdir(), 'forklaunch-ts-production-'));
-const helper = fileURLToPath(new URL('../src/templates/application/production-build.mjs', import.meta.url));
+const helper = fileURLToPath(new URL('../src/core/forklaunch_state/production_build.mjs', import.meta.url));
 async function put(file, value) {
   await mkdir(path.dirname(path.join(root, file)), { recursive: true });
   await writeFile(path.join(root, file), typeof value === 'string' ? value : JSON.stringify(value));

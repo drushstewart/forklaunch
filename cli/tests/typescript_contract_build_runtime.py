@@ -29,6 +29,8 @@ try:
         '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
         '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
         '-D', 'Contract proof', '-A', 'ForkLaunch', '-L', 'MIT')
+    # Contract builds exist for Rust consumers; a TypeScript-only app keeps tsc -b.
+    cli('init', 'service', 'consumer', '--language', 'rust', '-D', 'Rust consumer')
     cli('init', 'service', 'notes', '--language', 'typescript', '-d', 'postgresql', '-D', 'Notes')
     service = APP / 'modules/notes'
     assert (service / 'api/contracts/notes.contract.ts').exists()

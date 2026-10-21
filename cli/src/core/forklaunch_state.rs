@@ -35,7 +35,7 @@ pub(crate) const TYPESCRIPT_SDK_SERVICES: &str = "typescriptSdkServices";
 pub(crate) const SDK_HTTP_SOURCES: &str = "sdkHttpSources";
 
 pub(crate) const PRODUCTION_BUILD_SOURCE: &str =
-    include_str!("../templates/application/production-build.mjs");
+    include_str!("forklaunch_state/production_build.mjs");
 const PRODUCTION_BUILD_LEGACY_SOURCE: &str =
     include_str!("forklaunch_state/production_build_legacy.mjs");
 

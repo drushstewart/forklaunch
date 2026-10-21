@@ -16,6 +16,8 @@ def locked(args):
     return run([sys.executable, str(repo/'cli/tests/fixtures/worker_runtime_lock.py'), '-c', shlex.join(args)], repo)
 try:
     command('init','application','bun-contract-proof','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter','eslint','--http-framework','express','--runtime','bun','--test-framework','vitest','-D','Bun proof','-A','ForkLaunch','-L','MIT')
+    # Contract builds exist for Rust consumers; a TypeScript-only app keeps tsc -b.
+    command('init', 'service', 'consumer', '--language', 'rust', '-D', 'Rust consumer')
     command('init','service','notes','--language','typescript','-d','postgresql','-D','Notes')
     command('init','worker','jobs','--language','typescript','-t','database','-d','postgresql','-D','Jobs')
     for name in ['notes','jobs']:

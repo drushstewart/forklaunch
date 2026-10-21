@@ -56,6 +56,8 @@ try:
         "--database", "postgresql", "--validator", "zod", "--formatter", "prettier", "--linter", "eslint",
         "--http-framework", HTTP_FRAMEWORK, "--runtime", RUNTIME, "--test-framework", "vitest",
         "-D", "Shared image proof", "-A", "ForkLaunch", "-L", "MIT")
+    # Contract builds exist for Rust consumers; a TypeScript-only app keeps tsc -b.
+    cli("init", "service", "consumer", "--language", "rust", "-D", "Rust consumer")
     cli("init", "service", "api", "--language", "typescript", "-d", "postgresql", "-D", "Image API")
     cli("init", "worker", "jobs", "--language", "typescript", "-t", "database", "-d", "postgresql", "-D", "Image worker")
     cli("init", "library", "helpers", "--language", "typescript", "-D", "Shared library")
