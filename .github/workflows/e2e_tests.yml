@@ -262,11 +262,12 @@ jobs:
     env:
       CARGO_INCREMENTAL: '0'
       CARGO_BUILD_JOBS: '2'
-      CARGO_TARGET_DIR: ${{ runner.temp }}/native-lifecycle-target
       FORKLAUNCH_CLI: ${{ github.workspace }}/cli-bin/forklaunch
       FORKLAUNCH_SKIP_FORMAT: '1'
     steps:
       - uses: actions/checkout@v7
+      # The runner context is not available in job-level env.
+      - run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/native-lifecycle-target" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-python@v5
         with:

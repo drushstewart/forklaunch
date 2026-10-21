@@ -160,12 +160,14 @@ export class BaseUserService<
       this.openTelemetryCollector.info('Getting batch users', idsDto);
     }
 
-    const { ids, ...filters } = idsDto;
+    // FilterQuery admits non-object forms, so rest syntax needs the object view.
+    const { ids, ...filters } = idsDto as IdsDto & Record<string, unknown>;
     return Promise.all(
       (
         await (em ?? this.em).find(
           this.mappers.UserMapper.entity as typeof User,
-          { ...filters, id: { $in: ids } },
+          // Same query shape the caller passed, with ids as an $in filter.
+          { ...filters, id: { $in: ids } } as unknown as typeof idsDto,
           {
             populate: ['id', '*']
           }

@@ -1440,16 +1440,18 @@ jobs:
           --health-retries 10
     env:
       FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
-      TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
-      FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
-      FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
-      FORKLAUNCH_TEST_EXPRESS_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
-      FORKLAUNCH_TEST_SCALAR_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
-      FORKLAUNCH_TEST_ORM_DEPENDENCIES: ${{ runner.temp }}/fl-rust-ts
       FORKLAUNCH_TEST_POSTGRES_URL: postgres://postgres:parity-test-only@127.0.0.1:5432/parity
       FORKLAUNCH_TEST_KAFKA_BROKERS: 127.0.0.1:9092
     steps:
       - uses: actions/checkout@v7
+      # The runner context is not available in job-level env.
+      - run: |
+          echo "TSC_BIN=$RUNNER_TEMP/fl-rust-ts/node_modules/.bin/tsc" >> "$GITHUB_ENV"
+          echo "FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES=$RUNNER_TEMP/fl-rust-ts" >> "$GITHUB_ENV"
+          echo "FORKLAUNCH_TEST_BETTER_AUTH_DEPENDENCIES=$RUNNER_TEMP/fl-rust-ts" >> "$GITHUB_ENV"
+          echo "FORKLAUNCH_TEST_EXPRESS_DEPENDENCIES=$RUNNER_TEMP/fl-rust-ts" >> "$GITHUB_ENV"
+          echo "FORKLAUNCH_TEST_SCALAR_DEPENDENCIES=$RUNNER_TEMP/fl-rust-ts" >> "$GITHUB_ENV"
+          echo "FORKLAUNCH_TEST_ORM_DEPENDENCIES=$RUNNER_TEMP/fl-rust-ts" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy

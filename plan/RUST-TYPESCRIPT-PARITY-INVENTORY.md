@@ -13,7 +13,7 @@ require explicit interoperability fixtures; sharing a Redis/Kafka server is not
 proof that TypeScript and Rust producers/consumers can exchange jobs.
 
 The checked source inventory is [rust-typescript-public-api.json](rust-typescript-public-api.json).
-It records 626 resolved declaration entry points and 1,713 declaration/re-export
+It records 634 resolved declaration entry points and 1,766 declaration/re-export
 records across the 44 packages, with source locations, public service/member
 signatures, type aliases, explicit external re-export boundaries, private module
 sources and CLI bins. Counts include repeated declarations exposed by different

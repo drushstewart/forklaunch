@@ -187,9 +187,11 @@
       "entries": [],
       "files": [],
       "moduleSources": [
+        "blueprint/core/auth/bindRuntimeAuth.ts",
         "blueprint/core/auth/cache.ts",
         "blueprint/core/auth/index.ts",
         "blueprint/core/auth/rbac.ts",
+        "blueprint/core/auth/registerDelegatedSurface.ts",
         "blueprint/core/billing/cache.ts",
         "blueprint/core/billing/feature-flags.ts",
         "blueprint/core/billing/index.ts",
@@ -256,6 +258,7 @@
         "blueprint/ecommerce-stripe/domain/services/tax.service.ts",
         "blueprint/ecommerce-stripe/domain/services/webhookEvent.service.ts",
         "blueprint/ecommerce-stripe/domain/types/ecommerceMappers.types.ts",
+        "blueprint/ecommerce-stripe/domain/utils/storeEncryptionTenant.util.ts",
         "blueprint/ecommerce-stripe/index.ts",
         "blueprint/ecommerce-stripe/jest.config.ts",
         "blueprint/ecommerce-stripe/migrations/Migration20260814142848.ts",
@@ -291,6 +294,12 @@
         "blueprint/iam-base/__test__/role.test.ts",
         "blueprint/iam-base/__test__/test-utils.ts",
         "blueprint/iam-base/__test__/user.test.ts",
+        "blueprint/iam-base/api/contracts/compliance.contract.ts",
+        "blueprint/iam-base/api/contracts/discovery.contract.ts",
+        "blueprint/iam-base/api/contracts/organization.contract.ts",
+        "blueprint/iam-base/api/contracts/permission.contract.ts",
+        "blueprint/iam-base/api/contracts/role.contract.ts",
+        "blueprint/iam-base/api/contracts/user.contract.ts",
         "blueprint/iam-base/api/controllers/compliance.controller.ts",
         "blueprint/iam-base/api/controllers/discovery.controller.ts",
         "blueprint/iam-base/api/controllers/index.ts",
@@ -350,6 +359,10 @@
         "blueprint/iam-better-auth/__test__/encryptionContext.test.ts",
         "blueprint/iam-better-auth/__test__/test-utils.ts",
         "blueprint/iam-better-auth/__test__/user.test.ts",
+        "blueprint/iam-better-auth/api/contracts/auth.surface.ts",
+        "blueprint/iam-better-auth/api/contracts/compliance.contract.ts",
+        "blueprint/iam-better-auth/api/contracts/discovery.contract.ts",
+        "blueprint/iam-better-auth/api/contracts/user.contract.ts",
         "blueprint/iam-better-auth/api/controllers/compliance.controller.ts",
         "blueprint/iam-better-auth/api/controllers/discovery.controller.ts",
         "blueprint/iam-better-auth/api/controllers/index.ts",
@@ -5861,37 +5874,37 @@
                   "name": "updateUser",
                   "signature": "async updateUser(\n    userDto: UpdateUserDto,\n    em?: EntityManager,\n    ...args: unknown[]\n  ): Promise<MapperDomains['UserMapper']>",
                   "source": "blueprint/implementations/iam/base/services/user.service.ts",
-                  "line": 181
+                  "line": 183
                 },
                 {
                   "name": "updateBatchUsers",
                   "signature": "async updateBatchUsers(\n    userDtos: UpdateUserDto[],\n    em?: EntityManager,\n    ...args: unknown[]\n  ): Promise<MapperDomains['UserMapper'][]>",
                   "source": "blueprint/implementations/iam/base/services/user.service.ts",
-                  "line": 205
+                  "line": 207
                 },
                 {
                   "name": "deleteUser",
                   "signature": "async deleteUser(\n    idDto: IdDto & { organization?: { id: string } },\n    em?: EntityManager\n  ): Promise<void>",
                   "source": "blueprint/implementations/iam/base/services/user.service.ts",
-                  "line": 235
+                  "line": 237
                 },
                 {
                   "name": "deleteBatchUsers",
                   "signature": "async deleteBatchUsers(\n    idsDto: IdsDto & { organization?: { id: string } },\n    em?: EntityManager\n  ): Promise<void>",
                   "source": "blueprint/implementations/iam/base/services/user.service.ts",
-                  "line": 257
+                  "line": 259
                 },
                 {
                   "name": "surfaceRoles",
                   "signature": "async surfaceRoles(\n    idDto: IdDto & FilterQuery<InferEntity<MapperEntities['UserMapper']>>,\n    em?: EntityManager\n  ): Promise<MapperDomains['UserMapper']['roles']>",
                   "source": "blueprint/implementations/iam/base/services/user.service.ts",
-                  "line": 280
+                  "line": 282
                 },
                 {
                   "name": "surfacePermissions",
                   "signature": "async surfacePermissions(\n    idDto: IdDto & FilterQuery<InferEntity<MapperEntities['UserMapper']>>,\n    em?: EntityManager\n  ): Promise<MapperDomains['UserMapper']['roles'][0]['permissions']>",
                   "source": "blueprint/implementations/iam/base/services/user.service.ts",
-                  "line": 293
+                  "line": 295
                 }
               ]
             }
@@ -11217,6 +11230,16 @@
           "source": "framework/core/src/http/application/expressLikeApplication.ts"
         },
         {
+          "subpath": "./http/bindRuntimeAuth",
+          "target": "lib/http/bindRuntimeAuth.d.ts",
+          "source": "framework/core/src/http/bindRuntimeAuth.ts"
+        },
+        {
+          "subpath": "./http/bindRuntimeAuth.test",
+          "target": "lib/http/bindRuntimeAuth.test.d.ts",
+          "source": "framework/core/src/http/bindRuntimeAuth.test.ts"
+        },
+        {
           "subpath": "./http/bootstrap/listen",
           "target": "lib/http/bootstrap/listen.d.ts",
           "source": "framework/core/src/http/bootstrap/listen.ts"
@@ -11542,6 +11565,16 @@
           "source": "framework/core/src/http/rateLimit/rateLimiter.ts"
         },
         {
+          "subpath": "./http/registerDelegatedSurface",
+          "target": "lib/http/registerDelegatedSurface.d.ts",
+          "source": "framework/core/src/http/registerDelegatedSurface.ts"
+        },
+        {
+          "subpath": "./http/registerDelegatedSurface.test",
+          "target": "lib/http/registerDelegatedSurface.test.d.ts",
+          "source": "framework/core/src/http/registerDelegatedSurface.test.ts"
+        },
+        {
           "subpath": "./http/router/discriminateBody",
           "target": "lib/http/router/discriminateBody.d.ts",
           "source": "framework/core/src/http/router/discriminateBody.ts"
@@ -11600,6 +11633,11 @@
           "subpath": "./http/telemetry/recordMetric",
           "target": "lib/http/telemetry/recordMetric.d.ts",
           "source": "framework/core/src/http/telemetry/recordMetric.ts"
+        },
+        {
+          "subpath": "./http/telemetry/requestAudit",
+          "target": "lib/http/telemetry/requestAudit.d.ts",
+          "source": "framework/core/src/http/telemetry/requestAudit.ts"
         },
         {
           "subpath": "./http/types/apiDefinition.types",
@@ -11710,6 +11748,11 @@
           "subpath": "./persistence",
           "target": "lib/persistence/index.d.ts",
           "source": "framework/core/src/persistence/index.ts"
+        },
+        {
+          "subpath": "./persistence/complianceChanges",
+          "target": "lib/persistence/complianceChanges.d.ts",
+          "source": "framework/core/src/persistence/complianceChanges.ts"
         },
         {
           "subpath": "./persistence/complianceEventSubscriber",
@@ -12145,6 +12188,62 @@
           ]
         },
         {
+          "source": "framework/core/src/http/bindRuntimeAuth.test.ts",
+          "exports": []
+        },
+        {
+          "source": "framework/core/src/http/bindRuntimeAuth.ts",
+          "exports": [
+            {
+              "name": "PortableJwtPolicy",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/http/bindRuntimeAuth.ts",
+              "line": 2,
+              "type": "{\n  readonly scheme: 'jwt';\n  readonly headerName?: string;\n  readonly tokenPrefix?: string;\n  readonly sessionSchema?: Readonly<Record<string, unknown>>;\n} & (\n  | { readonly allowedRoles: readonly string[] }\n  | { readonly allowedPermissions: readonly string[] }\n)"
+            },
+            {
+              "name": "PortableHmacPolicy",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/http/bindRuntimeAuth.ts",
+              "line": 12,
+              "type": "{\n  readonly scheme: 'hmac';\n  readonly headerName?: string;\n  readonly tokenPrefix?: string;\n}"
+            },
+            {
+              "name": "PortableAuthPolicy",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/http/bindRuntimeAuth.ts",
+              "line": 18,
+              "type": "PortableJwtPolicy | PortableHmacPolicy"
+            },
+            {
+              "name": "JwtRuntimeBinding",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/http/bindRuntimeAuth.ts",
+              "line": 21,
+              "type": "(\n  { readonly jwksPublicKeyUrl: string } | { readonly signatureKey: string }\n) & {\n  readonly decodeResource?: (\n    token: string\n  ) => Record<string, unknown> | Promise<Record<string, unknown>>;\n}"
+            },
+            {
+              "name": "HmacRuntimeBinding",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/http/bindRuntimeAuth.ts",
+              "line": 28,
+              "type": "{\n  readonly secretKeys: Readonly<Record<string, string>>;\n}"
+            },
+            {
+              "name": "bindRuntimeAuth",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/bindRuntimeAuth.ts",
+              "line": 61
+            },
+            {
+              "name": "bindRuntimeAuth",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/bindRuntimeAuth.ts",
+              "line": 65
+            }
+          ]
+        },
+        {
           "source": "framework/core/src/http/bootstrap/listen.ts",
           "exports": []
         },
@@ -12256,31 +12355,31 @@
               "name": "EmailClientOptions",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 43,
+              "line": 57,
               "members": [
                 {
                   "name": "gatewayUrl",
                   "signature": "gatewayUrl?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 45
+                  "line": 59
                 },
                 {
                   "name": "instanceId",
                   "signature": "instanceId?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 47
+                  "line": 61
                 },
                 {
                   "name": "hmacKey",
                   "signature": "hmacKey?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 49
+                  "line": 63
                 },
                 {
                   "name": "fetch",
                   "signature": "fetch?: typeof fetch;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 50
+                  "line": 64
                 }
               ]
             },
@@ -12288,57 +12387,70 @@
               "name": "EmailSendRequest",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 53,
+              "line": 67,
               "members": [
                 {
                   "name": "to",
                   "signature": "to: string | string[];",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 55
+                  "line": 69
                 },
                 {
                   "name": "subject",
                   "signature": "subject: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 57
+                  "line": 71
                 },
                 {
                   "name": "text",
                   "signature": "text?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 59
+                  "line": 73
                 },
                 {
                   "name": "html",
                   "signature": "html?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 60
+                  "line": 74
                 },
                 {
                   "name": "replyTo",
                   "signature": "replyTo?: string | string[];",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 61
+                  "line": 75
                 },
                 {
                   "name": "tags",
                   "signature": "tags?: Record<string, string>;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 66
+                  "line": 80
+                },
+                {
+                  "name": "listUnsubscribe",
+                  "signature": "listUnsubscribe?: EmailListUnsubscribe;",
+                  "source": "framework/core/src/http/emailClient.ts",
+                  "line": 82
                 }
               ]
+            },
+            {
+              "name": "EmailListUnsubscribe",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/http/emailClient.ts",
+              "line": 100,
+              "type": "| { url: string; mailto?: string; oneClick?: boolean }\n  | { url?: undefined; mailto: string; oneClick?: false }"
             },
             {
               "name": "EmailSendResult",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 69,
+              "line": 104,
               "members": [
                 {
                   "name": "messageId",
                   "signature": "messageId: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 71
+                  "line": 106
                 }
               ]
             },
@@ -12346,49 +12458,49 @@
               "name": "EmailEventData",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 75,
+              "line": 110,
               "members": [
                 {
                   "name": "messageId",
                   "signature": "messageId: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 76
+                  "line": 111
                 },
                 {
                   "name": "recipients",
                   "signature": "recipients: string[];",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 77
+                  "line": 112
                 },
                 {
                   "name": "tags",
                   "signature": "tags?: Record<string, string>;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 78
+                  "line": 113
                 },
                 {
                   "name": "bounceType",
                   "signature": "bounceType?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 80
+                  "line": 115
                 },
                 {
                   "name": "bounceSubType",
                   "signature": "bounceSubType?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 81
+                  "line": 116
                 },
                 {
                   "name": "permanent",
                   "signature": "permanent?: boolean;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 83
+                  "line": 118
                 },
                 {
                   "name": "feedbackType",
                   "signature": "feedbackType?: string;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 85
+                  "line": 120
                 }
               ]
             },
@@ -12396,13 +12508,13 @@
               "name": "EmailRequestError",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 89,
+              "line": 124,
               "members": [
                 {
                   "name": "name",
                   "signature": "override readonly name = 'EmailRequestError' as const;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 90
+                  "line": 125
                 }
               ]
             },
@@ -12410,19 +12522,19 @@
               "name": "EmailClient",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 93,
+              "line": 128,
               "members": [
                 {
                   "name": "send",
                   "signature": "send(request: EmailSendRequest): Promise<EmailSendResult>;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 95
+                  "line": 130
                 },
                 {
                   "name": "suppressed",
                   "signature": "suppressed(address: string): Promise<boolean>;",
                   "source": "framework/core/src/http/emailClient.ts",
-                  "line": 97
+                  "line": 132
                 }
               ]
             },
@@ -12430,25 +12542,31 @@
               "name": "EMAIL_LIMITS",
               "kind": "VariableDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 101
+              "line": 136
             },
             {
               "name": "isEmailAddress",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 115
+              "line": 159
+            },
+            {
+              "name": "validateListUnsubscribe",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/emailClient.ts",
+              "line": 222
             },
             {
               "name": "validateEmailSendRequest",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 147
+              "line": 271
             },
             {
               "name": "createEmailClient",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/emailClient.ts",
-              "line": 192
+              "line": 318
             }
           ]
         },
@@ -12956,6 +13074,14 @@
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
               "line": 1,
+              "specifier": "./bindRuntimeAuth",
+              "target": "framework/core/src/http/bindRuntimeAuth.ts",
+              "exports": "*"
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/core/src/http/index.ts",
+              "line": 2,
               "specifier": "qs",
               "external": true,
               "unresolved": false,
@@ -12970,7 +13096,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 2,
+              "line": 3,
               "specifier": "./application/expressLikeApplication",
               "target": "framework/core/src/http/application/expressLikeApplication.ts",
               "exports": "*"
@@ -12978,7 +13104,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 3,
+              "line": 4,
               "specifier": "./cluster/cluster.types",
               "target": "framework/core/src/http/cluster/cluster.types.ts",
               "exports": "*"
@@ -12986,7 +13112,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 4,
+              "line": 5,
               "specifier": "./cluster/isPortBound",
               "target": "framework/core/src/http/cluster/isPortBound.ts",
               "exports": "*"
@@ -12994,7 +13120,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 5,
+              "line": 6,
               "specifier": "./createHmacToken",
               "target": "framework/core/src/http/createHmacToken.ts",
               "exports": "*"
@@ -13002,7 +13128,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 6,
+              "line": 7,
               "specifier": "./generateHmacAuthHeaders",
               "target": "framework/core/src/http/generateHmacAuthHeaders.ts",
               "exports": "*"
@@ -13010,7 +13136,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 7,
+              "line": 8,
               "specifier": "./instanceGateway",
               "target": "framework/core/src/http/instanceGateway.ts",
               "exports": "*"
@@ -13018,7 +13144,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 8,
+              "line": 9,
               "specifier": "./modelGatewayClient",
               "target": "framework/core/src/http/modelGatewayClient.ts",
               "exports": "*"
@@ -13026,7 +13152,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 9,
+              "line": 10,
               "specifier": "./previewModelGatewayClient",
               "target": "framework/core/src/http/previewModelGatewayClient.ts",
               "exports": "*"
@@ -13034,7 +13160,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 10,
+              "line": 11,
               "specifier": "./emailClient",
               "target": "framework/core/src/http/emailClient.ts",
               "exports": "*"
@@ -13042,7 +13168,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 11,
+              "line": 12,
               "specifier": "./smsClient",
               "target": "framework/core/src/http/smsClient.ts",
               "exports": "*"
@@ -13050,7 +13176,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 12,
+              "line": 13,
               "specifier": "./whatsappClient",
               "target": "framework/core/src/http/whatsappClient.ts",
               "exports": "*"
@@ -13058,7 +13184,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 13,
+              "line": 14,
               "specifier": "./voiceClient",
               "target": "framework/core/src/http/voiceClient.ts",
               "exports": "*"
@@ -13066,7 +13192,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 14,
+              "line": 15,
               "specifier": "./paymentsClient",
               "target": "framework/core/src/http/paymentsClient.ts",
               "exports": "*"
@@ -13074,7 +13200,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 15,
+              "line": 16,
               "specifier": "./discriminateAuthMethod",
               "target": "framework/core/src/http/discriminateAuthMethod.ts",
               "exports": "*"
@@ -13082,7 +13208,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 16,
+              "line": 17,
               "specifier": "./guards/isForklaunchRequest",
               "target": "framework/core/src/http/guards/isForklaunchRequest.ts",
               "exports": "*"
@@ -13090,7 +13216,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 17,
+              "line": 18,
               "specifier": "./guards/isForklaunchRouter",
               "target": "framework/core/src/http/guards/isForklaunchRouter.ts",
               "exports": "*"
@@ -13098,7 +13224,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 18,
+              "line": 19,
               "specifier": "./handlers/delete",
               "target": "framework/core/src/http/handlers/delete.ts",
               "exports": "*"
@@ -13106,7 +13232,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 19,
+              "line": 20,
               "specifier": "./handlers/get",
               "target": "framework/core/src/http/handlers/get.ts",
               "exports": "*"
@@ -13114,7 +13240,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 20,
+              "line": 21,
               "specifier": "./handlers/head",
               "target": "framework/core/src/http/handlers/head.ts",
               "exports": "*"
@@ -13122,7 +13248,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 21,
+              "line": 22,
               "specifier": "./handlers/middleware",
               "target": "framework/core/src/http/handlers/middleware.ts",
               "exports": "*"
@@ -13130,7 +13256,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 22,
+              "line": 23,
               "specifier": "./handlers/options",
               "target": "framework/core/src/http/handlers/options.ts",
               "exports": "*"
@@ -13138,7 +13264,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 23,
+              "line": 24,
               "specifier": "./handlers/patch",
               "target": "framework/core/src/http/handlers/patch.ts",
               "exports": "*"
@@ -13146,7 +13272,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 24,
+              "line": 25,
               "specifier": "./handlers/post",
               "target": "framework/core/src/http/handlers/post.ts",
               "exports": "*"
@@ -13154,7 +13280,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 25,
+              "line": 26,
               "specifier": "./handlers/put",
               "target": "framework/core/src/http/handlers/put.ts",
               "exports": "*"
@@ -13162,7 +13288,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 26,
+              "line": 27,
               "specifier": "./handlers/trace",
               "target": "framework/core/src/http/handlers/trace.ts",
               "exports": "*"
@@ -13170,7 +13296,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 27,
+              "line": 28,
               "specifier": "./handlers/typedAuthHandler",
               "target": "framework/core/src/http/handlers/typedAuthHandler.ts",
               "exports": "*"
@@ -13178,7 +13304,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 28,
+              "line": 29,
               "specifier": "./handlers/typedHandler",
               "target": "framework/core/src/http/handlers/typedHandler.ts",
               "exports": "*"
@@ -13186,7 +13312,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 29,
+              "line": 30,
               "specifier": "./httpStatusCodes",
               "target": "framework/core/src/http/httpStatusCodes.ts",
               "exports": "*"
@@ -13194,7 +13320,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 30,
+              "line": 31,
               "specifier": "./interfaces/expressLikeRouter.interface",
               "target": "framework/core/src/http/interfaces/expressLikeRouter.interface.ts",
               "exports": "*"
@@ -13202,7 +13328,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 31,
+              "line": 32,
               "specifier": "./mcpGenerator/mcpGenerator",
               "target": "framework/core/src/http/mcpGenerator/mcpGenerator.ts",
               "exports": "*"
@@ -13210,7 +13336,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 32,
+              "line": 33,
               "specifier": "./middleware/request/createContext.middleware",
               "target": "framework/core/src/http/middleware/request/createContext.middleware.ts",
               "exports": "*"
@@ -13218,7 +13344,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 33,
+              "line": 34,
               "specifier": "./middleware/response/enrichExpressLikeSend.middleware",
               "target": "framework/core/src/http/middleware/response/enrichExpressLikeSend.middleware.ts",
               "exports": "*"
@@ -13226,7 +13352,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 34,
+              "line": 35,
               "specifier": "./openApiV3Generator/openApiV3Generator",
               "target": "framework/core/src/http/openApiV3Generator/openApiV3Generator.ts",
               "exports": "*"
@@ -13234,7 +13360,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 35,
+              "line": 36,
               "specifier": "./router/discriminateBody",
               "target": "framework/core/src/http/router/discriminateBody.ts",
               "exports": "*"
@@ -13242,7 +13368,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 36,
+              "line": 37,
               "specifier": "./router/expressLikeRouter",
               "target": "framework/core/src/http/router/expressLikeRouter.ts",
               "exports": "*"
@@ -13250,7 +13376,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 37,
+              "line": 38,
               "specifier": "./telemetry/auditLogger",
               "target": "framework/core/src/http/telemetry/auditLogger.ts",
               "exports": "*"
@@ -13258,7 +13384,15 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 38,
+              "line": 39,
+              "specifier": "./telemetry/requestAudit",
+              "target": "framework/core/src/http/telemetry/requestAudit.ts",
+              "exports": "*"
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/core/src/http/index.ts",
+              "line": 40,
               "specifier": "./telemetry/constants",
               "target": "framework/core/src/http/telemetry/constants.ts",
               "exports": "*"
@@ -13266,7 +13400,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 39,
+              "line": 41,
               "specifier": "./telemetry/evaluateTelemetryOptions",
               "target": "framework/core/src/http/telemetry/evaluateTelemetryOptions.ts",
               "exports": "*"
@@ -13274,7 +13408,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 40,
+              "line": 42,
               "specifier": "./telemetry/metricsDefinition",
               "target": "framework/core/src/http/telemetry/metricsDefinition.ts",
               "exports": "*"
@@ -13282,7 +13416,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 41,
+              "line": 43,
               "specifier": "./telemetry/openTelemetryCollector",
               "target": "framework/core/src/http/telemetry/openTelemetryCollector.ts",
               "exports": "*"
@@ -13290,7 +13424,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 42,
+              "line": 44,
               "specifier": "./telemetry/pinoLogger",
               "target": "framework/core/src/http/telemetry/pinoLogger.ts",
               "exports": "*"
@@ -13298,7 +13432,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 43,
+              "line": 45,
               "specifier": "./telemetry/recordMetric",
               "target": "framework/core/src/http/telemetry/recordMetric.ts",
               "exports": "*"
@@ -13306,7 +13440,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 44,
+              "line": 46,
               "specifier": "./types/apiDefinition.types",
               "target": "framework/core/src/http/types/apiDefinition.types.ts",
               "exports": "*"
@@ -13314,7 +13448,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 45,
+              "line": 47,
               "specifier": "./types/contractDetails.types",
               "target": "framework/core/src/http/types/contractDetails.types.ts",
               "exports": "*"
@@ -13322,7 +13456,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 46,
+              "line": 48,
               "specifier": "./types/docsConfiguration.types",
               "target": "framework/core/src/http/types/docsConfiguration.types.ts",
               "exports": "*"
@@ -13330,7 +13464,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 47,
+              "line": 49,
               "specifier": "./types/expressLikeOptions",
               "target": "framework/core/src/http/types/expressLikeOptions.ts",
               "exports": "*"
@@ -13338,7 +13472,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 48,
+              "line": 50,
               "specifier": "./types/expressLikeRouter.types",
               "target": "framework/core/src/http/types/expressLikeRouter.types.ts",
               "exports": "*"
@@ -13346,7 +13480,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 49,
+              "line": 51,
               "specifier": "./types/openTelemetryCollector.types",
               "target": "framework/core/src/http/types/openTelemetryCollector.types.ts",
               "exports": "*"
@@ -13354,7 +13488,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 50,
+              "line": 52,
               "specifier": "./types/router.types",
               "target": "framework/core/src/http/types/router.types.ts",
               "exports": "*"
@@ -13362,7 +13496,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 51,
+              "line": 53,
               "specifier": "./rateLimit/index",
               "target": "framework/core/src/http/rateLimit/index.ts",
               "exports": "*"
@@ -13370,7 +13504,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 52,
+              "line": 54,
               "specifier": "./types/sdk.types",
               "target": "framework/core/src/http/types/sdk.types.ts",
               "exports": "*"
@@ -13378,7 +13512,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 53,
+              "line": 55,
               "specifier": "./types/sdk.types",
               "target": "framework/core/src/http/types/sdk.types.ts",
               "exports": [
@@ -13392,9 +13526,17 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/http/index.ts",
-              "line": 54,
+              "line": 56,
               "specifier": "./types/typedHandler.types",
               "target": "framework/core/src/http/types/typedHandler.types.ts",
+              "exports": "*"
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/core/src/http/index.ts",
+              "line": 58,
+              "specifier": "./registerDelegatedSurface",
+              "target": "framework/core/src/http/registerDelegatedSurface.ts",
               "exports": "*"
             }
           ]
@@ -13406,49 +13548,49 @@
               "name": "INSTANCE_GATEWAY_MOUNT",
               "kind": "VariableDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 28
+              "line": 32
             },
             {
               "name": "PLATFORM_EVENT_KEY_ID",
               "kind": "VariableDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 31
+              "line": 35
             },
             {
               "name": "PLATFORM_EVENTS_PATH",
               "kind": "VariableDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 34
+              "line": 38
             },
             {
               "name": "InstanceGatewayOptions",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 38,
+              "line": 42,
               "members": [
                 {
                   "name": "gatewayUrl",
                   "signature": "gatewayUrl?: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 40
+                  "line": 44
                 },
                 {
                   "name": "instanceId",
                   "signature": "instanceId?: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 42
+                  "line": 46
                 },
                 {
                   "name": "hmacKey",
                   "signature": "hmacKey?: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 44
+                  "line": 48
                 },
                 {
                   "name": "fetch",
                   "signature": "fetch?: typeof fetch;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 45
+                  "line": 49
                 }
               ]
             },
@@ -13456,19 +13598,19 @@
               "name": "InstanceGatewayRequestError",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 49,
+              "line": 53,
               "members": [
                 {
                   "name": "name",
                   "signature": "override readonly name: string = 'InstanceGatewayRequestError';",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 50
+                  "line": 54
                 },
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    readonly status: number,\n    message: string,\n    /** Seconds to wait before retrying, on a 429. */\n    readonly retryAfterSeconds?: number\n  )",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 51
+                  "line": 55
                 }
               ]
             },
@@ -13476,25 +13618,25 @@
               "name": "InstanceGatewayTransport",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 61,
+              "line": 65,
               "members": [
                 {
                   "name": "instanceId",
                   "signature": "readonly instanceId: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 62
+                  "line": 66
                 },
                 {
                   "name": "request",
                   "signature": "request(\n    method: 'GET' | 'POST' | 'PUT' | 'DELETE',\n    route: string,\n    body?: Record<string, unknown>,\n    options?: { signal?: AbortSignal; headers?: Record<string, string> }\n  ): Promise<Response>;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 64
+                  "line": 68
                 },
                 {
                   "name": "json",
                   "signature": "json<T>(\n    method: 'GET' | 'POST' | 'PUT' | 'DELETE',\n    route: string,\n    body?: Record<string, unknown>,\n    options?: { signal?: AbortSignal; headers?: Record<string, string> }\n  ): Promise<T>;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 71
+                  "line": 75
                 }
               ]
             },
@@ -13502,55 +13644,55 @@
               "name": "instanceGatewaySettings",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 80
+              "line": 84
             },
             {
               "name": "isManagedInstance",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 97
+              "line": 104
             },
             {
               "name": "createInstanceGatewayTransport",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 113
+              "line": 120
             },
             {
               "name": "PlatformEvent",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 177,
+              "line": 184,
               "members": [
                 {
                   "name": "id",
                   "signature": "id: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 179
+                  "line": 186
                 },
                 {
                   "name": "feature",
                   "signature": "feature: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 181
+                  "line": 188
                 },
                 {
                   "name": "type",
                   "signature": "type: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 183
+                  "line": 190
                 },
                 {
                   "name": "occurredAt",
                   "signature": "occurredAt: string;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 184
+                  "line": 191
                 },
                 {
                   "name": "data",
                   "signature": "data: Data;",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 185
+                  "line": 192
                 }
               ]
             },
@@ -13558,13 +13700,13 @@
               "name": "PlatformEventVerificationError",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 188,
+              "line": 195,
               "members": [
                 {
                   "name": "name",
                   "signature": "override readonly name = 'PlatformEventVerificationError';",
                   "source": "framework/core/src/http/instanceGateway.ts",
-                  "line": 189
+                  "line": 196
                 }
               ]
             },
@@ -13572,13 +13714,13 @@
               "name": "verifyPlatformEvent",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 203
+              "line": 210
             },
             {
               "name": "signPlatformEvent",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/instanceGateway.ts",
-              "line": 286
+              "line": 293
             }
           ]
         },
@@ -13801,7 +13943,7 @@
               "name": "enrichDetails",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/middleware/request/enrichDetails.middleware.ts",
-              "line": 45
+              "line": 49
             }
           ]
         },
@@ -13914,31 +14056,31 @@
               "name": "ModelGatewayClientOptions",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 33,
+              "line": 34,
               "members": [
                 {
                   "name": "gatewayUrl",
                   "signature": "gatewayUrl?: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 35
+                  "line": 36
                 },
                 {
                   "name": "instanceId",
                   "signature": "instanceId?: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 37
+                  "line": 38
                 },
                 {
                   "name": "hmacKey",
                   "signature": "hmacKey?: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 39
+                  "line": 40
                 },
                 {
                   "name": "fetch",
                   "signature": "fetch?: typeof fetch;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 40
+                  "line": 41
                 }
               ]
             },
@@ -13946,25 +14088,25 @@
               "name": "GatewayChatMessage",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 44,
+              "line": 45,
               "members": [
                 {
                   "name": "role",
                   "signature": "role: 'system' | 'developer' | 'user' | 'assistant' | 'tool';",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 45
+                  "line": 46
                 },
                 {
                   "name": "content",
                   "signature": "content: unknown;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 46
+                  "line": 47
                 },
                 {
                   "name": "(signature)",
                   "signature": "[key: string]: unknown;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 47
+                  "line": 48
                 }
               ]
             },
@@ -13972,97 +14114,97 @@
               "name": "GatewayChatRequest",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 51,
+              "line": 52,
               "members": [
                 {
                   "name": "model",
                   "signature": "model: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 52
+                  "line": 53
                 },
                 {
                   "name": "messages",
                   "signature": "messages: GatewayChatMessage[];",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 53
+                  "line": 54
                 },
                 {
                   "name": "temperature",
                   "signature": "temperature?: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 54
+                  "line": 55
                 },
                 {
                   "name": "top_p",
                   "signature": "top_p?: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 55
+                  "line": 56
                 },
                 {
                   "name": "max_tokens",
                   "signature": "max_tokens?: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 56
+                  "line": 57
                 },
                 {
                   "name": "max_completion_tokens",
                   "signature": "max_completion_tokens?: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 57
+                  "line": 58
                 },
                 {
                   "name": "response_format",
                   "signature": "response_format?: unknown;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 58
+                  "line": 59
                 },
                 {
                   "name": "tools",
                   "signature": "tools?: unknown[];",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 59
+                  "line": 60
                 },
                 {
                   "name": "tool_choice",
                   "signature": "tool_choice?: unknown;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 60
+                  "line": 61
                 },
                 {
                   "name": "parallel_tool_calls",
                   "signature": "parallel_tool_calls?: boolean;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 61
+                  "line": 62
                 },
                 {
                   "name": "stop",
                   "signature": "stop?: unknown;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 62
+                  "line": 63
                 },
                 {
                   "name": "seed",
                   "signature": "seed?: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 63
+                  "line": 64
                 },
                 {
                   "name": "presence_penalty",
                   "signature": "presence_penalty?: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 64
+                  "line": 65
                 },
                 {
                   "name": "frequency_penalty",
                   "signature": "frequency_penalty?: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 65
+                  "line": 66
                 },
                 {
                   "name": "reasoning_effort",
                   "signature": "reasoning_effort?: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 66
+                  "line": 67
                 }
               ]
             },
@@ -14070,49 +14212,49 @@
               "name": "GatewayChatCompletion",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 69,
+              "line": 70,
               "members": [
                 {
                   "name": "id",
                   "signature": "id: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 70
+                  "line": 71
                 },
                 {
                   "name": "object",
                   "signature": "object: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 71
+                  "line": 72
                 },
                 {
                   "name": "created",
                   "signature": "created: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 72
+                  "line": 73
                 },
                 {
                   "name": "model",
                   "signature": "model: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 73
+                  "line": 74
                 },
                 {
                   "name": "choices",
                   "signature": "choices: {\n    index: number;\n    message: { role: string; content: string | null; [key: string]: unknown };\n    finish_reason: string | null;\n    [key: string]: unknown;\n  }[];",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 74
+                  "line": 75
                 },
                 {
                   "name": "usage",
                   "signature": "usage?: {\n    prompt_tokens: number;\n    completion_tokens: number;\n    total_tokens: number;\n  };",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 80
+                  "line": 81
                 },
                 {
                   "name": "(signature)",
                   "signature": "[key: string]: unknown;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 85
+                  "line": 86
                 }
               ]
             },
@@ -14120,43 +14262,43 @@
               "name": "GatewayChatChunk",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 88,
+              "line": 89,
               "members": [
                 {
                   "name": "id",
                   "signature": "id: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 89
+                  "line": 90
                 },
                 {
                   "name": "object",
                   "signature": "object: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 90
+                  "line": 91
                 },
                 {
                   "name": "model",
                   "signature": "model: string;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 91
+                  "line": 92
                 },
                 {
                   "name": "choices",
                   "signature": "choices: {\n    index: number;\n    delta: { role?: string; content?: string | null; [key: string]: unknown };\n    finish_reason?: string | null;\n  }[];",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 92
+                  "line": 93
                 },
                 {
                   "name": "usage",
                   "signature": "usage?: GatewayChatCompletion['usage'];",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 97
+                  "line": 98
                 },
                 {
                   "name": "(signature)",
                   "signature": "[key: string]: unknown;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 98
+                  "line": 99
                 }
               ]
             },
@@ -14164,37 +14306,37 @@
               "name": "GatewayModels",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 101,
+              "line": 102,
               "members": [
                 {
                   "name": "models",
                   "signature": "models: { id: string; baa: boolean }[];",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 102
+                  "line": 103
                 },
                 {
                   "name": "monthlyTokenBudget",
                   "signature": "monthlyTokenBudget: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 103
+                  "line": 104
                 },
                 {
                   "name": "tokensUsedThisMonth",
                   "signature": "tokensUsedThisMonth: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 104
+                  "line": 105
                 },
                 {
                   "name": "requestsPerMinute",
                   "signature": "requestsPerMinute: number;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 105
+                  "line": 106
                 },
                 {
                   "name": "withheldForHipaa",
                   "signature": "withheldForHipaa?: string[];",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 106
+                  "line": 107
                 }
               ]
             },
@@ -14202,13 +14344,13 @@
               "name": "ModelGatewayRequestError",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 110,
+              "line": 111,
               "members": [
                 {
                   "name": "name",
                   "signature": "override readonly name = 'ModelGatewayRequestError' as const;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 111
+                  "line": 112
                 }
               ]
             },
@@ -14216,19 +14358,19 @@
               "name": "ModelGatewayClient",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 114,
+              "line": 115,
               "members": [
                 {
                   "name": "models",
                   "signature": "models(): Promise<GatewayModels>;",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 116
+                  "line": 117
                 },
                 {
                   "name": "chat",
                   "signature": "chat: {\n    completions: {\n      create(request: GatewayChatRequest): Promise<GatewayChatCompletion>;\n      stream(\n        request: GatewayChatRequest,\n        options?: { signal?: AbortSignal }\n      ): AsyncGenerator<GatewayChatChunk>;\n    };\n  };",
                   "source": "framework/core/src/http/modelGatewayClient.ts",
-                  "line": 117
+                  "line": 118
                 }
               ]
             },
@@ -14236,7 +14378,7 @@
               "name": "createModelGatewayClient",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/modelGatewayClient.ts",
-              "line": 128
+              "line": 129
             }
           ]
         },
@@ -14342,19 +14484,19 @@
                   "name": "apiKey",
                   "signature": "apiKey?: string;",
                   "source": "framework/core/src/http/paymentsClient.ts",
-                  "line": 131
+                  "line": 133
                 },
                 {
                   "name": "Stripe",
                   "signature": "Stripe?: StripeConstructor;",
                   "source": "framework/core/src/http/paymentsClient.ts",
-                  "line": 139
+                  "line": 141
                 },
                 {
                   "name": "config",
                   "signature": "config?: Stripe.StripeConfig;",
                   "source": "framework/core/src/http/paymentsClient.ts",
-                  "line": 141
+                  "line": 143
                 }
               ]
             },
@@ -14362,13 +14504,13 @@
               "name": "stripeGatewayFetch",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/paymentsClient.ts",
-              "line": 177
+              "line": 179
             },
             {
               "name": "createStripeClient",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/paymentsClient.ts",
-              "line": 266
+              "line": 277
             }
           ]
         },
@@ -14520,6 +14662,28 @@
                   "line": 121
                 }
               ]
+            }
+          ]
+        },
+        {
+          "source": "framework/core/src/http/registerDelegatedSurface.test.ts",
+          "exports": []
+        },
+        {
+          "source": "framework/core/src/http/registerDelegatedSurface.ts",
+          "exports": [
+            {
+              "name": "DelegatedSurface",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/http/registerDelegatedSurface.ts",
+              "line": 2,
+              "type": "{\n  readonly id: string;\n  readonly provider: string;\n  readonly coverage: 'provider-owned';\n  readonly client: { readonly package: string; readonly export: string };\n  readonly runtime: {\n    readonly basePath: 'runtime-resolved';\n    readonly openApi: boolean;\n  };\n  readonly callbacks: readonly string[];\n}"
+            },
+            {
+              "name": "registerDelegatedSurface",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/registerDelegatedSurface.ts",
+              "line": 19
             }
           ]
         },
@@ -15004,25 +15168,25 @@
               "name": "SmsClient",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/http/smsClient.ts",
-              "line": 196,
+              "line": 197,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(options: SmsClientOptions = {})",
                   "source": "framework/core/src/http/smsClient.ts",
-                  "line": 199
+                  "line": 200
                 },
                 {
                   "name": "managed",
                   "signature": "get managed(): boolean",
                   "source": "framework/core/src/http/smsClient.ts",
-                  "line": 214
+                  "line": 215
                 },
                 {
                   "name": "send",
                   "signature": "async send(request: SmsSendRequest): Promise<SmsSendResult>",
                   "source": "framework/core/src/http/smsClient.ts",
-                  "line": 218
+                  "line": 219
                 }
               ]
             },
@@ -15030,7 +15194,7 @@
               "name": "createSmsClient",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/smsClient.ts",
-              "line": 240
+              "line": 241
             }
           ]
         },
@@ -15042,37 +15206,37 @@
               "kind": "TypeAliasDeclaration",
               "source": "framework/core/src/http/telemetry/auditLogger.ts",
               "line": 5,
-              "type": "{\n  timestamp: string;\n  userId: string | null;\n  tenantId: string | null;\n  route: string;\n  method: string;\n  bodyHash: string;\n  status: number;\n  duration: number;\n  redactedFields: string[];\n  eventType:\n    | 'http'\n    | 'ws'\n    | 'auth_failure'\n    | 'rate_limit'\n    | 'rbac_deny'\n    | 'super_admin_bypass';\n}"
+              "type": "{\n  timestamp: string;\n  userId: string | null;\n  tenantId: string | null;\n  route: string;\n  method: string;\n  bodyHash: string;\n  status: number;\n  duration: number;\n  redactedFields: string[];\n  eventType:\n    | 'http'\n    | 'ws'\n    | 'auth_failure'\n    | 'rate_limit'\n    | 'rbac_deny'\n    | 'super_admin_bypass'\n    /** A compliant field's plaintext was read (.deanon). */\n    | 'data_access'\n    /** A record holding sensitive fields was created, updated or deleted. */\n    | 'data_change';\n}"
             },
             {
               "name": "AuditLogger",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/http/telemetry/auditLogger.ts",
-              "line": 24,
+              "line": 28,
               "members": [
                 {
                   "name": "_otel",
                   "signature": "_otel: OpenTelemetryCollector<MetricsDefinition>;",
                   "source": "framework/core/src/http/telemetry/auditLogger.ts",
-                  "line": 25
+                  "line": 29
                 },
                 {
                   "name": "constructor",
                   "signature": "constructor(otel: OpenTelemetryCollector<MetricsDefinition>)",
                   "source": "framework/core/src/http/telemetry/auditLogger.ts",
-                  "line": 27
+                  "line": 31
                 },
                 {
                   "name": "append",
                   "signature": "append(entry: AuditEntry): void",
                   "source": "framework/core/src/http/telemetry/auditLogger.ts",
-                  "line": 31
+                  "line": 35
                 },
                 {
                   "name": "hashBody",
                   "signature": "static hashBody(body: string | Buffer | undefined | null): string",
                   "source": "framework/core/src/http/telemetry/auditLogger.ts",
-                  "line": 55
+                  "line": 59
                 }
               ]
             }
@@ -15380,6 +15544,35 @@
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/telemetry/recordMetric.ts",
               "line": 23
+            }
+          ]
+        },
+        {
+          "source": "framework/core/src/http/telemetry/requestAudit.ts",
+          "exports": [
+            {
+              "name": "auditEnabled",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/telemetry/requestAudit.ts",
+              "line": 15
+            },
+            {
+              "name": "auditEventType",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/telemetry/requestAudit.ts",
+              "line": 30
+            },
+            {
+              "name": "recordRequestAudit",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/telemetry/requestAudit.ts",
+              "line": 51
+            },
+            {
+              "name": "auditComplianceAccess",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/http/telemetry/requestAudit.ts",
+              "line": 92
             }
           ]
         },
@@ -17616,6 +17809,74 @@
           ]
         },
         {
+          "source": "framework/core/src/persistence/complianceChanges.ts",
+          "exports": [
+            {
+              "name": "ComplianceChangeEvent",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/core/src/persistence/complianceChanges.ts",
+              "line": 9,
+              "members": [
+                {
+                  "name": "entity",
+                  "signature": "entity: string;",
+                  "source": "framework/core/src/persistence/complianceChanges.ts",
+                  "line": 10
+                },
+                {
+                  "name": "id",
+                  "signature": "id: string;",
+                  "source": "framework/core/src/persistence/complianceChanges.ts",
+                  "line": 12
+                },
+                {
+                  "name": "action",
+                  "signature": "action: 'create' | 'update' | 'delete';",
+                  "source": "framework/core/src/persistence/complianceChanges.ts",
+                  "line": 13
+                },
+                {
+                  "name": "fields",
+                  "signature": "fields: string[];",
+                  "source": "framework/core/src/persistence/complianceChanges.ts",
+                  "line": 15
+                },
+                {
+                  "name": "sensitiveFields",
+                  "signature": "sensitiveFields: string[];",
+                  "source": "framework/core/src/persistence/complianceChanges.ts",
+                  "line": 17
+                },
+                {
+                  "name": "tenantId",
+                  "signature": "tenantId: string | null;",
+                  "source": "framework/core/src/persistence/complianceChanges.ts",
+                  "line": 18
+                }
+              ]
+            },
+            {
+              "name": "ComplianceChangeListener",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/core/src/persistence/complianceChanges.ts",
+              "line": 21,
+              "type": "(event: ComplianceChangeEvent) => void"
+            },
+            {
+              "name": "onComplianceChange",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/persistence/complianceChanges.ts",
+              "line": 32
+            },
+            {
+              "name": "installComplianceChangeHooks",
+              "kind": "FunctionDeclaration",
+              "source": "framework/core/src/persistence/complianceChanges.ts",
+              "line": 55
+            }
+          ]
+        },
+        {
           "source": "framework/core/src/persistence/complianceEventSubscriber.ts",
           "exports": [
             {
@@ -17633,7 +17894,7 @@
               "name": "fp",
               "kind": "VariableDeclaration",
               "source": "framework/core/src/persistence/compliancePropertyBuilder.ts",
-              "line": 292
+              "line": 297
             }
           ]
         },
@@ -17993,22 +18254,42 @@
               ]
             },
             {
+              "name": "TenantMismatchError",
+              "kind": "ClassDeclaration",
+              "source": "framework/core/src/persistence/compliantField.ts",
+              "line": 125,
+              "members": [
+                {
+                  "name": "name",
+                  "signature": "readonly name = 'TenantMismatchError' as const;",
+                  "source": "framework/core/src/persistence/compliantField.ts",
+                  "line": 126
+                },
+                {
+                  "name": "constructor",
+                  "signature": "constructor(\n    readonly path: string,\n    readonly operation: string,\n    readonly ownerTenantId: string,\n    readonly boundTenantId: string\n  )",
+                  "source": "framework/core/src/persistence/compliantField.ts",
+                  "line": 127
+                }
+              ]
+            },
+            {
               "name": "Anon",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 128,
+              "line": 154,
               "members": [
                 {
                   "name": "value",
                   "signature": "readonly value!: string;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 129
+                  "line": 155
                 },
                 {
                   "name": "constructor",
                   "signature": "constructor(value: string, key: symbol)",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 132
+                  "line": 158
                 }
               ]
             },
@@ -18016,91 +18297,91 @@
               "name": "isAnon",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 143
+              "line": 169
             },
             {
               "name": "computeAnon",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 176
+              "line": 202
             },
             {
               "name": "defaultAnonStrategy",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 203
+              "line": 229
             },
             {
               "name": "CompliantField",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 261,
+              "line": 297,
               "members": [
                 {
                   "name": "__runtime",
                   "signature": "declare readonly __runtime?: CompliantField<V, L, Q> | V;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 269
+                  "line": 305
                 },
                 {
                   "name": "__raw",
                   "signature": "declare readonly __raw?: string;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 271
+                  "line": 307
                 },
                 {
                   "name": "__serialized",
                   "signature": "declare readonly __serialized?: Record<string, never>;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 273
+                  "line": 309
                 },
                 {
                   "name": "[PrimaryKeyProp]",
                   "signature": "declare readonly [PrimaryKeyProp]?: Q extends true ? V : never;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 275
+                  "line": 311
                 },
                 {
                   "name": "__level",
                   "signature": "declare readonly __level?: L;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 277
+                  "line": 313
                 },
                 {
                   "name": "fromPlain",
-                  "signature": "static fromPlain<V>(value: V, spec: CompliantFieldSpec): CompliantField<V>",
+                  "signature": "static fromPlain<V>(\n    value: V,\n    spec: CompliantFieldSpec,\n    tenant: string | undefined\n  ): CompliantField<V>",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 289
+                  "line": 326
                 },
                 {
                   "name": "fromStored",
-                  "signature": "static fromStored<V>(\n    stored: string,\n    spec: CompliantFieldSpec,\n    index?: string | null\n  ): CompliantField<V>",
+                  "signature": "static fromStored<V>(\n    stored: string,\n    spec: CompliantFieldSpec,\n    index: string | null | undefined,\n    tenant: string | undefined\n  ): CompliantField<V>",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 309
+                  "line": 355
                 },
                 {
                   "name": "fromIndexOnly",
                   "signature": "static fromIndexOnly<V>(\n    index: string | null,\n    spec: CompliantFieldSpec\n  ): CompliantField<V>",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 338
+                  "line": 387
                 },
                 {
                   "name": "level",
                   "signature": "get level(): L",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 346
+                  "line": 395
                 },
                 {
                   "name": "anon",
                   "signature": "get anon(): Anon",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 351
+                  "line": 400
                 },
                 {
                   "name": "deanon",
                   "signature": "get deanon(): V",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 365
+                  "line": 414
                 }
               ]
             },
@@ -18108,43 +18389,43 @@
               "name": "isCompliantField",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 404
+              "line": 476
             },
             {
               "name": "sealedValueOf",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 427
+              "line": 499
             },
             {
               "name": "normalizeSerializedForIndex",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 454
+              "line": 532
             },
             {
               "name": "blindIndexOfValue",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 468
+              "line": 546
             },
             {
               "name": "blindIndexOf",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 479
+              "line": 565
             },
             {
               "name": "PendingIndex",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 501,
+              "line": 587,
               "members": [
                 {
                   "name": "[PENDING]",
                   "signature": "readonly [PENDING]: string | null;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 502
+                  "line": 588
                 }
               ]
             },
@@ -18152,31 +18433,37 @@
               "name": "isPendingIndex",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 505
+              "line": 591
             },
             {
               "name": "pendingIndexValue",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 509
+              "line": 595
+            },
+            {
+              "name": "COMPLIANT_RUNTIME_TYPE",
+              "kind": "VariableDeclaration",
+              "source": "framework/core/src/persistence/compliantField.ts",
+              "line": 604
             },
             {
               "name": "CompliantType",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 539,
+              "line": 632,
               "members": [
                 {
                   "name": "convertToDatabaseValue",
                   "signature": "override convertToDatabaseValue(\n    value: unknown,\n    _platform: Platform,\n    context?: TransformContext\n  ): string | null",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 540
+                  "line": 633
                 },
                 {
                   "name": "convertToJSValue",
                   "signature": "override convertToJSValue(value: string | null): unknown",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 556
+                  "line": 653
                 }
               ]
             },
@@ -18184,19 +18471,19 @@
               "name": "CompliantIndexType",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 570,
+              "line": 674,
               "members": [
                 {
                   "name": "convertToDatabaseValue",
                   "signature": "override convertToDatabaseValue(\n    value: unknown,\n    _platform: Platform,\n    context?: TransformContext\n  ): string | null",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 571
+                  "line": 675
                 },
                 {
                   "name": "convertToJSValue",
                   "signature": "override convertToJSValue(value: string | null): unknown",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 595
+                  "line": 699
                 }
               ]
             },
@@ -18204,31 +18491,31 @@
               "name": "isCompliantType",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 602
+              "line": 706
             },
             {
               "name": "CompliantPropertyBinding",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 613,
+              "line": 717,
               "members": [
                 {
                   "name": "property",
                   "signature": "property: string;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 614
+                  "line": 718
                 },
                 {
                   "name": "spec",
                   "signature": "spec: CompliantFieldSpec;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 615
+                  "line": 719
                 },
                 {
                   "name": "sibling",
                   "signature": "sibling?: string;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 617
+                  "line": 721
                 }
               ]
             },
@@ -18236,27 +18523,27 @@
               "name": "installCompliantAccessors",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 708
+              "line": 860
             },
             {
               "name": "Deanon",
               "kind": "TypeAliasDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 786,
+              "line": 940,
               "type": "X extends CompliantField<infer V, EncryptedComplianceLevel, boolean> ? V : X"
             },
             {
               "name": "Deanonymized",
               "kind": "TypeAliasDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 790,
+              "line": 944,
               "type": "{ [K in keyof T]: Deanon<T[K]> }"
             },
             {
               "name": "deanon",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 804
+              "line": 958
             }
           ]
         },
@@ -18267,7 +18554,7 @@
               "name": "defineComplianceEntity",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/defineComplianceEntity.ts",
-              "line": 108
+              "line": 109
             }
           ]
         },
@@ -19090,6 +19377,11 @@
                   "typeOnly": false
                 },
                 {
+                  "name": "TenantMismatchError",
+                  "original": "TenantMismatchError",
+                  "typeOnly": false
+                },
+                {
                   "name": "CompliantType",
                   "original": "CompliantType",
                   "typeOnly": false
@@ -19154,7 +19446,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 65,
+              "line": 66,
               "specifier": "./compliancePropertyBuilder",
               "target": "framework/core/src/persistence/compliancePropertyBuilder.ts",
               "exports": [
@@ -19168,7 +19460,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 68,
+              "line": 69,
               "specifier": "./defineComplianceEntity",
               "target": "framework/core/src/persistence/defineComplianceEntity.ts",
               "exports": [
@@ -19182,7 +19474,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 71,
+              "line": 72,
               "specifier": "./complianceEventSubscriber",
               "target": "framework/core/src/persistence/complianceEventSubscriber.ts",
               "exports": [
@@ -19196,7 +19488,31 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 74,
+              "line": 73,
+              "specifier": "./complianceChanges",
+              "target": "framework/core/src/persistence/complianceChanges.ts",
+              "exports": [
+                {
+                  "name": "onComplianceChange",
+                  "original": "onComplianceChange",
+                  "typeOnly": false
+                },
+                {
+                  "name": "ComplianceChangeEvent",
+                  "original": "ComplianceChangeEvent",
+                  "typeOnly": true
+                },
+                {
+                  "name": "ComplianceChangeListener",
+                  "original": "ComplianceChangeListener",
+                  "typeOnly": true
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/core/src/persistence/index.ts",
+              "line": 80,
               "specifier": "./encryptedType",
               "target": "framework/core/src/persistence/encryptedType.ts",
               "exports": [
@@ -19250,7 +19566,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 87,
+              "line": 93,
               "specifier": "./fieldEncryptor",
               "target": "framework/core/src/persistence/fieldEncryptor.ts",
               "exports": [
@@ -19354,7 +19670,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 110,
+              "line": 116,
               "specifier": "./keyRotation",
               "target": "framework/core/src/persistence/keyRotation.ts",
               "exports": [
@@ -19428,7 +19744,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 127,
+              "line": 133,
               "specifier": "./tenantFilter",
               "target": "framework/core/src/persistence/tenantFilter.ts",
               "exports": [
@@ -19457,7 +19773,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 135,
+              "line": 141,
               "specifier": "./rls",
               "target": "framework/core/src/persistence/rls.ts",
               "exports": [
@@ -19481,7 +19797,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 137,
+              "line": 143,
               "specifier": "./mikroOrm.types",
               "target": "framework/core/src/persistence/mikroOrm.types.ts",
               "exports": [
@@ -19505,7 +19821,7 @@
             {
               "kind": "reexport",
               "source": "framework/core/src/persistence/index.ts",
-              "line": 145,
+              "line": 151,
               "specifier": "./tenantEm",
               "target": "framework/core/src/persistence/tenantEm.ts",
               "exports": [
@@ -24313,6 +24629,11 @@
           "source": "framework/universal-sdk/src/core/openApi.ts"
         },
         {
+          "subpath": "./src/core/portableOperation",
+          "target": "lib/src/core/portableOperation.d.ts",
+          "source": "framework/universal-sdk/src/core/portableOperation.ts"
+        },
+        {
           "subpath": "./src/core/regex",
           "target": "lib/src/core/regex.d.ts",
           "source": "framework/universal-sdk/src/core/regex.ts"
@@ -24353,6 +24674,11 @@
           "source": "framework/universal-sdk/src/guards/isOpenApiObject.ts"
         },
         {
+          "subpath": "./src/portableRuntime",
+          "target": "lib/src/portableRuntime.d.ts",
+          "source": "framework/universal-sdk/src/portableRuntime.ts"
+        },
+        {
           "subpath": "./src/types/contentTypes.types",
           "target": "lib/src/types/contentTypes.types.d.ts",
           "source": "framework/universal-sdk/src/types/contentTypes.types.ts"
@@ -24373,15 +24699,22 @@
           "source": "framework/universal-sdk/index.ts",
           "exports": [
             {
+              "name": "UniversalSdkOptions",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/index.ts",
+              "line": 13,
+              "type": "{\n  host: string;\n  registryOptions: RegistryOptions;\n  contentTypeParserMap?: Record<string, ResponseContentParserType>;\n  /** Host RegExp execution is synchronous and has no interruptible work budget. */\n  zodRegexExecution?: ZodRegexExecution;\n} & UniversalSdkTransportOptions"
+            },
+            {
               "name": "universalSdk",
               "kind": "VariableDeclaration",
               "source": "framework/universal-sdk/index.ts",
-              "line": 13
+              "line": 21
             },
             {
               "kind": "reexport",
               "source": "framework/universal-sdk/index.ts",
-              "line": 91,
+              "line": 106,
               "exports": [
                 {
                   "name": "RegistryOptions",
@@ -24393,7 +24726,7 @@
             {
               "kind": "reexport",
               "source": "framework/universal-sdk/index.ts",
-              "line": 93,
+              "line": 108,
               "specifier": "./src/core/responseDialect",
               "target": "framework/universal-sdk/src/core/responseDialect.ts",
               "exports": [
@@ -24412,13 +24745,99 @@
             {
               "kind": "reexport",
               "source": "framework/universal-sdk/index.ts",
-              "line": 95,
+              "line": 110,
               "specifier": "./src/core/zodRegex",
               "target": "framework/universal-sdk/src/core/zodRegex.ts",
               "exports": [
                 {
                   "name": "ZodRegexExecution",
                   "original": "ZodRegexExecution",
+                  "typeOnly": true
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/universal-sdk/index.ts",
+              "line": 112,
+              "specifier": "./src/portableRuntime",
+              "target": "framework/universal-sdk/src/portableRuntime.ts",
+              "exports": [
+                {
+                  "name": "ForkLaunchSdkRequest",
+                  "original": "ForkLaunchSdkRequest",
+                  "typeOnly": true
+                },
+                {
+                  "name": "ForkLaunchSdkResponse",
+                  "original": "ForkLaunchSdkResponse",
+                  "typeOnly": true
+                },
+                {
+                  "name": "ForkLaunchErrorResponses",
+                  "original": "ForkLaunchErrorResponses",
+                  "typeOnly": true
+                },
+                {
+                  "name": "ForkLaunchHeaders",
+                  "original": "ForkLaunchHeaders",
+                  "typeOnly": true
+                },
+                {
+                  "name": "ForkLaunchSdkRequestMeta",
+                  "original": "ForkLaunchSdkRequestMeta",
+                  "typeOnly": true
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/universal-sdk/index.ts",
+              "line": 114,
+              "specifier": "./src/portableRuntime",
+              "target": "framework/universal-sdk/src/portableRuntime.ts",
+              "exports": [
+                {
+                  "name": "ForkLaunchSdkHttpError",
+                  "original": "ForkLaunchSdkHttpError",
+                  "typeOnly": false
+                },
+                {
+                  "name": "forkLaunchQueryOptions",
+                  "original": "forkLaunchQueryOptions",
+                  "typeOnly": false
+                },
+                {
+                  "name": "forkLaunchMutationOptions",
+                  "original": "forkLaunchMutationOptions",
+                  "typeOnly": false
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/universal-sdk/index.ts",
+              "line": 115,
+              "specifier": "./src/portableRuntime",
+              "target": "framework/universal-sdk/src/portableRuntime.ts",
+              "exports": [
+                {
+                  "name": "ForkLaunchQuerySuccess",
+                  "original": "ForkLaunchQuerySuccess",
+                  "typeOnly": true
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/universal-sdk/index.ts",
+              "line": 116,
+              "specifier": "./src/types/sdk.types",
+              "target": "framework/universal-sdk/src/types/sdk.types.ts",
+              "exports": [
+                {
+                  "name": "UniversalSdkTransportOptions",
+                  "original": "UniversalSdkTransportOptions",
                   "typeOnly": true
                 }
               ]
@@ -24522,13 +24941,43 @@
               "name": "getSdkPathMap",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/openApi.ts",
-              "line": 5
+              "line": 6
+            },
+            {
+              "name": "getRegistryOperation",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/core/openApi.ts",
+              "line": 62
             },
             {
               "name": "refreshOpenApi",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/openApi.ts",
-              "line": 41
+              "line": 70
+            }
+          ]
+        },
+        {
+          "source": "framework/universal-sdk/src/core/portableOperation.ts",
+          "exports": [
+            {
+              "name": "PortableOperation",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/core/portableOperation.ts",
+              "line": 3,
+              "type": "Omit<ForkLaunchSdkRequestMeta, 'input'> & {\n  format: 'forklaunch.sdk-operation.v1';\n  clientPath: string[];\n}"
+            },
+            {
+              "name": "portableOperation",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/core/portableOperation.ts",
+              "line": 13
+            },
+            {
+              "name": "portableOperations",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/core/portableOperation.ts",
+              "line": 45
             }
           ]
         },
@@ -24717,6 +25166,139 @@
           ]
         },
         {
+          "source": "framework/universal-sdk/src/portableRuntime.ts",
+          "exports": [
+            {
+              "name": "ForkLaunchQueryValue",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 1,
+              "type": "string | number | boolean | null | readonly ForkLaunchQueryValue[] | { readonly [key: string]: ForkLaunchQueryValue } | undefined"
+            },
+            {
+              "name": "ForkLaunchPathValue",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 2,
+              "type": "string | number | boolean"
+            },
+            {
+              "name": "ForkLaunchHeaders",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 3,
+              "type": "Record<string, ForkLaunchQueryValue>"
+            },
+            {
+              "name": "ForkLaunchSdkFetchInit",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 4,
+              "type": "Omit<RequestInit, 'method' | 'body' | 'headers'>"
+            },
+            {
+              "name": "ForkLaunchSdkRequest",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 6,
+              "type": "ForkLaunchSdkFetchInit &\n  ([Params] extends [never] ? {} : { params: Params }) &\n  ([Query] extends [never] ? {} : { query: Query }) &\n  ([Body] extends [never] ? {} : BodyOptional extends true ? { body?: Body } : { body: Body }) &\n  ([Headers] extends [never] ? {} : {} extends Headers ? { headers?: Headers } : { headers: Headers })"
+            },
+            {
+              "name": "ForkLaunchSdkResponse",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 13,
+              "type": "{\n  [Code in keyof Responses & number]: {\n    code: Code;\n    status: Code;\n    contentType: Code extends keyof ContentTypes ? ContentTypes[Code] : Code extends keyof ForkLaunchErrorResponses ? 'text/plain' : 'application/json';\n    response: Responses[Code];\n  } & ([Headers] extends [never] ? {} : { headers: Headers });\n}[keyof Responses & number]"
+            },
+            {
+              "name": "ForkLaunchSdkConfig",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 22,
+              "type": "{\n  baseUrl?: string;\n  /** Local development only; permits plaintext credentials outside loopback. */\n  allowPlaintextDevelopment?: boolean;\n  serviceBaseUrls?: Partial<Record<string, string>>;\n  fetch?: typeof fetch;\n  maxSseEventBytes?: number;\n  zodRegexExecution?: ZodRegexExecution;\n  maxMultipartResponseBytes?: number;\n  headers?: ForkLaunchHeaders;\n  beforeRequest?: (request: ForkLaunchSdkRequestMeta) => ForkLaunchSdkRequestMeta | Promise<ForkLaunchSdkRequestMeta>;\n}"
+            },
+            {
+              "name": "ForkLaunchSdkRequestMeta",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 35,
+              "type": "{\n  service: string;\n  router: string;\n  operation: string;\n  method: string;\n  path: string;\n  requestKind?: 'json' | 'text' | 'binary' | 'urlEncoded' | 'multipart';\n  requestContentType?: string;\n  requestSchema?: AnySchema;\n  requestObjects?: Record<string,{schema:AnySchema;fields:SdkVersionRules}>;\n  responseKinds?: Partial<Record<string, 'empty' | 'json' | 'text' | 'binary' | 'sse' | 'multipart'>>;\n  responseSchemas?: Record<string, AnySchema>;\n  versionMetadata?: SdkVersionMetadata;\n  responseHeaders?: Record<string, Record<string, {required:boolean; schema:unknown}>>;\n  input: {\n    params?: Record<string, ForkLaunchPathValue>;\n    query?: Record<string, ForkLaunchQueryValue>;\n    body?: unknown;\n    headers?: ForkLaunchHeaders;\n  } & ForkLaunchSdkFetchInit;\n}"
+            },
+            {
+              "name": "ForkLaunchErrorResponses",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 57,
+              "type": "{ 400: string; 401: string; 403: string; 404: string; 500: string }"
+            },
+            {
+              "name": "ForkLaunchQuerySuccess",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 60,
+              "type": "Result extends unknown\n  ? number extends Result['status'] ? Result : `${Result['status']}` extends `2${string}` ? Result : never\n  : never"
+            },
+            {
+              "name": "ForkLaunchSdkHttpError",
+              "kind": "ClassDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 64,
+              "members": [
+                {
+                  "name": "constructor",
+                  "signature": "constructor(public readonly result: Result)",
+                  "source": "framework/universal-sdk/src/portableRuntime.ts",
+                  "line": 65
+                }
+              ]
+            },
+            {
+              "name": "forkLaunchQueryOptions",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 78
+            },
+            {
+              "name": "forkLaunchMutationOptions",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 106
+            },
+            {
+              "name": "safeStringify",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 142
+            },
+            {
+              "name": "registerZodChecks",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 967
+            },
+            {
+              "name": "ZodRegexExecution",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 1005,
+              "type": "'host-native'"
+            },
+            {
+              "name": "registerZodRegex",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 1050
+            },
+            {
+              "kind": "assignment",
+              "name": "default",
+              "expression": "request",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 1647
+            }
+          ]
+        },
+        {
           "source": "framework/universal-sdk/src/types/contentTypes.types.ts",
           "exports": [
             {
@@ -24746,34 +25328,41 @@
           "source": "framework/universal-sdk/src/types/sdk.types.ts",
           "exports": [
             {
+              "name": "UniversalSdkTransportOptions",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/types/sdk.types.ts",
+              "line": 14,
+              "type": "Pick<\n  ForkLaunchSdkConfig,\n  'fetch' | 'maxSseEventBytes' | 'maxMultipartResponseBytes' | 'headers' |\n  'beforeRequest' | 'allowPlaintextDevelopment' | 'serviceBaseUrls'\n>"
+            },
+            {
               "name": "RequestType",
               "kind": "InterfaceDeclaration",
               "source": "framework/universal-sdk/src/types/sdk.types.ts",
-              "line": 17,
+              "line": 26,
               "members": [
                 {
                   "name": "params",
                   "signature": "params?: Record<string, string | number | boolean>;",
                   "source": "framework/universal-sdk/src/types/sdk.types.ts",
-                  "line": 18
+                  "line": 27
                 },
                 {
                   "name": "body",
                   "signature": "body?:\n    | {\n        [K: string]: unknown;\n        contentType?: never;\n        json?: never;\n        text?: never;\n        file?: never;\n        multipartForm?: never;\n        urlEncodedForm?: never;\n        schema?: never;\n      }\n    | ({\n        contentType?: string;\n      } & (\n        | {\n            json: Record<string, unknown>;\n          }\n        | {\n            text: string;\n          }\n        | {\n            file: File | Blob;\n          }\n        | {\n            multipartForm: Record<string, unknown>;\n          }\n        | {\n            urlEncodedForm: Record<string, unknown>;\n          }\n        | {\n            schema: Record<string, unknown>;\n          }\n      ));",
                   "source": "framework/universal-sdk/src/types/sdk.types.ts",
-                  "line": 19
+                  "line": 28
                 },
                 {
                   "name": "query",
                   "signature": "query?: Record<string, string | number | boolean>;",
                   "source": "framework/universal-sdk/src/types/sdk.types.ts",
-                  "line": 52
+                  "line": 61
                 },
                 {
                   "name": "headers",
                   "signature": "headers?: Record<string, string>;",
                   "source": "framework/universal-sdk/src/types/sdk.types.ts",
-                  "line": 53
+                  "line": 62
                 }
               ]
             },
@@ -24781,25 +25370,25 @@
               "name": "ResponseType",
               "kind": "InterfaceDeclaration",
               "source": "framework/universal-sdk/src/types/sdk.types.ts",
-              "line": 56,
+              "line": 65,
               "members": [
                 {
                   "name": "code",
                   "signature": "code: number;",
                   "source": "framework/universal-sdk/src/types/sdk.types.ts",
-                  "line": 57
+                  "line": 66
                 },
                 {
                   "name": "response",
                   "signature": "response: unknown;",
                   "source": "framework/universal-sdk/src/types/sdk.types.ts",
-                  "line": 58
+                  "line": 67
                 },
                 {
                   "name": "headers",
                   "signature": "headers: Headers;",
                   "source": "framework/universal-sdk/src/types/sdk.types.ts",
-                  "line": 59
+                  "line": 68
                 }
               ]
             },
@@ -24807,15 +25396,15 @@
               "name": "RegistryOptions",
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/types/sdk.types.ts",
-              "line": 62,
+              "line": 71,
               "type": "| {\n      path: string;\n      static?: boolean;\n    }\n  | {\n      url: string;\n      static?: boolean;\n    }\n  | {\n      raw: OpenAPIObject | Record<string, OpenAPIObject>;\n    }"
             },
             {
               "name": "SdkPathMap",
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/types/sdk.types.ts",
-              "line": 75,
-              "type": "Record<\n  string,\n  {\n    method:\n      | 'get'\n      | 'post'\n      | 'put'\n      | 'patch'\n      | 'delete'\n      | 'options'\n      | 'head'\n      | 'trace';\n    path: string;\n    version: string;\n  }\n>"
+              "line": 84,
+              "type": "Record<\n  string,\n  {\n    method: string;\n    path: string;\n    version: string;\n    portableOperation?: PortableOperation;\n  }\n>"
             }
           ]
         },
@@ -24826,31 +25415,37 @@
               "name": "UniversalSdk",
               "kind": "ClassDeclaration",
               "source": "framework/universal-sdk/src/universalSdk.ts",
-              "line": 29,
+              "line": 32,
               "members": [
                 {
                   "name": "constructor",
-                  "signature": "constructor(\n    private host: string,\n    private ajv: Ajv,\n    private registryOptions: RegistryOptions,\n    private contentTypeParserMap:\n      Record<string, ResponseContentParserType> | undefined,\n    responseAjvFactory?: ResponseAjvFactory,\n    zodRegexExecution?: ZodRegexExecution\n  )",
+                  "signature": "constructor(\n    private host: string,\n    private ajv: Ajv,\n    private registryOptions: RegistryOptions,\n    private contentTypeParserMap:\n      Record<string, ResponseContentParserType> | undefined,\n    responseAjvFactory?: ResponseAjvFactory,\n    private zodRegexExecution?: ZodRegexExecution,\n    private transportOptions: UniversalSdkTransportOptions = {}\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 40
+                  "line": 43
                 },
                 {
                   "name": "create",
-                  "signature": "static async create(\n    host: string,\n    registryOptions: RegistryOptions,\n    contentTypeParserMap?: Record<string, ResponseContentParserType>,\n    zodRegexExecution?: ZodRegexExecution\n  )",
+                  "signature": "static async create(\n    host: string,\n    registryOptions: RegistryOptions,\n    contentTypeParserMap?: Record<string, ResponseContentParserType>,\n    zodRegexExecution?: ZodRegexExecution,\n    transportOptions: UniversalSdkTransportOptions = {}\n  )",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 63
+                  "line": 67
+                },
+                {
+                  "name": "isPortableSdkPath",
+                  "signature": "isPortableSdkPath(path: string): boolean",
+                  "source": "framework/universal-sdk/src/universalSdk.ts",
+                  "line": 105
                 },
                 {
                   "name": "executeFetchCall",
-                  "signature": "async executeFetchCall(\n    path: string,\n    request?: RequestType & {\n      method:\n        | 'get'\n        | 'post'\n        | 'put'\n        | 'patch'\n        | 'delete'\n        | 'options'\n        | 'head'\n        | 'trace';\n    } & {\n      version?: string;\n    }\n  ): Promise<ResponseType>",
+                  "signature": "async executeFetchCall(\n    path: string,\n    request?: RequestType & {\n      method:\n        | 'get'\n        | 'post'\n        | 'put'\n        | 'patch'\n        | 'delete'\n        | 'options'\n        | 'head'\n        | 'trace';\n    } & {\n      version?: string;\n    }\n  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 92
+                  "line": 111
                 },
                 {
                   "name": "executeSdkCall",
-                  "signature": "async executeSdkCall(\n    sdkPath: string,\n    request?: RequestType\n  ): Promise<ResponseType>",
+                  "signature": "async executeSdkCall(\n    sdkPath: string,\n    request?: RequestType\n  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 132
+                  "line": 152
                 }
               ]
             }

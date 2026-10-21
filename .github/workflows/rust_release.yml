@@ -60,6 +60,10 @@ jobs:
           node-version: '22'
       - name: Test release graph, integrity, registry and upload boundaries
         run: python3 -m unittest discover -s scripts -p test_rust_release.py -v
+      # rdkafka-sys (blueprint Kafka worker) builds librdkafka, which needs libcurl headers.
+      - name: Install native build dependencies
+        if: matrix.scope == 'blueprint'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libcurl4-openssl-dev libsasl2-dev
       - name: Build each ${{ matrix.scope }} crate with default features and each feature alone
         run: python3 scripts/rust_feature_matrix.py ${{ matrix.scope == 'blueprint' && 'blueprint-rs' || 'framework-rs' }} --target-dir "$RUNNER_TEMP/feature-matrix-target"
       - name: Package ${{ matrix.scope }} crates

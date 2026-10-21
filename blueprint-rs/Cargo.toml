@@ -38,4 +38,6 @@ all = { level = "warn", priority = -1 }
 pedantic = { level = "warn", priority = -1 }
 # Implementations satisfy async traits even when one has nothing to await.
 unused_async_trait_impl = "allow"
+# Rust 1.99: `assert!(x.is_empty())` reads better than its suggested rewrite.
+assert_is_empty = "allow"
 
