@@ -13,9 +13,9 @@ use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
 const SHARED_COMPILER: &str =
-    include_str!("../../../../framework-rs/crates/core/src/build/socket_artifact.rs");
+    include_str!("../../templates/rust/framework/crates/core/src/build/socket_artifact.rs");
 const PROCESS_ENTRY: &str =
-    include_str!("../../../../framework-rs/crates/core/examples/typescript_socket_artifacts.rs");
+    include_str!("../../templates/rust/framework/crates/core/examples/typescript_socket_artifacts.rs");
 
 pub(super) fn compile(
     root: &Path,
