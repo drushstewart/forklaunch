@@ -1,7 +1,7 @@
 //! Raw-body Stripe signature verification with the SDK's 300-second replay tolerance.
 use crate::domain::BlueprintError;
 use crate::domain::BlueprintResult;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use std::{
     sync::Arc,

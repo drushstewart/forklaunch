@@ -25,8 +25,8 @@ aws-smithy-runtime-api = { version = "1", features = ["client"], optional = true
 aws-smithy-types = { version = "1", optional = true }
 base64 = { version = "0.23", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["std"], optional = true }
-hmac = { version = "0.12", optional = true }
-sha2 = { version = "0.10", optional = true }
+hmac = { version = "0.13", optional = true }
+sha2 = { version = "0.11", optional = true }
 serde_json = { version = "=1.0.151", optional = true }
 url = { version = "2", optional = true }
 zeroize = { version = "1", optional = true }

@@ -5,7 +5,7 @@ use aws_smithy_runtime_api::client::auth::AuthScheme as _;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use chrono::{DateTime, SecondsFormat, Utc};
 use forklaunch_core::common::FrameworkResult;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::json;
 use sha2::Sha256;
 use std::{

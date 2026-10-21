@@ -1,7 +1,7 @@
 //! Authenticated public metadata, separate from encryption and equality indexes.
 use super::{EnvelopeKey, SecurityError};
 use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use sha2::Sha256;
 use uuid::Uuid;
 use zeroize::Zeroizing;
@@ -75,7 +75,7 @@ impl EnvelopeKey {
         hkdf::Hkdf::<Sha256>::new(Some(b"forklaunch-public-metadata"), master.as_ref())
             .expand(&aad, &mut *derived)
             .map_err(|_| SecurityError::Encryption)?;
-        let mut mac = <Hmac<Sha256> as Mac>::new_from_slice(derived.as_ref())
+        let mut mac = <Hmac<Sha256> as KeyInit>::new_from_slice(derived.as_ref())
             .map_err(|_| SecurityError::Encryption)?;
         mac.update(bytes);
         Ok(mac)

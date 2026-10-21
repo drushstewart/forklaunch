@@ -6,7 +6,7 @@
 use crate::common::{FrameworkError, FrameworkResult};
 use aes_gcm::{
     Aes256Gcm, Nonce, Tag,
-    aead::{AeadInPlace, KeyInit},
+    aead::{AeadInOut, KeyInit},
 };
 use base64::{
     Engine as _,
@@ -57,7 +57,11 @@ fn crypto_error() -> FrameworkError {
 
 #[must_use]
 pub fn encryption_key_id(master: &str) -> String {
-    format!("{:x}", Sha256::digest(master.as_bytes()))[..12].to_owned()
+    Sha256::digest(master.as_bytes())
+        .iter()
+        .take(6)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 #[must_use]
@@ -210,7 +214,7 @@ impl FieldEncryptor {
     pub fn encrypt(&self, plaintext: &str, tenant: &str) -> FrameworkResult<String> {
         let key = Self::derive_key(&self.ring[0], tenant)?;
         let mut mac =
-            <Hmac<Sha256> as Mac>::new_from_slice(key.as_ref()).map_err(|_| crypto_error())?;
+            <Hmac<Sha256> as KeyInit>::new_from_slice(key.as_ref()).map_err(|_| crypto_error())?;
         mac.update(plaintext.as_bytes());
         let mut iv = [0_u8; 12];
         iv.copy_from_slice(&mac.finalize().into_bytes()[..12]);
@@ -225,7 +229,7 @@ impl FieldEncryptor {
         let cipher = Aes256Gcm::new_from_slice(key).map_err(|_| crypto_error())?;
         let mut data = plaintext.as_bytes().to_vec();
         let tag = cipher
-            .encrypt_in_place_detached(&Nonce::from(iv), b"", &mut data)
+            .encrypt_inout_detached(&Nonce::from(iv), b"", data.as_mut_slice().into())
             .map_err(|_| crypto_error())?;
         Ok(format!(
             "{}:{}:{}",
@@ -311,7 +315,7 @@ impl FieldEncryptor {
             let cipher = Aes256Gcm::new_from_slice(key.as_ref()).map_err(|_| crypto_error())?;
             let mut plaintext = data.clone();
             if cipher
-                .decrypt_in_place_detached(&Nonce::from(iv), b"", &mut plaintext, &Tag::from(tag))
+                .decrypt_inout_detached(&Nonce::from(iv), b"", plaintext.as_mut_slice().into(), &Tag::from(tag))
                 .is_ok()
             {
                 let current = index == 0;
@@ -385,7 +389,7 @@ impl FieldEncryptor {
     ) -> FrameworkResult<String> {
         let key = Self::derive_key(material, &format!("forklaunch:blind-index\0{tenant}"))?;
         let mut mac =
-            <Hmac<Sha256> as Mac>::new_from_slice(key.as_ref()).map_err(|_| crypto_error())?;
+            <Hmac<Sha256> as KeyInit>::new_from_slice(key.as_ref()).map_err(|_| crypto_error())?;
         mac.update(plaintext.as_bytes());
         Ok(format!(
             "bi1:{}:{}",

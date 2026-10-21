@@ -59,7 +59,7 @@ fn cipher(secret: &str) -> Aes256Gcm {
     hasher.update(b"forklaunch-agent-continuation:");
     hasher.update(secret.as_bytes());
     let key: [u8; 32] = hasher.finalize().into();
-    Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(&key))
+    Aes256Gcm::new(&Key::<Aes256Gcm>::from(key))
 }
 
 /// Encrypts a continuation.
@@ -74,7 +74,7 @@ pub fn seal_continuation(value: &Continuation, secret: &str) -> Result<String, C
     let mut iv = [0_u8; IV];
     getrandom::fill(&mut iv).map_err(|_| ContinuationError::Encoding)?;
     let sealed = cipher(secret)
-        .encrypt(Nonce::from_slice(&iv), plain.as_slice())
+        .encrypt(&Nonce::from(iv), plain.as_slice())
         .map_err(|_| ContinuationError::Encoding)?;
     // aes-gcm appends the tag; the token carries it before the ciphertext.
     let (body, tag) = sealed.split_at(sealed.len() - TAG);
@@ -112,7 +112,7 @@ pub fn open_continuation(
     sealed.extend_from_slice(tag);
     // GCM verifies the tag in constant time before releasing plaintext.
     let plain = cipher(secret)
-        .decrypt(Nonce::from_slice(iv), sealed.as_slice())
+        .decrypt(&Nonce::try_from(iv).ok()?, sealed.as_slice())
         .ok()?;
     let value: Continuation = serde_json::from_slice(&plain).ok()?;
     (value.v == 1 && value.user_id == user_id && value.expires_at >= now_ms).then_some(value)

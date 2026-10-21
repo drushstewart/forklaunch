@@ -84,10 +84,10 @@ tokio = { version = "1", features = ["rt", "sync", "time"], optional = true }
 sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }
 url = { version = "2", optional = true }
 
-aes-gcm = { version = "0.10", optional = true }
-hkdf = { version = "0.12", optional = true }
-hmac = { version = "0.12", optional = true }
-sha2 = { version = "0.10", optional = true }
+aes-gcm = { version = "0.11", optional = true }
+hkdf = { version = "0.13", optional = true }
+hmac = { version = "0.13", optional = true }
+sha2 = { version = "0.11", optional = true }
 base64 = { version = "0.23", optional = true }
 getrandom = { version = "0.4", optional = true }
 zeroize = { version = "1", optional = true }
@@ -104,7 +104,7 @@ futures-util = { version = "0.3", default-features = false, features = ["std"], 
 jsonwebtoken = { version = "11", features = ["aws_lc_rs"], optional = true }
 subtle = { version = "2", optional = true }
 chrono = { version = "0.4", default-features = false, features = ["std"], optional = true }
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form"], optional = true }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "form", "query"], optional = true }
 oauth2 = { version = "5.0.0", default-features = false, optional = true }
 openidconnect = { version = "4.0.1", default-features = false, optional = true }
 schemars = { version = "0.8", optional = true, features = ["uuid1"] }

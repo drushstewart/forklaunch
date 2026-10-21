@@ -47,7 +47,7 @@ impl EnvelopeKey {
             hkdf::Hkdf::<sha2::Sha256>::new(Some(b"forklaunch-blind-index"), master.as_ref())
                 .expand(info.as_bytes(), &mut *derived)
                 .map_err(|_| SecurityError::Encryption)?;
-            let mut mac = <hmac::Hmac<sha2::Sha256> as Mac>::new_from_slice(derived.as_ref())
+            let mut mac = <hmac::Hmac<sha2::Sha256> as hmac::KeyInit>::new_from_slice(derived.as_ref())
                 .map_err(|_| SecurityError::Encryption)?;
             mac.update(value);
             indexes.push(format!(

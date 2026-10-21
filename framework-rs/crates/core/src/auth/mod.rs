@@ -11,7 +11,7 @@
 use crate::http::{ErrorKind, ErrorResponse};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use forklaunch_core::contract::RbacConfig;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;

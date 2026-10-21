@@ -493,7 +493,7 @@ fn canonical_json(value: serde_json::Value) -> serde_json::Value {
 fn digest(bytes: &[u8]) -> FileDigest {
     FileDigest {
         bytes: bytes.len() as u64,
-        sha256: format!("{:x}", Sha256::digest(bytes)),
+        sha256: Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect(),
     }
 }
 fn read(root: &Path, relative: &str) -> Result<Vec<u8>> {
