@@ -367,11 +367,6 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
     if !dryrun {
         super::rust_source::write_rust_guidance(&root_path)?;
     }
-    if !dryrun {
-        create_dir_all(root_path.join("src/core")).with_context(|| {
-            format!("Failed to create {}", root_path.join("src/core").display())
-        })?;
-    }
     for module in modules {
         let kind =
             modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
