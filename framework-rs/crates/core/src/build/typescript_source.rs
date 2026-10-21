@@ -30,13 +30,13 @@ pub fn typescript_contract_inputs(service: &Path) -> Result<Value> {
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, &text, SourceType::ts()).parse();
         ensure!(
-            parsed.errors.is_empty(),
+            !parsed.fatal_error && !parsed.diagnostics.has_errors(),
             "Invalid TypeScript syntax in {}",
             file.display()
         );
         files.insert(
             canonical.to_string_lossy().into_owned(),
-            serde_json::from_str(&parsed.program.to_estree_ts_json(false))?,
+            serde_json::from_str(&parsed.program.to_estree_json(true, false))?,
         );
         Ok(())
     }
