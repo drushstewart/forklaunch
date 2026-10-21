@@ -183,7 +183,7 @@ mod tests {
                             count += sum
                                 .data_points()
                                 .map(opentelemetry_sdk::metrics::data::SumDataPoint::value)
-                                .sum::<u64>()
+                                .sum::<u64>();
                         }
                         (
                             "forklaunch.worker.active_attempts",
@@ -202,7 +202,7 @@ mod tests {
                             duration += hist
                                 .data_points()
                                 .map(opentelemetry_sdk::metrics::data::HistogramDataPoint::count)
-                                .sum::<u64>()
+                                .sum::<u64>();
                         }
                         _ => {}
                     }

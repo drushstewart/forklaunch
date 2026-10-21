@@ -162,7 +162,6 @@ pub trait NativeBody: EndpointBody {
     ) -> impl Future<Output = Result<Self::Value, EndpointError>> + Send + 'a;
     /// # Errors
     /// Rejects invalid body or typed request metadata.
-    #[must_use]
     fn decode_request<'a>(
         bytes: &'a [u8],
         content_type: &'a str,
@@ -185,7 +184,6 @@ pub trait NativeBody: EndpointBody {
     /// Decode a body profile together with typed metadata.
     /// # Errors
     /// Rejects schema/type violations or unsupported custom codecs.
-    #[must_use]
     fn decode_profile_request<'a>(
         bytes: &'a [u8],
         content_type: &'a str,
