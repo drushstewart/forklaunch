@@ -537,8 +537,12 @@ fn constrain_string_field(
         (Some(min), Some(max)) => field
             .attrs
             .push(parse_quote!(#[schemars(length(min = #min, max = #max))])),
-        (Some(min), None) => field.attrs.push(parse_quote!(#[schemars(length(min = #min))])),
-        (None, Some(max)) => field.attrs.push(parse_quote!(#[schemars(length(max = #max))])),
+        (Some(min), None) => field
+            .attrs
+            .push(parse_quote!(#[schemars(length(min = #min))])),
+        (None, Some(max)) => field
+            .attrs
+            .push(parse_quote!(#[schemars(length(max = #max))])),
         (None, None) => {}
     }
     Ok(())

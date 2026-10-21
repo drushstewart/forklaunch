@@ -130,9 +130,7 @@ pub trait DateShape: Sized + sealed::DateShape {
     /// Rejects timestamps that cannot be represented without precision loss.
     fn encode_date_shape(&self) -> Result<serde_json::Value, String>;
     #[cfg(feature = "typed-schema")]
-    fn date_shape_schema(
-        generator: &mut schemars::SchemaGenerator,
-    ) -> schemars::Schema;
+    fn date_shape_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema;
 }
 impl DateShape for DateTime<Utc> {
     fn decode_date_shape(value: serde_json::Value) -> Result<Self, String> {
@@ -145,9 +143,7 @@ impl DateShape for DateTime<Utc> {
         ))
     }
     #[cfg(feature = "typed-schema")]
-    fn date_shape_schema(
-        generator: &mut schemars::SchemaGenerator,
-    ) -> schemars::Schema {
+    fn date_shape_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schema(generator)
     }
 }
@@ -164,9 +160,7 @@ impl<T: DateShape> DateShape for Option<T> {
             .map_or(Ok(serde_json::Value::Null), T::encode_date_shape)
     }
     #[cfg(feature = "typed-schema")]
-    fn date_shape_schema(
-        generator: &mut schemars::SchemaGenerator,
-    ) -> schemars::Schema {
+    fn date_shape_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({ "anyOf": [T::date_shape_schema(generator), { "type": "null" }] })
     }
 }
@@ -184,9 +178,7 @@ impl<T: DateShape> DateShape for Vec<T> {
             .map(serde_json::Value::Array)
     }
     #[cfg(feature = "typed-schema")]
-    fn date_shape_schema(
-        generator: &mut schemars::SchemaGenerator,
-    ) -> schemars::Schema {
+    fn date_shape_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         schemars::json_schema!({ "type": "array", "items": T::date_shape_schema(generator) })
     }
 }
@@ -203,9 +195,7 @@ impl<T: DateShape, const N: usize> DateShape for [T; N] {
             .map(serde_json::Value::Array)
     }
     #[cfg(feature = "typed-schema")]
-    fn date_shape_schema(
-        generator: &mut schemars::SchemaGenerator,
-    ) -> schemars::Schema {
+    fn date_shape_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = Vec::<T>::date_shape_schema(generator);
         let Ok(limit) = u32::try_from(N) else {
             return false.into();
@@ -226,18 +216,14 @@ impl<T: DateShape> DateShape for super::schema::Optional<T> {
             Self::Value(value) => value.encode_date_shape(),
         }
     }
-    fn date_shape_schema(
-        generator: &mut schemars::SchemaGenerator,
-    ) -> schemars::Schema {
+    fn date_shape_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         T::date_shape_schema(generator)
     }
 }
 /// Schema for a checked native date or date container.
 #[cfg(feature = "typed-schema")]
 #[must_use]
-pub fn shape_schema<T: DateShape>(
-    generator: &mut schemars::SchemaGenerator,
-) -> schemars::Schema {
+pub fn shape_schema<T: DateShape>(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
     T::date_shape_schema(generator)
 }
 

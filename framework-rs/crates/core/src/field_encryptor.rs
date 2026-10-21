@@ -60,8 +60,11 @@ pub fn encryption_key_id(master: &str) -> String {
     Sha256::digest(master.as_bytes())
         .iter()
         .take(6)
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+        .fold(String::new(), |mut hex, byte| {
+            use std::fmt::Write as _;
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
 }
 
 #[must_use]
@@ -315,7 +318,12 @@ impl FieldEncryptor {
             let cipher = Aes256Gcm::new_from_slice(key.as_ref()).map_err(|_| crypto_error())?;
             let mut plaintext = data.clone();
             if cipher
-                .decrypt_inout_detached(&Nonce::from(iv), b"", plaintext.as_mut_slice().into(), &Tag::from(tag))
+                .decrypt_inout_detached(
+                    &Nonce::from(iv),
+                    b"",
+                    plaintext.as_mut_slice().into(),
+                    &Tag::from(tag),
+                )
                 .is_ok()
             {
                 let current = index == 0;

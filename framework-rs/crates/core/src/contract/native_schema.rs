@@ -84,10 +84,15 @@ impl Transform for SmallIntegerBounds {
                 .map(|(name, _)| name.clone())
                 .collect();
             if !defaulted.is_empty() {
-                let required = object.entry("required").or_insert_with(|| Value::Array(Vec::new()));
+                let required = object
+                    .entry("required")
+                    .or_insert_with(|| Value::Array(Vec::new()));
                 if let Some(required) = required.as_array_mut() {
                     for name in defaulted {
-                        if !required.iter().any(|value| value.as_str() == Some(name.as_str())) {
+                        if !required
+                            .iter()
+                            .any(|value| value.as_str() == Some(name.as_str()))
+                        {
                             required.push(Value::String(name));
                         }
                     }
@@ -110,7 +115,10 @@ fn integer_bounds(schema: &mut Map<String, Value>) {
     if !integer {
         return;
     }
-    let format = schema.get("format").and_then(Value::as_str).map(str::to_owned);
+    let format = schema
+        .get("format")
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     // Platform-sized and wide unsigned formats have the same lower bound.
     // Intersect rather than replace authored tighter limits; aliases and
     // optional members retain these formats from Schemars.
@@ -124,23 +132,39 @@ fn integer_bounds(schema: &mut Map<String, Value>) {
         Some("int32") => Some((Some(i64::from(i32::MIN)), Some(i64::from(i32::MAX)))),
         _ => None,
     };
-    let Some((minimum, maximum)) = bounds else { return };
+    let Some((minimum, maximum)) = bounds else {
+        return;
+    };
     if let Some(minimum) = minimum {
-        tighten(schema, "minimum", minimum, f64::max);
+        tighten(schema, "minimum", minimum, |authored, native| {
+            authored >= native
+        });
     }
     if let Some(maximum) = maximum {
-        tighten(schema, "maximum", maximum, f64::min);
+        tighten(schema, "maximum", maximum, |authored, native| {
+            authored <= native
+        });
     }
 }
 
-fn tighten(schema: &mut Map<String, Value>, keyword: &str, bound: i64, pick: fn(f64, f64) -> f64) {
+/// Keep an authored bound that is already at least as tight; otherwise write
+/// the native one.
+fn tighten(
+    schema: &mut Map<String, Value>,
+    keyword: &str,
+    bound: i64,
+    tighter: fn(f64, f64) -> bool,
+) {
     #[allow(clippy::cast_precision_loss)] // Bounds are at most 32-bit.
     let native = bound as f64;
-    let value = match schema.get(keyword).and_then(Value::as_f64) {
-        Some(authored) if pick(authored, native) == authored => return,
-        _ => Value::from(bound),
-    };
-    schema.insert(keyword.to_owned(), value);
+    if schema
+        .get(keyword)
+        .and_then(Value::as_f64)
+        .is_some_and(|authored| tighter(authored, native))
+    {
+        return;
+    }
+    schema.insert(keyword.to_owned(), Value::from(bound));
 }
 
 /// Schema-only provenance adapter; it never replaces the application's field type.
