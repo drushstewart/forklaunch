@@ -1,1 +1,0 @@
-../../../../../../../blueprint-rs/crates/implementations/billing/billing-base/migrations/17_payment_link_expiration.sql

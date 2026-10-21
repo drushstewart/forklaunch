@@ -40,31 +40,22 @@ fn main() {
     emit_rerun_for_tree(Path::new("../blueprint"));
 }
 
-// Framework files are individual links so Cargo.toml/Cargo.lock can be renamed for
+// Module HTTP layers are individual links so Cargo.toml can be renamed for
 // cargo package. A newly added source file otherwise goes silently unembedded.
 // Published CLI packages contain real files and have no adjacent source trees.
 fn verify_rust_inventory() {
-    for catalog in [
-        "framework/crates",
-        "blueprint-workspace/crates",
-        "blueprint",
-    ] {
-        verify_source_catalog(&Path::new("src/templates/rust").join(catalog));
-    }
-    let framework = Path::new("../framework-rs/crates");
-    if framework.is_dir() {
-        verify_embedded_source(
-            Path::new("../framework-rs/Cargo.lock"),
-            Path::new("src/templates/rust/framework/Cargo.lock.template"),
-        );
-        verify_source_tree(framework, Path::new("src/templates/rust/framework/crates"));
-    }
-    let blueprint = Path::new("../blueprint-rs/crates");
+    let catalog = Path::new("src/templates/rust/module-http");
+    verify_source_catalog(catalog);
+    let blueprint = Path::new("../blueprint-rs/crates/implementations");
     if blueprint.is_dir() {
-        verify_source_tree(
-            blueprint,
-            Path::new("src/templates/rust/blueprint-workspace/crates"),
-        );
+        for module in ["iam", "billing", "cac", "ecommerce"] {
+            let source = blueprint.join(module).join(format!("{module}-axum"));
+            verify_embedded_source(
+                &source.join("Cargo.toml"),
+                &catalog.join(module).join("Cargo.toml.template"),
+            );
+            verify_source_tree(&source.join("src"), &catalog.join(module).join("src"));
+        }
     }
 }
 

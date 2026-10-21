@@ -1,5 +1,5 @@
 //! Socket compilation uses the CLI's checked compiler by default. Explicit
-//! schema-engine opt-ins build that same source against the selected framework.
+//! schema-engine opt-ins run the selected framework's compiler with those features.
 use std::{
     fs,
     io::{Read as _, Seek as _},
@@ -12,10 +12,21 @@ use std::{
 use anyhow::{Context, Result, bail};
 use serde_json::Value;
 
-const SHARED_COMPILER: &str =
-    include_str!("../../templates/rust/framework/crates/core/src/build/socket_artifact.rs");
-const PROCESS_ENTRY: &str =
-    include_str!("../../templates/rust/framework/crates/core/examples/typescript_socket_artifacts.rs");
+/// Process entry for the selected framework's socket compiler; the artifact
+/// was already bounded when the CLI read it.
+const PROCESS_ENTRY: &str = r#"use anyhow::{Context, Result};
+use std::io::Write as _;
+
+fn main() -> Result<()> {
+    let mut args = std::env::args().skip(1);
+    let bytes = std::fs::read(args.next().context("socket contract artifact path")?)?;
+    let target = args.next().context("target: typescript, rust or all")?;
+    let source = args.next().context("artifact source")?;
+    let output = forklaunch_core::build::socket_artifact_sources(&bytes, &target, &source)?;
+    std::io::stdout().write_all(&serde_json::to_vec(&output)?)?;
+    Ok(())
+}
+"#;
 
 pub(super) fn compile(
     root: &Path,
@@ -45,19 +56,7 @@ pub(super) fn compile(
     let manifest = compiler_manifest(root, features)?;
     fs::write(directory.path().join("Cargo.toml"), manifest)?;
     fs::create_dir(directory.path().join("src"))?;
-    fs::write(directory.path().join("src/compiler.rs"), SHARED_COMPILER)?;
-    // Embed the same implementation, including validation and bounds, so older
-    // selected frameworks can use their public generators without the new API.
-    fs::write(
-        directory.path().join("src/main.rs"),
-        format!(
-            "{}\nmod compiler;\n",
-            PROCESS_ENTRY.replace(
-                "forklaunch_core::build::socket_artifact_sources",
-                "compiler::socket_artifact_sources"
-            )
-        ),
-    )?;
+    fs::write(directory.path().join("src/main.rs"), PROCESS_ENTRY)?;
     let input = directory.path().join("artifact.json");
     fs::write(&input, bytes)?;
     let mut output = tempfile::tempfile()?;
@@ -101,14 +100,6 @@ pub(super) fn compile(
 }
 
 fn compiler_manifest(root: &Path, features: &[&str]) -> Result<String> {
-    let snapshot = if root
-        .join(".forklaunch/framework-rs/crates/core/Cargo.toml")
-        .is_file()
-    {
-        root.join(".forklaunch/framework-rs/crates/core")
-    } else {
-        root.join("vendor/framework/crates/core")
-    };
     let mut features = features.to_vec();
     features.extend(["build", "asyncapi-import"]);
     let manifest = format!(
@@ -122,7 +113,8 @@ anyhow = "1"
 serde_json = "1"
 forklaunch-core = {{ path = {}, features = {} }}
 "#,
-        toml::Value::String(snapshot.to_string_lossy().into_owned()),
+        // Rewritten to the application's `[framework]` selection below.
+        toml::Value::String(".forklaunch/framework-rs/crates/core".into()),
         toml::Value::Array(
             features
                 .into_iter()
@@ -143,14 +135,6 @@ forklaunch-core = {{ path = {}, features = {} }}
             Path::new(path).join("Cargo.toml").is_file(),
             "Selected socket compiler framework is missing: {path}"
         );
-        if !crate::core::forklaunch_state::has_framework(root) {
-            anyhow::ensure!(
-                Path::new(path)
-                    .canonicalize()?
-                    .starts_with(root.canonicalize()?),
-                "Snapshot socket compiler must stay inside the application"
-            );
-        }
     }
     Ok(toml::to_string_pretty(&document)?)
 }
@@ -197,18 +181,12 @@ mod tests {
 
     #[test]
     fn optional_socket_compiler_preserves_selected_sources_and_features() {
-        for selection in ["registry", "local", "snapshot", "legacy"] {
+        for selection in ["registry", "local"] {
             let temporary = tempfile::tempdir().unwrap();
             let root = temporary.path();
             fs::create_dir(root.join(".forklaunch")).unwrap();
-            let expected = if selection == "local" {
-                root.join("custom/framework/crates/core")
-            } else if selection == "legacy" {
-                root.join(".forklaunch/framework-rs/crates/core")
-            } else {
-                root.join("vendor/framework/crates/core")
-            };
-            if selection != "registry" {
+            let expected = root.join("custom/framework/crates/core");
+            if selection == "local" {
                 fs::create_dir_all(&expected).unwrap();
                 fs::write(
                     expected.join("Cargo.toml"),
@@ -218,7 +196,7 @@ mod tests {
             }
             if selection == "registry" {
                 { let manifest = root.join(".forklaunch/manifest.toml"); let prior = std::fs::read_to_string(&manifest).unwrap_or_default(); std::fs::write(&manifest, format!("{prior}\n[framework]\n{}\n", "version='0.1.0'")).unwrap(); }
-            } else if selection == "local" {
+            } else {
                 { let manifest = root.join(".forklaunch/manifest.toml"); let prior = std::fs::read_to_string(&manifest).unwrap_or_default(); std::fs::write(&manifest, format!("{prior}\n[framework]\n{}\n", format!(
                         "path={}",
                         toml::Value::String(

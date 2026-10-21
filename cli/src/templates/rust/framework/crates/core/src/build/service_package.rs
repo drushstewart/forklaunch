@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/core/src/build/service_package.rs

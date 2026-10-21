@@ -251,8 +251,14 @@ fn plan(directory: &Path, services: &[String]) -> Result<Vec<(String, String)>> 
     }
     Ok(files)
 }
-pub(crate) const EVENT_TSCONFIG: &str = r#"{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","lib":["ES2022","DOM"],"types":["node"],"strict":true,"noEmit":true},"include":["*.ts","*.mts"]}"#;
-pub(crate) fn event_package(service: &str) -> Result<String> {
+/// TypeScript compiler settings for a worker event package.
+#[doc(hidden)]
+pub const EVENT_TSCONFIG: &str = r#"{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","lib":["ES2022","DOM"],"types":["node"],"strict":true,"noEmit":true},"include":["*.ts","*.mts"]}"#;
+/// `package.json` for a worker event package.
+/// # Errors
+/// Rejects invalid service names.
+#[doc(hidden)]
+pub fn event_package(service: &str) -> Result<String> {
     ensure!(valid(service), "Invalid event SDK service name");
     Ok(serde_json::to_string_pretty(
         &json!({"name":format!("@forklaunch-generated/{service}-events"),"version":"0.0.0","type":"module","private":true,"exports":{".":"./events.ts"},"scripts":{"build":"tsc --noEmit"},"dependencies":{"ajv":"8.20.0","ajv-formats":"3.0.1","@types/node":"22.10.0"},"devDependencies":{"typescript":"5.9.3"}}),

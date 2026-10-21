@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/core/src/http/email_client.rs

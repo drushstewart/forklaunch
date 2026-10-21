@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/tests/self_model_identity.rs

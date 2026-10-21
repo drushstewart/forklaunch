@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/core/compiler-tests/build/channel-typescript.mjs

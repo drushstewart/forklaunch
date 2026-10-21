@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/core/src/contract/schema_bundle.rs

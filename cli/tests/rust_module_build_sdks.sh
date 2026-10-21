@@ -36,7 +36,8 @@ cargo check -p cac-base
 node -e 'const a=require("./src/client-sdk/typescript/cac-base/contract.json");if(a.routes.some(r=>r.path==="/renamed"))throw Error("Stale removed contract")'
 "${FORKLAUNCH_TEST_TSC:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --noEmit --strict --skipLibCheck --target es2022 --module esnext --moduleResolution bundler src/client-sdk/typescript/*/index.ts
 mkdir -p src/sdk-check
-cat > src/sdk-check/Cargo.toml <<'TOML'
+FRAMEWORK_VERSION="$(python3 -c 'import tomllib; print(tomllib.load(open(".forklaunch/manifest.toml", "rb"))["framework"]["version"])')"
+cat > src/sdk-check/Cargo.toml <<TOML
 [package]
 name = "sdk-check"
 version = "0.0.0"
@@ -45,8 +46,8 @@ edition = "2024"
 [lib]
 path = "lib.rs"
 [dependencies]
-forklaunch-core = { path = "../../vendor/framework/crates/core", features = ["schema-validation"] }
-forklaunch-universal-sdk = { path = "../../vendor/framework/crates/universal-sdk" }
+forklaunch-core = { version = "=$FRAMEWORK_VERSION", features = ["schema-validation"] }
+forklaunch-universal-sdk = "=$FRAMEWORK_VERSION"
 reqwest = { version = "0.13.2", features = ["json", "query", "multipart"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

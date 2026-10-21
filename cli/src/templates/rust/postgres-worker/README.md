@@ -7,7 +7,7 @@ DATABASE_URL=postgres://schema_owner:password@localhost/app cargo run -p {{{name
 DATABASE_URL=postgres://restricted_app:password@localhost/app TENANT_ID=11111111-1111-4111-8111-111111111111 cargo run -p {{{name}}}
 ```
 
-Use your own credentials. Runtime roles require schema USAGE, table DML, and sequence USAGE in `fl_worker`; SUPERUSER/BYPASSRLS roles are rejected. Bind `TENANT_ID` from trusted application configuration. The example env file is not loaded automatically. Commit bundled `.forklaunch/framework-rs` and `.forklaunch/blueprint-rs` source with the app.
+Use your own credentials. Runtime roles require schema USAGE, table DML, and sequence USAGE in `fl_worker`; SUPERUSER/BYPASSRLS roles are rejected. Bind `TENANT_ID` from trusted application configuration. The example env file is not loaded automatically.
 
 With runtime configuration set, `--enqueue ID JSON` submits a job and `--inspect ID` reports its state without the payload or lease token. `WORKER_QUEUE` defaults to the crate name. Timing and retry settings are listed in `.env.example`; invalid values fail startup. Contract/OpenAPI export requires no database connection.
 

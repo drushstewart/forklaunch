@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/billing/billing-base/migrations/7_payment_link_creation.sql

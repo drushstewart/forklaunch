@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/tests/generic_model_identity.rs

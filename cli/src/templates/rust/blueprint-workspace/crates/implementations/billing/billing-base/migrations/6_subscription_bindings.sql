@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/billing/billing-base/migrations/6_subscription_bindings.sql

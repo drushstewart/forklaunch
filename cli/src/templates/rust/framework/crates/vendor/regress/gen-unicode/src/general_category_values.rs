@@ -1,1 +1,0 @@
-../../../../../../../../../../framework-rs/crates/vendor/regress/gen-unicode/src/general_category_values.rs

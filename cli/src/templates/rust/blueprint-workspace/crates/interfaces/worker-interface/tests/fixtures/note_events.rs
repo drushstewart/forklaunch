@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/interfaces/worker-interface/tests/fixtures/note_events.rs

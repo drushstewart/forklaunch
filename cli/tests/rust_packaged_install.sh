@@ -65,25 +65,27 @@ for packaged in source.rglob('*'):
     assert hashlib.sha256(packaged.read_bytes()).digest()==hashlib.sha256(original.read_bytes()).digest(), packaged
 for relative in ['src/dev/contracts.rs','src/dev/typescript.rs','src/dev/sockets.rs','src/dev/sdk.rs','src/sdk/workspace.rs','src/init/rust_project/native_layout.rs','src/init/rust_project/contracts_layout.rs','src/templates/rust/project/native-service/application.rs','src/templates/rust/project/native-service/bootstrapper.rs','src/templates/rust/project/service/src/error/mod.rs','src/templates/rust/capabilities/controller.rs']:
     assert (source/relative).is_file(), relative
-# Compare every embedded framework file to its owner, including protocol sources,
-# schema assets and attribution. New assets are covered without stale crate lists.
-catalog=source/'src/templates/rust/framework/crates'
-source_catalog=repo/'cli/src/templates/rust/framework/crates'
+# Compare every embedded module HTTP layer file to its blueprint owner. New
+# sources are covered without stale file lists.
+catalog=source/'src/templates/rust/module-http'
+source_catalog=repo/'cli/src/templates/rust/module-http'
 expected={path.relative_to(source_catalog) for path in source_catalog.rglob('*') if path.is_file()}
 actual={path.relative_to(catalog) for path in catalog.rglob('*') if path.is_file()}
 assert actual==expected, {'missing': sorted(expected-actual), 'unexpected': sorted(actual-expected)}
 checked=0
 for packaged in catalog.rglob('*'):
     if not packaged.is_file(): continue
-    relative=packaged.relative_to(catalog)
-    if relative.name in {'Cargo.toml.template', 'Cargo.lock.template'}:
-        relative=relative.with_name(relative.name.removesuffix('.template'))
-    original=repo/'framework-rs/crates'/relative
+    module,*rest=packaged.relative_to(catalog).parts
+    relative=Path(*rest)
+    if relative.name=='Cargo.toml.template':
+        relative=relative.with_name('Cargo.toml')
+    original=repo/'blueprint-rs/crates/implementations'/module/f'{module}-axum'/relative
     assert original.is_file(), original
     assert hashlib.sha256(packaged.read_bytes()).digest()==hashlib.sha256(original.read_bytes()).digest(), packaged
     checked+=1
-assert checked>600, checked
-print('PASS packaged framework source and asset integrity:',checked,'files')
+assert checked>=30, checked
+assert not (source/'src/templates/rust/framework').exists() and not (source/'src/templates/rust/blueprint-workspace').exists()
+print('PASS packaged module HTTP layer integrity:',checked,'files')
 PY
 SOURCE_ROOT="$(find "$RUN_ROOT/source" -mindepth 1 -maxdepth 1 -type d)"
 cargo package --manifest-path "$SOURCE_ROOT/Cargo.toml" --list --allow-dirty > "$RUN_ROOT/repackaged-files.txt"

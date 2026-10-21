@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Expose source-only Rust framework files to include_dir and cargo package.
+"""Expose the Rust module HTTP layers to include_dir and cargo package.
 
 Links keep the source authoritative in this checkout. Cargo packages dereference
 these files; generated applications never depend on links into the CLI checkout.
@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 EMBEDDED = ROOT / 'cli/src/templates/rust'
 SKIP = {'target', 'node_modules', '.git', '.DS_Store', '__pycache__', 'dist', 'artifacts', 'secrets'}
 GIT_METADATA = {'.gitignore', '.gitattributes'}
+MODULE_HTTP = ('iam', 'billing', 'cac', 'ecommerce')
 
 
 def mirror_git_metadata(source: Path, target: Path):
@@ -96,16 +97,13 @@ def sync():
             owner = {'billing-stripe': 'billing-base', 'messaging-twilio': 'messaging-base'}.get(source.parent.name, source.parent.name)
             source = ROOT / 'blueprint' / owner / '.gitignore'
             mirror_git_metadata(source, target)
-    framework = ROOT / 'framework-rs'
-    link(framework / 'Cargo.lock', EMBEDDED / 'framework/Cargo.lock.template')
-    sync_tree(framework / 'crates', EMBEDDED / 'framework/crates')
-    sync_tree(ROOT / 'blueprint-rs/crates', EMBEDDED / 'blueprint-workspace/crates')
-    # Older direct blueprint aliases are also included by the global template tree.
-    for alias, directory in [('billing-base', 'billing/billing-base'),
-                             ('billing-stripe', 'billing/billing-stripe'),
-                             ('iam-base', 'iam/iam-base')]:
-        sync_tree(ROOT / 'blueprint-rs/crates/implementations' / directory,
-                  EMBEDDED / 'blueprint' / alias, rename_manifests=False)
+    # Module HTTP layers are the only blueprint source generated applications
+    # receive; every other framework and blueprint crate comes from crates.io.
+    for module in MODULE_HTTP:
+        source = ROOT / 'blueprint-rs/crates/implementations' / module / f'{module}-axum'
+        target = EMBEDDED / 'module-http' / module
+        link(source / 'Cargo.toml', target / 'Cargo.toml.template')
+        sync_tree(source / 'src', target / 'src')
 
 
 if __name__ == '__main__':

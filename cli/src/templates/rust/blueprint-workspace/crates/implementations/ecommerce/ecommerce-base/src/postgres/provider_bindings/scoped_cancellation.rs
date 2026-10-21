@@ -1,1 +1,0 @@
-../../../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/src/postgres/provider_bindings/scoped_cancellation.rs

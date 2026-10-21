@@ -80,30 +80,21 @@ fn rustfmt_source(path: &Path, source: &str) -> Result<String> {
 }
 
 // HTML documentation is additive in 0.1.1. An explicitly selected older
-// framework retains its available public OpenAPI helper. Source snapshots use
-// the current embedded framework; unknown local versions keep compatibility.
+// framework retains its available public OpenAPI helper. Applications without a
+// selection get the current release; unknown local versions keep compatibility.
 fn supports_native_docs(directory: &Path) -> bool {
     fn workspace_version(path: &Path) -> Option<String> {
         read_to_string(path).ok()
             .and_then(|source| toml::from_str::<Value>(&source).ok())
             .and_then(|manifest| manifest.get("workspace")?.get("package")?.get("version")?.as_str().map(str::to_owned))
     }
-    let config = directory.ancestors().find_map(crate::core::forklaunch_state::framework);
-    let version = if let Some(config) = config {
-        if let Some(path) = config.get("path").and_then(Value::as_str) {
-            workspace_version(&Path::new(path).join("Cargo.toml"))
-        } else {
-            config.get("version").and_then(Value::as_str).map(str::to_owned)
-        }
+    let Some(config) = directory.ancestors().find_map(crate::core::forklaunch_state::framework) else {
+        return true;
+    };
+    let version = if let Some(path) = config.get("path").and_then(Value::as_str) {
+        workspace_version(&Path::new(path).join("Cargo.toml"))
     } else {
-        let snapshot = directory.ancestors().find_map(|root| {
-            ["vendor/framework/Cargo.toml", ".forklaunch/framework-rs/Cargo.toml"].into_iter()
-                .map(|relative| root.join(relative)).find(|path| path.is_file())
-        });
-        // A new snapshot is embedded from the current framework. Existing
-        // snapshots can retain an older version during non-destructive init.
-        let Some(snapshot) = snapshot else { return true; };
-        workspace_version(&snapshot)
+        config.get("version").and_then(Value::as_str).map(str::to_owned)
     };
     let Some(version) = version else { return false; };
     let version = version.split('+').next().unwrap_or(&version);
@@ -685,12 +676,7 @@ pub(super) fn framework_paths(
     root: &Path,
     mut templates: Vec<RenderedTemplate>,
 ) -> Vec<RenderedTemplate> {
-    let framework = if root.join("vendor/framework/Cargo.toml").exists() {
-        "vendor/framework"
-    } else {
-        ".forklaunch/framework-rs"
-    };
-    let paths = regex::Regex::new(r#"path\s*=\s*"[^"]*(\.forklaunch/framework-rs|vendor/framework|\.forklaunch/blueprint-rs)(/[^"]*)?""#)
+    let paths = regex::Regex::new(r#"path\s*=\s*"[^"]*(\.forklaunch/framework-rs|\.forklaunch/blueprint-rs)(/[^"]*)?""#)
         .expect("fixed dependency path pattern");
     for template in &mut templates {
         if template
@@ -701,11 +687,7 @@ pub(super) fn framework_paths(
             let directory = template.path.parent().expect("Cargo manifest directory");
             template.content = paths
                 .replace_all(&template.content, |captures: &regex::Captures<'_>| {
-                    let base = if &captures[1] == ".forklaunch/blueprint-rs" {
-                        ".forklaunch/blueprint-rs"
-                    } else {
-                        framework
-                    };
+                    let base = &captures[1];
                     let suffix = captures
                         .get(2)
                         .map_or("", |suffix| suffix.as_str())
@@ -717,10 +699,6 @@ pub(super) fn framework_paths(
                     format!("path = \"{}\"", relative.display())
                 })
                 .into_owned();
-        } else if framework == "vendor/framework" {
-            template.content = template
-                .content
-                .replace(".forklaunch/framework-rs", "vendor/framework");
         }
     }
     templates
@@ -845,12 +823,6 @@ mod tests {
     #[test]
     fn framework_dependencies_follow_registered_project_depth() {
         let root = tempfile::tempdir().unwrap();
-        create_dir_all(root.path().join("vendor/framework")).unwrap();
-        write(
-            root.path().join("vendor/framework/Cargo.toml"),
-            "[workspace]",
-        )
-        .unwrap();
         let files = framework_paths(root.path(), vec![RenderedTemplate {
             path: root.path().join("workers/team/jobs/Cargo.toml"),
             content: "[dependencies]\nforklaunch-core = { path = \"../../.forklaunch/framework-rs/crates/core\" }\n".into(),
@@ -859,9 +831,8 @@ mod tests {
         assert!(
             files[0]
                 .content
-                .contains("../../../vendor/framework/crates/core")
+                .contains("\"../../../.forklaunch/framework-rs/crates/core\"")
         );
-        assert!(!files[0].content.contains(".forklaunch/framework-rs"));
     }
 
     #[test]
@@ -976,17 +947,24 @@ mod tests {
     }
 
     #[test]
-    fn retained_framework_snapshots_keep_their_available_docs_api() {
-        for relative in ["vendor/framework", ".forklaunch/framework-rs"] {
+    fn selected_frameworks_keep_their_available_docs_api() {
+        for local in [false, true] {
             for (version, expected) in [("0.1.0", "with_openapi"), ("0.1.1", "with_docs")] {
                 let root = tempfile::tempdir().unwrap();
-                let snapshot = root.path().join(relative);
-                create_dir_all(&snapshot).unwrap();
-                write(snapshot.join("Cargo.toml"), format!("[workspace.package]\nversion={version:?}\n")).unwrap();
+                create_dir_all(root.path().join(".forklaunch")).unwrap();
+                let selection = if local {
+                    let checkout = root.path().join("framework-rs");
+                    create_dir_all(&checkout).unwrap();
+                    write(checkout.join("Cargo.toml"), format!("[workspace.package]\nversion={version:?}\n")).unwrap();
+                    format!("path = {:?}", checkout.to_string_lossy())
+                } else {
+                    format!("version = {version:?}")
+                };
+                write(root.path().join(".forklaunch/manifest.toml"), format!("[framework]\n{selection}\n")).unwrap();
                 let directory = root.path().join("src/notes");
                 let source = service_templates(&directory, "notes", "Notes").into_iter()
                     .find(|file| file.path == directory.join("application.rs")).unwrap().content;
-                assert!(source.contains(&format!("native::{expected}(")), "{relative} {version}");
+                assert!(source.contains(&format!("native::{expected}(")), "local={local} {version}");
             }
         }
     }

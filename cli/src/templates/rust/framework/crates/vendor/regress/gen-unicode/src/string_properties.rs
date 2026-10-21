@@ -1,1 +1,0 @@
-../../../../../../../../../../framework-rs/crates/vendor/regress/gen-unicode/src/string_properties.rs

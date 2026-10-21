@@ -210,10 +210,7 @@ pub(crate) fn change(
         ],
     };
     if adding {
-        let framework = if root.join("vendor/framework").is_dir() || crate::core::forklaunch_state::has_framework(root) {
-            root.join("vendor/framework")
-        } else { root.join(".forklaunch/framework-rs") };
-        let target = framework.join("crates").join(&id);
+        let target = root.join(".forklaunch/framework-rs/crates").join(&id);
         let relative = crate::core::relative_path::get_relative_path(&path, &target);
         ensure_native_dependency(
             &mut cargo,

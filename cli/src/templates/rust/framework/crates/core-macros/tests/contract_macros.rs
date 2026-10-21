@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core-macros/tests/contract_macros.rs

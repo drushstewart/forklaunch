@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/examples/model_gateway.rs

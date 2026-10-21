@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/tests/version_response_sdk.rs

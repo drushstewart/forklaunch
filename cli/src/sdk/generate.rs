@@ -2135,11 +2135,7 @@ fn rust_sdk_cargo_for_layout(
     }
     let directory = super::layout::local_sdk(root, service, "rust")?
         .unwrap_or(root.join(super::layout::rust(root)?).join(package));
-    let framework = if root.join("vendor/framework").is_dir() {
-        root.join("vendor/framework")
-    } else {
-        root.join(".forklaunch/framework-rs")
-    };
+    let framework = root.join(".forklaunch/framework-rs");
     // `diff_paths` gives no answer for one relative and one absolute path.
     let (framework, directory) = (std::path::absolute(&framework)?, std::path::absolute(&directory)?);
     let relative = pathdiff::diff_paths(framework.join("crates/core"), &directory)

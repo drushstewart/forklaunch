@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/core/compiler-tests/package_sdk/object_shapes.ts

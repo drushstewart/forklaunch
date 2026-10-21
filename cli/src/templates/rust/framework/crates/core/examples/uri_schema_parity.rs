@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/examples/uri_schema_parity.rs

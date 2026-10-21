@@ -72,7 +72,8 @@ try:
     command('init', 'service', 'spare-shop', '--language', 'rust', '-d', 'postgresql', '-D', 'Invalid', success=False)
     assert snapshot() == before
     run('cargo', 'build', '--workspace')
-    blueprint = app / '.forklaunch/blueprint-rs/Cargo.toml'
+    # Blueprint crates are published; their tests run in the blueprint workspace.
+    blueprint = repo / 'blueprint-rs/Cargo.toml'
     run('cargo', 'test', '--manifest-path', blueprint, '-p', 'forklaunch-ecommerce-stripe', '--test', 'provider')
     database.start()
     run('cargo', 'test', '--manifest-path', blueprint, '-p', 'forklaunch-ecommerce-base', '--all-features', '--test', 'reconciliation', '--', '--include-ignored')

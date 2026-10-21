@@ -1,1 +1,0 @@
-../../../../../../../../../blueprint-rs/crates/interfaces/worker-interface/src/lib.rs

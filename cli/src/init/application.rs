@@ -1448,8 +1448,6 @@ mod tests {
         let invalid = command().try_get_matches_from(["application", "example", "--framework-version", "latest"]).unwrap();
         assert!(rust_project::dependencies::configuration(&invalid).is_err());
         assert!(command().try_get_matches_from(["application", "example", "--framework-version", "0.1.0", "--framework-path", "."]).is_err());
-        // Vendored snapshots are gone; the default is the published release.
-        assert!(command().try_get_matches_from(["application", "example", "--framework-snapshot"]).is_err());
         let default = command().try_get_matches_from(["application", "example"]).unwrap();
         assert!(rust_project::dependencies::configuration(&default).unwrap()["version"].as_str().is_some());
     }

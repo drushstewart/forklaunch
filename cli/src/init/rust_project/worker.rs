@@ -237,7 +237,6 @@ fn cargo_with_backend(
 }
 
 pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
-    modules::ensure_blueprint_sources(root, false)?;
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     let directory = root
         .join(crate_path_for_project(&manifest, name).unwrap_or_else(|| format!("crates/{name}")));
@@ -518,8 +517,7 @@ pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
 /// and explicit application-owned backend and asset hooks.
 pub(super) fn apalis_templates(root: &Path, dir: &Path, name: &str, description: &str) -> Result<Vec<RenderedTemplate>> {
     let data=rust_crate_template_data(name,description,true);
-    let framework=if root.join("vendor/framework/Cargo.toml").exists(){root.join("vendor/framework")}else{root.join(".forklaunch/framework-rs")};
-    let relative=crate::core::relative_path::get_relative_path(dir,&framework).to_string_lossy().replace('\\',"/");
+    let relative=crate::core::relative_path::get_relative_path(dir,&root.join(".forklaunch/framework-rs")).to_string_lossy().replace('\\',"/");
     let worker_path=crate::core::relative_path::get_relative_path(dir,&root.join(".forklaunch/blueprint-rs/crates/interfaces/worker-interface")).to_string_lossy().replace('\\',"/");
     let mut files=Vec::new();
     for file in ["main.rs","lib.rs","bootstrapper.rs","worker.rs","worker_hooks.rs","registrations.rs","build.rs"] {

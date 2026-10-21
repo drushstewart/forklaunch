@@ -190,7 +190,6 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
     {
         bail!("Cargo workspace.members must be an array");
     }
-    // Framework crates come from the registry; nothing vendored needs excluding.
     let package = table(workspace, "package")?;
     package.entry("version").or_insert(value("0.1.0"));
     let edition = package.entry("edition").or_insert(value("2024"));
@@ -490,7 +489,6 @@ mod tests {
         assert!(source.starts_with("# user-owned workspace"));
         let cargo: Value = toml::from_str(&source).unwrap();
         assert_eq!(cargo["workspace"]["members"][0].as_str(), Some("tools"));
-        assert!(cargo["workspace"].get("exclude").is_none_or(|exclude| !exclude.as_array().unwrap().iter().any(|entry| entry.as_str() == Some("vendor/framework"))));
         assert_eq!(
             cargo["workspace"]["package"]["version"].as_str(),
             Some("2.0.0")

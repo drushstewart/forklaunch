@@ -289,7 +289,6 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
 
 fn reconcile_images(root: &Path) -> Result<()> {
     crate::core::github_configs::reconcile_github_configs(root)?;
-    super::blueprint_sources::ensure(root, false, &[])?;
     super::typescript_image::reconcile(root)?;
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     if manifest.get("language").and_then(Value::as_str) != Some("mixed") {

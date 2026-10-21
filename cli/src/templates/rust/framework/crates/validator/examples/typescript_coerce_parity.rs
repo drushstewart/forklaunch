@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/validator/examples/typescript_coerce_parity.rs

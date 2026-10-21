@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/examples/codegen_schema_bundle.rs

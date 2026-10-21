@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/tests/shared_model_identity.rs

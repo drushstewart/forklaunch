@@ -1,1 +1,0 @@
-../../../../../../../blueprint-rs/crates/implementations/iam/iam-base/migrations/0003_browser_sessions.sql
