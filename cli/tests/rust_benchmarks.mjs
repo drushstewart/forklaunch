@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import {spawn,spawnSync} from 'node:child_process';
-import {mkdtempSync,writeFileSync,rmSync} from 'node:fs';
+import {mkdtempSync,writeFileSync,rmSync,symlinkSync} from 'node:fs';
 import {tmpdir,cpus,platform,arch,release,totalmem} from 'node:os';
 import {dirname,join,resolve} from 'node:path';
 import {fileURLToPath,pathToFileURL} from 'node:url';
@@ -37,6 +37,8 @@ try{
  });
  assert.equal(ready.profile,profile);
  writeFileSync(join(temporary,'package.json'),'{"type":"module"}');
+ // The generated SDK imports its validator (ajv); resolve it from the TypeScript toolchain install.
+ if(process.env.TSC_BIN)symlinkSync(dirname(dirname(resolve(process.env.TSC_BIN))),join(temporary,'node_modules'),'dir');
  run(process.env.TSC_BIN??'tsc',['sdk.ts','--target','ES2022','--module','ES2022','--moduleResolution','node','--lib','ES2022,DOM','--strict','--outDir','compiled']);
  const {createForkLaunchSdk}=await import(pathToFileURL(join(temporary,'compiled/sdk.js')));
  const sdk=createForkLaunchSdk({baseUrl:ready.ready});const samples=[];
