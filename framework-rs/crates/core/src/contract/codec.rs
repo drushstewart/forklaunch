@@ -89,8 +89,8 @@ pub fn serialize_trim_ascii<S: serde::Serializer, const MIN: usize, const MAX: u
 #[doc(hidden)]
 #[must_use]
 pub fn trim_ascii_schema<const WIRE: usize, const MIN: usize, const MAX: usize>(
-    _: &mut schemars::r#gen::SchemaGenerator,
-) -> schemars::schema::Schema {
+    _: &mut schemars::SchemaGenerator,
+) -> schemars::Schema {
     // Separate start/end prohibitions avoid JavaScript `$` accepting a final LF.
     serde_json::from_value(json!({
         "type":"string", "minLength":MIN, "maxLength":MAX,
@@ -124,16 +124,16 @@ pub fn trim_ascii_schema<const WIRE: usize, const MIN: usize, const MAX: usize>(
 #[doc(hidden)]
 #[must_use]
 pub fn default_schema<T: schemars::JsonSchema + Default + serde::Serialize>(
-    generator: &mut schemars::r#gen::SchemaGenerator,
-) -> schemars::schema::Schema {
-    let mut schema = T::json_schema(generator).into_object();
+    generator: &mut schemars::SchemaGenerator,
+) -> schemars::Schema {
+    let mut schema = T::json_schema(generator);
     let value = serde_json::to_value(T::default()).expect("supported primitive default serializes");
-    schema.metadata().default = Some(value.clone());
-    schema.extensions.insert(
+    schema.insert("default".into(), value.clone());
+    schema.insert(
         DEFAULT.into(),
         json!({"version":1,"projection":"value","value":value}),
     );
-    schema.into()
+    schema
 }
 
 /// Project canonical normalized-value schemas into accepted raw request schemas.

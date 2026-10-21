@@ -93,7 +93,7 @@ pub use forklaunch_core_macros::schema;
 #[cfg(feature = "typed-schema")]
 pub mod __private {
     pub use super::integer::{deserialize as deserialize_integer, serialize as serialize_integer};
-    pub use super::native_schema::{NativeMember, named_schema};
+    pub use super::native_schema::{NativeMember, legacy_schema_name, named_schema};
     pub use schemars;
     pub use serde;
 
@@ -155,19 +155,14 @@ pub struct UploadFile(pub Vec<u8>);
 
 #[cfg(feature = "typed-schema")]
 impl schemars::JsonSchema for UploadFile {
-    fn schema_name() -> String {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
         "UploadFile".into()
     }
-    fn is_referenceable() -> bool {
-        false
+    fn inline_schema() -> bool {
+        true
     }
-    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
-        schemars::schema::SchemaObject {
-            instance_type: Some(schemars::schema::InstanceType::String.into()),
-            format: Some("binary".into()),
-            ..Default::default()
-        }
-        .into()
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({ "type": "string", "format": "binary" })
     }
 }
 

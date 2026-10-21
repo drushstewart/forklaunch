@@ -28,7 +28,7 @@ forklaunch-core = { version = "0.1.3", path = "../core", features = ["ws"] }
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "io-util"] }
 garde = { version = "0.23", features = ["derive"] }
-schemars = "0.8"
+schemars = "1.2"
 
 [[example]]
 name = "websocket_runtime"

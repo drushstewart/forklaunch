@@ -65,18 +65,18 @@ async fn whole_field_constraints_validate_decoded_groups() {
 }
 
 impl schemars::JsonSchema for Query {
-    fn schema_name() -> String {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
         "Query".into()
     }
-    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         serde_json::from_value(serde_json::json!({"type":"object","properties":{"start":{"type":"string"},"end":{"type":"string"}},"additionalProperties":false,"dependencies":{"start":["end"]}})).unwrap()
     }
 }
 impl schemars::JsonSchema for Headers {
-    fn schema_name() -> String {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
         "Headers".into()
     }
-    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         serde_json::from_value(serde_json::json!({"type":"object","properties":{"X-Start":{"type":"string"},"X-End":{"type":"string"}},"additionalProperties":false,"dependencies":{"X-Start":["X-End"]}})).unwrap()
     }
 }

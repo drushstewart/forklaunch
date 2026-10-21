@@ -42,7 +42,10 @@ pub trait FrameworkSchema:
     /// Returns the JSON Schema for this type as a compact JSON string.
     #[must_use]
     fn json_schema_json() -> String {
-        let schema = schemars::r#gen::SchemaGenerator::default().into_root_schema_for::<Self>();
+        // Draft-07, the dialect the contract validators and TypeScript share.
+        let schema = schemars::generate::SchemaSettings::draft07()
+            .into_generator()
+            .into_root_schema_for::<Self>();
         serde_json::to_string(&schema).unwrap_or_default()
     }
 }

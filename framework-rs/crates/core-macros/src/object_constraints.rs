@@ -73,11 +73,11 @@ impl Options {
         let min = self
             .min
             .as_ref()
-            .map(|value| quote!(object.object().min_properties = Some(#value);));
+            .map(|value| quote!(schema.insert("minProperties".to_owned(), #path::JsonValue::from(#value));));
         let max = self
             .max
             .as_ref()
-            .map(|value| quote!(object.object().max_properties = Some(#value);));
+            .map(|value| quote!(schema.insert("maxProperties".to_owned(), #path::JsonValue::from(#value));));
         let entries = by_trigger.iter().map(|(trigger,members)|quote! {
             dependencies.insert(#trigger.to_owned(), #path::JsonValue::Array(vec![#(#path::JsonValue::String(#members.to_owned())),*]));
         });
@@ -87,13 +87,12 @@ impl Options {
             quote! {
                 let mut dependencies = ::std::collections::BTreeMap::new();
                 #(#entries)*
-                object.extensions.insert("dependencies".to_owned(), #path::JsonValue::Object(dependencies.into_iter().collect()));
+                schema.insert("dependencies".to_owned(), #path::JsonValue::Object(dependencies.into_iter().collect()));
             }
         };
         Ok(quote! {
-            let mut object = schema.into_object();
+            let mut schema = schema;
             #min #max #dependencies
-            let schema = #path::__private::schemars::schema::Schema::Object(object);
         })
     }
 }

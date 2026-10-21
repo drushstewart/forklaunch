@@ -532,15 +532,14 @@ fn constrain_string_field(
     field
         .attrs
         .push(parse_quote!(#[serde(deserialize_with = #deserialize, serialize_with = #serialize)]));
-    if let Some(value) = minimum {
-        field
+    // Schemars accepts one `length` item per field.
+    match (minimum, maximum) {
+        (Some(min), Some(max)) => field
             .attrs
-            .push(parse_quote!(#[schemars(length(min = #value))]));
-    }
-    if let Some(value) = maximum {
-        field
-            .attrs
-            .push(parse_quote!(#[schemars(length(max = #value))]));
+            .push(parse_quote!(#[schemars(length(min = #min, max = #max))])),
+        (Some(min), None) => field.attrs.push(parse_quote!(#[schemars(length(min = #min))])),
+        (None, Some(max)) => field.attrs.push(parse_quote!(#[schemars(length(max = #max))])),
+        (None, None) => {}
     }
     Ok(())
 }

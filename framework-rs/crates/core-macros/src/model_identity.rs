@@ -80,9 +80,9 @@ pub(super) fn expand(
             #[schemars(crate = #schema_path, rename = #schema_name)]
             #mirror
             impl #impl_generics #path::__private::schemars::JsonSchema for #name #type_generics #where_clause {
-                fn schema_name() -> String { format!(#identity_format #(, <#type_parameters as #path::__private::schemars::JsonSchema>::schema_name())* #(, #const_parameters)*) }
-                fn schema_id() -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Owned(format!(concat!(module_path!(), "::", #identity_format) #(, <#type_parameters as #path::__private::schemars::JsonSchema>::schema_id())* #(, #const_parameters)*)) }
-                fn json_schema(generator: &mut #path::__private::schemars::r#gen::SchemaGenerator) -> #path::__private::schemars::schema::Schema {
+                fn schema_name() -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Owned(format!(#identity_format #(, #path::__private::legacy_schema_name(&<#type_parameters as #path::__private::schemars::JsonSchema>::schema_name()))* #(, #const_parameters)*)) }
+                fn schema_id() -> ::std::borrow::Cow<'static, str> { ::std::borrow::Cow::Owned(format!(concat!(module_path!(), "::", #identity_format) #(, #path::__private::legacy_schema_name(&<#type_parameters as #path::__private::schemars::JsonSchema>::schema_id()))* #(, #const_parameters)*)) }
+                fn json_schema(generator: &mut #path::__private::schemars::SchemaGenerator) -> #path::__private::schemars::Schema {
                     let schema = <__ForklaunchSchema #type_generics as #path::__private::schemars::JsonSchema>::json_schema(generator);
                     #object_schema
                     #path::__private::named_schema::<Self>(schema)
