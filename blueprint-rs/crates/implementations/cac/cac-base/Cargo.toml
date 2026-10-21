@@ -8,8 +8,8 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
-forklaunch-cac-interface = { version = "=0.1.1", path = "../../../interfaces/cac-interface" }
-forklaunch-core = { version = "=0.1.3", path = "../../../../../framework-rs/crates/core", features = ["http", "domain"] }
+forklaunch-cac-interface = { version = "=0.2.0", path = "../../../interfaces/cac-interface" }
+forklaunch-core = { version = "=0.2.0", path = "../../../../../framework-rs/crates/core", features = ["http", "domain"] }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt", "macros"] }

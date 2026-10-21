@@ -1148,7 +1148,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "forklaunch-axum"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "axum",
  "bytes",
@@ -1174,7 +1174,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-billing-axum"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "chrono",
@@ -1198,7 +1198,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-billing-base"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base16ct 1.0.0",
  "chrono",
@@ -1215,7 +1215,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-billing-interface"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "forklaunch-core",
@@ -1226,7 +1226,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-billing-stripe"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "base16ct 1.0.0",
@@ -1248,7 +1248,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-cac-axum"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "chrono",
@@ -1264,7 +1264,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-cac-base"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "forklaunch-cac-interface",
  "forklaunch-core",
@@ -1274,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-cac-interface"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "forklaunch-core",
  "schemars 1.2.2",
@@ -1284,7 +1284,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-common"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "forklaunch-regress",
  "ryu-js",
@@ -1294,7 +1294,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-core"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "aes-gcm",
  "anyhow",
@@ -1349,7 +1349,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-core-macros"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "forklaunch-common",
  "proc-macro-crate",
@@ -1360,7 +1360,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-ecommerce-axum"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "forklaunch-axum",
@@ -1384,7 +1384,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-ecommerce-base"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "forklaunch-core",
@@ -1403,7 +1403,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-ecommerce-interface"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "forklaunch-core",
  "schemars 1.2.2",
@@ -1413,7 +1413,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-ecommerce-paypal"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "forklaunch-core",
@@ -1431,7 +1431,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-ecommerce-stripe"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "forklaunch-core",
@@ -1451,7 +1451,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-iam-axum"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "forklaunch-axum",
@@ -1470,7 +1470,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-iam-base"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "argon2",
  "async-trait",
@@ -1492,7 +1492,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-iam-interface"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "forklaunch-core",
@@ -1553,7 +1553,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-validator"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "chrono",
  "forklaunch-common",
@@ -1567,7 +1567,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-worker-database"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "forklaunch-core",
@@ -1584,7 +1584,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-worker-interface"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "apalis",
  "apalis-core",
@@ -1603,7 +1603,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-worker-kafka"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base16ct 1.0.0",
  "forklaunch-core",
@@ -1618,7 +1618,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-worker-redis"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "axum",
  "forklaunch-core",
@@ -1635,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "forklaunch-ws"
-version = "0.1.3"
+version = "0.2.0"
 dependencies = [
  "forklaunch-core",
  "serde",
