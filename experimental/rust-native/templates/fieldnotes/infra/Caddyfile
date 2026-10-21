@@ -1,0 +1,21 @@
+https://localhost {
+    tls internal
+    @auth path /api/auth/* /api/workspaces
+    handle @auth {
+        reverse_proxy auth:3001
+    }
+    @api path /v1/* /mcp /openapi.json
+    handle @api {
+        reverse_proxy notes:8000 {
+            flush_interval -1
+        }
+    }
+    handle /internal/* {
+        respond 404
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}

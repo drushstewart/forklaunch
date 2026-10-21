@@ -162,7 +162,15 @@ export const UpdatePaymentLinkMapper = {
           throw new Error('Invalid Stripe billing response');
       }
     }
-    return { ...dto, amount, stripeFields: provider };
+    // Stripe types absent fields as null; the update schema types them as
+    // optional. The stored value is the provider object either way.
+    return {
+      ...dto,
+      amount,
+      stripeFields: provider as unknown as Parameters<
+        typeof UpdatePaymentLinkEntityMapper.toEntity
+      >[0]['stripeFields']
+    };
   },
   toCachedDto: async (
     dto: Parameters<typeof UpdatePaymentLinkEntityMapper.toEntity>[0],

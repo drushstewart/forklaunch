@@ -1,0 +1,20 @@
+[package]
+name = "fieldnotes-client"
+version = "0.1.0"
+edition = "2024"
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.13", default-features = false, features = ["json", "query", "stream", "multipart", "rustls"] }
+futures-util = "0.3"
+tokio = { version = "1", features = ["net"] }
+tokio-tungstenite = "0.30"
+forklaunch-ws = { path = "../../../vendor/framework/crates/ws", features = ["transport", "json-schema"] }
+
+[build-dependencies]
+
+fieldnotes-contracts = { path = "../../notes/domain" }
+forklaunch-core = {  path = "../../../vendor/framework/crates/core", features = ["build"]}
+
+[lib]
+path = "lib.rs"
