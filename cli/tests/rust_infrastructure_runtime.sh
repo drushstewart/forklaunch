@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 set -euo pipefail
-export FORKLAUNCH_FRAMEWORK_PATH="${FORKLAUNCH_FRAMEWORK_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/framework-rs}"
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

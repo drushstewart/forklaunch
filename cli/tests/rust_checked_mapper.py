@@ -5,7 +5,7 @@ repo = pathlib.Path(__file__).resolve().parents[2]
 cli = pathlib.Path(os.environ['FORKLAUNCH_CLI'])
 root = pathlib.Path(tempfile.mkdtemp(prefix='forklaunch-checked-mapper-'))
 app = root / 'app'
-env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'CARGO_INCREMENTAL': '0'}
+env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'CARGO_INCREMENTAL': '0'}
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 def run(args):
     print('+', shlex.join(args), flush=True)

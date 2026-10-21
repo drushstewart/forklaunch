@@ -44,7 +44,6 @@ blueprint_versions = {p['name']: p['version'] for p in blueprint_report['package
 cli = Path(os.environ['FORKLAUNCH_CLI']).resolve()
 env = {**os.environ, 'RUSTUP_TOOLCHAIN': 'stable', 'CARGO_INCREMENTAL': '0'}
 env.pop('FORKLAUNCH_FRAMEWORK_SNAPSHOT', None)
-env.pop('FORKLAUNCH_FRAMEWORK_PATH', None)
 env.pop('FORKLAUNCH_SKIP_FORMAT', None)
 env.pop('FORKLAUNCH_CONTRACT_COMPILER', None)
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))

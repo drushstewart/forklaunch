@@ -21,7 +21,7 @@ account = 'parity-offline-' + root.name.removeprefix('run.').replace('_', '-')
 account_path = Path.home() / '.forklaunch/accounts' / f'{account}.toml'
 assert not account_path.exists()
 env = {**os.environ, 'FORKLAUNCH_ACCOUNT': account, 'FORKLAUNCH_SKIP_FORMAT': '1', 'CARGO_INCREMENTAL': '0',
-       'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'RUSTUP_TOOLCHAIN': 'stable'}
+       'RUSTUP_TOOLCHAIN': 'stable'}
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
     shutil.rmtree(root)

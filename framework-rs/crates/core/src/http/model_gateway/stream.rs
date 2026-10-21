@@ -116,7 +116,7 @@ impl ModelGatewayStream {
         self.frame = Vec::new();
         self.cursor = 0;
     }
-    /// Reads the next JSON item, skipping malformed/non-data frames. Exact [DONE]
+    /// Reads the next JSON item, skipping malformed/non-data frames. Exact `[DONE]`
     /// ends the stream. A missing/empty body ends without emitting an item.
     /// # Errors
     /// Limit/time/transport failures terminate the stream with sanitized errors.

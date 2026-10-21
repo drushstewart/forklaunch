@@ -481,9 +481,13 @@ pub(crate) fn generate_typescript_http_sdk_files_with_runtime(
         .ok_or_else(|| anyhow::anyhow!("Missing client template section"))?;
     let render =
         |source: &str| -> Result<String> { Ok(ramhorns::Template::new(source)?.render(&data)) };
-    let runtime = render(&format!(
+    let mut runtime = render(&format!(
         "{runtime_before}{runtime_after}\nexport default request;\n"
     ))?;
+    // The renderer drops the final newline; source files end with one.
+    if !runtime.ends_with('\n') {
+        runtime.push('\n');
+    }
     let runtime = if options.import_fetch {
         format!("import fetch from 'cross-fetch';\n{runtime}")
     } else {

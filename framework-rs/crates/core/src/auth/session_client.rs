@@ -180,30 +180,25 @@ mod tests {
         assert!(!client.authenticate_internal(&"y".repeat(32)));
     }
     #[test]
-    fn remote_plaintext_requires_explicit_development_policy() {
+    fn internal_http_and_https_endpoints_are_accepted() {
+        // Internal service networks (Docker, VPC) use plain HTTP.
         for endpoint in [
             "http://auth:3001/verify",
             "http://example.test/verify",
-            "http://127.0.0.1.example.test/verify",
-        ] {
-            assert!(SessionClient::new(endpoint, "x-secret", "x".repeat(32)).is_err());
-        }
-        for endpoint in [
             "https://auth.example.test/verify",
             "http://127.0.0.1:3001/verify",
             "http://[::1]:3001/verify",
         ] {
             assert!(SessionClient::new(endpoint, "x-secret", "x".repeat(32)).is_ok());
         }
-        assert!(
-            SessionClient::with_transport(
-                "http://auth:3001/verify",
-                "x-secret",
-                "x".repeat(32),
-                SessionTransport::PlaintextDevelopment
-            )
-            .is_ok()
-        );
+        for endpoint in [
+            "ftp://auth:3001/verify",
+            "http://user:pass@auth:3001/verify",
+            "http://auth:3001/verify?token=x",
+            "http://auth:3001/verify#fragment",
+        ] {
+            assert!(SessionClient::new(endpoint, "x-secret", "x".repeat(32)).is_err());
+        }
     }
     #[tokio::test]
     async fn bounded_fixed_endpoint_verification() {

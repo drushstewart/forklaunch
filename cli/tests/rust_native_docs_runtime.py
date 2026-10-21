@@ -16,7 +16,7 @@ from urllib.request import urlopen
 
 repo = Path(__file__).resolve().parents[2]
 env = {**os.environ, 'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable',
-       'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs')}
+       'FORKLAUNCH_SKIP_FORMAT': '1'}
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
     sys.exit(subprocess.run([sys.executable, str(repo / 'cli/tests/fixtures/worker_runtime_lock.py'),
