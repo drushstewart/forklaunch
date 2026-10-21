@@ -146,7 +146,7 @@ pub fn all_contracts() -> Vec<RouteContract> { vec![
 ''' + ''.join(f'RouteContract::new("Probe {method}", "HTTP method", HttpMethod::{method}, "/verbs/{method.lower()}").with_response(204, None),\n' for method in methods) + '''] }
 pub fn contracts() -> Vec<RouteContract> { let mut routes = all_contracts(); routes.push(contract()); routes }
 ''')
-    handler = app / 'src/cac/api/routes/custom.rs'
+    handler = app / 'src/cac/api/routes/extensions/custom.rs'
     handler.write_text('''use forklaunch_axum::ForkLaunchRouter;
 pub use crate::api::contracts::extensions::custom::{contract, contracts, ROUTE_NAME};
 use crate::api::contracts::extensions::custom::all_contracts;
@@ -243,10 +243,10 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
     for name, artifact in contracts().items():
         assert not any(route['path'] == '/extra' for route in artifact['routes']), name
     assert not any(route['path'].startswith('/verbs/') for route in contracts()['cac']['routes'])
-    server = app / 'src/messaging/server.rs'
+    server = app / 'src/messaging/api/routes/mod.rs'
     original = server.read_text()
-    assert 'routes::register_router(' in original
-    server.write_text(original.replace('routes::register_router(', '('))
+    assert 'extensions::register_router(' in original
+    server.write_text(original.replace('extensions::register_router(', '('))
     before = snapshot()
     result = command('init', 'router', 'unsupported', '--language', 'rust', path=app / 'src/messaging', success=False)
     assert 'does not expose custom router hooks' in result.stdout + result.stderr

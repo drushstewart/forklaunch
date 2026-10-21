@@ -1226,7 +1226,7 @@ mod tests {
         for source in [
             billing_registry_fixture(),
             include_str!("../../templates/rust/iam/api/contracts/registry.rs").replace("{{{name}}}", "identity"),
-            include_str!("../../templates/rust/cac/lib.rs").replace("{{{name}}}", "codes"),
+            include_str!("../../templates/rust/cac/api/contracts/registry.rs").replace("{{{name}}}", "codes"),
         ] {
             let source = format!(
                 "// App-owned registry note: keep this formatting.\n{source}\nconst USER_NOTE: &str = \"registry {{ text }}\";\n"
@@ -1520,7 +1520,6 @@ mod tests {
         for main in [
             include_str!("../../templates/rust/project/service/src/main.rs"),
             include_str!("../../templates/rust/project/module/server.rs"),
-            include_str!("../../templates/rust/cac/main.rs"),
             include_str!("../../templates/rust/ecommerce/main.rs"),
             "router.into_router_with_default_mcp()?;",
         ] {

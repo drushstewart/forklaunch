@@ -43,7 +43,7 @@ impl BuiltinModule {
     }
     /// Modules generated with the ordinary service layout.
     fn service_shaped(self) -> bool {
-        matches!(self, Self::Iam | Self::BillingBase | Self::BillingStripe)
+        matches!(self, Self::Iam | Self::Cac | Self::BillingBase | Self::BillingStripe)
     }
     fn description(self) -> &'static str {
         match self {
@@ -791,7 +791,7 @@ mod tests {
 
     #[test]
     fn service_shaped_modules_bind_each_operation_once_through_thin_controllers() {
-        for kind in [BuiltinModule::Iam, BuiltinModule::BillingBase, BuiltinModule::BillingStripe] {
+        for kind in [BuiltinModule::Iam, BuiltinModule::Cac, BuiltinModule::BillingBase, BuiltinModule::BillingStripe] {
             let root = tempfile::tempdir().unwrap();
             let dir = root.path().join("src/module");
             let data = RustModuleTemplate {

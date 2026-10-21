@@ -593,7 +593,7 @@ skeleton registers no entities, so authorized compliance requests return its
 matching text 404. There is no invented clinical schema or database migration.
 
 Roles come from verified issuer claims by default. Role resolvers receive the complete verified payload, including organization context. Applications can configure
-`CacAuthConfig::with_role_resolver` to surface roles through trusted IAM instead
+`HmacJwksAuth::with_role_resolver` (the module's `config.rs` builds it) to surface roles through trusted IAM instead
 of the TypeScript template's placeholder admin-role function. Optional
 `JWT_ISSUER` and `JWT_AUDIENCE` add issuer/audience constraints. Expiry and `nbf`
 are validated. JWKS keys are cached per endpoint and may use RSA, EC or EdDSA.

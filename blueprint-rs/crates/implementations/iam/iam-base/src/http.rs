@@ -52,6 +52,7 @@ pub struct IamHttp<S> {
     compliance: Arc<DirectoryCompliance>,
     auth: Arc<HmacJwksAuth>,
     mode: DirectoryAuthorizationMode,
+    service: ServiceInfo,
 }
 
 impl<S> Clone for IamHttp<S> {
@@ -62,6 +63,7 @@ impl<S> Clone for IamHttp<S> {
             compliance: Arc::clone(&self.compliance),
             auth: Arc::clone(&self.auth),
             mode: self.mode,
+            service: self.service.clone(),
         }
     }
 }
@@ -76,6 +78,7 @@ impl<S: AsyncIamSessions + 'static> IamHttp<S> {
         directory: PostgresDirectoryStore,
         auth: HmacJwksAuth,
         mode: DirectoryAuthorizationMode,
+        service: ServiceInfo,
     ) -> Self {
         let auth = if mode == DirectoryAuthorizationMode::StoredSessions {
             auth.with_role_resolver(|_| async { Ok(Vec::new()) })
@@ -88,6 +91,7 @@ impl<S: AsyncIamSessions + 'static> IamHttp<S> {
             compliance: Arc::new(DirectoryCompliance::default()),
             auth: Arc::new(auth),
             mode,
+            service,
         }
     }
 
@@ -113,10 +117,9 @@ impl<S: AsyncIamSessions + 'static> IamHttp<S> {
 
     /// Collects handlers for the service's IAM routes.
     #[must_use]
-    pub fn routes(&self, info: ServiceInfo) -> IamRoutes<S> {
+    pub fn routes(&self) -> IamRoutes<S> {
         IamRoutes {
             http: self.clone(),
-            info,
             handlers: HashMap::new(),
         }
     }
@@ -157,7 +160,6 @@ impl<S: AsyncIamSessions + 'static> IamHttp<S> {
 /// interface, so routes, SDKs, `OpenAPI` and MCP tools share one declaration.
 pub struct IamRoutes<S> {
     http: IamHttp<S>,
-    info: ServiceInfo,
     handlers: HashMap<String, Handler>,
 }
 
@@ -181,7 +183,7 @@ impl<S: AsyncIamSessions + 'static> IamRoutes<S> {
     /// Mount the routed operations in contract order with IAM authentication.
     #[must_use]
     pub fn finish(mut self) -> ForkLaunchRouter {
-        let mut router = ForkLaunchRouter::new(self.info.clone());
+        let mut router = ForkLaunchRouter::new(self.http.service.clone());
         let directory = module_contracts::registry();
         let operations = SESSION_OPERATIONS
             .iter()

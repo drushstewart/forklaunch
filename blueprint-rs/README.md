@@ -124,7 +124,7 @@ struct UserCompliance {
 
 let compliance = DirectoryCompliance::default()
     .with_entity::<UserCompliance>(DirectoryKind::User, "id")?;
-let iam = forklaunch_iam_base::http::IamHttp::new(sessions, directory, auth, mode)
+let iam = forklaunch_iam_base::http::IamHttp::new(sessions, directory, auth, mode, service_info)
     .with_compliance(compliance);
 ```
 

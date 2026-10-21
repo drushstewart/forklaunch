@@ -1,5 +1,5 @@
 //! Builds the module's stores and HTTP handlers from trusted configuration.
-use crate::{config::ServiceConfig, domain::services::PostgresIamService, error::Result, persistence::database};
+use crate::{config::ServiceConfig, domain::services::PostgresIamService, error::Result, persistence::database, service_info};
 use forklaunch_core::{
     auth::oidc::OidcProvider,
     domain::AuditContext,
@@ -49,7 +49,7 @@ pub async fn register(config: ServiceConfig) -> Result<AppState> {
         None => None,
     };
     let directory = PostgresDirectoryStore::new(pool.clone(), tenant, encryptor, AuditContext::system("iam-startup")).await?;
-    let iam = IamHttp::new(sessions, directory, config.module_auth()?, config.directory_mode);
+    let iam = IamHttp::new(sessions, directory, config.module_auth()?, config.directory_mode, service_info());
     Ok(AppState { config, pool, iam, browser })
 }
 

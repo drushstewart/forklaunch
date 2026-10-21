@@ -11,7 +11,6 @@ static MODULE_HTTP: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/m
 /// `blueprint-rs/crates`), and its crate name.
 fn adapter(kind: modules::BuiltinModule) -> (&'static str, &'static str, &'static str) {
     match kind.template() {
-        "cac" => ("cac", "implementations/cac/cac-axum", "forklaunch-cac-axum"),
         _ => ("ecommerce", "implementations/ecommerce/ecommerce-axum", "forklaunch-ecommerce-axum"),
     }
 }

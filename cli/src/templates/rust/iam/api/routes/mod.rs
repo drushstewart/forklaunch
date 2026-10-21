@@ -14,7 +14,7 @@ use crate::registrations::AppState;
 use forklaunch_axum::ForkLaunchRouter;
 
 pub fn router(state: &AppState) -> ForkLaunchRouter {
-    let routes = state.iam.routes(crate::service_info());
+    let routes = state.iam.routes();
     let routes = health::mount(routes, state);
     let routes = session::mount(routes, state);
     let routes = user::mount(routes, state);

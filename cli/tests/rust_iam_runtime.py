@@ -84,7 +84,7 @@ try:
         registrations = service / 'registrations.rs'
         source = registrations.read_text()
         # The generated registrations are formatted, so match the call by its tokens.
-        old = re.search(r'let iam = IamHttp::new\(\s*sessions,\s*directory,\s*config\.module_auth\(\)\?,\s*config\.directory_mode,?\s*\);', source)
+        old = re.search(r'let iam = IamHttp::new\(\s*sessions,\s*directory,\s*config\.module_auth\(\)\?,\s*config\.directory_mode,\s*service_info\(\),?\s*\);', source)
         assert old, 'generated IAM handler registration'
         old = old.group(0)
         replacement = '''#[allow(dead_code)]
@@ -102,7 +102,7 @@ try:
     if std::env::var("FORKLAUNCH_FIXTURE_CLASSIFIED_IAM").as_deref() == Ok("1") {
         compliance = compliance.with_entity::<ClassifiedUser>(forklaunch_iam_base::directory::DirectoryKind::User, "id")?;
     }
-    let iam = IamHttp::new(sessions, directory, config.module_auth()?, config.directory_mode).with_compliance(compliance);'''
+    let iam = IamHttp::new(sessions, directory, config.module_auth()?, config.directory_mode, service_info()).with_compliance(compliance);'''
         registrations.write_text(source.replace(old, replacement, 1))
     library = service / 'lib.rs'
     library.write_text(library.read_text() + '\npub const USER_OWNED_MARKER: &str = "preserved";\n')

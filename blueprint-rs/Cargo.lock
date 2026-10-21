@@ -1228,29 +1228,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "forklaunch-cac-axum"
+name = "forklaunch-cac-base"
 version = "0.2.0"
 dependencies = [
  "axum",
  "chrono",
  "forklaunch-axum",
- "forklaunch-cac-base",
  "forklaunch-cac-interface",
  "forklaunch-core",
  "jsonwebtoken",
  "serde_json",
  "tokio",
  "tower",
-]
-
-[[package]]
-name = "forklaunch-cac-base"
-version = "0.2.0"
-dependencies = [
- "forklaunch-cac-interface",
- "forklaunch-core",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

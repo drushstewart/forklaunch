@@ -42,8 +42,8 @@ expected = {
     "src/templates/rust/project/module/server.rs",
 
     "src/templates/rust/cac/Cargo.toml.template",
-    "src/templates/rust/cac/lib.rs",
-    "src/templates/rust/cac/main.rs",
+    "src/templates/rust/cac/api/contracts/registry.rs",
+    "src/templates/rust/cac/registrations.rs",
     "src/templates/rust/cac/env.example",
     "src/templates/rust/cac/README.md",
     "src/templates/rust/billing/Cargo.toml.template",
@@ -74,7 +74,7 @@ expected = {
     "src/templates/rust/capabilities/nonce_store.rs",
 }
 # Module HTTP layers are the only blueprint sources the CLI embeds.
-for module in ["cac", "ecommerce"]:
+for module in ["ecommerce"]:
     layer = root / "blueprint-rs/crates/implementations" / module / f"{module}-axum"
     embedded = Path("src/templates/rust/module-http") / module
     expected.add(str(embedded / "Cargo.toml.template"))

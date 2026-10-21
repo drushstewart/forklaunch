@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULES = ("cac", "ecommerce")
+MODULES = ("ecommerce",)
 with tempfile.TemporaryDirectory(prefix="forklaunch-inventory-") as temporary:
     root = Path(temporary)
     binary = root / "inventory-check"

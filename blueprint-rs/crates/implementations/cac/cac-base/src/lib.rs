@@ -1,6 +1,9 @@
 //! The same free, non-AMA placeholder procedure codes as TypeScript CAC.
 //! This provider is deliberately unlicensed and never supplies clinical CPT data.
 #![forbid(unsafe_code)]
+
+#[cfg(feature = "http")]
+pub mod http;
 use forklaunch_cac_interface::{
     CodeSetDescriptorDto, CodeSetProvider, CodeSetType, ProcedureCodeDto, ProcedureCodeLookupDto,
 };

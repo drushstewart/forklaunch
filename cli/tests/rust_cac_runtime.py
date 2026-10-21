@@ -61,9 +61,10 @@ try:
     assert (app / 'src/cac/sdk/rust/.forklaunch-sdk-local').is_file()
     assert (app / 'src/cac/.forklaunch/contracts/Cargo.toml').is_file()
     assert not (app / 'src/client-sdk/typescript/cac').exists()
-    # Blueprint crates come from crates.io; the HTTP layer is application source.
+    # Blueprint crates come from crates.io; the module binds their handlers.
     assert not (app / '.forklaunch/blueprint-rs').exists()
-    assert (app / 'src/cac/api/http/mod.rs').is_file()
+    assert (app / 'src/cac/registrations.rs').is_file()
+    assert not (app / 'src/cac/api/http').exists()
     library = app / 'src/cac/lib.rs'
     library.write_text(library.read_text() + '\npub const USER_MODULE_MARKER: &str = "preserved";\n')
     manifest = app / 'src/cac/Cargo.toml'
