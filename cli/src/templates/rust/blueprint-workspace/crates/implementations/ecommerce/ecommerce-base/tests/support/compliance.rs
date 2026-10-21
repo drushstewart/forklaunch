@@ -1,1 +1,0 @@
-../../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/tests/support/compliance.rs

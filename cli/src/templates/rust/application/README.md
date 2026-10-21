@@ -22,7 +22,7 @@ forklaunch sdk generate --path . --target all --from contract
 forklaunch sdk generate --path . --target all --from contract --check
 ```
 
-Commit `vendor/framework` with this application: the bundled framework source makes Cargo dependencies portable across machines and container builds. Initialization preserves existing source files.
+Framework crates come from crates.io at the versions in the `[framework]` table of `.forklaunch/manifest.toml`. Initialization preserves existing source files.
 
 The custom service starter uses an in-memory repository. Add service-owned database migrations and repositories before deploying application workloads. Database/Redis/Kafka worker variants retain their durable queue adapters.
 

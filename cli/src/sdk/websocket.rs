@@ -494,13 +494,8 @@ fn stage_rust(
     } else {
         ""
     };
-    let framework = if root.join("vendor/framework/Cargo.toml").exists() {
-        "vendor/framework"
-    } else {
-        ".forklaunch/framework-rs"
-    };
     let framework = format!(
-        "{}{framework}",
+        "{}.forklaunch/framework-rs",
         "../".repeat(Path::new(directory).components().count())
     );
     let mut index = String::from("#![forbid(unsafe_code)]\n");
@@ -866,8 +861,6 @@ mod tests {
             "language = \"mixed\"\nmodules_path = \"src\"\n",
         )
         .unwrap();
-        fs::create_dir_all(root.join("vendor/framework")).unwrap();
-        fs::write(root.join("vendor/framework/Cargo.toml"), "[workspace]\n").unwrap();
         let compiled = json!({"typescript": {"socket_notes": "export const ready = true;"}, "rust": {"socket_notes": "pub const READY: bool = true;"}});
         let mut files = BTreeMap::new();
         stage_typescript(root, &mut files, "notes", &compiled).unwrap();
@@ -889,7 +882,7 @@ mod tests {
         assert_eq!(cargo["lib"]["path"].as_str(), Some("lib.rs"));
         assert_eq!(
             cargo["dependencies"]["forklaunch-ws"]["path"].as_str(),
-            Some("../../../../vendor/framework/crates/ws")
+            Some("../../../../.forklaunch/framework-rs/crates/ws")
         );
     }
 

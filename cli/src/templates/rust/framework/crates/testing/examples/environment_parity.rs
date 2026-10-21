@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/testing/examples/environment_parity.rs

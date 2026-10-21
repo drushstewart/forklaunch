@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/core/src/rust_sdk/README.md

@@ -1,1 +1,0 @@
-../../../../../../../../../blueprint-rs/crates/interfaces/ecommerce-interface/src/catalog.rs

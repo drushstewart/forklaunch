@@ -60,7 +60,8 @@ grep -q 'signals::run' src/jobs/worker.rs
 grep -q 'variant = "worker-redis"' .forklaunch/manifest.toml
 grep -q 'workerType = "redis"' .forklaunch/manifest.toml
 grep -q 'cache = "redis"' .forklaunch/manifest.toml
-grep -q 'WORKER_REDIS_URL' docker-compose.yaml
+# The worker reads REDIS_URL, wired from the per-project setting.
+grep -qF 'REDIS_URL: ${JOBS_REDIS_URL' docker-compose.yaml
 cargo build --workspace
 run_cli openapi export --path .
 assert_no_http_sdk .

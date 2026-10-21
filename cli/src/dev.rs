@@ -710,12 +710,7 @@ fn plan(
             }
         }
     }
-    for relative in [
-        "Cargo.toml",
-        "Cargo.lock",
-        ".forklaunch/framework-rs",
-        ".forklaunch/blueprint-rs",
-    ] {
+    for relative in ["Cargo.toml", "Cargo.lock"] {
         let path = output_path(root, Path::new(relative))?;
         if path.exists() {
             paths.insert(path);

@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/migrations/12_scoped_paypal_cancellation_receipts.sql

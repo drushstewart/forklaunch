@@ -1,17 +1,14 @@
 //! Declare worker event dependencies before the first workspace installation.
 use super::{Path, RenderedTemplate, Result};
 
-// These renderers are crate-private in the published framework. Reuse the exact
-// embedded source instead of maintaining a second set of package dependency pins.
-#[allow(dead_code)]
-#[path = "../../../templates/rust/framework/crates/core/src/build/service_package.rs"]
-mod canonical;
+// The framework owns the event package's dependency pins and compiler settings.
+use forklaunch_core::build::service_package::{EVENT_TSCONFIG, event_package};
 
 pub(super) fn templates(directory: &Path, name: &str) -> Result<Vec<RenderedTemplate>> {
     let mut templates = Vec::new();
     for (file, content) in [
-        ("package.json", canonical::event_package(name)?),
-        ("tsconfig.json", canonical::EVENT_TSCONFIG.to_owned()),
+        ("package.json", event_package(name)?),
+        ("tsconfig.json", EVENT_TSCONFIG.to_owned()),
     ] {
         let path = directory.join("events/typescript").join(file);
         // Reinitialization may fill missing files, but must not reset application

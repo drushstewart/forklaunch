@@ -27,12 +27,6 @@ use crate::core::{
     template::render_embedded_template,
 };
 
-// Embed source only, so released CLIs generate portable apps without a repository checkout.
-static FRAMEWORK_CRATES: Dir =
-    include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
-const FRAMEWORK_LOCK: &str = include_str!("../templates/rust/framework/Cargo.lock.template");
-
-mod blueprint_sources;
 mod http_adapter;
 mod conversion;
 mod library_rename;
@@ -65,16 +59,6 @@ pub(crate) use modules::generate_rust_module;
 /// Formats generated Rust with the application's rustfmt settings.
 pub(crate) fn format_rust_source(path: &Path, source: &str) -> String {
     native_layout::format_source(path, source)
-}
-
-pub(crate) fn ensure_native_capability_sources(root: &Path) -> Result<()> {
-    ensure_native_infrastructure_sources(root)?;
-    modules::ensure_blueprint_sources(root, false)
-}
-
-/// Write blueprint crates newly referenced by committed manifest edits.
-pub(crate) fn ensure_referenced_blueprint_sources(root: &Path) -> Result<()> {
-    blueprint_sources::ensure(root, false, &[])
 }
 
 pub(crate) fn ensure_native_infrastructure_sources(root: &Path) -> Result<()> {
@@ -864,7 +848,6 @@ pub(crate) fn sync_all_rust_projects(app_root: &Path, stdout: &mut StandardStrea
     }
 
     cleanup_missing_rust_projects(app_root)?;
-    blueprint_sources::prune(app_root)?;
     ensure_rust_local_library_dependencies(app_root, false)?;
     Ok(())
 }
@@ -919,7 +902,7 @@ fn delete_rust_project_inner(
     remove_cargo_member(app_root, &format!("{crate_path}/sdk/rust"))?;
     cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name)?;
     remove_rust_docker_compose_project(app_root, name)?;
-    crate::infra::native_local::delete_ownership(app_root, name)?;
+    crate::infra::native_local::release_deleted_service(app_root)?;
     remove_rust_package_scripts(app_root, name)?;
     if kind == RustProjectKind::Library {
         remove_registered_library_dependency(app_root, &manifest, name, &crate_path)?;
@@ -933,7 +916,6 @@ fn delete_rust_project_inner(
     }
 
     if reconcile {
-        blueprint_sources::prune(app_root)?;
         language_images::reconcile(app_root)?;
     }
     Ok(())
@@ -1359,8 +1341,7 @@ pub(crate) fn change_rust_project(
 fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> {
     let local_artifacts = sdk_consumer::rename_local_artifacts(root, old, new)?;
     let imported = crate::sdk::websocket::imported_service(root, old)?;
-    crate::infra::capabilities::rename_native_ownership(root, old, new)?;
-    crate::infra::native_local::rename_ownership(root, old, new)?;
+    crate::infra::capabilities::rename_native_capabilities(root, old, new)?;
     for (kind, filename) in [
         ("contracts", "contract.json"),
         ("openapi", "openapi.json"),
@@ -1738,13 +1719,9 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
             service_database::templates(&crate_dir, &name, templates, sqlx09)?
         } else { templates }
     } else if apalis {
-        let templates = worker::apalis_templates(&app_root,&crate_dir,&name,&description)?;
-        blueprint_sources::ensure(&app_root, dryrun, &templates)?;
-        templates
+        worker::apalis_templates(&app_root,&crate_dir,&name,&description)?
     } else if let Some(backend) = backend {
-        let templates = worker::templates(&app_root, &crate_dir, &name, &description, backend)?;
-        blueprint_sources::ensure(&app_root, dryrun, &templates)?;
-        templates
+        worker::templates(&app_root, &crate_dir, &name, &description, backend)?
     } else {
         rust_crate_templates(&crate_dir, &name, &description, kind)
     };
@@ -2028,146 +2005,14 @@ fn framework_rs_path() -> String {
     "../../.forklaunch/framework-rs".to_string()
 }
 
-/// Whether a vendored framework snapshot holds exactly the sources this CLI
-/// would have vendored (its root manifest and lockfile are rewritten after
-/// copying, so only `crates/` is compared). Build outputs are ignored.
-pub(crate) fn vendored_framework_unmodified(snapshot: &Path) -> Result<bool> {
-    let mut expected = std::collections::BTreeMap::new();
-    fn collect(dir: &Dir<'_>, files: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>) {
-        for file in dir.files() {
-            if !super::rust_source::is_source_path(file.path()) { continue; }
-            let mut path = file.path().to_path_buf();
-            match path.file_name().and_then(|name| name.to_str()) {
-                Some("Cargo.toml.template") => path.set_file_name("Cargo.toml"),
-                Some("Cargo.lock.template") => path.set_file_name("Cargo.lock"),
-                _ => {}
-            }
-            files.insert(path, file.contents().to_vec());
-        }
-        for child in dir.dirs() {
-            if super::rust_source::is_source_path(child.path()) { collect(child, files); }
-        }
-    }
-    collect(&FRAMEWORK_CRATES, &mut expected);
-    let crates = snapshot.join("crates");
-    let mut actual = std::collections::BTreeMap::new();
-    let mut pending = vec![crates.clone()];
-    while let Some(directory) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&directory) else { return Ok(false) };
-        for entry in entries {
-            let entry = entry?;
-            let path = entry.path();
-            if entry.file_type()?.is_dir() {
-                if entry.file_name() != "target" { pending.push(path); }
-            } else {
-                actual.insert(path.strip_prefix(&crates)?.to_path_buf(), std::fs::read(&path)?);
-            }
-        }
-    }
-    Ok(actual == expected)
-}
-
-/// Framework crates come from the `[framework]` selection: the registry, or an
-/// external checkout referenced in place. Nothing is vendored. Applications that
-/// still carry an unmodified vendored snapshot are migrated here.
+/// Framework and blueprint crates come from the `[framework]` selection: the
+/// registry, or an external checkout referenced in place. Applications without
+/// a selection get the published release.
 pub(crate) fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result<()> {
     if dryrun {
         return Ok(());
     }
-    if !dependencies::configured(app_root) {
-        dependencies::migrate_vendored_framework(app_root, dryrun)?;
-    }
-    if dependencies::configured(app_root) {
-        return dependencies::prepare(app_root, dryrun);
-    }
-    // A modified snapshot stays authoritative until the application removes it.
-    if app_root.join("vendor/framework/Cargo.toml").exists()
-        && !app_root.join("vendor/framework/Cargo.lock").exists()
-    {
-        write(app_root.join("vendor/framework/Cargo.lock"), FRAMEWORK_LOCK)?;
-    }
-    remove_literal_json_patch(app_root)
-}
-
-/// Applications use upstream `serde_json`. Earlier releases patched it to a
-/// vendored copy; remove only that generated patch and its copy, keeping any
-/// patch the application chose itself.
-pub(super) fn remove_literal_json_patch(root: &Path) -> Result<()> {
-    let path = root.join("Cargo.toml");
-    let Ok(original) = read_to_string(&path) else {
-        return Ok(());
-    };
-    let mut cargo: toml_edit::DocumentMut = original.parse()?;
-    let generated = cargo
-        .get("patch")
-        .and_then(|patch| patch.get("crates-io"))
-        .and_then(|registry| registry.get("serde_json"))
-        .and_then(|patch| patch.get("path"))
-        .and_then(|path| path.as_str())
-        .is_some_and(|path| path.ends_with("vendor/serde_json"));
-    if generated {
-        let registry = cargo["patch"]["crates-io"].as_table_like_mut().context("Expected [patch.crates-io]")?;
-        registry.remove("serde_json");
-        if registry.is_empty() {
-            let patch = cargo["patch"].as_table_like_mut().context("Expected [patch]")?;
-            patch.remove("crates-io");
-            if patch.is_empty() {
-                cargo.remove("patch");
-            }
-        }
-    }
-    if let Some(excludes) = cargo
-        .get_mut("workspace")
-        .and_then(|workspace| workspace.get_mut("exclude"))
-        .and_then(|exclude| exclude.as_array_mut())
-    {
-        excludes.retain(|value| value.as_str() != Some("vendor/serde_json"));
-    }
-    let updated = cargo.to_string();
-    if updated != original {
-        write(&path, updated)?;
-    }
-    // The generated copy identifies itself; anything else under that path stays.
-    let vendored = root.join("vendor/serde_json");
-    if read_to_string(vendored.join("UPSTREAM.md"))
-        .is_ok_and(|notes| notes.starts_with("# serde_json 1.0.151: literal map keys"))
-    {
-        remove_dir_all(&vendored)?;
-        let vendor = root.join("vendor");
-        if std::fs::read_dir(&vendor)?.next().is_none() {
-            std::fs::remove_dir(vendor)?;
-        }
-    }
-    Ok(())
-}
-
-pub(super) fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
-    for file in dir.files() {
-        if !super::rust_source::is_source_path(file.path()) { continue; }
-        // Cargo excludes nested manifests and lockfiles from published CLI sources.
-        // Restore their names when writing the embedded workspaces.
-        let mut path = root.join(file.path());
-        if path
-            .file_name()
-            .is_some_and(|name| name == "Cargo.toml.template")
-        {
-            path.set_file_name("Cargo.toml");
-        } else if path
-            .file_name()
-            .is_some_and(|name| name == "Cargo.lock.template")
-        {
-            path.set_file_name("Cargo.lock");
-        }
-        if !path.exists() {
-            create_dir_all(path.parent().context("embedded source has no parent")?)?;
-            write(&path, file.contents())?;
-        }
-    }
-    for child in dir.dirs() {
-        if !super::rust_source::is_source_path(child.path()) { continue; }
-        write_embedded_sources(child, root)?;
-    }
-    Ok(())
+    dependencies::prepare(app_root)
 }
 
 fn service_routes_directory(directory: &Path) -> PathBuf {
@@ -3976,7 +3821,7 @@ fn escape_rust_string(value: &str) -> String {
 #[cfg(test)]
 mod workspace_tests {
     #[test]
-    fn native_snapshots_use_upstream_serde_json_without_a_root_patch() {
+    fn applications_without_a_selection_get_the_published_release() {
         let root = tempfile::tempdir().unwrap();
         std::fs::create_dir(root.path().join(".forklaunch")).unwrap();
         std::fs::write(root.path().join(".forklaunch/manifest.toml"), "modules_path = \"src\"\n").unwrap();
@@ -3989,30 +3834,6 @@ mod workspace_tests {
         assert!(!root.path().join("vendor").exists());
         assert!(!root.path().join(".forklaunch/framework-rs").exists());
         assert!(super::dependencies::configured(root.path()));
-    }
-
-    #[test]
-    fn earlier_generated_parser_patches_are_removed_and_application_patches_kept() {
-        let root = tempfile::tempdir().unwrap();
-        let path = root.path().join("Cargo.toml");
-        std::fs::write(&path, "# user comment\n[workspace]\nmembers = []\nexclude = [\".forklaunch/blueprint-rs\", \"vendor/serde_json\"]\n[patch.crates-io]\nserde_json = { path = \"vendor/serde_json\" }\n").unwrap();
-        std::fs::create_dir_all(root.path().join("vendor/serde_json")).unwrap();
-        std::fs::write(root.path().join("vendor/serde_json/UPSTREAM.md"), "# serde_json 1.0.151: literal map keys\n").unwrap();
-        super::remove_literal_json_patch(root.path()).unwrap();
-        let migrated = std::fs::read_to_string(&path).unwrap();
-        assert!(migrated.contains("# user comment") && !migrated.contains("serde_json") && !migrated.contains("[patch"), "{migrated}");
-        assert!(migrated.contains(".forklaunch/blueprint-rs"));
-        assert!(!root.path().join("vendor").exists());
-        super::remove_literal_json_patch(root.path()).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), migrated);
-
-        let custom = "[workspace]\nmembers = []\n[patch.crates-io]\nserde_json = { path = \"custom/json\" }\n";
-        std::fs::write(&path, custom).unwrap();
-        std::fs::create_dir_all(root.path().join("vendor/serde_json")).unwrap();
-        std::fs::write(root.path().join("vendor/serde_json/lib.rs"), "// application source").unwrap();
-        super::remove_literal_json_patch(root.path()).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), custom);
-        assert!(root.path().join("vendor/serde_json/lib.rs").is_file());
     }
 
     use super::*;
@@ -4222,31 +4043,5 @@ mod compliance_artifact_tests {
             migrate_compliance_artifact(root.path()).unwrap();
             assert_eq!(read_to_string(root.path().join("build.rs")).unwrap(), custom);
         }
-    }
-}
-
-#[cfg(test)]
-mod source_snapshot_tests {
-    use super::*;
-    use include_dir::{DirEntry, File};
-
-    #[test]
-    fn receipts_source_writer_omits_nested_generated_state() {
-        let entries = [
-            DirEntry::File(File::new("core/src/build/mod.rs", b"source")),
-            DirEntry::File(File::new("core/compiler-tests/__pycache__/fixture.pyc", b"cache")),
-            DirEntry::File(File::new("core/tests/module.pyc", b"cache")),
-            DirEntry::File(File::new("core/tests/node_modules/pkg/index.js", b"dependency")),
-            DirEntry::File(File::new("core/.env.production", b"secret")),
-            DirEntry::File(File::new("core/.env.example", b"example")),
-        ];
-        let dir = Dir::new("", &entries);
-        let root = tempfile::tempdir().unwrap();
-        write_embedded_sources(&dir, root.path()).unwrap();
-        assert!(root.path().join("core/src/build/mod.rs").is_file());
-        assert!(root.path().join("core/.env.example").is_file());
-        assert!(!root.path().join("core/compiler-tests").exists());
-        assert!(!root.path().join("core/tests").exists());
-        assert!(!root.path().join("core/.env.production").exists());
     }
 }

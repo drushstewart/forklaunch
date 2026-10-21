@@ -6,7 +6,7 @@ This Redis worker polls durable jobs, renews leases, retries failures, and drain
 REDIS_URL=redis://localhost:6379/ WORKER_NAMESPACE=my-app TENANT_ID=11111111-1111-4111-8111-111111111111 cargo run -p {{{name}}}
 ```
 
-Configure Redis persistence and replication for your durability requirements. Namespace and tenant keys provide logical isolation; configure Redis ACLs separately. Bind `TENANT_ID` and `WORKER_NAMESPACE` from trusted application configuration. The adapter uses a standalone Redis connection manager; Redis Cluster redirection support is not implemented. The example env file is not loaded automatically. Commit bundled `.forklaunch/framework-rs` and `.forklaunch/blueprint-rs` source with the app.
+Configure Redis persistence and replication for your durability requirements. Namespace and tenant keys provide logical isolation; configure Redis ACLs separately. Bind `TENANT_ID` and `WORKER_NAMESPACE` from trusted application configuration. The adapter uses a standalone Redis connection manager; Redis Cluster redirection support is not implemented. The example env file is not loaded automatically.
 
 With runtime configuration set, `--enqueue ID JSON` submits a job and `--inspect ID` reports its state without the payload or lease token. `WORKER_QUEUE` defaults to the crate name. Timing and retry settings are listed in `.env.example`; invalid values fail startup. Contract/OpenAPI export requires no Redis connection.
 

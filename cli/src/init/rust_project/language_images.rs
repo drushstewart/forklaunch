@@ -289,7 +289,6 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
 
 fn reconcile_images(root: &Path) -> Result<()> {
     crate::core::github_configs::reconcile_github_configs(root)?;
-    super::blueprint_sources::ensure(root, false, &[])?;
     super::typescript_image::reconcile(root)?;
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     if manifest.get("language").and_then(Value::as_str) != Some("mixed") {
@@ -319,14 +318,29 @@ fn reconcile_images(root: &Path) -> Result<()> {
     );
     let mut compose = read_or_create_rust_docker_compose(&compose_path)?;
     let image = format!("{}-rust:local", rust_app_name(root)?);
-    let mut processes = Vec::new();
-    for (name, service) in &compose.services {
-        let uses_rust = service.build.as_ref().is_some_and(|build| {
+    let builds_rust = |service: &DockerService| {
+        service.build.as_ref().is_some_and(|build| {
             matches!(
                 build.dockerfile.as_str(),
                 "Dockerfile.rust" | "./Dockerfile.rust"
             )
-        }) || service.image.as_deref() == Some(&image);
+        })
+    };
+    // The image the builder currently tags: after an application rename it
+    // still carries the previous name, as do the processes that share it.
+    let built: Vec<String> = compose
+        .services
+        .values()
+        .filter(|service| builds_rust(service))
+        .filter_map(|service| service.image.clone())
+        .collect();
+    let mut processes = Vec::new();
+    for (name, service) in &compose.services {
+        let uses_rust = builds_rust(service)
+            || service
+                .image
+                .as_ref()
+                .is_some_and(|current| current == &image || built.contains(current));
         if !uses_rust {
             continue;
         }
@@ -452,6 +466,20 @@ mod tests {
             edited
         );
     }
+    #[test]
+    fn application_rename_retags_every_process_of_the_shared_image() {
+        let root = fixture();
+        // Before the rename: the builder and a process share the old tag.
+        write(root.path().join("docker-compose.yaml"), "services:\n  api:\n    image: old-rust:local\n    build: {context: ., dockerfile: Dockerfile.rust}\n    command: ['/app/bin/api']\n  jobs:\n    image: old-rust:local\n    command: ['/app/bin/jobs-worker']\n  cache:\n    image: redis:7\n").unwrap();
+        reconcile_images(root.path()).unwrap();
+        let compose =
+            read_or_create_rust_docker_compose(&root.path().join("docker-compose.yaml")).unwrap();
+        for name in ["api", "jobs"] {
+            assert_eq!(compose.services[name].image.as_deref(), Some("demo-rust:local"), "{name}");
+        }
+        assert_eq!(compose.services["cache"].image.as_deref(), Some("redis:7"));
+    }
+
     #[test]
     fn discovers_automatic_bins_and_rejects_cross_package_collisions() {
         let root = fixture();

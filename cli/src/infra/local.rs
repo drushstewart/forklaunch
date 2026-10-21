@@ -506,12 +506,9 @@ fn change_capability(
         return Ok(());
     }
     if native && adding {
-        crate::init::rust_project::ensure_native_capability_sources(&app_root)?;
+        crate::init::rust_project::ensure_native_infrastructure_sources(&app_root)?;
     }
     edit.commit()?;
-    if native && adding {
-        crate::init::rust_project::ensure_referenced_blueprint_sources(&app_root)?;
-    }
     println!(
         "{} {} {service}: {}",
         if adding { "Added" } else { "Removed" },

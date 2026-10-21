@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/common/examples/naming_parity.rs

@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/validator/examples/zod_binary_parity.rs

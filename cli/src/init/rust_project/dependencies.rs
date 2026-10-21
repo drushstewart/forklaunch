@@ -17,11 +17,6 @@ pub(crate) fn configuration(matches: &ArgMatches) -> Result<toml::Table> {
         .try_get_one::<String>("framework-path")
         .ok()
         .flatten();
-    if std::env::var("FORKLAUNCH_FRAMEWORK_SNAPSHOT").is_ok_and(|value| value == "1") {
-        eprintln!(
-            "warning: FORKLAUNCH_FRAMEWORK_SNAPSHOT is no longer supported; framework crates come from the registry (use --framework-path for a local checkout)."
-        );
-    }
     let version = selected_version.map(String::as_str)
         .or_else(|| if path.is_none() { Some(RELEASE_VERSION) } else { None });
     let mut config = toml::Table::new();
@@ -49,8 +44,8 @@ pub(crate) fn configuration(matches: &ArgMatches) -> Result<toml::Table> {
     Ok(config)
 }
 
-/// The registry selection written when an application is migrated off a
-/// vendored snapshot or generated without explicit options.
+/// The registry selection written when an application is generated without
+/// explicit options.
 fn default_configuration() -> toml::Table {
     let mut config = toml::Table::new();
     config.insert("version".into(), RELEASE_VERSION.into());
@@ -62,74 +57,7 @@ fn default_configuration() -> toml::Table {
 pub(crate) fn configure(root: &Path, matches: &ArgMatches) -> Result<()> {
     let config = configuration(matches)?;
     forklaunch_state::write_framework(root, &config)?;
-    rewrite_tree(root, root)?;
-    remove_vendor_excludes(root)
-}
-
-/// Applications generated before `[framework]` existed used a vendored
-/// snapshot. Switch them to the published crates when the snapshot is exactly
-/// what the CLI vendored; keep a modified one and warn once.
-pub(super) fn migrate_vendored_framework(root: &Path, dryrun: bool) -> Result<()> {
-    if dryrun || configured(root) {
-        return Ok(());
-    }
-    let Some(snapshot) = ["vendor/framework", ".forklaunch/framework-rs"]
-        .into_iter()
-        .map(|path| root.join(path))
-        .find(|path| path.join("Cargo.toml").is_file())
-    else {
-        // Nothing vendored: a new application without an explicit selection.
-        forklaunch_state::write_framework(root, &default_configuration())?;
-        rewrite_tree(root, root)?;
-        return remove_vendor_excludes(root);
-    };
-    if !super::vendored_framework_unmodified(&snapshot)? {
-        eprintln!(
-            "warning: {} differs from the framework sources ForkLaunch vendored, so this application keeps using it. Move your changes upstream, delete it, and rerun to use the published framework crates.",
-            snapshot.display()
-        );
-        return Ok(());
-    }
-    forklaunch_state::write_framework(root, &default_configuration())?;
-    rewrite_tree(root, root)?;
-    remove_dir_all(&snapshot)?;
-    let vendor = root.join("vendor");
-    if std::fs::read_dir(&vendor).is_ok_and(|mut entries| entries.next().is_none()) {
-        std::fs::remove_dir(vendor)?;
-    }
-    let dockerfile = root.join("infra/Dockerfile");
-    if dockerfile.is_file() {
-        let source = read_to_string(&dockerfile)?;
-        write(dockerfile, source.replace("find src vendor/framework", "find src"))?;
-    }
-    eprintln!("Switched {} from its vendored framework snapshot to the published framework crates.", root.display());
-    remove_vendor_excludes(root)
-}
-
-/// Workspace excludes for vendored copies are obsolete once they are gone.
-pub(super) fn remove_vendor_excludes(root: &Path) -> Result<()> {
-    let path = root.join("Cargo.toml");
-    let Ok(source) = read_to_string(&path) else { return Ok(()) };
-    let mut cargo: toml_edit::DocumentMut = source.parse()?;
-    let Some(workspace) = cargo.get_mut("workspace").and_then(toml_edit::Item::as_table_like_mut) else {
-        return Ok(());
-    };
-    if let Some(excludes) = workspace.get_mut("exclude").and_then(toml_edit::Item::as_array_mut) {
-        excludes.retain(|value| {
-            !value.as_str().is_some_and(|entry| {
-                matches!(entry, "vendor/framework" | ".forklaunch/framework-rs" | ".forklaunch/blueprint-rs")
-                    && !root.join(entry).exists()
-            })
-        });
-        if excludes.is_empty() {
-            workspace.remove("exclude");
-        }
-    }
-    let updated = cargo.to_string();
-    if updated != source {
-        write(path, updated)?;
-    }
-    Ok(())
+    rewrite_tree(root, root)
 }
 
 /// Host-local dependencies need an explicitly application-owned container integration.
@@ -145,12 +73,13 @@ pub(super) fn preflight_mixed_image(root: &Path) -> Result<()> {
     Ok(())
 }
 
-/// Registry and path modes need no local sources; earlier parser patches are removed.
-pub(super) fn prepare(root: &Path, dryrun: bool) -> Result<()> {
-    if dryrun { return Ok(()); }
-    remove_literal_json_patch(root)?;
-    rewrite_tree(root, root)?;
-    remove_vendor_excludes(root)
+/// Select the published release when the application has no selection, and
+/// rewrite generated manifests to the selection.
+pub(super) fn prepare(root: &Path) -> Result<()> {
+    if !configured(root) {
+        forklaunch_state::write_framework(root, &default_configuration())?;
+    }
+    rewrite_tree(root, root)
 }
 
 fn valid_version(version: &str) -> bool {
@@ -171,9 +100,6 @@ pub(super) fn rewrite_tree(root: &Path, directory: &Path) -> Result<()> {
                 .iter()
                 .any(|name| path.file_name().is_some_and(|file| file == *name))
             {
-                continue;
-            }
-            if path == root.join(".forklaunch/framework-rs") {
                 continue;
             }
             rewrite_tree(root, &path)?;
@@ -209,27 +135,12 @@ fn blueprint_suffix(path: &str) -> Option<&str> {
         .find_map(|prefix| path.split_once(prefix).map(|(_, suffix)| suffix))
 }
 
-/// Whether blueprint path dependencies resolve outside the application, so no
-/// `.forklaunch/blueprint-rs` copy is needed: published crates, or the
-/// blueprint workspace beside a host framework checkout.
-pub(super) fn external_blueprint(root: &Path) -> bool {
-    let Some(config) = forklaunch_state::framework(root) else { return false };
-    config.get("blueprint_version").and_then(Value::as_str).is_some()
-        || config.get("path").and_then(Value::as_str).is_some_and(|path| local_blueprint(path).is_dir())
-}
-
 fn local_blueprint(framework: &str) -> PathBuf {
     Path::new(framework).parent().unwrap_or(Path::new(framework)).join("blueprint-rs/crates")
 }
 
 fn framework_suffix(path: &str) -> Option<&str> {
-    [
-        "vendor/framework/",
-        ".forklaunch/framework-rs/",
-        "framework-rs/",
-    ]
-    .into_iter()
-    .find_map(|prefix| path.split_once(prefix).map(|(_, suffix)| suffix))
+    path.split_once("framework-rs/").map(|(_, suffix)| suffix)
 }
 
 fn render(root: &Path, source: &str) -> Result<String> {
@@ -320,7 +231,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         create_dir_all(root.path().join(".forklaunch")).unwrap();
         write(root.path().join(".forklaunch/manifest.toml"), "app_name = 'demo'\n\n[framework]\nversion = '0.1.0'\n").unwrap();
-        let source = "[dependencies]\nframework = { package='forklaunch-axum',path='../../vendor/framework/crates/axum', default-features=false,features=['native'] }\nmodels = { path='../models' }\n";
+        let source = "[dependencies]\nframework = { package='forklaunch-axum',path='../../.forklaunch/framework-rs/crates/axum', default-features=false,features=['native'] }\nmodels = { path='../models' }\n";
         let output: Value = toml::from_str(&render(root.path(), source).unwrap()).unwrap();
         assert_eq!(
             output["dependencies"]["framework"]["version"].as_str(),
@@ -346,7 +257,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         create_dir_all(root.path().join(".forklaunch")).unwrap();
         write(root.path().join(".forklaunch/manifest.toml"), "[framework]\nversion = '0.1.2'\nblueprint_version = '0.1.0'\n").unwrap();
-        let source = "# owned\n[dependencies]\n# framework\ncore = { package = 'forklaunch-core', path = '../../vendor/framework/crates/core', features = ['build'] }\nworker = { path = '../../.forklaunch/blueprint-rs/crates/interfaces/worker-interface' }\nlocal = { path = '../local' }\n";
+        let source = "# owned\n[dependencies]\n# framework\ncore = { package = 'forklaunch-core', path = '../../.forklaunch/framework-rs/crates/core', features = ['build'] }\nworker = { path = '../../.forklaunch/blueprint-rs/crates/interfaces/worker-interface' }\nlocal = { path = '../local' }\n";
         let updated = rewrite_in_place(root.path(), source).unwrap().unwrap();
         assert!(updated.starts_with("# owned\n") && updated.contains("# framework\n"), "{updated}");
         let value: Value = toml::from_str(&updated).unwrap();
@@ -355,36 +266,6 @@ mod tests {
         assert_eq!(value["dependencies"]["worker"]["version"].as_str(), Some("=0.1.0"));
         assert_eq!(value["dependencies"]["local"]["path"].as_str(), Some("../local"));
         assert!(rewrite_in_place(root.path(), "# mine\n[dependencies]\nlocal = { path = '../local' }\n").unwrap().is_none());
-    }
-
-    #[test]
-    fn vendored_snapshot_migrates_only_when_unmodified() {
-        let root = tempfile::tempdir().unwrap();
-        create_dir_all(root.path().join(".forklaunch")).unwrap();
-        write(root.path().join(".forklaunch/manifest.toml"), "app_name = 'demo'\n").unwrap();
-        write(root.path().join("Cargo.toml"), "[workspace]\nmembers = ['api']\nexclude = ['vendor/framework', 'other']\n").unwrap();
-        create_dir_all(root.path().join("api")).unwrap();
-        write(root.path().join("api/Cargo.toml"), "[package]\nname = 'api'\n[dependencies]\ncore = { path = '../vendor/framework/crates/core' }\n").unwrap();
-        // A snapshot that differs from the embedded sources is kept.
-        create_dir_all(root.path().join("vendor/framework/crates/core")).unwrap();
-        write(root.path().join("vendor/framework/Cargo.toml"), "[workspace]\n").unwrap();
-        write(root.path().join("vendor/framework/crates/core/lib.rs"), "// edited\n").unwrap();
-        migrate_vendored_framework(root.path(), false).unwrap();
-        assert!(!configured(root.path()));
-        assert!(root.path().join("vendor/framework/crates/core/lib.rs").is_file());
-        // An exact copy is replaced by the published crates.
-        remove_dir_all(root.path().join("vendor/framework/crates")).unwrap();
-        super::super::write_embedded_sources(&super::super::FRAMEWORK_CRATES, &root.path().join("vendor/framework/crates")).unwrap();
-        assert!(super::super::vendored_framework_unmodified(&root.path().join("vendor/framework")).unwrap());
-        migrate_vendored_framework(root.path(), false).unwrap();
-        assert!(configured(root.path()));
-        assert!(!root.path().join("vendor").exists());
-        let manifest: Value = toml::from_str(&read_to_string(root.path().join(".forklaunch/manifest.toml")).unwrap()).unwrap();
-        assert_eq!(manifest["framework"]["version"].as_str(), Some(RELEASE_VERSION));
-        let api: Value = toml::from_str(&read_to_string(root.path().join("api/Cargo.toml")).unwrap()).unwrap();
-        assert_eq!(api["dependencies"]["core"]["version"].as_str(), Some(format!("={RELEASE_VERSION}").as_str()));
-        let cargo: Value = toml::from_str(&read_to_string(root.path().join("Cargo.toml")).unwrap()).unwrap();
-        assert_eq!(cargo["workspace"]["exclude"].as_array().unwrap().len(), 1, "unrelated excludes stay");
     }
 
     #[test]
@@ -400,7 +281,7 @@ mod tests {
             value["dependencies"]["worker"]["path"].as_str(),
             Some("../../.forklaunch/blueprint-rs/crates/interfaces/worker-interface")
         );
-        let mut framework: Value = toml::from_str("[dependencies]\ncore = {package='forklaunch-core',path='../../vendor/framework/crates/core',features=['typed-schema']}\n").unwrap();
+        let mut framework: Value = toml::from_str("[dependencies]\ncore = {package='forklaunch-core',path='../../.forklaunch/framework-rs/crates/core',features=['typed-schema']}\n").unwrap();
         rewrite_value(&mut framework, &config);
         assert_eq!(framework["dependencies"]["core"]["path"].as_str(), Some("/tmp/framework-rs/crates/core"));
     }

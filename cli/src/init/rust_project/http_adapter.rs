@@ -4,13 +4,17 @@
 //! published implementation crates it uses.
 use super::*;
 
-/// The `*-axum` crate supplying a module's HTTP layer, and its crate name.
-fn adapter(kind: modules::BuiltinModule) -> (&'static str, &'static str) {
+/// The `*-axum` crates' manifests and sources, one directory per module.
+static MODULE_HTTP: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/module-http");
+
+/// The module's embedded HTTP layer, its blueprint crate path (relative to
+/// `blueprint-rs/crates`), and its crate name.
+fn adapter(kind: modules::BuiltinModule) -> (&'static str, &'static str, &'static str) {
     match kind.template() {
-        "iam" => ("implementations/iam/iam-axum", "forklaunch-iam-axum"),
-        "cac" => ("implementations/cac/cac-axum", "forklaunch-cac-axum"),
-        "ecommerce" => ("implementations/ecommerce/ecommerce-axum", "forklaunch-ecommerce-axum"),
-        _ => ("implementations/billing/billing-axum", "forklaunch-billing-axum"),
+        "iam" => ("iam", "implementations/iam/iam-axum", "forklaunch-iam-axum"),
+        "cac" => ("cac", "implementations/cac/cac-axum", "forklaunch-cac-axum"),
+        "ecommerce" => ("ecommerce", "implementations/ecommerce/ecommerce-axum", "forklaunch-ecommerce-axum"),
+        _ => ("billing", "implementations/billing/billing-axum", "forklaunch-billing-axum"),
     }
 }
 
@@ -20,13 +24,28 @@ const MODULE_PATH: &str = "crate::api::http::";
 /// convention, which later framework/blueprint path rewriting understands.
 fn rebase(source: &str, path: &str) -> Option<String> {
     let virtual_root = Path::new("/workspace");
-    let target = blueprint_sources::normalize(&virtual_root.join("blueprint-rs/crates").join(source).join(path));
+    let target = normalize(&virtual_root.join("blueprint-rs/crates").join(source).join(path));
     for (workspace, generated) in [("blueprint-rs/crates", ".forklaunch/blueprint-rs/crates"), ("framework-rs/crates", ".forklaunch/framework-rs/crates")] {
         if let Ok(rest) = target.strip_prefix(virtual_root.join(workspace)) {
             return Some(format!("../../{generated}/{}", rest.to_string_lossy().replace('\\', "/")));
         }
     }
     None
+}
+
+/// Resolve `..` without touching the file system; dependencies may not exist yet.
+fn normalize(path: &Path) -> PathBuf {
+    let mut normalized = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                normalized.pop();
+            }
+            Component::CurDir => {}
+            other => normalized.push(other),
+        }
+    }
+    normalized
 }
 
 fn merge_tables(into: &mut toml_edit::Table, from: &toml_edit::Table, source: &str) -> Result<()> {
@@ -69,12 +88,12 @@ fn merge_tables(into: &mut toml_edit::Table, from: &toml_edit::Table, source: &s
 /// module's own: dependencies, optional features, and the features the module
 /// template selected become the module's defaults.
 pub(super) fn embed(dir: &Path, kind: modules::BuiltinModule, templates: &mut Vec<RenderedTemplate>) -> Result<()> {
-    let (source, crate_name) = adapter(kind);
-    let embedded = blueprint_sources::crate_source(source)
-        .with_context(|| format!("Embedded module HTTP layer {source} is missing"))?;
+    let (module, source, crate_name) = adapter(kind);
+    let embedded = MODULE_HTTP.get_dir(module)
+        .with_context(|| format!("Embedded module HTTP layer {module} is missing"))?;
     let namespace = crate_name.replace('-', "_");
     let manifest: toml_edit::DocumentMut = embedded
-        .get_file(Path::new(source).join("Cargo.toml.template"))
+        .get_file(Path::new(module).join("Cargo.toml.template"))
         .and_then(|file| file.contents_utf8())
         .context("Module HTTP layer manifest is missing")?
         .parse()?;
@@ -124,7 +143,7 @@ pub(super) fn embed(dir: &Path, kind: modules::BuiltinModule, templates: &mut Ve
             api.content.push_str("pub mod http;\n");
         }
     }
-    copy_sources(embedded, &Path::new(source).join("src"), &dir.join("api/http"), templates);
+    copy_sources(embedded, &Path::new(module).join("src"), &dir.join("api/http"), templates);
     Ok(())
 }
 

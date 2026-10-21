@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/vendor/regress/tests/syntax_error_tests.rs

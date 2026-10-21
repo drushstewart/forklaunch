@@ -64,21 +64,22 @@ expected = {
     "src/templates/rust/redis-worker/handler.rs",
     "src/templates/rust/redis-worker/env.example",
     "src/templates/rust/redis-worker/README.md",
-    "src/templates/rust/blueprint-workspace/Cargo.toml.template",
-    "src/templates/rust/framework/Cargo.toml.template",
     "src/templates/rust/infrastructure/redis.rs",
     "src/templates/rust/infrastructure/s3.rs",
     "src/templates/rust/capabilities/mod.rs",
     "src/templates/rust/capabilities/handler.rs",
     "src/templates/rust/capabilities/nonce_store.rs",
 }
-for workspace, namespace in [("framework-rs", "framework"), ("blueprint-rs", "blueprint-workspace")]:
-    for source in (root / workspace / "crates").rglob("*"):
+# Module HTTP layers are the only blueprint sources the CLI embeds.
+for module in ["iam", "billing", "cac", "ecommerce"]:
+    layer = root / "blueprint-rs/crates/implementations" / module / f"{module}-axum"
+    embedded = Path("src/templates/rust/module-http") / module
+    expected.add(str(embedded / "Cargo.toml.template"))
+    for source in (layer / "src").rglob("*"):
         if source_file(source):
-            relative = source.relative_to(root / workspace)
-            if source.name in {"Cargo.toml", "Cargo.lock"}:
-                relative = relative.with_name(source.name + ".template")
-            expected.add(str(Path("src/templates/rust") / namespace / relative))
+            expected.add(str(embedded / source.relative_to(layer)))
+unexpected = {path for path in packaged if path.startswith(("src/templates/rust/framework/", "src/templates/rust/blueprint"))}
+assert not unexpected, f"Framework or blueprint mirrors packaged: {sorted(unexpected)[:5]}"
 for source in (root / "cli/src/templates/sdk").rglob("*"):
     if source_file(source):
         expected.add(str(source.relative_to(root / "cli")))

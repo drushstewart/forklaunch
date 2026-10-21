@@ -33,7 +33,11 @@ def rust_image():
         'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
     processes = {name: service for name, service in services.items()
                  if (service.get('command') or [''])[0].startswith('/app/bin/')}
-    return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
+    # The one service that builds Dockerfile.rust names the shared image tag.
+    images = {service['image'] for service in services.values()
+              if Path((service.get('build') or {}).get('dockerfile', '')).name == 'Dockerfile.rust'}
+    assert len(images) == 1, images
+    return {'inputs': inputs, 'binaries': binaries, 'processes': processes, 'image': images.pop()}
 
 variants = ['iam-base', 'cac-base', 'ecommerce-stripe', 'billing-base', 'billing-stripe']
 print('CLI SHA256:', hashlib.sha256(cli.read_bytes()).hexdigest(), flush=True)
@@ -111,7 +115,10 @@ def build_provenance_verifier():
     consumer.mkdir()
     service = app / 'src' / variants[0]
     manifest = tomllib.loads((service / 'Cargo.toml').read_text())
-    framework = (service / manifest['build-dependencies']['forklaunch-core']['path']).resolve()
+    # Verify with the same framework release the generated module builds with.
+    spec = manifest['build-dependencies']['forklaunch-core']
+    framework = (f'path={json.dumps(str((service / spec["path"]).resolve()))}' if 'path' in spec
+                 else f'version={json.dumps(spec["version"])}')
     (consumer / 'Cargo.toml').write_text(f"""[package]
 name = "module-provenance-verifier"
 version = "0.0.0"
@@ -121,7 +128,7 @@ edition = "2024"
 name = "module-provenance-verifier"
 path = "main.rs"
 [dependencies]
-forklaunch-core = {{path={json.dumps(str(framework))}, default-features=false, features=["build"]}}
+forklaunch-core = {{{framework}, default-features=false, features=["build"]}}
 serde_json = "1"
 """)
     shutil.copyfile(repo / 'cli/tests/fixtures/rust_module_provenance.rs', consumer / 'main.rs')

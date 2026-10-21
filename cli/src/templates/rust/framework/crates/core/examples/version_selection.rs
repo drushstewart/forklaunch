@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/examples/version_selection.rs

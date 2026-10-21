@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/worker/worker-redis/examples/tenant_scope_parity.rs

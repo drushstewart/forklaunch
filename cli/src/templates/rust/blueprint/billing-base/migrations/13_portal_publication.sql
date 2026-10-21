@@ -1,1 +1,0 @@
-../../../../../../../blueprint-rs/crates/implementations/billing/billing-base/migrations/13_portal_publication.sql

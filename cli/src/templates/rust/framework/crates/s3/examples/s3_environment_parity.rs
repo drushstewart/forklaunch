@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/s3/examples/s3_environment_parity.rs

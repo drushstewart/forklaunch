@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/migrations/5_order_retention.sql

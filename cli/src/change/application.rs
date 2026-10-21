@@ -894,7 +894,11 @@ fn change_runtime(
 
     // Both runtimes execute the selected existing test framework. Bun's native
     // loader does not require discarding Jest/Vitest configuration or typings.
-    let test_framework = if let Some(existing) = &manifest_data.test_framework {
+    // A test framework requested in the same change is the one to target, so
+    // the old framework's configuration is not regenerated alongside it.
+    let test_framework = if let Some(requested) = matches.get_one::<String>("test-framework") {
+        Some(requested.parse::<TestFramework>()?)
+    } else if let Some(existing) = &manifest_data.test_framework {
         Some(existing.parse::<TestFramework>()?)
     } else {
         let selected = prompt_field_from_selections_with_validation(
@@ -2163,9 +2167,13 @@ impl CliCommand for ApplicationCommand {
                     },
                 );
             });
+        // A file this change removes may have been read back into the cache by
+        // a later sweep over sources; writing it would resurrect it.
+        let removed: HashSet<&Path> = removal_templates.iter().map(|template| template.path.as_path()).collect();
         let rendered_templates: Vec<RenderedTemplate> = rendered_templates_cache
             .drain()
             .map(|(_, template)| template)
+            .filter(|template| !removed.contains(template.path.as_path()))
             .collect();
         remove_template_files(&removal_templates, dryrun, &mut stdout)?;
         write_rendered_templates(&rendered_templates, dryrun, &mut stdout)?;

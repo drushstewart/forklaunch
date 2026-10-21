@@ -210,7 +210,6 @@ pub(super) fn generate_module_at(
         templates.push(RenderedTemplate { path: cargo_path, content: cargo.to_string(), context: None });
     }
     let templates = native_layout::framework_paths(root, templates);
-    blueprint_sources::ensure(root, dryrun, &templates)?;
     write_rust_rendered_templates(
         &templates,
         dryrun,
@@ -311,7 +310,6 @@ fn add_local_sdk_templates(dir: &Path, name: &str, templates: &mut Vec<RenderedT
         RenderedTemplate { path: host.join("Cargo.toml"), content: host_cargo.to_string(), context: None },
         RenderedTemplate { path: host.join("lib.rs"), content: format!("//! Private registry compiler host; declarations remain owned by the service.\n#[path = \"../../api/contracts/registry.rs\"]\npub mod registry;\n#[path = \"../../api/contracts/extensions/mod.rs\"]\npub mod extensions;\npub use registry::configured_registry;\n{}",
             if registry_uses_http { "pub mod api;\n" } else { "" }), context: None },
-        RenderedTemplate { path: host.join("Makefile"), content: native_layout::makefile(&format!("{name}-contracts"), false), context: None },
     ]);
     if registry_uses_http {
         // One copy only: the service uses the host's layer, so registry and
@@ -332,12 +330,6 @@ fn add_local_sdk_templates(dir: &Path, name: &str, templates: &mut Vec<RenderedT
         dir, name, &host, "contracts::configured_registry()?", REGISTRY_ENVIRONMENT,
     ));
     Ok(())
-}
-
-/// Blueprint crates already referenced by the application. Callers about to
-/// write manifests pass them to `blueprint_sources::ensure` instead.
-pub(super) fn ensure_blueprint_sources(root: &Path, dryrun: bool) -> Result<()> {
-    blueprint_sources::ensure(root, dryrun, &[])
 }
 
 fn mark_module(root: &Path, name: &str, kind: BuiltinModule) -> Result<()> {

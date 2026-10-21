@@ -349,6 +349,67 @@ Delivered signed to `/platform-events/email`, each with the SES `messageId`:
 `event.id`. Permanent bounces and complaints are already suppressed by the
 platform; mark the address undeliverable in the app too.
 
+### Sending from your own domain (Pro)
+
+By default mail goes out from `no-reply@<label>.<sending domain>`. On Pro and
+Enterprise (`custom_domains`), a caller can send as
+`"Display Name" <local@its-own-domain>` instead. The code does not change; the
+gateway picks the From address.
+
+- **Deployed app**: the domain is the application's custom domain
+  (`forklaunch app domain set` first), or `<subdomain>.` it; one setting per
+  environment.
+  ```bash
+  forklaunch app domain email set -e production [--from hello] [--name "Fit Momma"] [--subdomain mail]
+  forklaunch app domain email status [-e production] [--json]
+  forklaunch app domain email remove -e production [-y]
+  ```
+  `PUT /applications/:applicationId/custom-domain/email-sender`
+  `{ environment, localPart?, displayName?, subdomain? }` → one sender;
+  `GET …/email-sender[?environment=]` → always an array of senders (`[]` with
+  no sender or no custom domain; not plan-gated, a lapsed plan shows
+  `status: failed` with the plan message);
+  `DELETE …/email-sender?environment=` → `{ message }`, 404 when none is set.
+  A sender is `{ environment, domain, fromAddress, displayName?, status:
+  pending_verification|verified|failed, dnsRecords: [{type,name,value,required}],
+  dnsRecordsWritten, errorMessage? }`. No custom domain: 400. An environment
+  not yet deployed with email: saved as `pending_verification` with an
+  `errorMessage` and no DNS records, applied by its next deploy (every deploy
+  hands the setting to managed-apps, and `null` once the custom domain is gone
+  or the plan lost `custom_domains`).
+- **Managed instance**: any domain the organization controls.
+  ```bash
+  forklaunch managed instance email set --id <id> --domain clinic.com [--from care] [--name "Clinic Care"]
+  forklaunch managed instance email status --id <id> [--json]
+  forklaunch managed instance email remove --id <id> [-y]
+  ```
+  `PUT /managed-mode/instances/:id/email-sender` `{ domain, localPart?,
+  displayName? }` (editor), `GET` (viewer; 204 when none), `DELETE` (editor)
+  → back to `no-reply@<host prefix>.<sending domain>`. The answer adds
+  `active` (in use right now). A domain not under a public suffix, or the
+  platform's own sending domain, is 400; a domain another organization sends
+  from or holds as a custom domain is 409; 502/503 when SES or the ownership
+  check is unavailable. The same organization may reuse one domain across
+  instances and apps.
+- **Rules** (the CLI checks them before calling): `localPart` lowercase
+  `[a-z0-9._+-]`, not starting or ending with `.`, ≤ 64, default `no-reply`;
+  `displayName` one line, no `<>"`, ≤ 64 (non-ASCII is sent RFC 2047
+  encoded); `subdomain` one to three DNS labels. No plan: `403 Custom email
+  senders require a Pro or Enterprise plan` on set/remove.
+- **DNS**: three DKIM `CNAME`s (required) and an advisory DMARC `TXT`
+  (`_dmarc.<domain>`, `v=DMARC1; p=none;`, `required: false`). Written by the
+  platform only into a Route53 zone it runs for the same organization (a
+  delegated custom domain, `dnsRecordsWritten: true`); otherwise publish them.
+  SES gives up after 72 hours (`failed`); fix the records and `set` again.
+- **Fallback**: until SES verifies the domain, whenever SES refuses it, and
+  while the plan lacks `custom_domains`, mail goes from the default `no-reply@`
+  address. A custom domain never makes a send answer 503. Events and the
+  configuration set (`fl-<id>`) are unchanged.
+- **Shared identity**: one SES identity per domain, tagged
+  `ForkLaunchEmailSender=custom`; deleted when the last sender using it is
+  removed (remove, custom-domain delete, environment teardown, instance
+  destroy).
+
 ### 4. Local development
 
 `docker compose up` runs the gateway mock (`forklaunch-gateway-mock`). It records

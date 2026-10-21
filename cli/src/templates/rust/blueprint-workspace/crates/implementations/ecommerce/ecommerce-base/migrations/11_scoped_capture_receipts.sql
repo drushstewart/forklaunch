@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/migrations/11_scoped_capture_receipts.sql

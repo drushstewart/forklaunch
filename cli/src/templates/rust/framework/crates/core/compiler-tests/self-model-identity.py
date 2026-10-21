@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/compiler-tests/self-model-identity.py

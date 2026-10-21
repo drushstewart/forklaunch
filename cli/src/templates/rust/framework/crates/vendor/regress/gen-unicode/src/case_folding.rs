@@ -1,1 +1,0 @@
-../../../../../../../../../../framework-rs/crates/vendor/regress/gen-unicode/src/case_folding.rs

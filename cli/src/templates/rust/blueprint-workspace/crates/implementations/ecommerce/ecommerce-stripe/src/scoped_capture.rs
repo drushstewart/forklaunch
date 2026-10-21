@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-stripe/src/scoped_capture.rs

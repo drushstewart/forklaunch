@@ -1,1 +1,0 @@
-../../../../../../../../../../framework-rs/crates/vendor/jsonschema/src/canonical/schema.rs

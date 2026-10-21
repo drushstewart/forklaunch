@@ -102,7 +102,7 @@ fn worker_event_package_reinit_preserves_authored_metadata_and_fills_missing_con
         .iter()
         .find(|file| file.path == destination.join("tsconfig.json"))
         .unwrap();
-    assert_eq!(config.content, canonical::EVENT_TSCONFIG);
+    assert_eq!(config.content, EVENT_TSCONFIG);
     assert_eq!(
         fs::read_to_string(destination.join("package.json")).unwrap(),
         package

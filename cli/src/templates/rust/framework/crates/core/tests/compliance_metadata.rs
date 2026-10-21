@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/tests/compliance_metadata.rs

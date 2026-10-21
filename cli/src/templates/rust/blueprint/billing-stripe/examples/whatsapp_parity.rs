@@ -1,1 +1,0 @@
-../../../../../../../blueprint-rs/crates/implementations/billing/billing-stripe/examples/whatsapp_parity.rs

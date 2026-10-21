@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/examples/typescript_stream_client.rs

@@ -147,10 +147,35 @@ pub(crate) fn generate_or_check_sdk_outputs(
     check: bool,
     stdout: &mut StandardStream,
 ) -> Result<()> {
+    generate_or_check(app_root, target, source, selected_service, check, false, stdout)
+}
+
+/// Watch passes generate what exists: a TypeScript service whose OpenAPI export
+/// has not been written yet (development exports it from its container) joins
+/// once the export appears.
+pub(crate) fn generate_sdk_outputs_while_watching(
+    app_root: &Path,
+    target: &str,
+    source: &str,
+    selected_service: Option<&str>,
+    stdout: &mut StandardStream,
+) -> Result<()> {
+    generate_or_check(app_root, target, source, selected_service, false, true, stdout)
+}
+
+fn generate_or_check(
+    app_root: &Path,
+    target: &str,
+    source: &str,
+    selected_service: Option<&str>,
+    check: bool,
+    pending_exports: bool,
+    stdout: &mut StandardStream,
+) -> Result<()> {
     if matches!(source, "all" | "all-openapi") {
         // One watcher serializes both writers because they share workspace metadata.
         // Try both surfaces so a missing HTTP artifact does not block socket updates.
-        let http = generate_or_check_sdk_outputs(
+        let http = generate_or_check(
             app_root,
             target,
             if source == "all-openapi" {
@@ -160,6 +185,7 @@ pub(crate) fn generate_or_check_sdk_outputs(
             },
             selected_service,
             check,
+            pending_exports,
             stdout,
         );
         let sockets = super::websocket::generate_from(
@@ -190,6 +216,9 @@ pub(crate) fn generate_or_check_sdk_outputs(
     }
     let manifest = read_manifest(app_root)?;
     let services = match source {
+        "contract" | "openapi" if pending_exports => {
+            exported_http_sdk_services(app_root, &manifest, selected_service, source, stdout)?
+        }
         "contract" => http_sdk_services_from_contracts(app_root, &manifest, selected_service)?,
         "openapi" => {
             http_sdk_services_from_artifacts(app_root, &manifest, selected_service, "openapi")?
@@ -201,6 +230,9 @@ pub(crate) fn generate_or_check_sdk_outputs(
     };
 
     if services.is_empty() {
+        if pending_exports {
+            return Ok(());
+        }
         bail!("No HTTP services or workers found for SDK generation");
     }
 
@@ -488,6 +520,39 @@ fn rust_sdk_services_for_lifecycle(app_root: &Path, manifest: &Value) -> Result<
                     "Restore the TypeScript OpenAPI export for {name} before regenerating its SDK"
                 )));
             }
+        }
+    }
+    Ok(services)
+}
+
+/// Every service's artifact, skipping TypeScript services whose export has not
+/// been written yet.
+fn exported_http_sdk_services(
+    app_root: &Path,
+    manifest: &Value,
+    selected_service: Option<&str>,
+    source: &str,
+    stdout: &mut StandardStream,
+) -> Result<Vec<SdkService>> {
+    let mut services = Vec::new();
+    for project in super::http_sources::projects(manifest, selected_service) {
+        let name = project
+            .get("name")
+            .and_then(Value::as_str)
+            .context("SDK service name is required")?;
+        match http_sdk_services_from_artifacts(app_root, manifest, Some(name), source) {
+            Ok(found) => services.extend(found),
+            Err(error)
+                if super::http_sources::is_typescript(project)
+                    && error.chain().any(|cause| {
+                        cause
+                            .downcast_ref::<std::io::Error>()
+                            .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
+                    }) =>
+            {
+                log_info!(stdout, "Waiting for {name} to export its OpenAPI document");
+            }
+            Err(error) => return Err(error),
         }
     }
     Ok(services)
@@ -2135,11 +2200,7 @@ fn rust_sdk_cargo_for_layout(
     }
     let directory = super::layout::local_sdk(root, service, "rust")?
         .unwrap_or(root.join(super::layout::rust(root)?).join(package));
-    let framework = if root.join("vendor/framework").is_dir() {
-        root.join("vendor/framework")
-    } else {
-        root.join(".forklaunch/framework-rs")
-    };
+    let framework = root.join(".forklaunch/framework-rs");
     // `diff_paths` gives no answer for one relative and one absolute path.
     let (framework, directory) = (std::path::absolute(&framework)?, std::path::absolute(&directory)?);
     let relative = pathdiff::diff_paths(framework.join("crates/core"), &directory)

@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/axum/examples/json_composition/contract.rs

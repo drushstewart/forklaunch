@@ -22,12 +22,7 @@ pub(super) fn local_templates_with_registry(
         .find(|path| path.join(".forklaunch/manifest.toml").is_file());
     let framework = root
         .map(|root| {
-            let path = if root.join("vendor/framework").is_dir() {
-                root.join("vendor/framework")
-            } else {
-                root.join(".forklaunch/framework-rs")
-            };
-            pathdiff::diff_paths(path, &sdk)
+            pathdiff::diff_paths(root.join(".forklaunch/framework-rs"), &sdk)
                 .unwrap()
                 .to_string_lossy()
                 .into_owned()
@@ -175,11 +170,7 @@ pub(super) fn generate(matches: &ArgMatches, services: Vec<String>) -> Result<()
     cargo["lib"]["path"] = toml_edit::value("lib.rs");
     let base:toml_edit::DocumentMut="[dependencies]\nserde={version='1',features=['derive']}\nserde_json='1'\nreqwest={version='0.13',default-features=false,features=['json','query','stream','multipart','rustls']}\nfutures-util='0.3'\ntokio={version='1',features=['net']}\ntokio-tungstenite='0.30'\n".parse()?;
     cargo["dependencies"] = base["dependencies"].clone();
-    let framework = if root.join("vendor/framework").is_dir() {
-        "../../../vendor/framework"
-    } else {
-        "../../../.forklaunch/framework-rs"
-    };
+    let framework = "../../../.forklaunch/framework-rs";
     cargo["dependencies"]["forklaunch-universal-sdk"]["path"] =
         toml_edit::value(format!("{framework}/crates/universal-sdk"));
     cargo["dependencies"]["forklaunch-universal-sdk"]["version"] = toml_edit::value("0.1.0");

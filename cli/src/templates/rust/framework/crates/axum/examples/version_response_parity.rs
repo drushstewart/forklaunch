@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/axum/examples/version_response_parity.rs

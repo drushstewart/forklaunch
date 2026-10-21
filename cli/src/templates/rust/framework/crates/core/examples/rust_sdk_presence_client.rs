@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/examples/rust_sdk_presence_client.rs

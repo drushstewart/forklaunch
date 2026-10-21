@@ -1,1 +1,0 @@
-../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-stripe/tests/scoped_cancellation.rs

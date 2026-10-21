@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/examples/typescript_socket_artifacts.rs

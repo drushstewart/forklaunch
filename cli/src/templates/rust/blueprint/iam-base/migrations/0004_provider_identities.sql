@@ -1,1 +1,0 @@
-../../../../../../../blueprint-rs/crates/implementations/iam/iam-base/migrations/0004_provider_identities.sql

@@ -1,1 +1,0 @@
-../../../../../../../../../blueprint-rs/crates/interfaces/iam-interface/src/module_contracts.rs

@@ -1,1 +1,0 @@
-../../../../../../../../../blueprint-rs/crates/interfaces/worker-interface/tests/traced_jobs.rs

@@ -1,1 +1,0 @@
-../../../../../../../../framework-rs/crates/core/tests/integer_schema.rs

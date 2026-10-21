@@ -3,15 +3,13 @@
 //! `manifest.toml` is the only committed file, including the `[framework]`
 //! dependency selection. Everything else the CLI generates is derived from it,
 //! and generated files that users may edit carry their own fingerprint (see
-//! [`stamp`]). `local-state.json` is gitignored local undo state (see
-//! `infra::native_local`).
+//! [`stamp`]).
 use std::{fs, path::Path};
 
 use anyhow::{Context, Result};
 use sha2::{Digest, Sha256};
 
 pub(crate) const MANIFEST: &str = ".forklaunch/manifest.toml";
-pub(crate) const LOCAL_STATE: &str = ".forklaunch/local-state.json";
 
 pub(crate) fn sha256_hex(bytes: impl AsRef<[u8]>) -> String {
     Sha256::digest(bytes.as_ref())

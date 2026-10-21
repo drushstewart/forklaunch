@@ -81,7 +81,7 @@ cargo run -p storage --example infrastructure -- --configured
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 # Build the actual generated framework SDK package in an isolated installation.
 # This does not purge or depend on the developer's monorepo node_modules.
-mkdir -p "$RUN_ROOT/typescript-runtime" && (cd "$REPO_ROOT/framework/universal-sdk" && cp -R index.ts src package.json tsconfig.json tsconfig.build.json "$RUN_ROOT/typescript-runtime/")
+python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); from universal_sdk_source import copy_universal_sdk; copy_universal_sdk(sys.argv[2], sys.argv[3])' "$SCRIPT_DIR/fixtures" "$REPO_ROOT" "$RUN_ROOT/typescript-runtime"
 npm install --prefix "$RUN_ROOT/typescript-runtime" --ignore-scripts --package-lock=false --save-dev tsx@4.23.15
 npm --prefix "$RUN_ROOT/typescript-runtime" run build
 "${TSX_BIN:-$RUN_ROOT/typescript-runtime/node_modules/.bin/tsx}" "$SCRIPT_DIR/rust_record_codec_interop.ts" "$TARGET_DIR/debug/examples/record_interop"

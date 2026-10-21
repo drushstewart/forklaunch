@@ -1,1 +1,0 @@
-../../../../../../../../../../../blueprint-rs/crates/implementations/worker/worker-kafka/src/client/inspection.rs

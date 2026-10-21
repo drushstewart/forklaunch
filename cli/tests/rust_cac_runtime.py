@@ -54,9 +54,6 @@ try:
     command('init', 'module', 'dry-cac', '--language', 'rust', '-m', 'cac-base', '--dryrun')
     assert not (app / 'src/dry-cac').exists()
     command('init', 'module', 'iam', '--language', 'rust', '-m', 'iam-base', '-d', 'postgresql')
-    blueprint = app / '.forklaunch/blueprint-rs/Cargo.toml'
-    source = blueprint.read_text()
-    blueprint.write_text('\n'.join(line for line in source.splitlines() if '/cac/' not in line and 'cac-interface' not in line) + '\n# user-workspace-marker\n')
     command('init', 'module', '--language', 'rust', '-m', 'cac-base')
     relocated = root / 'relocated-app'
     app.rename(relocated)
@@ -64,13 +61,8 @@ try:
     assert (app / 'src/cac/sdk/rust/.forklaunch-sdk-local').is_file()
     assert (app / 'src/cac/.forklaunch/contracts/Cargo.toml').is_file()
     assert not (app / 'src/client-sdk/typescript/cac').exists()
-    blueprint = app / '.forklaunch/blueprint-rs/Cargo.toml'
-    assert 'user-workspace-marker' in blueprint.read_text()
-    members = tomllib.loads(blueprint.read_text())['workspace']['members']
-    for member in ['crates/interfaces/cac-interface', 'crates/implementations/cac/cac-base']:
-        assert members.count(member) == 1, (member, members)
-    # The HTTP layer is application source, not a blueprint crate.
-    assert 'crates/implementations/cac/cac-axum' not in members
+    # Blueprint crates come from crates.io; the HTTP layer is application source.
+    assert not (app / '.forklaunch/blueprint-rs').exists()
     assert (app / 'src/cac/api/http/mod.rs').is_file()
     library = app / 'src/cac/lib.rs'
     library.write_text(library.read_text() + '\npub const USER_MODULE_MARKER: &str = "preserved";\n')

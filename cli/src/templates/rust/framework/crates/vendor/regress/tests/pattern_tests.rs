@@ -1,1 +1,0 @@
-../../../../../../../../../framework-rs/crates/vendor/regress/tests/pattern_tests.rs
