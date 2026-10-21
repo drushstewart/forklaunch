@@ -9,7 +9,6 @@ use std::collections::BTreeMap;
 
 use base64::Engine;
 use indexmap::IndexMap;
-use rand::RngCore;
 
 use super::*;
 use crate::core::docker::{DependencyCondition, DependsOn};
@@ -111,7 +110,7 @@ fn depends(service: &mut DockerService, name: &str, condition: DependencyConditi
 
 fn random(bytes: usize) -> Vec<u8> {
     let mut value = vec![0; bytes];
-    rand::thread_rng().fill_bytes(&mut value);
+    getrandom::fill(&mut value).expect("Failed to generate random bytes");
     value
 }
 
