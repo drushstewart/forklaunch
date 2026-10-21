@@ -2460,7 +2460,7 @@ fn project_cargo_toml(name: &str, description: &str, has_binary: bool) -> String
 }
 
 fn service_cargo_toml(name: &str, description: &str) -> String {
-    let base = project_cargo_toml(name, description, true).replace("[dependencies]", "[dependencies]\nserde_json = \"1\"");
+    let base = project_cargo_toml(name, description, true).replace("[dependencies]", "[dependencies]\nserde_json = {}");
     format!(
         "{base}\n[build-dependencies]\nforklaunch-core = {{ path = \"../../.forklaunch/framework-rs/crates/core\", features = [\"compliance-artifact\", \"typed-schema\", \"build\"] }}\n"
     )

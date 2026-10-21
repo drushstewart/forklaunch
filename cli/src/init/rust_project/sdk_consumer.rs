@@ -46,11 +46,11 @@ license.workspace = true
 [lib]
 path = "lib.rs"
 [dependencies]
-serde = {{ version = "1", features = ["derive"] }}
-serde_json = "1"
-reqwest = {{ version = "0.13", default-features = false, features = ["json", "query", "stream", "multipart", "rustls"] }}
-futures-util = "0.3"
-multer = "3.1"
+serde = {{ features = ["derive"] }}
+serde_json = {{}}
+reqwest = {{ default-features = false, features = ["json", "query", "stream", "multipart", "rustls"] }}
+futures-util = {{}}
+multer = {{}}
 forklaunch-core = {{ path = "{framework}/crates/core", features = ["schema-validation"] }}
 forklaunch-universal-sdk = {{ path = "{framework}/crates/universal-sdk", version = "0.1.0" }}
 [build-dependencies]

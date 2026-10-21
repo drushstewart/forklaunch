@@ -8,10 +8,18 @@ on:
     paths:
       - 'blueprint/**/package.json'
       - 'cli/src/core/package_json/package_json_constants.rs'
+      - 'framework-rs/**/Cargo.toml'
+      - 'blueprint-rs/**/Cargo.toml'
+      - 'cli/src/core/cargo_toml/cargo_toml_constants.rs'
+      - '.github/workflows/scripts/check_blueprint_deps/**'
   pull_request:
     paths:
       - 'blueprint/**/package.json'
       - 'cli/src/core/package_json/package_json_constants.rs'
+      - 'framework-rs/**/Cargo.toml'
+      - 'blueprint-rs/**/Cargo.toml'
+      - 'cli/src/core/cargo_toml/cargo_toml_constants.rs'
+      - '.github/workflows/scripts/check_blueprint_deps/**'
 
 jobs:
   depcheck:
@@ -41,7 +49,7 @@ jobs:
           cd .github/workflows/scripts/check_blueprint_deps
           if ! cargo run --bin check_blueprint_deps; then
             echo
-            echo "::error::package_json_constants.rs has drifted from the blueprint package.json files."
+            echo "::error::package_json_constants.rs or cargo_toml_constants.rs has drifted from the blueprint and framework workspaces."
             echo "Fix it by running, from the repository root:"
             echo "  cd .github/workflows/scripts/check_blueprint_deps && cargo run --bin check_blueprint_deps -- --fix"
             echo "or trigger the 'Blueprint Dependency Sync' workflow, which opens a PR with the same change."

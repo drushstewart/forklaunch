@@ -139,7 +139,7 @@ public-registry acceptance suite verifies the following independently:
   encrypted worker and infrastructure runtime suites exercise transport behavior.
 
 The current CLI defaults new applications to exact framework release versions.
-`--framework-snapshot` remains an explicit development option. Existing application
+Existing application
 source choices are preserved. `--allow-dirty` is for local release validation and
 cannot produce a publishable receipt.
 
@@ -151,9 +151,14 @@ its blueprint worker-interface snapshot.
 
 ## Explicit application dependency modes
 
-Initialization defaults to the published framework version `0.1.0`. To select
-another release, pass `--framework-version X.Y.Z` to `forklaunch init application NAME`.
-Use `--framework-snapshot` for a portable development copy of framework sources. Application initialization is language-neutral;
+Initialization defaults to the framework and blueprint releases in
+[`cli/src/core/cargo_toml/cargo_toml_constants.rs`](../../cli/src/core/cargo_toml/cargo_toml_constants.rs),
+which also holds the third-party crate versions generated Cargo.toml files use
+(templates and generators leave those versions out). `check_blueprint_deps`
+fails CI when that file drifts from framework-rs or blueprint-rs, and `--fix`
+updates it. To select another release, pass `--framework-version X.Y.Z` to
+`forklaunch init application NAME`, or `--framework-path` for a local framework-rs
+checkout. Application initialization is language-neutral;
 choose `--language rust` on subsequent service/worker commands. Both SDK targets
 are the default. The saved preference pins direct framework dependencies to that
 exact version when a Rust project is added, preserving features and local aliases

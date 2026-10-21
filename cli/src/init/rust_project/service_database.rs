@@ -20,8 +20,8 @@ pub(super) fn templates(
                 let mut build_features = cargo["build-dependencies"]["forklaunch-core"]["features"].as_array().cloned().unwrap_or_default();
                 if !build_features.iter().any(|value| value.as_str() == Some("encryption")) { build_features.push("encryption"); }
                 cargo["build-dependencies"]["forklaunch-core"]["features"] = toml_edit::value(build_features);
-                cargo["build-dependencies"]["uuid"]["version"] = toml_edit::value("1");
-                let dependencies: toml_edit::DocumentMut = "[dependencies]\nsqlx = { version = \"0.8\", default-features = false, features = [\"runtime-tokio\", \"tls-rustls\", \"postgres\", \"uuid\", \"migrate\", \"macros\"] }\nuuid = { version = \"1\", features = [\"v4\"] }\n".parse()?;
+                cargo["build-dependencies"]["uuid"]["version"] = toml_edit::value(crate::core::cargo_toml::version("uuid").unwrap_or_default());
+                let dependencies: toml_edit::DocumentMut = crate::core::cargo_toml::fill("[dependencies]\nsqlx = { default-features = false, features = [\"runtime-tokio\", \"tls-rustls\", \"postgres\", \"uuid\", \"migrate\", \"macros\"] }\nuuid = { features = [\"v4\"] }\n")?.parse()?;
                 for (name, dependency) in dependencies["dependencies"].as_table().unwrap() { cargo["dependencies"][name] = dependency.clone(); }
                 cargo["test"].as_array_of_tables_mut().context("native test table")?.push({ let mut test=toml_edit::Table::new(); test["name"]=toml_edit::value("persistence"); test["path"]=toml_edit::value("__test__/persistence.rs"); test });
                 template.content = cargo.to_string();
@@ -69,7 +69,7 @@ pub(super) fn templates(
         let relative = relative.to_string_lossy();
             if relative == "Cargo.toml" {
                 let mut cargo: toml_edit::DocumentMut = template.content.parse()?;
-                cargo["dependencies"]["sqlx"]["version"] = toml_edit::value("0.9");
+                cargo["dependencies"]["sqlx"]["version"] = toml_edit::value(crate::core::cargo_toml::version("sqlx09").unwrap_or_default());
                 let features = cargo["dependencies"]["forklaunch-core"]["features"]
                     .as_array_mut()
                     .context("Core features")?;

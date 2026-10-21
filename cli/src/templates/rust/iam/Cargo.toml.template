@@ -7,14 +7,14 @@ authors.workspace = true
 description = "{{{description}}}"
 
 [dependencies]
-serde_json = "1"
+serde_json = {}
 forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/axum", features = ["mcp", "remote-jwks"] }
-axum = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
+axum = {}
+tokio = { features = ["macros", "rt-multi-thread", "net", "signal"] }
+sqlx = { default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
 forklaunch-core = {path = "../../.forklaunch/framework-rs/crates/core", features = ["openapi", "auth", "encryption", "oidc", "otlp", "postgres", "remote-jwks", "domain"] }
 forklaunch-iam-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/iam-interface" }
 forklaunch-iam-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/iam-base", features = ["postgres", "jwt-sessions", "browser-sessions", "oidc-sessions"] }
 forklaunch-iam-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/iam-axum", features = ["browser-sessions", "oidc-sessions"] }
 
-jsonwebtoken = "9"
+jsonwebtoken = {}

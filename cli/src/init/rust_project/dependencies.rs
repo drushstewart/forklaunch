@@ -1,11 +1,10 @@
 //! Explicit dependency source selection.
 use super::*;
 
-use crate::core::forklaunch_state;
-
-const RELEASE_VERSION: &str = "0.1.3";
-/// Blueprint crates released against `RELEASE_VERSION` of the framework.
-const BLUEPRINT_RELEASE_VERSION: &str = "0.1.1";
+use crate::core::{
+    cargo_toml::{self, BLUEPRINT_VERSION as BLUEPRINT_RELEASE_VERSION, FRAMEWORK_VERSION as RELEASE_VERSION},
+    forklaunch_state,
+};
 
 /// The `[framework]` selection for a new application: published crates by
 /// default, or an external framework-rs checkout referenced in place.
@@ -196,10 +195,11 @@ pub(crate) fn render_for_path(path: &Path, source: &str) -> Result<String> {
     if path.file_name().is_none_or(|name| name != "Cargo.toml") {
         return Ok(source.into());
     }
+    let source = cargo_toml::fill(source)?;
     let root = path.ancestors().find(|root| configured(root));
     match root {
-        Some(root) => render(root, source),
-        None => Ok(source.into()),
+        Some(root) => render(root, &source),
+        None => Ok(source),
     }
 }
 
@@ -397,90 +397,5 @@ mod tests {
         let mut framework: Value = toml::from_str("[dependencies]\ncore = {package='forklaunch-core',path='../../vendor/framework/crates/core',features=['typed-schema']}\n").unwrap();
         rewrite_value(&mut framework, &config);
         assert_eq!(framework["dependencies"]["core"]["path"].as_str(), Some("/tmp/framework-rs/crates/core"));
-    }
-
-    fn workspace_toml(relative: &str) -> toml::Value {
-        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
-        toml::from_str(&read_to_string(&path).unwrap()).unwrap()
-    }
-
-    fn member_manifests(workspace: &str) -> Vec<toml::Value> {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(workspace);
-        let members = workspace_toml(&format!("{workspace}/Cargo.toml"))["workspace"]["members"]
-            .as_array()
-            .unwrap()
-            .clone();
-        let mut manifests = Vec::new();
-        for member in members {
-            let pattern = root.join(member.as_str().unwrap()).join("Cargo.toml");
-            for path in glob::glob(pattern.to_str().unwrap()).unwrap() {
-                manifests.push(toml::from_str(&read_to_string(path.unwrap()).unwrap()).unwrap());
-            }
-        }
-        manifests
-    }
-
-    /// Generated applications default to the release this checkout builds, and
-    /// the blueprint pins exactly that framework release.
-    #[test]
-    fn default_versions_follow_the_framework_and_blueprint_workspaces() {
-        let framework = workspace_toml("../framework-rs/Cargo.toml");
-        assert_eq!(framework["workspace"]["package"]["version"].as_str(), Some(RELEASE_VERSION));
-        let blueprint = workspace_toml("../blueprint-rs/Cargo.toml");
-        assert_eq!(blueprint["workspace"]["package"]["version"].as_str(), Some(BLUEPRINT_RELEASE_VERSION));
-        let pinned = format!("={RELEASE_VERSION}");
-        for manifest in member_manifests("../blueprint-rs") {
-            for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
-                for (name, dependency) in manifest.get(section).and_then(toml::Value::as_table).into_iter().flatten() {
-                    let package = dependency.get("package").and_then(toml::Value::as_str).unwrap_or(name);
-                    let path = dependency.get("path").and_then(toml::Value::as_str).unwrap_or_default();
-                    if path.contains("framework-rs/") {
-                        assert_eq!(dependency["version"].as_str(), Some(pinned.as_str()), "{package}");
-                    }
-                }
-            }
-        }
-    }
-
-    /// Third-party crates the Rust templates name directly must use the same
-    /// requirement as the framework, so generated code and framework types unify.
-    #[test]
-    fn template_dependencies_match_the_framework_requirements() {
-        let mut framework: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> = Default::default();
-        for manifest in member_manifests("../framework-rs") {
-            for section in ["dependencies", "dev-dependencies"] {
-                for (name, dependency) in manifest.get(section).and_then(toml::Value::as_table).into_iter().flatten() {
-                    let requirement = dependency.as_str().or_else(|| dependency.get("version")?.as_str());
-                    if let Some(requirement) = requirement && !name.starts_with("forklaunch-") {
-                        framework.entry(name.clone()).or_default().insert(requirement.trim_start_matches('=').to_owned());
-                    }
-                }
-            }
-        }
-        let templates = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/templates/rust");
-        let pattern = templates.join("*/Cargo.toml.template");
-        let mut checked = 0;
-        for path in glob::glob(pattern.to_str().unwrap()).unwrap() {
-            let path = path.unwrap();
-            for line in read_to_string(&path).unwrap().lines() {
-                let Some((name, rest)) = line.split_once('=') else { continue };
-                let name = name.trim();
-                let Some(versions) = framework.get(name).filter(|versions| versions.len() == 1) else { continue };
-                let requirement = rest
-                    .split('"')
-                    .nth(1)
-                    .filter(|_| rest.trim_start().starts_with('"') || rest.contains("version"))
-                    .unwrap_or_default();
-                let expected = versions.iter().next().unwrap();
-                // Compare the declared compatibility range (major, or major.minor below 1.0).
-                let range = |version: &str| {
-                    let parts: Vec<&str> = version.split('.').collect();
-                    if parts[0] == "0" { parts.iter().take(2).copied().collect::<Vec<_>>().join(".") } else { parts[0].to_owned() }
-                };
-                assert_eq!(range(requirement), range(expected), "{} in {}", name, path.display());
-                checked += 1;
-            }
-        }
-        assert!(checked > 0, "No template dependencies were compared");
     }
 }

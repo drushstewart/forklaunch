@@ -204,7 +204,7 @@ fn producer(
         .iter_mut()
         .find(|file| file.path == host.join("Cargo.toml"))
         .context("contract manifest")?;
-    host_cargo.content.push_str("serde = { version = \"1\", features = [\"derive\"] }\nuuid = { version = \"1\", features = [\"serde\", \"v4\"] }\nschemars = { version = \"0.8\", features = [\"uuid1\"] }\nzeroize = \"1\"\nforklaunch-worker-interface = { path = \"../../.forklaunch/blueprint-rs/crates/interfaces/worker-interface\", features = [\"schema\"] }\n");
+    host_cargo.content.push_str("serde = { features = [\"derive\"] }\nuuid = { features = [\"serde\", \"v4\"] }\nschemars = { features = [\"uuid1\"] }\nzeroize = {}\nforklaunch-worker-interface = { path = \"../../.forklaunch/blueprint-rs/crates/interfaces/worker-interface\", features = [\"schema\"] }\n");
     let inline = host == contracts_layout::new_host_directory(dir);
     if inline {
         let host_file = files
@@ -660,10 +660,10 @@ path = "lib.rs"
 [dependencies]
 forklaunch-core = {{ path = "../../.forklaunch/framework-rs/crates/core", features = ["typed-schema"] }}
 forklaunch-worker-interface = {{ path = "../../.forklaunch/blueprint-rs/crates/interfaces/worker-interface", features = ["schema"] }}
-serde = {{ version = "1", features = ["derive"] }}
-schemars = {{ version = "0.8", features = ["uuid1"] }}
-uuid = {{ version = "1", features = ["serde"] }}
-zeroize = "1"
+serde = {{ features = ["derive"] }}
+schemars = {{ features = ["uuid1"] }}
+uuid = {{ features = ["serde"] }}
+zeroize = {{}}
 "#),context:None});
     Ok(files)
 }

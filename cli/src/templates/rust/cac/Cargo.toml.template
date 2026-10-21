@@ -7,12 +7,12 @@ authors.workspace = true
 description = "{{{description}}}"
 
 [dependencies]
-serde_json = "1"
+serde_json = {}
 forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/axum", features = ["mcp"] }
-axum = "0.8"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+axum = {}
+tokio = { features = ["macros", "rt-multi-thread", "net", "signal"] }
 forklaunch-core = {path = "../../.forklaunch/framework-rs/crates/core", features = ["openapi", "auth", "otlp", "remote-jwks"] }
 forklaunch-cac-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/cac-interface" }
 forklaunch-cac-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/cac/cac-base" }
 forklaunch-cac-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/cac/cac-axum" }
-jsonwebtoken = "9"
+jsonwebtoken = {}

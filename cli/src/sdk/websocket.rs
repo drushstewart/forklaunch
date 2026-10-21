@@ -528,10 +528,10 @@ zod-regex = ["forklaunch-ws/zod-regex"]
 
 [dependencies]
 forklaunch-ws = {{ path = "{framework}/crates/ws", features = ["transport", "json-schema"] }}
-serde = {{ version = "1", features = ["derive"] }}
-serde_json = "1"
-tokio = {{ version = "1", features = ["net"] }}
-tokio-tungstenite = "0.30"
+serde = {{ features = ["derive"] }}
+serde_json = {{}}
+tokio = {{ features = ["net"] }}
+tokio-tungstenite = {{}}
 "#
     );
     let manifest_path = format!("{directory}/Cargo.toml");

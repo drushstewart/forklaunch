@@ -2167,13 +2167,13 @@ fn rust_sdk_cargo_toml(
     multipart_response: bool,
 ) -> String {
     let response_dependencies = if multipart_response {
-        "multer = \"3.1\"\nfutures-util = \"0.3\"\n"
+        "multer = {}\nfutures-util = {}\n"
     } else {
         ""
     };
     let multipart_feature = if multipart { ", \"multipart\"" } else { "" };
     format!(
-        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ version = \"0.13.2\", features = [\"json\", \"query\"{}] }}\nserde = {{ version = \"1.0\", features = [\"derive\"] }}\nserde_json = \"1.0\"\n{}",
+        "[package]\nname = \"{}\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\nauthors.workspace = true\ndescription = \"Generated Rust SDK for {}\"\n\n[dependencies]\nreqwest = {{ features = [\"json\", \"query\"{}] }}\nserde = {{ features = [\"derive\"] }}\nserde_json = {{}}\n{}",
         package_name, service_name, multipart_feature, response_dependencies
     )
 }

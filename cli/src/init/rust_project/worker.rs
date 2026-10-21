@@ -193,17 +193,15 @@ fn cargo_with_backend(
     if !core_features.iter().any(|feature| feature.as_str() == Some("encryption")) { core_features.push("encryption"); }
     // Shared module types (errors, paging, audit context) are framework `domain`.
     if !core_features.iter().any(|feature| feature.as_str() == Some("domain")) { core_features.push("domain"); }
-    cargo["dependencies"]["serde_json"] = toml_edit::value("1");
+    cargo["dependencies"]["serde_json"] = toml_edit::value(toml_edit::InlineTable::new());
     cargo["package"]["build"] = toml_edit::value("build.rs");
     cargo["dependencies"]["forklaunch-worker-interface"]["features"] = toml_edit::value(toml_edit::Array::from_iter(["schema"]));
     let mut schema = toml_edit::InlineTable::new();
-    schema.insert("version", "0.8".into());
     schema.insert("features", toml_edit::Array::from_iter(["uuid1"]).into());
     cargo["dependencies"]["schemars"] = toml_edit::value(schema);
-    cargo["dependencies"]["zeroize"] = toml_edit::value("1");
+    cargo["dependencies"]["zeroize"] = toml_edit::value(toml_edit::InlineTable::new());
     for (name, features) in [("serde", vec!["derive"]), ("uuid", vec!["serde", "v4"])] {
         let mut dependency = toml_edit::InlineTable::new();
-        dependency.insert("version", "1".into());
         dependency.insert("features", toml_edit::Array::from_iter(features).into());
         cargo["dependencies"][name] = toml_edit::value(dependency);
     }
@@ -228,7 +226,6 @@ fn cargo_with_backend(
     }
     if backend == Backend::Postgres {
         let mut sqlx = toml_edit::InlineTable::new();
-        sqlx.insert("version", "0.8".into());
         sqlx.insert("default-features", false.into());
         sqlx.insert(
             "features",
@@ -236,7 +233,7 @@ fn cargo_with_backend(
         );
         cargo["dependencies"]["sqlx"] = toml_edit::value(sqlx);
     }
-    Ok(cargo.to_string())
+    crate::core::cargo_toml::fill(&cargo.to_string())
 }
 
 pub(super) fn convert(root: &Path, name: &str, backend: Backend) -> Result<()> {
@@ -540,25 +537,26 @@ path = "main.rs"
 [dependencies]
 forklaunch-worker-interface = {{ package = "forklaunch-worker-interface", path = "{worker_path}", features = ["native", "apalis", "telemetry", "schema"] }}
 forklaunch-core = {{ package = "forklaunch-core", path = "{relative}/crates/core", features = ["postgres09", "otlp", "encryption"] }}
-apalis = "=1.0.0"
-apalis-core = "=1.0.0"
-apalis-postgres = "=1.0.0"
-sqlx = {{ version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }}
-tokio = {{ version = "1", features = ["macros", "rt-multi-thread", "signal", "time"] }}
-serde = {{ version = "1", features = ["derive"] }}
-serde_json = "1"
-uuid = {{ version = "1", features = ["v4", "serde"] }}
-schemars = {{ version = "0.8", features = ["uuid1"] }}
-zeroize = "1"
+apalis = {{}}
+apalis-core = {{}}
+apalis-postgres = {{}}
+sqlx = {{ version = "{sqlx09}", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }}
+tokio = {{ features = ["macros", "rt-multi-thread", "signal", "time"] }}
+serde = {{ features = ["derive"] }}
+serde_json = {{}}
+uuid = {{ features = ["v4", "serde"] }}
+schemars = {{ features = ["uuid1"] }}
+zeroize = {{}}
 [build-dependencies]
 forklaunch-core = {{ package = "forklaunch-core", path = "{relative}/crates/core", features = ["encryption", "build"] }}
 forklaunch-worker-interface = {{ package = "forklaunch-worker-interface", path = "{worker_path}", features = ["schema"] }}
-serde = {{ version = "1", features = ["derive"] }}
-serde_json = "1"
-uuid = {{ version = "1", features = ["serde"] }}
-schemars = {{ version = "0.8", features = ["uuid1"] }}
-zeroize = "1"
-"#);
+serde = {{ features = ["derive"] }}
+serde_json = {{}}
+uuid = {{ features = ["serde"] }}
+schemars = {{ features = ["uuid1"] }}
+zeroize = {{}}
+"#, sqlx09 = crate::core::cargo_toml::version("sqlx09").unwrap_or_default());
+    let cargo = crate::core::cargo_toml::fill(&cargo)?;
     let event=render_rust_template("rust/leased-worker/event_contract.rs",&data);
     for (path,content) in [
         ("Cargo.toml",cargo),

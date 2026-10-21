@@ -7,6 +7,7 @@ pub(crate) mod application_output;
 pub(crate) mod storefront;
 pub(crate) mod base_path;
 pub(crate) mod bunfig;
+pub(crate) mod cargo_toml;
 pub(crate) mod choices;
 pub(crate) mod client_sdk;
 pub(crate) mod command;
