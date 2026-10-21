@@ -10,7 +10,6 @@ mod in_place;
 mod lifecycle;
 mod list;
 mod local;
-pub(crate) mod local_state;
 pub(crate) mod native_local;
 mod mutation;
 mod resize;

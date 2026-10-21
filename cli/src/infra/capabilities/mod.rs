@@ -16,8 +16,10 @@
 //! capability's file only says what is particular to it.
 
 mod native;
-pub(crate) use native::{cleanup_deleted_native_service, rename_native_ownership};
-pub(crate) use native::{ensure_dependency as ensure_native_dependency, merge_human_delta};
+pub(crate) use native::{cleanup_deleted_native_service, rename_native_capabilities};
+pub(crate) use native::{
+    dependency_in_use, ensure_dependency as ensure_native_dependency, release_dependency,
+};
 
 use std::{
     collections::BTreeMap,
@@ -168,10 +170,6 @@ impl CapabilityEdit {
         if let Some(staged) = self.staged.get(path) {
             return Ok(staged.clone());
         }
-        // Native undo records are addressed by their legacy file paths.
-        if let Some(key) = crate::infra::local_state::key(&self.app_root, path) {
-            return crate::infra::local_state::read(&self.app_root, &key);
-        }
         if path.exists() {
             return Ok(Some(
                 fs::read_to_string(path).with_context(|| format!("reading {path:?}"))?,
@@ -201,29 +199,14 @@ impl CapabilityEdit {
 
     /// Paths this edit would change, for `--dryrun`.
     pub(crate) fn changed_paths(&self) -> Vec<(PathBuf, bool)> {
-        let mut paths: Vec<(PathBuf, bool)> = Vec::new();
-        for (path, content) in &self.staged {
-            match crate::infra::local_state::key(&self.app_root, path) {
-                Some(key) if key.is_empty() => {}
-                Some(_) => {
-                    let state = self.app_root.join(crate::core::forklaunch_state::LOCAL_STATE);
-                    if !paths.iter().any(|(existing, _)| existing == &state) {
-                        paths.push((state, true));
-                    }
-                }
-                None => paths.push((path.clone(), content.is_some())),
-            }
-        }
-        paths
+        self.staged
+            .iter()
+            .map(|(path, content)| (path.clone(), content.is_some()))
+            .collect()
     }
 
     pub(crate) fn commit(self) -> Result<()> {
-        let mut local = BTreeMap::new();
         for (path, content) in self.staged {
-            if let Some(key) = crate::infra::local_state::key(&self.app_root, &path) {
-                local.insert(key, content);
-                continue;
-            }
             match content {
                 Some(content) => {
                     if let Some(parent) = path.parent() {
@@ -234,11 +217,68 @@ impl CapabilityEdit {
                 None => {
                     if path.exists() {
                         fs::remove_file(&path).with_context(|| format!("removing {path:?}"))?;
+                        // A directory add created for the file goes with it.
+                        if let Some(parent) = path.parent()
+                            && fs::read_dir(parent).is_ok_and(|mut entries| entries.next().is_none())
+                        {
+                            fs::remove_dir(parent)?;
+                        }
                     }
                 }
             }
         }
-        crate::infra::local_state::commit(&self.app_root, local)?;
+        Ok(())
+    }
+
+    // ------------------------------------------------------- stateless removal
+
+    /// Whether `text` is what add writes to `path` from `template` (staged
+    /// Rust is formatted, and either form counts).
+    pub(crate) fn is_generated(&self, path: &Path, text: &str, template: &str) -> bool {
+        text == template
+            || (path.extension().is_some_and(|extension| extension == "rs")
+                && text == crate::init::rust_project::format_rust_source(path, template))
+    }
+
+    fn display<'a>(&self, path: &'a Path) -> std::path::Display<'a> {
+        path.strip_prefix(&self.app_root).unwrap_or(path).display()
+    }
+
+    /// Removal keeps a file edited since add wrote it.
+    pub(crate) fn note_kept(&self, path: &Path) {
+        eprintln!("note: kept {} (edited since `infra add`)", self.display(path));
+    }
+
+    /// Removal keeps a setting `what` in `path` that no longer holds the value add wrote.
+    pub(crate) fn note_kept_setting(&self, path: &Path, what: &str) {
+        eprintln!(
+            "note: kept {what} in {} (changed since `infra add`)",
+            self.display(path)
+        );
+    }
+
+    /// Undo [`Self::ensure_env_local`]: drop the `KEY=value` lines that still
+    /// hold the value add writes, and the file once nothing is left. A key set
+    /// to anything else is the developer's and stays.
+    pub(crate) fn release_env_local(&mut self, pairs: &[(&str, &str)]) -> Result<()> {
+        let path = self.service_path.join(".env.local");
+        let Some(text) = self.read(&path)? else {
+            return Ok(());
+        };
+        let kept = in_place::remove_env_pairs(&text, pairs);
+        for (key, _) in pairs {
+            if kept.lines().any(|line| in_place::env_key(line) == Some(*key)) {
+                self.note_kept_setting(&path, key);
+            }
+        }
+        if kept == text {
+            return Ok(());
+        }
+        if kept.trim().is_empty() {
+            self.delete(path);
+        } else {
+            self.write(path, kept);
+        }
         Ok(())
     }
 
@@ -758,6 +798,39 @@ fn url_list(value: Option<&String>) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The gateway mock service `infra add` creates, on `networks`, before any
+/// project registers an event destination.
+pub(crate) fn generated_gateway_mock(networks: Option<Vec<String>>) -> DockerService {
+    DockerService {
+        hostname: Some(GATEWAY_MOCK_SERVICE.to_string()),
+        image: Some("node:22-alpine".to_string()),
+        command: Some(crate::core::docker::Command::Multiple(vec![
+            "npx".to_string(),
+            "-y".to_string(),
+            "-p".to_string(),
+            format!(
+                "@forklaunch/core@{}",
+                crate::core::package_json::package_json_constants::CORE_VERSION
+            ),
+            "forklaunch-gateway-mock".to_string(),
+        ])),
+        ports: Some(vec![format!("{GATEWAY_MOCK_HOST_PORT}:8080")]),
+        networks,
+        environment: Some(
+            [
+                ("PORT".to_string(), "8080".to_string()),
+                (
+                    "MOCK_INSTANCE_HMAC_KEY".to_string(),
+                    LOCAL_INSTANCE_HMAC_KEY.to_string(),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+        ),
+        ..Default::default()
+    }
+}
+
 /// Wire one container to the local gateway mock. `receives_events`: this
 /// container mounts `/platform-events` and is added to the feature's event
 /// destinations (never replacing another project's).
@@ -781,34 +854,7 @@ pub(crate) fn ensure_gateway_mock(
     let mock = compose
         .services
         .entry(GATEWAY_MOCK_SERVICE.to_string())
-        .or_insert_with(|| DockerService {
-            hostname: Some(GATEWAY_MOCK_SERVICE.to_string()),
-            image: Some("node:22-alpine".to_string()),
-            command: Some(crate::core::docker::Command::Multiple(vec![
-                "npx".to_string(),
-                "-y".to_string(),
-                "-p".to_string(),
-                format!(
-                    "@forklaunch/core@{}",
-                    crate::core::package_json::package_json_constants::CORE_VERSION
-                ),
-                "forklaunch-gateway-mock".to_string(),
-            ])),
-            ports: Some(vec![format!("{GATEWAY_MOCK_HOST_PORT}:8080")]),
-            networks: service.networks.clone(),
-            environment: Some(
-                [
-                    ("PORT".to_string(), "8080".to_string()),
-                    (
-                        "MOCK_INSTANCE_HMAC_KEY".to_string(),
-                        LOCAL_INSTANCE_HMAC_KEY.to_string(),
-                    ),
-                ]
-                .into_iter()
-                .collect(),
-            ),
-            ..Default::default()
-        });
+        .or_insert_with(|| generated_gateway_mock(service.networks.clone()));
     if receives_events {
         let url = format!("http://{service_key}:{port}");
         let env = mock.environment.get_or_insert_with(Default::default);

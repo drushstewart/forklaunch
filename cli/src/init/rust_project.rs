@@ -902,7 +902,7 @@ fn delete_rust_project_inner(
     remove_cargo_member(app_root, &format!("{crate_path}/sdk/rust"))?;
     cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name)?;
     remove_rust_docker_compose_project(app_root, name)?;
-    crate::infra::native_local::delete_ownership(app_root, name)?;
+    crate::infra::native_local::release_deleted_service(app_root)?;
     remove_rust_package_scripts(app_root, name)?;
     if kind == RustProjectKind::Library {
         remove_registered_library_dependency(app_root, &manifest, name, &crate_path)?;
@@ -1341,8 +1341,7 @@ pub(crate) fn change_rust_project(
 fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> {
     let local_artifacts = sdk_consumer::rename_local_artifacts(root, old, new)?;
     let imported = crate::sdk::websocket::imported_service(root, old)?;
-    crate::infra::capabilities::rename_native_ownership(root, old, new)?;
-    crate::infra::native_local::rename_ownership(root, old, new)?;
+    crate::infra::capabilities::rename_native_capabilities(root, old, new)?;
     for (kind, filename) in [
         ("contracts", "contract.json"),
         ("openapi", "openapi.json"),
