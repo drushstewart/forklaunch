@@ -503,10 +503,23 @@ mod tests {
     }
     #[test]
     fn notes_fixture_assembly_resolves_real_contract_modules() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
-            .join("experimental/rust-native/templates/fieldnotes");
+        // Fixture manifests are `Cargo.toml.template` so `cargo package` keeps them.
+        fn copy(from: &Path, to: &Path) {
+            std::fs::create_dir_all(to).unwrap();
+            for entry in std::fs::read_dir(from).unwrap() {
+                let path = entry.unwrap().path();
+                let name = path.file_name().unwrap().to_string_lossy();
+                let target = to.join(name.strip_suffix(".template").unwrap_or(&name));
+                if path.is_dir() {
+                    copy(&path, &target);
+                } else {
+                    std::fs::copy(&path, target).unwrap();
+                }
+            }
+        }
+        let fixture = tempfile::tempdir().unwrap();
+        copy(&Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/rust-notes-assembly"), fixture.path());
+        let root = fixture.path().to_path_buf();
         let directory = root.join("src/notes");
         let mut declarations = Vec::new();
         for (file, group) in [
