@@ -41,7 +41,10 @@ try:
         run(cli, 'init', 'service', 'docs-api', '--language', 'rust', '--path', app, cwd=root)
         helper = 'with_docs' if mode == 'snapshot' else 'with_openapi'
         source = (app / 'src/docs-api/application.rs').read_text()
-        assert f'forklaunch_axum::native::{helper}(' in source
+        # The current template imports `forklaunch_axum::native`; the 0.1.0 one
+        # spells the path out. Either way exactly the selected helper is called.
+        other = 'with_openapi' if helper == 'with_docs' else 'with_docs'
+        assert f'native::{helper}(' in source and f'native::{other}(' not in source
         if mode != 'snapshot':
             assert not (app / 'vendor/framework').exists()
             assert '=0.1.0' in (app / 'src/docs-api/Cargo.toml').read_text()

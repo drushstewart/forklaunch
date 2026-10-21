@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 
 repo = Path(sys.argv[1]).resolve()
 fixtures = repo / 'cli/tests/fixtures'
@@ -79,8 +80,10 @@ pub fn binding_manifest() -> Result<Vec<forklaunch_core::contract::assembly::Bin
     application.write_text(application.read_text().replace(
         'contracts::registry()', 'contracts::native_registry()'))
     host_cargo = host.parent / 'Cargo.toml'
+    # The framework comes from the registry release the manifest selects.
+    framework_version = tomllib.loads((app / '.forklaunch/manifest.toml').read_text())['framework']['version']
     host_cargo.write_text(host_cargo.read_text().replace('[dependencies]\n', '[dependencies]\nserde_json = "1"\n') +
-                         '\n[dependencies.forklaunch-ws]\npath = "../../../../vendor/framework/crates/ws"\n')
+                         f'\n[dependencies.forklaunch-ws]\nversion = "={framework_version}"\n')
     run('cargo', 'build', '--workspace')
     command('openapi', 'export')
     expected = json.loads(declaration.with_name('socket_contract_fixture.json').read_text())
