@@ -48,6 +48,16 @@ use crate::{
 /// a hang.
 const POLL_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const POLL_INTERVAL: Duration = Duration::from_secs(3);
+/// Consecutive status requests that may fail with a dropped connection, a
+/// timeout or a gateway error before the CLI gives up on a job that is still
+/// running on the server.
+const MAX_TRANSIENT_POLL_FAILURES: u32 = 10;
+
+/// Gateway errors from the proxy in front of the analysis API: the request
+/// never reached a handler, so asking again is safe.
+fn is_transient_status(status: u16) -> bool {
+    matches!(status, 502 | 503 | 504)
+}
 
 #[derive(Debug)]
 pub(crate) struct ScoreCommand;
@@ -401,6 +411,7 @@ fn offline_prompt(card: &Value, offline: bool) -> String {
 fn poll_job(auth: &AuthMode, job_id: &str, quiet: bool) -> Result<Value> {
     let started = Instant::now();
     let mut last_status = String::new();
+    let mut transient_failures = 0u32;
 
     loop {
         if started.elapsed() > POLL_TIMEOUT {
@@ -411,8 +422,32 @@ fn poll_job(auth: &AuthMode, job_id: &str, quiet: bool) -> Result<Value> {
             );
         }
 
-        let response = get_with_auth(auth, &studio_url(&format!("/job/{job_id}")))
-            .context("lost contact with the analysis API")?;
+        // The job keeps running on the server whatever happens to one status
+        // request, so a dropped connection, a timeout or a proxy 502/503/504
+        // (the service is busy while it scores, or restarting) is retried
+        // rather than abandoning the run.
+        let response = match get_with_auth(auth, &studio_url(&format!("/job/{job_id}"))) {
+            Ok(response) if is_transient_status(response.status().as_u16()) => {
+                transient_failures += 1;
+                if transient_failures > MAX_TRANSIENT_POLL_FAILURES {
+                    let status = response.status().as_u16();
+                    let text = response.text().unwrap_or_default();
+                    return Err(api_error(status, &text));
+                }
+                std::thread::sleep(POLL_INTERVAL);
+                continue;
+            }
+            Ok(response) => response,
+            Err(error) => {
+                transient_failures += 1;
+                if transient_failures > MAX_TRANSIENT_POLL_FAILURES {
+                    return Err(error.context("lost contact with the analysis API"));
+                }
+                std::thread::sleep(POLL_INTERVAL);
+                continue;
+            }
+        };
+        transient_failures = 0;
         let http_status = response.status();
         if !http_status.is_success() {
             let text = response.text().unwrap_or_default();
@@ -628,6 +663,16 @@ fn dim(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gateway_errors_are_transient_and_handler_errors_are_not() {
+        for status in [502, 503, 504] {
+            assert!(is_transient_status(status), "{status}");
+        }
+        for status in [400, 401, 402, 403, 404, 500] {
+            assert!(!is_transient_status(status), "{status}");
+        }
+    }
 
     #[test]
     fn auth_failures_explain_the_tier_rather_than_the_status_code() {
