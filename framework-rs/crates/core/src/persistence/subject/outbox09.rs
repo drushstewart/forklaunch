@@ -1,7 +1,3 @@
-//! Transactional external-erasure work. Explicitly enumerate targets in the same
-//! SQL transaction as source deletion. Completion covers only that sealed set;
-//! adapters remain responsible for storage holds, ownership, versions and backups.
-use super::postgres09::SubjectEraseAudit;
-use crate::persistence::postgres09::begin_tenant_transaction;
-use sqlx09 as sqlx;
-include!("outbox_shared.rs");
+//! The external deletion outbox under the `postgres09` name; `postgres` now uses `SQLx` 0.9 too,
+//! so this is the same module.
+pub use super::outbox::*;

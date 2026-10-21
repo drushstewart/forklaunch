@@ -26,7 +26,8 @@ zod-checks = ["schema-validation", "forklaunch-common/zod-checks"]
 zod-uri = ["schema-validation", "dep:ada-url"]
 otlp = ["dep:opentelemetry_sdk", "dep:opentelemetry-otlp", "dep:opentelemetry-appender-tracing", "dep:tracing-subscriber", "dep:tokio"]
 postgres = ["dep:sqlx", "dep:tokio", "dep:url"]
-postgres09 = ["dep:sqlx09", "dep:tokio", "dep:url"]
+# Same as `postgres`; kept for applications that selected SQLx 0.9 by name.
+postgres09 = ["postgres"]
 compliance-artifact = ["dep:serde_json"]
 encryption = ["compliance-artifact", "dep:uuid", "dep:aes-gcm", "dep:hkdf", "dep:hmac", "dep:sha2", "dep:base64", "dep:getrandom", "dep:zeroize", "dep:serde", "dep:serde_json"]
 json-schema = ["dep:serde_json", "dep:serde", "dep:percent-encoding"]
@@ -80,8 +81,7 @@ opentelemetry-appender-tracing = { version = "0.33", optional = true }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
 tokio = { version = "1", features = ["rt", "sync", "time"], optional = true }
 
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }
-sqlx09 = { package = "sqlx", version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"], optional = true }
 url = { version = "2", optional = true }
 
 aes-gcm = { version = "0.10", optional = true }

@@ -11,8 +11,6 @@ use forklaunch_core::{
     common::{FrameworkError, FrameworkResult},
     persistence::{TenantContext, compliance::ComplianceMetadata, subject::*},
 };
-#[cfg(feature = "postgres09")]
-use sqlx09 as sqlx;
 use std::{
     future::Future,
     pin::Pin,

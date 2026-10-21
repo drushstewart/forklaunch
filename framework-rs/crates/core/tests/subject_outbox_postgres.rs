@@ -23,8 +23,6 @@ use forklaunch_core::{
         subject::{SubjectEntity, SubjectRequest},
     },
 };
-#[cfg(feature = "postgres09")]
-use sqlx09 as sqlx;
 use std::{
     collections::HashSet,
     future::Future,

@@ -71,7 +71,8 @@ impl PostgresMigrationStore {
             "SELECT \"{}\" AS ciphertext,\"{}\"::text AS operation FROM \"{}\" WHERE \"{}\"=$1::uuid AND \"{}\"=$2::uuid FOR UPDATE",
             c.ciphertext, c.operation, c.table, c.tenant, c.resource
         );
-        let row = sqlx::query(&select)
+        // Identifiers were validated by `new`; data stays bound.
+        let row = sqlx::query(sqlx::AssertSqlSafe(select))
             .bind(plan.context.tenant.to_string())
             .bind(plan.context.resource.to_string())
             .fetch_optional(&mut *tx)
@@ -103,7 +104,7 @@ impl PostgresMigrationStore {
             "UPDATE \"{}\" SET \"{}\"=$3,\"{}\"=$4::uuid{} WHERE \"{}\"=$1::uuid AND \"{}\"=$2::uuid AND \"{}\"=$5",
             c.table, c.ciphertext, c.operation, index, c.tenant, c.resource, c.ciphertext
         );
-        let query = sqlx::query(&update)
+        let query = sqlx::query(sqlx::AssertSqlSafe(update))
             .bind(plan.context.tenant.to_string())
             .bind(plan.context.resource.to_string())
             .bind(plan.replacement.ciphertext())

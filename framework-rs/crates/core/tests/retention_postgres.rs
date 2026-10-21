@@ -13,8 +13,6 @@ use forklaunch_core::{
         retention::{RetentionAction, RetentionPolicy, RetentionRequest, RetentionStore},
     },
 };
-#[cfg(feature = "postgres09")]
-use sqlx09 as sqlx;
 use std::{
     future::Future,
     pin::Pin,

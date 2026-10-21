@@ -8,10 +8,7 @@ use forklaunch_core::persistence as database;
 #[cfg(feature = "postgres09")]
 use forklaunch_core::persistence::postgres09 as database;
 use forklaunch_core::persistence::{TenantContext, postgres_tenant_rls_sql};
-#[cfg(not(feature = "postgres09"))]
 use sqlx as driver;
-#[cfg(feature = "postgres09")]
-use sqlx09 as driver;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let endpoint = std::env::var("FORKLAUNCH_ADMISSION_DATABASE_URL")?;
