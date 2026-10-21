@@ -79,14 +79,14 @@ pub(crate) fn transform_base_entity_ts(
     );
 
     // Extract user-defined imports (not part of the base template)
-    let mut user_defined_imports = Vec::new_in(&allocator);
+    let mut user_defined_imports = Vec::new_in(&&allocator);
     for stmt in base_entity_to_copy_program.body.iter() {
         let import = match stmt {
             Statement::ImportDeclaration(import) => import,
             _ => continue,
         };
 
-        let source = import.source.value.as_str();
+        let source = import.source.value.as_str().unwrap_or_default();
 
         // Fully excluded sources — never copy
         if BASE_IMPORT_SOURCES.contains(&source) {
@@ -114,15 +114,18 @@ pub(crate) fn transform_base_entity_ts(
     }
 
     // Extract user-defined properties from the exported object literal
-    let mut user_defined_properties = HashMap::new_in(&allocator);
+    // Keyed by `&str` (not `Ident`) so the hashing, and therefore the order the
+    // properties are re-inserted in, matches the previous `Atom`-keyed map.
+    let mut user_defined_properties: HashMap<&str, ObjectPropertyKind> =
+        HashMap::new_in(&&allocator);
     for stmt in base_entity_to_copy_program.body.iter() {
         let export_decl = match stmt {
-            Statement::ExportNamedDeclaration(export) => export,
+            Statement::ExportDeclaration(export) => export,
             _ => continue,
         };
 
         let var_decl = match &export_decl.declaration {
-            Some(Declaration::VariableDeclaration(var_decl)) => var_decl,
+            Declaration::VariableDeclaration(var_decl) => var_decl,
             _ => continue,
         };
 
@@ -133,7 +136,7 @@ pub(crate) fn transform_base_entity_ts(
                         if let PropertyKey::StaticIdentifier(id) = &obj_prop.key {
                             if !BASE_PROPERTY_NAMES.contains(&id.name.as_str()) {
                                 user_defined_properties.insert(
-                                    id.name.clone(),
+                                    id.name.as_str(),
                                     ObjectPropertyKind::ObjectProperty(
                                         obj_prop.clone_in(&allocator),
                                     ),
@@ -177,12 +180,12 @@ pub(crate) fn transform_base_entity_ts(
     // Inject user-defined properties into the target object literal
     for stmt in base_entity_to_create_program.body.iter_mut() {
         let export_decl = match stmt {
-            Statement::ExportNamedDeclaration(export) => export,
+            Statement::ExportDeclaration(export) => export,
             _ => continue,
         };
 
         let var_decl = match &mut export_decl.declaration {
-            Some(Declaration::VariableDeclaration(var_decl)) => var_decl,
+            Declaration::VariableDeclaration(var_decl) => var_decl,
             _ => continue,
         };
 
