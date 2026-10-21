@@ -1,13 +1,14 @@
-use std::{env, sync::Arc};
-use forklaunch_auth::jwt::{RemoteJwks, RemoteJwksConfig};
+use std::{env, sync::Arc, error::Error};
+use forklaunch_core::auth::jwt::{RemoteJwks, RemoteJwksConfig};
 use forklaunch_cac_axum::{CacAuthConfig, cac_router};
 use forklaunch_cac_base::MockProcedureCodeProvider;
 use forklaunch_core::telemetry::{OpenTelemetryCollector, otlp::TelemetryRuntime};
 use jsonwebtoken::{Algorithm, Validation};
 use {{crate_module}}::{service_info, write_contract_artifacts};
+use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
         write_contract_artifacts(
             env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| ".forklaunch/contracts/contract.json".to_owned()),
@@ -23,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     if env::args().len() != 1 { return Err("CAC expects no command arguments".into()); }
     let secret = env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?;
     let jwks = RemoteJwks::new(RemoteJwksConfig::new(
@@ -41,7 +42,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let provider = Arc::new(MockProcedureCodeProvider::new(OpenTelemetryCollector::new({{crate_module}}::SERVICE_NAME)));
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());
     let port: u16 = env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?;
-    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
+    let listener = TcpListener::bind((host.as_str(), port)).await?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
     {{crate_module}}::routes::register_router(cac_router(provider, auth, service_info())).serve_with_default_mcp(listener, shutdown()).await?;
     Ok(())

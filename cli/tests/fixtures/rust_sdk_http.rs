@@ -14,47 +14,104 @@ async fn main() {
 }
 
 async fn verify(base: &str) {
-    let confidential=AccountsClient::new("https://url-user:url-secret@example.test/path?token=query-secret")
-        .with_default_header("authorization","Bearer header-secret")
-        .with_bearer_token("auth-secret");
-    let mut diagnostic=confidential.health_get_health_request(Default::default());
-    diagnostic.query.insert("token".into(),"query-secret".into());
-    diagnostic.body=Some("body-secret".into());
-    diagnostic.body_bytes=Some(b"binary-secret".to_vec());
-    let mut input=accounts_sdk::AccountsHealthGetHealthRequest::default();
-    input.params.insert("id".into(),"param-secret".into());
-    input.query=diagnostic.query.clone();
-    input.headers.insert("authorization".into(),"header-secret".into());
-    input.body=diagnostic.body.clone();
-    let rendered=format!("{confidential:?} {diagnostic:?} {input:?}");
-    for secret in ["url-user","url-secret","query-secret","body-secret","binary-secret","header-secret","auth-secret","param-secret"] {
-        assert!(!rendered.contains(secret),"SDK diagnostic leaked {secret}");
+    let confidential =
+        AccountsClient::new("https://url-user:url-secret@example.test/path?token=query-secret")
+            .with_default_header("authorization", "Bearer header-secret")
+            .with_bearer_token("auth-secret");
+    let mut diagnostic = confidential.health_get_health_request(Default::default());
+    diagnostic
+        .query
+        .insert("token".into(), "query-secret".into());
+    diagnostic.body = Some("body-secret".into());
+    diagnostic.body_bytes = Some(b"binary-secret".to_vec());
+    let mut input = accounts_sdk::AccountsHealthGetHealthRequest::default();
+    input.params.insert("id".into(), "param-secret".into());
+    input.query = diagnostic.query.clone();
+    input
+        .headers
+        .insert("authorization".into(), "header-secret".into());
+    input.body = diagnostic.body.clone();
+    let rendered = format!("{confidential:?} {diagnostic:?} {input:?}");
+    for secret in [
+        "url-user",
+        "url-secret",
+        "query-secret",
+        "body-secret",
+        "binary-secret",
+        "header-secret",
+        "auth-secret",
+        "param-secret",
+    ] {
+        assert!(!rendered.contains(secret), "SDK diagnostic leaked {secret}");
     }
     assert!(rendered.contains("authorization"));
-    let error=reqwest::Client::new().get("http://127.0.0.1:1/?token=transport-secret")
-        .header("invalid\nname","x").build().unwrap_err();
-    let error:accounts_sdk::SdkError=error.into();
+    let error = reqwest::Client::new()
+        .get("http://127.0.0.1:1/?token=transport-secret")
+        .header("invalid\nname", "x")
+        .build()
+        .unwrap_err();
+    let error: accounts_sdk::SdkError = error.into();
     assert!(!format!("{error:?} {error}").contains("transport-secret"));
-    let mut multipart_input=accounts_sdk::AccountsMultipartResponseGetMultipartResponseRequest::default();
-    multipart_input.params.insert("mode".into(),"valid".into());
-    let multipart_client=AccountsClient::new(base);
-    let accounts_sdk::AccountsMultipartResponseGetMultipartResponseResponses::Status200(form)=multipart_client.multipart_response_get_multipart_response(multipart_input.clone()).await.unwrap() else { panic!("multipart response failed") };
-    assert_eq!(form.parts.len(),4);
-    assert_eq!(form.parts.iter().map(|part|part.name.as_str()).collect::<Vec<_>>(),vec!["label","label","file","file"]);
-    assert_eq!(form.parts[0].bytes,"hello 水".as_bytes());
-    assert_eq!(form.parts[1].bytes,b"again");
-    assert_eq!(form.parts[2].bytes,vec![0,255,128,13,10]);
-    assert_eq!(form.parts[2].file_name.as_deref(),Some("data.bin"));
+    let mut multipart_input =
+        accounts_sdk::AccountsMultipartResponseGetMultipartResponseRequest::default();
+    multipart_input.params.insert("mode".into(), "valid".into());
+    let multipart_client = AccountsClient::new(base);
+    let accounts_sdk::AccountsMultipartResponseGetMultipartResponseResponses::Status200(form) =
+        multipart_client
+            .multipart_response_get_multipart_response(multipart_input.clone())
+            .await
+            .unwrap()
+    else {
+        panic!("multipart response failed")
+    };
+    assert_eq!(form.parts.len(), 4);
+    assert_eq!(
+        form.parts
+            .iter()
+            .map(|part| part.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["label", "label", "file", "file"]
+    );
+    assert_eq!(form.parts[0].bytes, "hello 水".as_bytes());
+    assert_eq!(form.parts[1].bytes, b"again");
+    assert_eq!(form.parts[2].bytes, vec![0, 255, 128, 13, 10]);
+    assert_eq!(form.parts[2].file_name.as_deref(), Some("data.bin"));
     assert!(form.parts[3].bytes.is_empty());
-    assert_eq!(form.parts[3].file_name.as_deref(),Some("empty.bin"));
-    assert!(multipart_client.clone().with_multipart_response_limit(0).is_err());
-    assert!(multipart_client.clone().with_multipart_response_limit(16).unwrap().multipart_response_get_multipart_response(multipart_input.clone()).await.is_err());
-    for mode in ["wrong","missing","invalid","truncated","many"] {
-        multipart_input.params.insert("mode".into(),mode.into());
-        assert!(multipart_client.multipart_response_get_multipart_response(multipart_input.clone()).await.is_err(),"accepted {mode}");
+    assert_eq!(form.parts[3].file_name.as_deref(), Some("empty.bin"));
+    assert!(
+        multipart_client
+            .clone()
+            .with_multipart_response_limit(0)
+            .is_err()
+    );
+    assert!(
+        multipart_client
+            .clone()
+            .with_multipart_response_limit(16)
+            .unwrap()
+            .multipart_response_get_multipart_response(multipart_input.clone())
+            .await
+            .is_err()
+    );
+    for mode in ["wrong", "missing", "invalid", "truncated", "many"] {
+        multipart_input.params.insert("mode".into(), mode.into());
+        assert!(
+            multipart_client
+                .multipart_response_get_multipart_response(multipart_input.clone())
+                .await
+                .is_err(),
+            "accepted {mode}"
+        );
     }
-    multipart_input.params.insert("mode".into(),"empty".into());
-    let accounts_sdk::AccountsMultipartResponseGetMultipartResponseResponses::Status200(form)=multipart_client.multipart_response_get_multipart_response(multipart_input).await.unwrap() else { panic!("empty form response failed") };
+    multipart_input.params.insert("mode".into(), "empty".into());
+    let accounts_sdk::AccountsMultipartResponseGetMultipartResponseResponses::Status200(form) =
+        multipart_client
+            .multipart_response_get_multipart_response(multipart_input)
+            .await
+            .unwrap()
+    else {
+        panic!("empty form response failed")
+    };
     assert!(form.parts.is_empty());
     let client =
         AccountsClient::new(format!("{base}/")).with_default_header("x-sdk-consumer", "rust");
@@ -155,10 +212,20 @@ async fn verify(base: &str) {
         };
         assert_eq!(serde_json::to_value(shape).unwrap(), expected);
     }
-    let empty_text = accounts_sdk::AccountsTextUploadTextRequest { body: Some(String::new()), ..Default::default() };
-    assert!(matches!(client.text_upload_text(empty_text).await.unwrap(), accounts_sdk::AccountsTextUploadTextResponses::Status200(value) if value.is_empty()));
-    let empty_binary = accounts_sdk::AccountsBinaryUploadBinaryRequest { body: Some(Vec::new()), ..Default::default() };
-    assert!(matches!(client.binary_upload_binary(empty_binary).await.unwrap(), accounts_sdk::AccountsBinaryUploadBinaryResponses::Status200(value) if value.is_empty()));
+    let empty_text = accounts_sdk::AccountsTextUploadTextRequest {
+        body: Some(String::new()),
+        ..Default::default()
+    };
+    assert!(
+        matches!(client.text_upload_text(empty_text).await.unwrap(), accounts_sdk::AccountsTextUploadTextResponses::Status200(value) if value.is_empty())
+    );
+    let empty_binary = accounts_sdk::AccountsBinaryUploadBinaryRequest {
+        body: Some(Vec::new()),
+        ..Default::default()
+    };
+    assert!(
+        matches!(client.binary_upload_binary(empty_binary).await.unwrap(), accounts_sdk::AccountsBinaryUploadBinaryResponses::Status200(value) if value.is_empty())
+    );
     let text_input = accounts_sdk::AccountsTextUploadTextRequest {
         body: Some("{raw}\n🦀 & text".into()),
         ..Default::default()
@@ -174,24 +241,58 @@ async fn verify(base: &str) {
         matches!(client.binary_upload_binary(binary_input).await.unwrap(), accounts_sdk::AccountsBinaryUploadBinaryResponses::Status200(value) if value == vec![0, 255, 13, 10, 42])
     );
     for empty in [false, true] {
-        let form = if empty { accounts_sdk::MultipartForm::new() } else {
-            accounts_sdk::MultipartForm::new().text("label", "hello 水")
-                .part("file", accounts_sdk::MultipartPart::bytes(vec![0,255,1,13,10]).file_name("data.bin").mime_str("application/octet-stream").unwrap())
-                .part("file", accounts_sdk::MultipartPart::bytes(Vec::new()).file_name("empty.bin"))
+        let form = if empty {
+            accounts_sdk::MultipartForm::new()
+        } else {
+            accounts_sdk::MultipartForm::new()
+                .text("label", "hello 水")
+                .part(
+                    "file",
+                    accounts_sdk::MultipartPart::bytes(vec![0, 255, 1, 13, 10])
+                        .file_name("data.bin")
+                        .mime_str("application/octet-stream")
+                        .unwrap(),
+                )
+                .part(
+                    "file",
+                    accounts_sdk::MultipartPart::bytes(Vec::new()).file_name("empty.bin"),
+                )
         };
-        let mut input = accounts_sdk::AccountsMultipartUploadMultipartRequest { body: Some(form), ..Default::default() };
-        input.headers.insert("Content-Type".into(), "multipart/form-data; boundary=incorrect".into());
-        let accounts_sdk::AccountsMultipartUploadMultipartResponses::Status200(upload) = client.multipart_upload_multipart(input).await.unwrap() else { panic!("multipart upload failed") };
-        assert!(upload.content_type.starts_with("multipart/form-data; boundary="));
+        let mut input = accounts_sdk::AccountsMultipartUploadMultipartRequest {
+            body: Some(form),
+            ..Default::default()
+        };
+        input.headers.insert(
+            "Content-Type".into(),
+            "multipart/form-data; boundary=incorrect".into(),
+        );
+        let accounts_sdk::AccountsMultipartUploadMultipartResponses::Status200(upload) =
+            client.multipart_upload_multipart(input).await.unwrap()
+        else {
+            panic!("multipart upload failed")
+        };
+        assert!(
+            upload
+                .content_type
+                .starts_with("multipart/form-data; boundary=")
+        );
         assert!(!upload.content_type.contains("incorrect"));
-        let bytes: Vec<u8> = upload.bytes.into_iter().map(|b| u8::try_from(b).unwrap()).collect();
+        let bytes: Vec<u8> = upload
+            .bytes
+            .into_iter()
+            .map(|b| u8::try_from(b).unwrap())
+            .collect();
         if !empty {
-            assert!(bytes.windows("hello 水".len()).any(|b| b == "hello 水".as_bytes()));
-            assert!(bytes.windows(5).any(|b| b == [0,255,1,13,10]));
+            assert!(
+                bytes
+                    .windows("hello 水".len())
+                    .any(|b| b == "hello 水".as_bytes())
+            );
+            assert!(bytes.windows(5).any(|b| b == [0, 255, 1, 13, 10]));
         }
     }
     let json_input = accounts_sdk::AccountsJsonEchoEchoJsonRequest {
-        body: Some(r#"{"value":[1,null,true]}"#.into()),
+        body: Some(serde_json::json!({"value":[1,null,true]})),
         ..Default::default()
     };
     assert!(
@@ -263,15 +364,31 @@ async fn verify(base: &str) {
     ));
     let missing = AccountsClient::new(format!("{base}/missing"))
         .users_list_users(Default::default())
-        .await
-        .expect("HTTP errors remain typed responses");
+        .await;
+    // Unlisted status/media pairs are contract failures in both compiler paths;
+    // declared error responses above remain typed status variants.
     assert!(matches!(
         missing,
-        AccountsUsersListUsersResponses::Error { status: 404, .. }
+        Err(accounts_sdk::SdkError::Contract(
+            "undeclared response status or content type"
+        ))
     ));
     let invalid = AccountsClient::new(base)
         .with_auth_hook(|request| request.url = "://invalid".into())
         .users_list_users(Default::default())
         .await;
-    assert!(matches!(invalid, Err(accounts_sdk::SdkError::Transport(_))));
+    assert!(matches!(
+        invalid,
+        Err(accounts_sdk::SdkError::TransportPolicy)
+    ));
+    let closed = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let endpoint = format!("http://{}", closed.local_addr().unwrap());
+    drop(closed);
+    let unavailable = AccountsClient::new(endpoint)
+        .users_list_users(Default::default())
+        .await;
+    assert!(matches!(
+        unavailable,
+        Err(accounts_sdk::SdkError::Transport(_))
+    ));
 }

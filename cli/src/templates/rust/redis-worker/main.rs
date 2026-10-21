@@ -1,15 +1,16 @@
 mod signals;
-use std::{env, time::Duration};
+use std::{env, time::Duration, error::Error};
 use forklaunch_worker_database::http::HttpConfig;
-use forklaunch_core::persistence::TenantContext;
+use forklaunch_core::{persistence::TenantContext, telemetry::otlp::TelemetryRuntime};
 use forklaunch_worker_database::runner::RunnerConfig;
 use forklaunch_worker_redis::leased::RedisLeasedQueue;
 use forklaunch_worker_database::retention::RetentionPolicy;
 use forklaunch_worker_interface::{AsyncWorkerAdmin, AsyncWorkerQueue, Job, JobSnapshot, RetryPolicy, TerminalStatus};
-use {{crate_module}}::{handler::ApplicationHandler, WORKER_NAME, write_contract_artifacts};
+use {{crate_module}}::{handler::ApplicationHandler, events, WORKER_NAME, write_contract_artifacts};
+use serde_json::Value;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
         write_contract_artifacts(
             env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| ".forklaunch/contracts/contract.json".to_owned()),
@@ -17,7 +18,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         return Ok(());
     }
-    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+    let telemetry = TelemetryRuntime::start(
         WORKER_NAME, env!("CARGO_PKG_VERSION"),
     ).await?;
     let result = run().await;
@@ -27,8 +28,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args.is_empty() || args.first().map(String::as_str) == Some("--enqueue") { events::validate_configuration()?; }
     if !args.is_empty() && args != ["--control-service"] && !(args.len() == 3 && args[0] == "--enqueue")
         && !(args.len() == 2 && matches!(args[0].as_str(), "--inspect" | "--dead-letters" | "--retry" | "--signal"))
         && !(args.len() == 3 && matches!(args[0].as_str(), "--purge-completed" | "--purge-failed")) {
@@ -44,6 +46,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
     let url = env::var("REDIS_URL").map_err(|_| "REDIS_URL is required")?;
+    events::transport_policy()?.redis(&url)?;
     let namespace = env::var("WORKER_NAMESPACE").map_err(|_| "WORKER_NAMESPACE is required")?;
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
     let policy = RetryPolicy::new(
@@ -53,11 +56,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let queue = RedisLeasedQueue::connect(&url, &namespace, tenant, policy).await?;
     let queue_name = env::var("WORKER_QUEUE").unwrap_or_else(|_| WORKER_NAME.to_owned());
     if args.first().map(String::as_str) == Some("--enqueue") {
-        queue.enqueue(Job::new(&args[1], &queue_name, &args[2])).await?;
+        queue.enqueue(Job::new(&args[1], &queue_name, events::seal(&args[1], &args[2])?)).await?;
         println!("job enqueued");
     } else if args.first().map(String::as_str) == Some("--inspect") {
         let snapshot = queue.inspect(&queue_name, &args[1]).await?;
-        println!("{}", snapshot.map_or(serde_json::Value::Null, snapshot_json));
+        println!("{}", snapshot.map_or(Value::Null, snapshot_json));
     } else if args.first().map(String::as_str) == Some("--dead-letters") {
         let jobs = queue.dead_letters(&queue_name, args[1].parse()?).await?;
         println!("{}", serde_json::to_string(&jobs.into_iter().map(snapshot_json).collect::<Vec<_>>())?);
@@ -93,13 +96,12 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn snapshot_json(snapshot: JobSnapshot) -> serde_json::Value {
+fn snapshot_json(snapshot: JobSnapshot) -> Value {
     serde_json::json!({"id":snapshot.job.id, "queue":snapshot.job.queue,
-        "attempts":snapshot.job.attempts, "status":format!("{:?}",snapshot.status),
-        "last_error":snapshot.last_error})
+        "attempts":snapshot.job.attempts, "status":format!("{:?}",snapshot.status)})
 }
 
-fn http_config() -> Result<Option<HttpConfig>, Box<dyn std::error::Error>> {
+fn http_config() -> Result<Option<HttpConfig>, Box<dyn Error>> {
     let address = match env::var("WORKER_HTTP_ADDR") {
         Ok(value) => Some(value.parse()?),
         Err(env::VarError::NotPresent) => None,
@@ -119,7 +121,7 @@ fn http_config() -> Result<Option<HttpConfig>, Box<dyn std::error::Error>> {
     Ok(Some(config))
 }
 
-fn retention_policy() -> Result<Option<RetentionPolicy>, Box<dyn std::error::Error>> {
+fn retention_policy() -> Result<Option<RetentionPolicy>, Box<dyn Error>> {
     let policy = RetentionPolicy {
         completed_age: optional_number("WORKER_COMPLETED_RETENTION_SECONDS")?.map(Duration::from_secs),
         failed_age: optional_number("WORKER_FAILED_RETENTION_SECONDS")?.map(Duration::from_secs),
@@ -131,7 +133,7 @@ fn retention_policy() -> Result<Option<RetentionPolicy>, Box<dyn std::error::Err
     Ok((policy.completed_age.is_some() || policy.failed_age.is_some()).then_some(policy))
 }
 
-fn optional_number(name: &str) -> Result<Option<u64>, Box<dyn std::error::Error>> {
+fn optional_number(name: &str) -> Result<Option<u64>, Box<dyn Error>> {
     match env::var(name) {
         Ok(value) => Ok(Some(value.parse()?)),
         Err(env::VarError::NotPresent) => Ok(None),
@@ -139,7 +141,7 @@ fn optional_number(name: &str) -> Result<Option<u64>, Box<dyn std::error::Error>
     }
 }
 
-fn number(name: &str, default: u64) -> Result<u64, Box<dyn std::error::Error>> {
+fn number(name: &str, default: u64) -> Result<u64, Box<dyn Error>> {
     match env::var(name) {
         Ok(value) => Ok(value.parse()?),
         Err(env::VarError::NotPresent) => Ok(default),

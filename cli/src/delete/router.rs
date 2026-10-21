@@ -190,6 +190,10 @@ impl CliCommand for RouterCommand {
         let file_paths = [
             router_base_path
                 .join("api")
+                .join("contracts")
+                .join(format!("{}.contract.ts", camel_case_name)),
+            router_base_path
+                .join("api")
                 .join("controllers")
                 .join(format!("{}.controller.ts", camel_case_name)),
             router_base_path

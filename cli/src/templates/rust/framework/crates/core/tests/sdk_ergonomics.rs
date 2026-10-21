@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/tests/sdk_ergonomics.rs

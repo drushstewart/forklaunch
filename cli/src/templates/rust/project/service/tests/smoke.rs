@@ -2,8 +2,8 @@ use {{crate_module}}::{
     DEFAULT_OPENAPI_PATH, axum_application, build_state, config::ServiceConfig, contract_registry,
     health_check, local_router, openapi_json_with_config, route_names,
 };
-use forklaunch_contract::HttpMethod;
-use forklaunch_http::{Body, FrameworkRequest, RequestContext};
+use forklaunch_core::contract::HttpMethod;
+use forklaunch_core::http::{Body, FrameworkRequest, RequestContext};
 
 #[test]
 fn generated_service_builds_state_and_reports_health() {

@@ -1,6 +1,6 @@
-use std::fmt;
+use std::{fmt, error::Error, result};
 
-pub type Result<T> = std::result::Result<T, WorkerError>;
+pub type Result<T> = result::Result<T, WorkerError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkerError {
@@ -17,4 +17,4 @@ impl fmt::Display for WorkerError {
     }
 }
 
-impl std::error::Error for WorkerError {}
+impl Error for WorkerError {}

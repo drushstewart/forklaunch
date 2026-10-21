@@ -15,8 +15,7 @@ fn inject_into_universal_sdk_function<'a>(
     pascal_case_name: &str,
 ) -> Result<()> {
     let export_text = format!(
-        "export const {}SdkClient = universalSdk<{}SdkClient>;",
-        camel_case_name, pascal_case_name
+        "export const {camel_case_name}SdkClient: typeof universalSdk<{pascal_case_name}SdkClient> = universalSdk<{pascal_case_name}SdkClient>;"
     );
     let export_program = parse_ast_program(
         allocator,
@@ -106,7 +105,7 @@ pub(crate) fn inject_into_client_sdk<'a>(
 
     if let Some(ClientSdkSpecialCase::BetterAuth) = special_case {
         let import_text = format!(
-            "import {{\n  BetterAuthConfig,\n  IamSdkClient as {}SdkClient\n}} from \"@{}/{}\";",
+            "import type {{\n  BetterAuthConfig,\n  IamSdkClient as {}SdkClient\n}} from \"@{}/{}\";",
             pascal_case_name, kebab_app_name, kebab_case_name
         );
         let mut import_program = parse_ast_program(
@@ -132,7 +131,7 @@ pub(crate) fn inject_into_client_sdk<'a>(
         }
 
         let export_text = format!(
-            "export const {}SdkClient = async ({{\n  host,\n  registryOptions,\n  authBasePath\n}}: {{\n  host: string;\n  registryOptions: RegistryOptions;\n  authBasePath?: string;\n}}) => ({{\n  core: await universalSdk<{}SdkClient>({{\n    host,\n    registryOptions: registryOptions\n  }}),\n  betterAuth: createAuthClient({{\n    baseURL: host,\n    basePath: authBasePath,\n    fetchOptions: {{ headers: {{ origin: new URL(host).origin }} }},\n    plugins: [inferAdditionalFields<BetterAuthConfig>()]\n  }})\n}});",
+            "export const {}SdkClient = async ({{\n  host,\n  registryOptions,\n  coreHost,\n  authBasePath\n}}: {{\n  host: string;\n  registryOptions: RegistryOptions;\n  coreHost?: string;\n  authBasePath?: string;\n}}) => ({{\n  core: await universalSdk<{}SdkClient>({{\n    host: coreHost ?? host,\n    registryOptions: registryOptions\n  }}),\n  betterAuth: createAuthClient({{\n    baseURL: host,\n    basePath: authBasePath,\n    fetchOptions: {{ headers: {{ origin: new URL(host).origin }} }},\n    plugins: [inferAdditionalFields<BetterAuthConfig>()]\n  }})\n}});",
             camel_case_name, pascal_case_name
         );
         let export_program = parse_ast_program(
@@ -148,7 +147,7 @@ pub(crate) fn inject_into_client_sdk<'a>(
         }
     } else {
         let import_text = format!(
-            "import {{ {}SdkClient }} from \"@{}/{}\";",
+            "import type {{ {}SdkClient }} from \"@{}/{}\";",
             pascal_case_name, kebab_app_name, kebab_case_name
         );
         let mut import_program = parse_ast_program(
@@ -206,7 +205,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let expected_code = "import { BillingSdkClient } from \"@forklaunch/blueprint-billing-base\";\nimport { universalSdk } from \"@forklaunch/universal-sdk\";\nimport { UserServiceSdkClient } from \"@forklaunch/user-service\";\nexport const billingSdkClient = universalSdk<BillingSdkClient>;\nexport const userServiceSdkClient = universalSdk<UserServiceSdkClient>;\n";
+        let expected_code = "import { BillingSdkClient } from \"@forklaunch/blueprint-billing-base\";\nimport { universalSdk } from \"@forklaunch/universal-sdk\";\nimport type { UserServiceSdkClient } from \"@forklaunch/user-service\";\nexport const billingSdkClient = universalSdk<BillingSdkClient>;\nexport const userServiceSdkClient: typeof universalSdk<UserServiceSdkClient> = universalSdk<UserServiceSdkClient>;\n";
 
         assert_eq!(
             Codegen::new()
@@ -240,7 +239,7 @@ mod tests {
 
         assert!(result.is_ok());
 
-        let expected_code = "import { BillingSdkClient } from \"@forklaunch/blueprint-billing-base\";\nimport { BetterAuthConfig, IamSdkClient } from \"@forklaunch/iam\";\nimport { universalSdk, RegistryOptions } from \"@forklaunch/universal-sdk\";\nimport { createAuthClient } from \"better-auth/client\";\nimport { inferAdditionalFields } from \"better-auth/client/plugins\";\nexport const billingSdkClient = universalSdk<BillingSdkClient>;\nexport const iamSdkClient = async ({ host, registryOptions, authBasePath }: {\n\thost: string;\n\tregistryOptions: RegistryOptions;\n\tauthBasePath?: string;\n}) => ({\n\tcore: await universalSdk<IamSdkClient>({\n\t\thost,\n\t\tregistryOptions\n\t}),\n\tbetterAuth: createAuthClient({\n\t\tbaseURL: host,\n\t\tbasePath: authBasePath,\n\t\tfetchOptions: { headers: { origin: new URL(host).origin } },\n\t\tplugins: [inferAdditionalFields<BetterAuthConfig>()]\n\t})\n});\n";
+        let expected_code = "import { BillingSdkClient } from \"@forklaunch/blueprint-billing-base\";\nimport type { BetterAuthConfig, IamSdkClient } from \"@forklaunch/iam\";\nimport { universalSdk, RegistryOptions } from \"@forklaunch/universal-sdk\";\nimport { createAuthClient } from \"better-auth/client\";\nimport { inferAdditionalFields } from \"better-auth/client/plugins\";\nexport const billingSdkClient = universalSdk<BillingSdkClient>;\nexport const iamSdkClient = async ({ host, registryOptions, coreHost, authBasePath }: {\n\thost: string;\n\tregistryOptions: RegistryOptions;\n\tcoreHost?: string;\n\tauthBasePath?: string;\n}) => ({\n\tcore: await universalSdk<IamSdkClient>({\n\t\thost: coreHost ?? host,\n\t\tregistryOptions\n\t}),\n\tbetterAuth: createAuthClient({\n\t\tbaseURL: host,\n\t\tbasePath: authBasePath,\n\t\tfetchOptions: { headers: { origin: new URL(host).origin } },\n\t\tplugins: [inferAdditionalFields<BetterAuthConfig>()]\n\t})\n});\n";
 
         assert_eq!(
             Codegen::new()

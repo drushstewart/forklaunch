@@ -10,7 +10,7 @@ const lower=statics.string.toLowerCase(),upper=statics.string.toUpperCase();
 const native=process.env.FORKLAUNCH_NUMBER_ORACLE_ONLY!=='1';
 const target=process.env.CARGO_TARGET_DIR??path.join(root,'framework-rs/target');
 const executable=path.join(target,'debug/examples/zod_case_parity');
-if(native){const built=spawnSync('cargo',['build','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validation','--example','zod_case_parity'],{encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000});assert.equal(built.status,0,built.stderr);}
+if(native){const built=spawnSync('cargo',['build','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validator','--example','zod_case_parity'],{encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000});assert.equal(built.status,0,built.stderr);}
 let scalars=0;
 if(native){
  const child=spawn(executable,[],{stdio:['pipe','pipe','pipe']});let stderr='';child.stderr.on('data',chunk=>stderr+=chunk);const exit=new Promise((resolve,reject)=>{child.on('error',reject);child.on('exit',code=>resolve(code));});

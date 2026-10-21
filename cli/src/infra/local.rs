@@ -403,6 +403,7 @@ fn change_capability(
         app_capabilities,
     );
     edit.native = native;
+    edit.format_rust = native && adding;
     super::capabilities::apply(&mut edit, capability, adding)?;
 
     // The manifest: only the capability's entry in the service's
@@ -428,6 +429,9 @@ fn change_capability(
         crate::init::rust_project::ensure_native_capability_sources(&app_root)?;
     }
     edit.commit()?;
+    if native && adding {
+        crate::init::rust_project::ensure_referenced_blueprint_sources(&app_root)?;
+    }
     println!(
         "{} {} {service}: {}",
         if adding { "Added" } else { "Removed" },

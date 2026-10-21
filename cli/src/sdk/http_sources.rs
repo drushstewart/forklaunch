@@ -3,9 +3,10 @@
 use std::{
     collections::BTreeSet,
     fs,
-    io::Write,
     path::{Path, PathBuf},
 };
+
+use crate::core::forklaunch_state::{self, SDK_HTTP_SOURCES};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
@@ -17,38 +18,15 @@ struct Sources {
     typescript_services: BTreeSet<String>,
 }
 
-fn destination(root: &Path) -> Result<PathBuf> {
-    let root = root.canonicalize()?;
-    let path = root.join(".forklaunch/sdk/http-sources.json");
-    let parent = path.parent().expect("fixed SDK state path");
-    let ancestor = parent
-        .ancestors()
-        .find(|path| path.exists())
-        .context("SDK state parent does not exist")?;
-    if !ancestor.canonicalize()?.starts_with(&root) {
-        bail!("HTTP SDK source state must stay inside the application");
-    }
-    match fs::symlink_metadata(&path) {
-        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_file() => {
-            bail!("HTTP SDK source state must be a regular file");
-        }
-        Ok(metadata) if metadata.len() > 1024 * 1024 => {
-            bail!("HTTP SDK source state exceeds 1 MiB");
-        }
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    Ok(path)
-}
-
+/// Tracked in `generated.json#sdkHttpSources` (formerly `.forklaunch/sdk/http-sources.json`).
 pub(super) fn read(root: &Path) -> Result<BTreeSet<String>> {
-    let path = destination(root)?;
-    if !path.exists() {
+    let Some(value) = forklaunch_state::generated_section(root, SDK_HTTP_SOURCES)
+        .context("Failed to read HTTP SDK source state")?
+    else {
         return Ok(BTreeSet::new());
-    }
+    };
     let sources: Sources =
-        serde_json::from_slice(&fs::read(path)?).context("Failed to read HTTP SDK source state")?;
+        serde_json::from_value(value).context("Failed to read HTTP SDK source state")?;
     if sources.format_version != 1 {
         bail!("Unsupported HTTP SDK source state version");
     }
@@ -56,34 +34,19 @@ pub(super) fn read(root: &Path) -> Result<BTreeSet<String>> {
 }
 
 pub(super) fn write(root: &Path, services: &BTreeSet<String>) -> Result<()> {
-    let path = destination(root)?;
-    if services.is_empty() && !path.exists() {
+    let current = forklaunch_state::generated_section(root, SDK_HTTP_SOURCES)?;
+    if services.is_empty() && current.is_none() {
         return Ok(());
     }
-    let parent = path.parent().expect("fixed SDK state path");
-    fs::create_dir_all(parent)?;
-    if !parent.canonicalize()?.starts_with(root.canonicalize()?) {
-        bail!("HTTP SDK source state must stay inside the application");
-    }
-    let bytes = serde_json::to_vec_pretty(&Sources {
+    let next = serde_json::to_value(Sources {
         format_version: 1,
         typescript_services: services.clone(),
     })?;
-    if bytes.len() > 1024 * 1024 {
-        bail!("HTTP SDK source state exceeds 1 MiB");
+    if current.as_ref() == Some(&next) && !root.join(forklaunch_state::legacy::HTTP_SOURCES).exists() {
+        return Ok(());
     }
-    match fs::read(&path) {
-        Ok(existing) if existing == bytes => return Ok(()),
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error.into()),
-    }
-    let mut staged = tempfile::NamedTempFile::new_in(parent)?;
-    staged.write_all(&bytes)?;
-    staged
-        .persist(path)
-        .context("Failed to save HTTP SDK source state")?;
-    Ok(())
+    forklaunch_state::set_generated_section(root, SDK_HTTP_SOURCES, Some(next))
+        .context("Failed to save HTTP SDK source state")
 }
 
 pub(super) fn is_typescript(project: &toml::Value) -> bool {
@@ -104,23 +67,27 @@ pub(super) fn projects<'a>(
         .into_iter()
         .flatten()
         .filter(|project| {
-            matches!(
-                project.get("type").and_then(toml::Value::as_str),
-                Some("Service" | "Worker")
-            ) && matches!(
-                project
-                    .get("metadata")
-                    .and_then(|metadata| metadata.get("language"))
-                    .and_then(toml::Value::as_str),
-                None | Some("rust" | "typescript" | "ts")
-            ) && project
-                .get("name")
-                .and_then(toml::Value::as_str)
-                .is_some_and(|name| {
-                    selected.is_none_or(|selected| selected == name)
-                        && (!is_typescript(project)
-                            || !crate::core::openapi_export::OBSERVABILITY_SERVICES.contains(&name))
-                })
+            crate::core::openapi_export::raw_contract_export_enabled(project)
+                && matches!(
+                    project.get("type").and_then(toml::Value::as_str),
+                    Some("Service" | "Worker")
+                )
+                && matches!(
+                    project
+                        .get("metadata")
+                        .and_then(|metadata| metadata.get("language"))
+                        .and_then(toml::Value::as_str),
+                    None | Some("rust" | "typescript" | "ts")
+                )
+                && project
+                    .get("name")
+                    .and_then(toml::Value::as_str)
+                    .is_some_and(|name| {
+                        selected.is_none_or(|selected| selected == name)
+                            && (!is_typescript(project)
+                                || !crate::core::openapi_export::OBSERVABILITY_SERVICES
+                                    .contains(&name))
+                    })
         })
         .collect()
 }
@@ -141,8 +108,13 @@ pub(super) fn artifact(
     {
         bail!("SDK service name must be one path component");
     }
+    let explicit_contract = project
+        .get("metadata")
+        .and_then(|metadata| metadata.get("contractArtifactPath"))
+        .and_then(toml::Value::as_str)
+        .is_some();
     let (source, metadata_key, directory, filename) =
-        if source == "openapi" || is_typescript(project) {
+        if source == "openapi" || (is_typescript(project) && !explicit_contract) {
             ("openapi", "openapiPath", "openapi", "openapi.json")
         } else {
             (
@@ -193,4 +165,36 @@ pub(super) fn watched_paths(
         paths.push(artifact(root, project, source)?.1);
     }
     Ok(paths)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn typescript_explicit_portable_contract_overrides_legacy_default() {
+        let root = tempfile::tempdir().unwrap();
+        let project: toml::Value = toml::from_str(
+            r#"
+name = "notes"
+type = "Service"
+[metadata]
+language = "typescript"
+contractArtifactPath = ".forklaunch/contracts/notes/contract.json"
+"#,
+        )
+        .unwrap();
+        let (source, path) = artifact(root.path(), &project, "contract").unwrap();
+        assert_eq!(source, "contract");
+        assert!(path.ends_with("contracts/notes/contract.json"));
+        assert_eq!(
+            artifact(root.path(), &project, "openapi").unwrap().0,
+            "openapi"
+        );
+        let legacy: toml::Value = toml::from_str("name = 'notes'\ntype = 'Service'").unwrap();
+        assert_eq!(
+            artifact(root.path(), &legacy, "contract").unwrap().0,
+            "openapi"
+        );
+    }
 }

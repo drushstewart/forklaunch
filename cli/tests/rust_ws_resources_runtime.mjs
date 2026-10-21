@@ -63,7 +63,7 @@ try {
  }
  const input=path.join(temporary,'contract.json');
  await writeFile(input,JSON.stringify(artifact));
- const generated=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all'],{cwd:root,env,encoding:'utf8',maxBuffer:16*1024*1024,timeout:300000}));
+ const generated=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','typescript_socket_artifacts','--',input,'all'],{cwd:root,env,encoding:'utf8',maxBuffer:16*1024*1024,timeout:300000}));
  const Ajv=deps('ajv').default;
  const specValidator=new Ajv({strict:false,allErrors:true,ownProperties:true});
  deps('ajv-formats')(specValidator);
@@ -82,14 +82,14 @@ try {
   for(const action of ['receive','send']) externalDocument.operations[`${mode}_${action}`]={action,channel:{$ref:`#/channels/${mode}`},messages:[{$ref:`#/channels/${mode}/messages/tree`}]};
  }
  await writeFile(input,JSON.stringify(externalDocument));
- const imported=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',maxBuffer:16*1024*1024,timeout:300000}));
+ const imported=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','typescript_socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',maxBuffer:16*1024*1024,timeout:300000}));
  assert.deepEqual(imported.asyncapi,externalDocument);
  for(const kind of ['duplicate','missing']) {
   const invalid=structuredClone(externalDocument);
   if(kind==='duplicate') invalid.components.schemas.duplicate=structuredClone(invalid.components.schemas.plain_resource);
   if(kind==='missing') invalid.components.schemas.plain.$ref='https://unbundled.fixture.invalid/schema';
   await writeFile(input,JSON.stringify(invalid));
-  assert.throws(()=>execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',stdio:'pipe',timeout:300000}),error=>new RegExp(kind==='duplicate'?'Duplicate schema resource ID':'not bundled').test(error.stderr));
+  assert.throws(()=>execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','typescript_socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,encoding:'utf8',stdio:'pipe',timeout:300000}),error=>new RegExp(kind==='duplicate'?'Duplicate schema resource ID':'not bundled').test(error.stderr));
  }
 
  for(const mode of modes) for(const language of ['rust','typescript']) generated[language][`socket_${mode}_import`]=imported[language][`socket_${mode}`];
@@ -117,7 +117,7 @@ client.close(1000,None).await.unwrap();
  await writeFile(path.join(temporary,'src/types.ts'),tsTypes);
  await writeFile(path.join(temporary,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',esModuleInterop:true,types:['node'],outDir:'dist',rootDir:'src',skipLibCheck:false},include:['src/*.ts']}));
  execFileSync(process.env.TSC_BIN??deps.resolve('typescript/bin/tsc'),['--project',path.join(temporary,'tsconfig.json')],{stdio:'inherit',timeout:60000});
- await writeFile(path.join(temporary,'Cargo.toml'),`[package]\nname="forklaunch-resource-socket-fixture"\nversion="0.0.0"\nedition="2021"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(framework,'crates/forklaunch-ws'))},features=["transport","json-schema"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\ntokio={version="1",features=["net","macros","rt-multi-thread"]}\ntokio-tungstenite="0.30"\n`);
+ await writeFile(path.join(temporary,'Cargo.toml'),`[package]\nname="forklaunch-resource-socket-fixture"\nversion="0.0.0"\nedition="2021"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(framework,'crates/ws'))},features=["transport","json-schema"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\ntokio={version="1",features=["net","macros","rt-multi-thread"]}\ntokio-tungstenite="0.30"\n`);
  await writeFile(path.join(temporary,'src/main.rs'),`#![allow(dead_code)]\n${rustModules}use forklaunch_ws::transport::{SocketEvent,SocketOptions};\n#[tokio::main] async fn main(){let url=std::env::args().nth(1).unwrap();${rustChecks}println!("PASS Rust scoped socket clients");}`);
  execFileSync('cargo',['build','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')],{cwd:root,env,stdio:'inherit',timeout:300000});
  server=new WebSocketServer({host:'127.0.0.1',port:0});await once(server,'listening');

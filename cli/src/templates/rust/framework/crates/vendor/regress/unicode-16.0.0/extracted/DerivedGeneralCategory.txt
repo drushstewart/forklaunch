@@ -1,0 +1,1 @@
+../../../../../../../../../../framework-rs/crates/vendor/regress/unicode-16.0.0/extracted/DerivedGeneralCategory.txt

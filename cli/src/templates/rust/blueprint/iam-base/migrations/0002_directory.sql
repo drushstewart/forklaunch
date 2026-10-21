@@ -1,0 +1,1 @@
+../../../../../../../blueprint-rs/crates/implementations/iam/iam-base/migrations/0002_directory.sql

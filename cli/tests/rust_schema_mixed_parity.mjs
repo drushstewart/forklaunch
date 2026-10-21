@@ -29,7 +29,7 @@ for(const draft of ['06','07','2019-09']) {
 }
 // Later keywords in older resources remain inactive annotations.
 fixtures.push({runtime:true,schema:{$schema:uri('2020-12'),$id:'https://mixed.fixture.test/annotations',$ref:'child',$defs:{Child:{$schema:uri('04'),id:'child',type:'array',contains:false,prefixItems:[false],unevaluatedItems:false,items:{type:'string'}}}},cases:[[[],true],[['a'],true],[[1],false]]});
-const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},maxBuffer:16*1024*1024}));
+const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','codegen_schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},maxBuffer:16*1024*1024}));
 let count=0, ajvDifferences=0;
 for(const [i,fixture] of fixtures.entries()) {
  assert.equal(bundled[i].schema.$schema,uri('2020-12'));

@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/s3/examples/json_object_parity.rs

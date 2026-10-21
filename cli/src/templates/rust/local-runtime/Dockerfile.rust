@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1.7
+FROM rust:1.98-bookworm AS build
+WORKDIR /app
+# Only Rust workspace inputs enter this language image.
+COPY Cargo.* rust-toolchain.toml ./
+COPY .forklaunch/manifest.toml ./.forklaunch/manifest.toml
+COPY vendor/ ./vendor/
+COPY .forklaunch/blueprint-rs/ ./.forklaunch/blueprint-rs/
+COPY src/@@SERVICE@@/ ./src/@@SERVICE@@/
+COPY src/@@WORKER@@/ ./src/@@WORKER@@/
+COPY src/core/ ./src/core/
+COPY src/client-sdk/rust/ ./src/client-sdk/rust/
+ENV CARGO_BUILD_JOBS=1 CARGO_INCREMENTAL=0
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/app/target \
+    find src -type f -exec touch {} + && \
+    if [ -f Cargo.lock ]; then true; else cargo generate-lockfile; fi && \
+    cargo build --release --locked --workspace && \
+    mkdir -p /out && cp target/release/@@SERVICE_BINARY@@ target/release/@@WORKER_BINARY@@ /out/
+
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/@@SERVICE_BINARY@@ /usr/local/bin/
+COPY --from=build /out/@@WORKER_BINARY@@ /usr/local/bin/
+COPY --from=build /app/src/client-sdk/typescript/ /app/src/client-sdk/typescript/
+USER 65532:65532
+CMD ["@@SERVICE_BINARY@@"]

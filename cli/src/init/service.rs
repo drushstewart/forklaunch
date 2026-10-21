@@ -118,6 +118,7 @@ fn generate_basic_service(
     if !manifest_data.is_database_enabled || !manifest_data.is_iam_configured {
         ignore_files.push("compliance.controller.ts".to_string());
         ignore_files.push("compliance.routes.ts".to_string());
+        ignore_files.push("compliance.contract.ts".to_string());
     }
     let ignore_dirs = if !manifest_data.with_mappers {
         vec!["mappers".to_string()]
@@ -728,6 +729,13 @@ impl CliCommand for ServiceCommand {
                     .value_parser(Database::VARIANTS),
             )
             .arg(
+                Arg::new("postgres-driver")
+                    .long("postgres-driver")
+                    .help("Rust PostgreSQL adapter version; select sqlx-09 for Apalis interoperability")
+                    .value_parser(["sqlx-08", "sqlx-09"])
+                    .requires("database"),
+            )
+            .arg(
                 Arg::new("infrastructure")
                     .short('i')
                     .long("infrastructure")
@@ -758,6 +766,7 @@ impl CliCommand for ServiceCommand {
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
+        if matches.contains_id("postgres-driver") && !rust_project::uses_rust_generation(matches) { anyhow::bail!("--postgres-driver is available for Rust generation only"); }
         if rust_project::uses_rust_generation(matches) {
             return rust_project::generate_rust_service(matches);
         }
@@ -767,6 +776,7 @@ impl CliCommand for ServiceCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
         let existing_manifest_data = from_str::<ApplicationManifestData>(
             &read_to_string(&manifest_path).with_context(|| ERROR_FAILED_TO_READ_MANIFEST)?,
@@ -915,6 +925,7 @@ impl CliCommand for ServiceCommand {
             is_cache_enabled: infrastructure.contains(&Infrastructure::Redis),
             platform_application_id: manifest_data.platform_application_id.clone(),
             platform_organization_id: manifest_data.platform_organization_id.clone(),
+            framework: manifest_data.framework.clone(),
             compliance: manifest_data.compliance.clone(),
             is_s3_enabled: infrastructure.contains(&Infrastructure::S3),
             is_database_enabled: true,
@@ -975,6 +986,13 @@ impl CliCommand for ServiceCommand {
         .with_context(|| "Failed to create service")?;
 
         if !dryrun {
+            crate::sdk::typescript_build::prepare_default_service(
+                &app_root_path,
+                &service_name,
+                &manifest_data.runtime,
+                manifest_data.is_iam_configured,
+            )?;
+            crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(stdout, "{} initialized successfully!", service_name);
             format_code(&base_path, &manifest_data.runtime.parse()?);
         }

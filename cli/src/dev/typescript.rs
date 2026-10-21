@@ -106,6 +106,14 @@ pub(super) fn enable(
             owners.insert(artifact(&root, project, field, default)?, name.to_owned());
         }
     }
+    let production: Value = crate::core::forklaunch_state::generated_section(&root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?
+        .unwrap_or_else(|| json!({}));
+    if let Some(expected) = production["dockerfileSha256"].as_str() {
+        anyhow::ensure!(
+            crate::core::forklaunch_state::file_matches(&root.join("Dockerfile.typescript"), Some(expected)),
+            "Modified TypeScript image requires an explicit development profile"
+        );
+    }
     let mut plans = Vec::new();
     let mut changes = serde_json::Map::new();
     for project in projects {
@@ -144,6 +152,51 @@ pub(super) fn enable(
             bail!("Development artifact collision between {previous} and {name}");
         }
         let mut service = compose["services"][name].clone();
+        if let Some(process) = production["processes"].get(name) {
+            anyhow::ensure!(
+                matches!(runtime, "node" | "bun"),
+                "Generated production profile requires Node or Bun development tooling"
+            );
+            let entry = process["entry"]
+                .as_str()
+                .context("Production process entry missing")?;
+            let package: Value =
+                serde_json::from_str(&fs::read_to_string(directory.join("package.json"))?)?;
+            let script = if entry == "worker" {
+                "dev:worker"
+            } else if package["scripts"].get("dev:server").is_some() {
+                "dev:server"
+            } else {
+                "dev"
+            };
+            anyhow::ensure!(
+                package["scripts"][script].is_string(),
+                "Development process script missing"
+            );
+            service["entrypoint"] =
+                json!([if runtime == "bun" { "bun" } else { "pnpm" }, "run", script]);
+            service["command"] = json!([]);
+            service["working_dir"] = json!(format!(
+                "/app/{}/{}",
+                modules.strip_prefix(&root)?.display(),
+                name
+            ));
+            service["build"] =
+                json!({"context":root,"dockerfile":"Dockerfile.typescript","target":"builder"});
+            service["image"] = json!(format!(
+                "{}-{name}-dev:local",
+                production["image"]
+                    .as_str()
+                    .unwrap_or("forklaunch-typescript")
+                    .split(':')
+                    .next()
+                    .unwrap()
+            ));
+            if !service["volumes"].is_array() {
+                service["volumes"] = json!([]);
+            }
+        }
+
         let workdir = PathBuf::from(
             service["working_dir"]
                 .as_str()
@@ -247,7 +300,28 @@ pub(super) fn enable(
             .or_insert(json!([]))
             .as_array_mut()
             .context("TypeScript development watches must be an array")?;
-        watches.push(json!({"action":"restart","path":modules,"ignore":["node_modules/","**/node_modules/","dist/","**/dist/","lib/","**/lib/","target/","**/target/",".git/","**/.git/",".forklaunch/","sdks/","**/*.tsbuildinfo"]}));
+        let mut ignores: Vec<String> = [
+            "node_modules/",
+            "**/node_modules/",
+            "dist/",
+            "**/dist/",
+            "lib/",
+            "**/lib/",
+            "target/",
+            "**/target/",
+            ".git/",
+            "**/.git/",
+            ".forklaunch/",
+            "sdks/",
+            "**/*.tsbuildinfo",
+            "production/",
+            "**/production/",
+        ]
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+        ignores.extend(super::metadata_watch_ignores(&root, manifest, &modules)?);
+        watches.push(json!({"action":"restart","path":modules,"ignore":ignores}));
         changes.insert(name.to_owned(), json!({"entrypoint":service["entrypoint"],"command":service["command"],"develop":service["develop"],"volumes":service["volumes"]}));
         plans.push((name.to_owned(), service));
     }
@@ -261,6 +335,60 @@ pub(super) fn enable(
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn owned_production_process_uses_isolated_builder_image_for_development() {
+        for (runtime, manager) in [("node", "pnpm"), ("bun", "bun")] {
+            let root = tempfile::tempdir().unwrap();
+            fs::create_dir_all(root.path().join("modules/api")).unwrap();
+            fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+            fs::write(root.path().join("modules/api/server.ts"), "").unwrap();
+            fs::write(
+                root.path().join("modules/api/package.json"),
+                format!(r#"{{"scripts":{{"dev":"{manager} run server.ts"}}}}"#),
+            )
+            .unwrap();
+            fs::write(root.path().join("Dockerfile.typescript"), "owned").unwrap();
+            fs::write(root.path().join(crate::core::forklaunch_state::GENERATED), serde_json::to_string(&json!({"typescriptImage":{"dockerfileSha256":crate::core::forklaunch_state::sha256_hex("owned"),"image":"demo-typescript:local","processes":{"api":{"directory":"api","entry":"server"}}}})).unwrap()).unwrap();
+            let manifest: toml::Value = toml::from_str(
+            &format!("modules_path='modules'\nruntime='{runtime}'\n[[projects]]\nname='api'\ntype='Service'\n"),
+        )
+        .unwrap();
+            let mut compose = json!({"services":{"api":{"image":"demo-typescript:local","working_dir":"/app/api","command":["node","--enable-source-maps","/app/api/production/server.mjs"],"volumes":[]},"api-migrate":{"image":"demo-typescript:local","command":["node","/app/api/production/migrate.mjs"]}}});
+            enable(
+                root.path(),
+                &manifest,
+                &BTreeSet::from(["api".into()]),
+                &mut compose,
+                &json!({}),
+            )
+            .unwrap();
+            assert_eq!(compose["services"]["api"]["build"]["target"], "builder");
+            assert_eq!(
+                compose["services"]["api"]["image"],
+                "demo-typescript-api-dev:local"
+            );
+            assert_eq!(
+                compose["services"]["api"]["working_dir"],
+                "/app/modules/api"
+            );
+            assert_eq!(compose["services"]["api"]["entrypoint"][4], manager);
+            assert!(
+                compose["services"]["api"]["entrypoint"][2]
+                    .as_str()
+                    .unwrap()
+                    .contains(if runtime == "bun" {
+                        "bun server.ts"
+                    } else {
+                        "node ./node_modules/tsx"
+                    })
+            );
+            assert_eq!(
+                compose["services"]["api-migrate"]["image"],
+                "demo-typescript:local"
+            );
+        }
+    }
     #[cfg(unix)]
     #[test]
     fn failed_typescript_exports_preserve_artifacts_and_do_not_start_service() {

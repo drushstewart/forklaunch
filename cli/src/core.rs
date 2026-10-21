@@ -18,6 +18,7 @@ pub(crate) mod env_scope;
 pub(crate) mod env_template;
 pub(crate) mod exit_code;
 pub(crate) mod format;
+pub(crate) mod forklaunch_state;
 pub(crate) mod github_configs;
 pub(crate) mod gitignore;
 pub(crate) mod hmac;

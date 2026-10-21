@@ -1,16 +1,20 @@
-use std::{env, sync::Arc};
+use std::{env, sync::Arc, error::Error};
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
 use forklaunch_iam_base::directory::postgres::PostgresDirectoryStore;
-use forklaunch_auth::jwt::{RemoteJwks,RemoteJwksConfig};
+use forklaunch_core::auth::jwt::{RemoteJwks,RemoteJwksConfig};
 use forklaunch_axum::module_auth::HmacJwksAuth;
-use forklaunch_blueprint_core::AuditContext;
+use forklaunch_core::domain::AuditContext;
 use jsonwebtoken::{Algorithm,Validation};
 use forklaunch_iam_base::postgres::PostgresIamService;
 use sqlx::postgres::PgPoolOptions;
 use {{crate_module}}::{service_info, write_contract_artifacts};
+use forklaunch_core::{auth::oidc::OidcProvider, telemetry::otlp::TelemetryRuntime};
+use forklaunch_iam_axum::{browser::BrowserIam, directory::{self, DirectoryAuthorizationMode}};
+use forklaunch_iam_base::{browser_sessions::PostgresCookieStore, jwt_sessions::RsaJwtSessionIssuer};
+use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
         write_contract_artifacts(
             env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| ".forklaunch/contracts/contract.json".to_owned()),
@@ -18,7 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         return Ok(());
     }
-    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+    let telemetry = TelemetryRuntime::start(
         {{crate_module}}::SERVICE_NAME, env!("CARGO_PKG_VERSION"),
     ).await?;
     let result = run().await;
@@ -28,7 +32,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     let arguments: Vec<_> = env::args().skip(1).collect();
     if !arguments.is_empty() && arguments != ["--migrate"] {
         return Err("Expected no arguments or --migrate".into());
@@ -43,13 +47,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
     let directory_mode = match env::var("IAM_DIRECTORY_AUTHORIZATION") {
-        Err(env::VarError::NotPresent) => forklaunch_iam_axum::directory::DirectoryAuthorizationMode::JwtClaims,
-        Ok(value) if value == "jwt-claims" => forklaunch_iam_axum::directory::DirectoryAuthorizationMode::JwtClaims,
-        Ok(value) if value == "stored-session" => forklaunch_iam_axum::directory::DirectoryAuthorizationMode::StoredSessions,
+        Err(env::VarError::NotPresent) => DirectoryAuthorizationMode::JwtClaims,
+        Ok(value) if value == "jwt-claims" => DirectoryAuthorizationMode::JwtClaims,
+        Ok(value) if value == "stored-session" => DirectoryAuthorizationMode::StoredSessions,
         _ => return Err("IAM_DIRECTORY_AUTHORIZATION must be jwt-claims or stored-session".into()),
     };
-    let issuer = forklaunch_iam_base::jwt_sessions::RsaJwtSessionIssuer::from_env()?;
-    if directory_mode == forklaunch_iam_axum::directory::DirectoryAuthorizationMode::StoredSessions && issuer.is_none() {
+    let issuer = RsaJwtSessionIssuer::from_env()?;
+    if directory_mode == DirectoryAuthorizationMode::StoredSessions && issuer.is_none() {
         return Err("Stored-session directory authorization requires SESSION_JWT signing configuration".into());
     }
     let store = PostgresIamService::new(pool.clone(), tenant.clone()).await?;
@@ -66,10 +70,10 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     }
     let browser = match env::var("SESSION_COOKIE_ORIGIN") {
         Ok(origin) => {
-            let cookie_store = forklaunch_iam_base::browser_sessions::PostgresCookieStore::new(
+            let cookie_store = PostgresCookieStore::new(
                 pool.clone(), tenant.clone(), {{crate_module}}::SERVICE_NAME, encryptor.clone(),
             ).await?;
-            let browser = forklaunch_iam_axum::browser::BrowserIam::new(store.clone(), cookie_store.clone(), "__Host-iam", &origin)?;
+            let browser = BrowserIam::new(store.clone(), cookie_store.clone(), "__Host-iam", &origin)?;
             let browser = if oidc_enabled {
                 let issuer = env::var("SESSION_OIDC_ISSUER").map_err(|_| "SESSION_OIDC_ISSUER is required")?;
                 let client_id = env::var("SESSION_OIDC_CLIENT_ID").map_err(|_| "SESSION_OIDC_CLIENT_ID is required")?;
@@ -78,7 +82,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
                     Err(env::VarError::NotPresent) => None,
                     Err(_) => return Err("Invalid OIDC client secret".into()),
                 };
-                let provider = forklaunch_auth::oidc::OidcProvider::discover(
+                let provider = OidcProvider::discover(
                     &issuer, client_id, secret, &format!("{origin}/auth/browser/oidc/callback"),
                 ).await?;
                 browser.with_oidc(store.clone(), cookie_store, Arc::new(provider), vec![])?
@@ -104,9 +108,9 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let auth = HmacJwksAuth::new(secret.into_bytes(), jwks, validation)?;
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());
     let port: u16 = env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?;
-    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
+    let listener = TcpListener::bind((host.as_str(), port)).await?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
-    let router = forklaunch_iam_axum::directory::iam_router_with_options(store, directory, auth, service_info(), Default::default(), directory_mode);
+    let router = directory::iam_router_with_options(store, directory, auth, service_info(), Default::default(), directory_mode);
     let router = match browser { Some(browser) => browser.mount(router), None => router };
     {{crate_module}}::routes::register_router(router).serve_with_default_mcp(listener, shutdown()).await?;
     pool.close().await;

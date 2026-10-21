@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
+import {openApiDocument} from './fixtures/rust_builtin_runtime_support.mjs';
 import {createHmac,randomUUID} from 'node:crypto';
 import http from 'node:http';
 import net from 'node:net';
+import path from 'node:path';
 import {spawn} from 'node:child_process';
 import {pathToFileURL} from 'node:url';
 import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
@@ -9,7 +11,7 @@ import {compareCheckout} from './fixtures/rust_ecommerce_checkout_reference.mjs'
 import {compareWebhooks} from './fixtures/rust_ecommerce_webhook_reference.mjs';
 const [binary,sdkPath,bridgeBinary]=process.argv.slice(2);
 const role=process.env.FORKLAUNCH_TEST_ROLE,secret='ecommerce-generated-hmac-secret';
-const children=[];let stripeCalls=0,paypalCalls=0,providerFailure,checkoutTaxDelay=0,captures=0,captureFailure=false,beforeIntentRead;
+const children=[];let stripeCalls=0,paypalCalls=0,providerFailure,beforeTaxResponse,captures=0,captureFailure=false,beforeIntentRead;
 const provider=http.createServer(async(req,res)=>{
   let raw='';for await(const chunk of req)raw+=chunk;
   res.setHeader('content-type','application/json');
@@ -22,7 +24,7 @@ const provider=http.createServer(async(req,res)=>{
     if(beforeIntentRead){const callback=beforeIntentRead;beforeIntentRead=undefined;await callback();}
     res.end(JSON.stringify({id:req.url.split('/').at(-1),client_secret:'fixture-client-secret'}));
   }else if(req.url==='/v1/tax/calculations'){
-    if(checkoutTaxDelay)await new Promise(resolve=>setTimeout(resolve,checkoutTaxDelay));
+    if(beforeTaxResponse){const callback=beforeTaxResponse;beforeTaxResponse=undefined;await callback();}
     assert.equal(req.headers.authorization,'Bearer sk_fixture');
     if(providerFailure==='tax'){providerFailure=undefined;res.writeHead(503);res.end('{}');return;}
     res.end(JSON.stringify({tax_amount_exclusive:14,tax_breakdown:[{amount:14,tax_rate_details:{state:'CA',country:'US'}}]}));
@@ -79,11 +81,13 @@ try{
   for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog','checkout','handleStripeWebhook','handlePaypalWebhook'])).length,32);
   assert.equal((await fetch(service.base+'/product')).status,401);
   const denied=await mcpRpc(service.base,'tools/call',{name:'getProduct',arguments:{params:{id:'missing'}}});assert.equal(denied.isError,true);
-  const sdk=await import(pathToFileURL(sdkPath));const client=sdk.createForkLaunchSdk({serviceBaseUrls:{ecommerce:service.base}});
+  const sdk=await import(pathToFileURL(sdkPath));
+  const document=await openApiDocument('ecommerce');
+  const client=await sdk.universalSdk({host:service.base,registryOptions:{raw:document}});
   const product={id:'product',externalId:'external',handle:'beans',title:'Beans'};
-  const created=await client.ecommerce.product.createProduct({body:product,headers:{authorization:hmac('/product','POST',JSON.stringify(product))}});assert.equal(created.code,200);assert.equal(created.response.id,'product');
+  const created=await client.product.createProduct({body:product,headers:{authorization:hmac('/product','POST',JSON.stringify(product))}});assert.equal(created.code,200);assert.equal(created.response.id,'product');
   await value(await call(service.base,'/variant',{method:'POST',body:{id:'variant',productId:'product',externalId:'external-variant',title:'Large',priceCents:100,optionValues:{Size:'Large'}}}));
-  const catalog=await client.ecommerce.product.listCatalog({query:{ids:['product'],limit:1},headers:{authorization:hmac('/product/catalog')}});
+  const catalog=await client.product.listCatalog({query:{ids:['product'],limit:1},headers:{authorization:hmac('/product/catalog')}});
   assert.equal(catalog.code,200);assert.equal(catalog.response.total,1);assert.equal(catalog.response.products[0].variants[0].stock,8);
   assert.deepEqual(await value(await call(other.base,'/product')),[]);
   assert.equal((await call(service.base,'/product?ids=null')).status,400);
@@ -92,7 +96,7 @@ try{
   const mcpCatalog=await mcpRpc(service.base,'tools/call',{name:'listCatalog',arguments:{query:{ids:['product'],limit:1},headers:{authorization:hmac('/product/catalog')}}});
   assert.equal(mcpCatalog.isError,false,JSON.stringify(mcpCatalog));assert.deepEqual(JSON.parse(mcpCatalog.content[0].text),catalog.response);
   const importedBody={products:[{externalId:'imported',handle:'imported',title:'Imported',variants:[{externalId:'imported-variant',title:'Box',priceCents:75,initialStock:12}]}]};
-  const imported=await client.ecommerce.catalogImport.importCatalog({body:importedBody,headers:{authorization:hmac('/catalog-import','POST',JSON.stringify(importedBody))}});
+  const imported=await client.catalogImport.importCatalog({body:importedBody,headers:{authorization:hmac('/catalog-import','POST',JSON.stringify(importedBody))}});
   assert.equal(imported.code,200);assert.deepEqual(imported.response,{productsImported:1,variantsImported:1});
   const importedProduct=await value(await call(service.base,'/product/handle/imported'));
   const importedVariant=(await value(await call(service.base,`/variant/product/${importedProduct.id}`)))[0];
@@ -129,7 +133,7 @@ try{
   await eventually(async()=>(await value(await call(service.base,'/inventory/variant'))).stock===6);
   await value(await call(service.base,'/order/order/transition',{method:'PUT',body:{to:'cancelled'}}));
   await eventually(async()=>(await value(await call(service.base,'/inventory/variant'))).stock===8);
-  const sdkTest=spawn('cargo',['test','-p','ecommerce-sdk','--test','runtime'],{env:{...process.env,ECOMMERCE_BASE_URL:service.base,ECOMMERCE_CATALOG_HEADER:hmac('/product/catalog'),ECOMMERCE_ORDER_HEADER:hmac('/order/order')},stdio:'inherit'});
+  const sdkTest=spawn('cargo',['test','--manifest-path',process.env.FORKLAUNCH_TEST_ECOMMERCE_SDK_MANIFEST,'--test','runtime'],{env:{...process.env,ECOMMERCE_BASE_URL:service.base,ECOMMERCE_CATALOG_HEADER:hmac('/product/catalog'),ECOMMERCE_ORDER_HEADER:hmac('/order/order')},stdio:'inherit'});
   assert.equal(await new Promise(resolve=>sdkTest.once('close',resolve)),0);
   await stop(service);service=await start();
   assert.equal((await value(await call(service.base,'/order/order'))).status,'cancelled');
@@ -139,18 +143,22 @@ try{
   const peer=await start();
   const shippingAddress={name:'Buyer',line1:'Private Street',city:'Oakland',state:'CA',postalCode:'94601',country:'US'};
   async function checkoutCart(id){await value(await call(service.base,'/cart',{method:'POST',body:{id}}));await value(await call(service.base,'/cart/items',{method:'POST',body:{cartId:id,variantId:'variant',quantity:2}}));return{cartId:id,shippingAddress};}
-  const raceBody=await checkoutCart('cross-process-race'),beforeRace=stripeCalls;checkoutTaxDelay=150;
+  const raceBody=await checkoutCart('cross-process-race'),beforeRace=stripeCalls;
+  beforeTaxResponse=async()=>{
+    const observer=spawn(path.join(path.dirname(bridgeBinary),'seed'),['--wait-checkout-lock'],{env:process.env,stdio:'inherit'});
+    assert.equal(await new Promise((resolve,reject)=>{observer.once('error',reject);observer.once('close',resolve);}),0);
+  };
   const raced=await Promise.all([service,peer].map(instance=>call(instance.base,'/checkout',{method:'POST',body:raceBody}).then(value)));
-  assert.equal(raced[0].order.id,raced[1].order.id);assert.equal(raced[0].payment.id,raced[1].payment.id);assert.equal(stripeCalls-beforeRace,1);checkoutTaxDelay=0;
+  assert.equal(raced[0].order.id,raced[1].order.id);assert.equal(raced[0].payment.id,raced[1].payment.id);assert.equal(stripeCalls-beforeRace,1);
   const parallelBodies=await Promise.all(Array.from({length:10},(_,index)=>checkoutCart(`parallel-checkout-${index}`)));
   const parallel=await Promise.all(parallelBodies.map((body,index)=>call(index%2?peer.base:service.base,'/checkout',{method:'POST',body}).then(value)));
   assert.equal(new Set(parallel.map(result=>result.order.id)).size,10);
   const mcpCheckoutBody=await checkoutCart('mcp-checkout');
   const mcpCheckout=await mcpRpc(service.base,'tools/call',{name:'checkout',arguments:{body:mcpCheckoutBody,headers:{authorization:hmac('/checkout','POST',JSON.stringify(mcpCheckoutBody))}}});
   assert.equal(mcpCheckout.isError,false,JSON.stringify(mcpCheckout));assert.equal(JSON.parse(mcpCheckout.content[0].text).order.totalCents,813);
-  const liveSdk=sdk.createForkLaunchSdk({serviceBaseUrls:{ecommerce:service.base}});
+  const liveSdk=await sdk.universalSdk({host:service.base,registryOptions:{raw:document}});
   const sdkCheckoutBody=await checkoutCart('sdk-checkout');
-  const sdkCheckout=await liveSdk.ecommerce.checkout.checkout({body:sdkCheckoutBody,headers:{authorization:hmac('/checkout','POST',JSON.stringify(sdkCheckoutBody))}});
+  const sdkCheckout=await liveSdk.checkout.checkout({body:sdkCheckoutBody,headers:{authorization:hmac('/checkout','POST',JSON.stringify(sdkCheckoutBody))}});
   assert.equal(sdkCheckout.code,200);assert.equal(sdkCheckout.response.order.totalCents,813);
   console.log('PASS generated checkout cross-process race: one order/payment/provider call, and ten concurrent carts without application-pool starvation');
 
@@ -180,7 +188,7 @@ try{
   }
   console.log('PASS generated HTTP/MCP checkout denies secrets on cancellation during provider read and retains payment references');
 
-  const webhookInventory=await compareWebhooks({base:service.base,otherBase:other.base,peerBase:peer.base,call,providerBase,bridgeBinary,setCaptureFailure(value){captureFailure=value;},captureCount:()=>captures,mcpRpc,sdk});
+  const webhookInventory=await compareWebhooks({base:service.base,otherBase:other.base,peerBase:peer.base,call,providerBase,bridgeBinary,setCaptureFailure(value){captureFailure=value;},captureCount:()=>captures,mcpRpc,client:liveSdk});
   const webhookWorker=await start({worker:true});
   await eventually(async()=>(await value(await call(service.base,`/inventory/${webhookInventory.variantId}`))).stock===webhookInventory.expectedStock);
   await stop(webhookWorker);

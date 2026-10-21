@@ -1,0 +1,1 @@
+../../../../../../../../../framework-rs/crates/core/tests/fixtures/controller_inline.rs

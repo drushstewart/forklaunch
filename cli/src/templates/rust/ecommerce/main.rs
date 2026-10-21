@@ -1,24 +1,26 @@
 use {{crate_module}}::{service_info, write_contract_artifacts};
-use forklaunch_auth::jwt::{RemoteJwks, RemoteJwksConfig};
+use forklaunch_core::auth::jwt::{RemoteJwks, RemoteJwksConfig};
 use forklaunch_axum::module_auth::HmacJwksAuth;
-use forklaunch_blueprint_core::AuditContext;
-use forklaunch_blueprint_core::provider_http::ProviderHttpClient;
+use forklaunch_core::domain::AuditContext;
+use forklaunch_core::http::provider_http::ProviderHttpClient;
 use forklaunch_core::persistence::{TenantContext, encryption::FieldEncryptor};
 use forklaunch_core::telemetry::otlp::TelemetryRuntime;
 use forklaunch_ecommerce_axum::{EcommerceBackend, ecommerce_router};
 use forklaunch_ecommerce_base::{events::OrderInventoryHandler, postgres::PostgresEcommerceStore};
 use forklaunch_ecommerce_paypal::PaypalClient;
-use forklaunch_ecommerce_stripe::{StripeClient, StripeConnect};
+use forklaunch_ecommerce_stripe::{StripeClient, StripeConnect, webhook::StripeWebhookVerifier};
 use forklaunch_worker_database::{
     http::HttpConfig, postgres::PostgresWorkerQueue, runner::RunnerConfig,
 };
 use forklaunch_worker_interface::RetryPolicy;
 use jsonwebtoken::{Algorithm, Validation};
 use sqlx::postgres::PgPoolOptions;
-use std::{env, sync::Arc, time::Duration};
+use std::{env, sync::Arc, time::Duration, error::Error};
+use forklaunch_worker_database::http;
+use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if matches!(
         env::var("FORKLAUNCH_MODE").as_deref(),
         Ok("openapi" | "contract")
@@ -40,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
     if !args.is_empty() && args != ["--migrate"] && args != ["--worker"] {
         return Err("Expected no arguments, --migrate or --worker".into());
@@ -115,7 +117,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         stripe_http,
     )?;
     let mut backend = EcommerceBackend::new(store, queue, stripe).with_stripe_webhook(
-        forklaunch_ecommerce_stripe::webhook::StripeWebhookVerifier::new(
+        StripeWebhookVerifier::new(
             env::var("STRIPE_WEBHOOK_SECRET").map_err(|_| "STRIPE_WEBHOOK_SECRET is required")?,
         )?,
     );
@@ -159,7 +161,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         .or_else(|_| env::var("PORT"))
         .unwrap_or_else(|_| "8000".to_owned())
         .parse()?;
-    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
+    let listener = TcpListener::bind((host.as_str(), port)).await?;
     println!(
         "{} listening on http://{}",
         {{crate_module}}::SERVICE_NAME,
@@ -174,7 +176,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
 async fn run_inventory_worker(
     queue: &PostgresWorkerQueue,
     store: PostgresEcommerceStore,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn Error>> {
     let config = RunnerConfig {
         queue: "order-events".to_owned(),
         concurrency: usize::try_from(number("WORKER_CONCURRENCY", 1)?)?,
@@ -187,7 +189,7 @@ async fn run_inventory_worker(
     config.validate()?;
     let http = http_config()?;
     println!("{} inventory worker ready", {{crate_module}}::SERVICE_NAME);
-    let report = forklaunch_worker_database::http::run(
+    let report = http::run(
         queue,
         &OrderInventoryHandler::new(Arc::new(store), "order-events"),
         &config,
@@ -202,14 +204,14 @@ async fn run_inventory_worker(
     );
     Ok(())
 }
-fn number(key: &str, default: u64) -> Result<u64, Box<dyn std::error::Error>> {
+fn number(key: &str, default: u64) -> Result<u64, Box<dyn Error>> {
     match env::var(key) {
         Ok(value) => Ok(value.parse()?),
         Err(env::VarError::NotPresent) => Ok(default),
         Err(error) => Err(error.into()),
     }
 }
-fn http_config() -> Result<Option<HttpConfig>, Box<dyn std::error::Error>> {
+fn http_config() -> Result<Option<HttpConfig>, Box<dyn Error>> {
     let token = match env::var("WORKER_CONTROL_TOKEN") {
         Ok(value) => Some(value),
         Err(env::VarError::NotPresent) => None,

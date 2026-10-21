@@ -41,14 +41,14 @@ function cargo(args,input){const r=spawnSync('cargo',args,{input,encoding:'utf8'
 const manifest=path.join(root,'framework-rs/Cargo.toml');
 if(process.env.FORKLAUNCH_NUMBER_ORACLE_ONLY==='1')console.log(`PASS ${admissionCount} actual Node/Ada factory URI admission observations +${cases.length-admissionCount} ordered-message cases +${compositions.length} compositions`);
 else {
- const output=cargo(['run','--quiet','--manifest-path',manifest,'-p','forklaunch-validation','--features','zod-uri','--example','zod_string_formats_parity'],cases.map(v=>JSON.stringify(v)).join('\n')+'\n').trim().split('\n').map(JSON.parse);
+ const output=cargo(['run','--quiet','--manifest-path',manifest,'-p','forklaunch-validator','--features','zod-uri','--example','zod_string_formats_parity'],cases.map(v=>JSON.stringify(v)).join('\n')+'\n').trim().split('\n').map(JSON.parse);
  assert.equal(output.length,cases.length);for(let i=0;i<cases.length;i++)assert.deepEqual(output[i],expected[i],JSON.stringify(cases[i]));
- const composed=cargo(['run','--quiet','--manifest-path',manifest,'-p','forklaunch-validation','--features','zod-uri','--example','zod_json_parity'],compositions.map(v=>JSON.stringify(v)).join('\n')+'\n').trim().split('\n').map(JSON.parse);
+ const composed=cargo(['run','--quiet','--manifest-path',manifest,'-p','forklaunch-validator','--features','zod-uri','--example','zod_json_parity'],compositions.map(v=>JSON.stringify(v)).join('\n')+'\n').trim().split('\n').map(JSON.parse);
  assert.deepEqual(composed,compositionExpected);
- const metadata=JSON.parse(cargo(['metadata','--format-version','1','--locked','--offline','--manifest-path',manifest,'--features','forklaunch-validation/zod-uri']));
+ const metadata=JSON.parse(cargo(['metadata','--format-version','1','--locked','--offline','--manifest-path',manifest,'--features','forklaunch-validator/zod-uri']));
  const lock=readFileSync(path.join(root,'framework-rs/Cargo.lock'),'utf8').split('[[package]]').find(block=>block.includes('name = \"ada-url\"')&&block.includes('version = \"3.2.4\"'));assert.ok(lock?.includes(provenance.crate_sha256),'pinned official crate archive checksum');
  const dependency=metadata.packages.find(p=>p.name==='ada-url'&&p.version===provenance.version);assert.ok(dependency);
  for(const [name,source] of Object.entries(provenance.sources)){const relative=name.replace('crate-deps-','deps/');assert.equal(createHash('sha256').update(readFileSync(path.join(path.dirname(dependency.manifest_path),relative))).digest('hex'),source.sha256);}
- const graph=cargo(['tree','--manifest-path',manifest,'-p','forklaunch-validation','--no-default-features','-e','normal,build']);assert.ok(!graph.includes('ada-url'),'default graph must not compile Ada/C++');
+ const graph=cargo(['tree','--manifest-path',manifest,'-p','forklaunch-validator','--no-default-features','-e','normal,build']);assert.ok(!graph.includes('ada-url'),'default graph must not compile Ada/C++');
  console.log(`PASS ${admissionCount} exact Node24.2.0/Ada3.2.4 URI admission comparisons +${cases.length-admissionCount} ordered-message cases +${compositions.length} compositions; pinned source hashes and default dependency graph verified`);
 }

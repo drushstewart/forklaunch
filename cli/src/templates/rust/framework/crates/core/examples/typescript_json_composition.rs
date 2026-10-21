@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/examples/typescript_json_composition.rs

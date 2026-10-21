@@ -15,12 +15,22 @@ struct Ownership {
     files: BTreeMap<PathBuf, String>,
 }
 
+#[cfg(test)]
 fn package(name: &str, target: &str) -> PathBuf {
     match target {
         "rust" => PathBuf::from(format!("sdks/rust/{name}-websocket-sdk")),
         "typescript" => PathBuf::from(format!("sdks/typescript-websocket/{name}")),
         _ => unreachable!("validated SDK target"),
     }
+}
+
+fn package_at(root: &Path, name: &str, target: &str) -> Result<PathBuf> {
+    let base = crate::sdk::sdk_base(root)?;
+    Ok(match target {
+        "rust" => base.join(format!("rust/{name}-websocket-sdk")),
+        "typescript" => base.join(format!("typescript-websocket/{name}")),
+        _ => unreachable!("validated SDK target"),
+    })
 }
 
 fn hash(content: &[u8]) -> String {
@@ -56,7 +66,7 @@ pub(super) fn stage_package(
     registry_exported: bool,
     source: &str,
 ) -> Result<()> {
-    let directory = package(name, target);
+    let directory = package_at(root, name, target)?;
     let previous = read_ownership(root, name, target)?
         .map(|record| record.files)
         .unwrap_or_default();
@@ -116,7 +126,11 @@ fn read_ownership(root: &Path, name: &str, target: &str) -> Result<Option<Owners
             {
                 bail!("Unsupported socket SDK ownership record");
             }
-            let directory = (target != "asyncapi").then(|| package(name, target));
+            let directory = if target != "asyncapi" {
+                Some(package_at(root, name, target)?)
+            } else {
+                None
+            };
             if target == "asyncapi" && previous.files.len() > 1 {
                 bail!("Invalid socket AsyncAPI ownership record");
             }
@@ -175,11 +189,14 @@ pub(super) fn rename_service(
         })
         .context("Renamed socket service missing from manifest")?;
     let metadata = project.get("metadata").and_then(toml::Value::as_table);
-    let contract = read_json(
-        root,
-        Path::new(&format!(".forklaunch/contracts/{new}/contract.json")),
-        16 * 1024 * 1024,
-    )?;
+    let contract_path = metadata
+        .and_then(|metadata| metadata.get("contractArtifactPath"))
+        .and_then(toml::Value::as_str)
+        .map_or_else(
+            || PathBuf::from(format!(".forklaunch/contracts/{new}/contract.json")),
+            PathBuf::from,
+        );
+    let contract = read_json(root, &contract_path, 16 * 1024 * 1024)?;
     let registered = crate::core::openapi_export::rename_registered_sockets(
         root,
         old,
@@ -216,8 +233,8 @@ pub(super) fn rename_service(
     let has_socket_artifact = root.join(&new_artifact).is_file();
     let has_artifact = has_socket_artifact || !imported_targets.is_empty();
     if has_artifact && targets.contains(&"typescript") {
-        let source = package(old, "typescript").join("tsconfig.json");
-        let destination = package(new, "typescript").join("tsconfig.json");
+        let source = package_at(root, old, "typescript")?.join("tsconfig.json");
+        let destination = package_at(root, new, "typescript")?.join("tsconfig.json");
         validate_destination(root, &source)?;
         validate_destination(root, &destination)?;
         if root.join(&source).is_file() {
@@ -235,7 +252,7 @@ pub(super) fn rename_service(
     if cleanup_service(root, old)? {
         crate::init::rust_project::remove_cargo_member(
             root,
-            &format!("sdks/rust/{old}-websocket-sdk"),
+            &package_at(root, old, "rust")?.to_string_lossy(),
         )?;
     }
     for source in ["asyncapi", "socket-contract"] {
@@ -432,6 +449,66 @@ pub(super) fn registry_exported(root: &Path, name: &str, artifact: &Path) -> Res
         && unchanged(root, Path::new(output), expected)?)
 }
 
+pub(super) struct RegistrySnapshot {
+    name: String,
+    artifact: PathBuf,
+    contract: PathBuf,
+    value: Value,
+}
+
+impl RegistrySnapshot {
+    pub(super) fn verify(&self, root: &Path) -> Result<()> {
+        anyhow::ensure!(
+            read_json(root, &self.contract, 16 * 1024 * 1024)?.as_ref() == Some(&self.value)
+                && registry_exported(root, &self.name, &self.artifact)?,
+            "Socket registry changed during SDK compilation; retry after export completes"
+        );
+        Ok(())
+    }
+}
+
+/// Build scripts emit the HTTP registry before runtime export updates its socket
+/// projection. Never regenerate from the previous projection during that gap:
+/// doing so could overwrite edits immediately before retiring those same files.
+pub(super) fn registry_snapshot(
+    root: &Path,
+    name: &str,
+    artifact: &Path,
+    project: &toml::Value,
+) -> Result<Option<RegistrySnapshot>> {
+    if !registry_exported(root, name, artifact)? {
+        // Independently authored/edited portable artifacts remain valid inputs.
+        return Ok(None);
+    }
+    let contract = project
+        .get("metadata")
+        .and_then(|metadata| metadata.get("contractArtifactPath"))
+        .and_then(toml::Value::as_str)
+        .map_or_else(
+            || PathBuf::from(format!(".forklaunch/contracts/{name}/contract.json")),
+            PathBuf::from,
+        );
+    let value = read_json(root, &contract, 16 * 1024 * 1024)?
+        .context("Socket registry is unavailable; retry after export completes")?;
+    let portable = read_json(root, artifact.strip_prefix(root)?, 16 * 1024 * 1024)?
+        .context("Socket projection is unavailable; retry after export completes")?;
+    anyhow::ensure!(
+        value["generator"] == "framework-rs"
+            && portable["formatVersion"] == 1
+            && portable["title"] == value["service"]["name"]
+            && portable["version"] == value["service"]["version"]
+            && portable["sockets"].is_object()
+            && portable["sockets"] == value["sockets"],
+        "Socket projection does not match the current service registry; retry after export completes"
+    );
+    Ok(Some(RegistrySnapshot {
+        name: name.into(),
+        artifact: artifact.to_path_buf(),
+        contract,
+        value,
+    }))
+}
+
 /// A missing artifact alone may be a transient editor operation. Only prune
 /// after a previously owned registry export and a fresh, explicitly empty
 /// framework contract agree that the last registered socket was removed.
@@ -485,13 +562,14 @@ pub(super) fn remove_unchanged(root: &Path, removals: &BTreeMap<PathBuf, String>
             fs::remove_file(root.join(relative))?;
         }
     }
+    let base = crate::sdk::sdk_base(root)?;
     let mut directories = std::collections::BTreeSet::new();
     for relative in removals.keys() {
         let mut parent = relative.parent();
         while let Some(directory) = parent {
-            if directory.components().count() < 3
-                || !(directory.starts_with("sdks/rust")
-                    || directory.starts_with("sdks/typescript-websocket"))
+            if directory.components().count() < base.components().count() + 2
+                || !(directory.starts_with(base.join("rust"))
+                    || directory.starts_with(base.join("typescript-websocket")))
             {
                 break;
             }
@@ -520,6 +598,98 @@ pub(super) fn remove_unchanged(root: &Path, removals: &BTreeMap<PathBuf, String>
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn registry_rename_reads_local_custom_and_legacy_contract_paths() {
+        for configured in [
+            Some("src/new/sdk/typescript/contract.json"),
+            Some("custom/contracts/new.json"),
+            None,
+        ] {
+            let fixture = tempfile::tempdir().unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            fs::create_dir_all(root.join(".forklaunch")).unwrap();
+            let metadata = configured.map_or_else(String::new, |path| {
+                format!("[projects.metadata]\ncontractArtifactPath = {path:?}\n")
+            });
+            fs::write(
+                root.join(".forklaunch/manifest.toml"),
+                format!("modules_path = 'src'\n[[projects]]\nname = 'new'\n{metadata}"),
+            )
+            .unwrap();
+            let mut artifact = json!({
+                "generator": "framework-rs",
+                "service": {"name": "old", "version": "1.0.0"},
+                "sockets": {"chat": {"path": "/chat"}},
+            });
+            crate::core::openapi_export::export_registered_sockets(
+                &root, "old", None, &artifact,
+            )
+            .unwrap();
+            artifact["service"]["name"] = json!("new");
+            let contract = root.join(
+                configured.unwrap_or(".forklaunch/contracts/new/contract.json"),
+            );
+            fs::create_dir_all(contract.parent().unwrap()).unwrap();
+            let content = serde_json::to_vec(&artifact).unwrap();
+            fs::write(&contract, &content).unwrap();
+            rename_service(
+                &root,
+                "old",
+                "new",
+                &mut StandardStream::stdout(termcolor::ColorChoice::Never),
+            )
+            .unwrap();
+            let portable: Value = serde_json::from_slice(
+                &fs::read(root.join(".forklaunch/socket-contracts/new/socket-contract.json"))
+                    .unwrap(),
+            )
+            .unwrap();
+            assert_eq!(portable["title"], "new");
+            assert_eq!(portable["sockets"], artifact["sockets"]);
+            assert!(!root.join(".forklaunch/socket-contracts/old").exists());
+            assert_eq!(fs::read(contract).unwrap(), content);
+        }
+    }
+
+    #[test]
+    fn registry_rename_rejects_missing_or_escaping_explicit_contract() {
+        for configured in ["src/new/sdk/typescript/missing.json", "../outside.json"] {
+            let fixture = tempfile::tempdir().unwrap();
+            let root = fixture.path().canonicalize().unwrap();
+            fs::create_dir_all(root.join(".forklaunch/contracts/new")).unwrap();
+            fs::write(
+                root.join(".forklaunch/manifest.toml"),
+                format!("modules_path = 'src'\n[[projects]]\nname = 'new'\n[projects.metadata]\ncontractArtifactPath = {configured:?}\n"),
+            )
+            .unwrap();
+            let artifact = json!({
+                "generator": "framework-rs",
+                "service": {"name": "old", "version": "1.0.0"},
+                "sockets": {"chat": {"path": "/chat"}},
+            });
+            crate::core::openapi_export::export_registered_sockets(
+                &root, "old", None, &artifact,
+            )
+            .unwrap();
+            fs::write(
+                root.join(".forklaunch/contracts/new/contract.json"),
+                serde_json::to_vec(&artifact).unwrap(),
+            )
+            .unwrap();
+            let marker = root.join(".forklaunch/socket-contracts/old/registry-export.json");
+            let before = fs::read(&marker).unwrap();
+            assert!(rename_service(
+                &root,
+                "old",
+                "new",
+                &mut StandardStream::stdout(termcolor::ColorChoice::Never),
+            )
+            .is_err());
+            assert_eq!(fs::read(marker).unwrap(), before);
+            assert!(!root.join(".forklaunch/socket-contracts/new").exists());
+        }
+    }
 
     fn write_staged(root: &Path, files: &BTreeMap<PathBuf, String>) {
         for (relative, content) in files {

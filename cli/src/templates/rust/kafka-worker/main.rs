@@ -1,13 +1,13 @@
 mod signals;
-use std::{env, time::Duration};
-use forklaunch_core::persistence::TenantContext;
+use std::{env, time::Duration, error::Error};
+use forklaunch_core::{persistence::TenantContext, telemetry::otlp::TelemetryRuntime};
 use forklaunch_worker_database::http::HttpConfig;
 use forklaunch_worker_interface::{Job, RetryPolicy};
 use forklaunch_worker_kafka::client::{KafkaInspector, KafkaOptions, KafkaProducer, KafkaRunnerConfig, KafkaWorker, initialize_topics};
-use {{crate_module}}::{handler::ApplicationHandler, WORKER_NAME, write_contract_artifacts};
+use {{crate_module}}::{handler::ApplicationHandler, events, WORKER_NAME, write_contract_artifacts};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
         write_contract_artifacts(
             env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| ".forklaunch/contracts/contract.json".to_owned()),
@@ -15,7 +15,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )?;
         return Ok(());
     }
-    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+    let telemetry = TelemetryRuntime::start(
         WORKER_NAME, env!("CARGO_PKG_VERSION"),
     ).await?;
     let result = run().await;
@@ -25,8 +25,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args.is_empty() || args.first().map(String::as_str) == Some("--enqueue") { events::validate_configuration()?; }
     if !args.is_empty() && args != ["--migrate"] && args != ["--control-service"]
         && !(args.len() == 3 && args[0] == "--enqueue")
         && !(args.len() == 2 && matches!(args[0].as_str(), "--peek" | "--dead-letters" | "--signal")) {
@@ -54,12 +55,13 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     if let Ok(value) = env::var("KAFKA_CLIENT_PROPERTIES") {
         options.properties = serde_json::from_str(&value).map_err(|_| "KAFKA_CLIENT_PROPERTIES must be a JSON object of string properties")?;
     }
+    events::transport_policy()?.kafka(&options.brokers, &options.properties)?;
     options.validate()?;
     match args.first().map(String::as_str) {
         Some("--migrate") => initialize_topics(&options, i32::try_from(number("KAFKA_PARTITIONS", 3)?)?, i32::try_from(number("KAFKA_REPLICATION_FACTOR", 1)?)?).await?,
         Some("--enqueue") => {
             let queue = options.queue.clone();
-            KafkaProducer::connect(options).await?.enqueue(Job::new(&args[1], queue, &args[2])).await?;
+            KafkaProducer::connect(options).await?.enqueue(Job::new(&args[1], queue, events::seal(&args[1], &args[2])?)).await?;
             println!("job enqueued");
         }
         Some("--peek") => {
@@ -68,7 +70,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
         }
         Some("--dead-letters") => {
             let jobs = KafkaInspector::new(options)?.dead_letters(args[1].parse()?).await?;
-            println!("{}", serde_json::to_string(&jobs.into_iter().map(|dead| serde_json::json!({"id":dead.job.id,"queue":dead.job.queue,"attempts":dead.job.attempts,"last_error":dead.error_code})).collect::<Vec<_>>())?);
+            println!("{}", serde_json::to_string(&jobs.into_iter().map(|dead| serde_json::json!({"id":dead.job.id,"queue":dead.job.queue,"attempts":dead.job.attempts})).collect::<Vec<_>>())?);
         }
         None => {
             let config = KafkaRunnerConfig {
@@ -88,11 +90,11 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn number(name: &str, default: u64) -> Result<u64, Box<dyn std::error::Error>> {
+fn number(name: &str, default: u64) -> Result<u64, Box<dyn Error>> {
     match env::var(name) { Ok(value) => Ok(value.parse()?), Err(env::VarError::NotPresent) => Ok(default), Err(error) => Err(error.into()) }
 }
 
-fn http_config() -> Result<Option<HttpConfig>, Box<dyn std::error::Error>> {
+fn http_config() -> Result<Option<HttpConfig>, Box<dyn Error>> {
     let address = match env::var("WORKER_HTTP_ADDR") { Ok(value) => Some(value.parse()?), Err(env::VarError::NotPresent) => None, Err(error) => return Err(error.into()) };
     let control_token = match env::var("WORKER_CONTROL_TOKEN") { Ok(value) => Some(value), Err(env::VarError::NotPresent) => None, Err(error) => return Err(error.into()) };
     let Some(address) = address else {

@@ -1,14 +1,16 @@
-use std::{env, fs, path::Path};
+use std::{env, fs, path::Path, error::Error, io};
 
 use {{crate_module}}::{build_state, config::ServiceConfig, router, write_contract_artifacts};
+use forklaunch_core::telemetry::otlp::TelemetryRuntime;
+use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if export_contract_artifacts()? {
         return Ok(());
     }
 
-    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+    let telemetry = TelemetryRuntime::start(
         {{crate_module}}::SERVICE_NAME, env!("CARGO_PKG_VERSION"),
     ).await?;
     let result = run().await;
@@ -18,9 +20,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     let config = ServiceConfig::from_env();
-    let listener = tokio::net::TcpListener::bind(config.bind_addr()).await?;
+    let listener = TcpListener::bind(config.bind_addr()).await?;
     let state = build_state(config)?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
     router(state).serve_with_default_mcp(listener, shutdown_signal()).await?;
@@ -41,7 +43,7 @@ async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
-fn export_contract_artifacts() -> std::io::Result<bool> {
+fn export_contract_artifacts() -> io::Result<bool> {
     let mode = env::var("FORKLAUNCH_MODE").unwrap_or_default();
     if mode != "openapi" && mode != "contract" {
         return Ok(false);

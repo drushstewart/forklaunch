@@ -7,9 +7,19 @@ on:
       - main
     paths:
       - "cli/**"
+      - "framework-rs/**"
+      - "blueprint-rs/**"
+      - "scripts/sync_rust_embedded_sources.py"
+      - "scripts/test_sync_rust_embedded_sources.py"
+      - ".github/workflows/cli_tests.yml"
   pull_request:
     paths:
       - "cli/**"
+      - "framework-rs/**"
+      - "blueprint-rs/**"
+      - "scripts/sync_rust_embedded_sources.py"
+      - "scripts/test_sync_rust_embedded_sources.py"
+      - ".github/workflows/cli_tests.yml"
 
 jobs:
   test:
@@ -38,6 +48,13 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Embedded source ownership and Git metadata safety
+        run: python3 -m unittest discover -s scripts -p test_sync_rust_embedded_sources.py -v
 
       - name: Cache Rust dependencies
         uses: actions/cache@v6

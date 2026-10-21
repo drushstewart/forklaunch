@@ -51,7 +51,7 @@ for(const access of [null,'public','authenticated','protected','internal'])for(c
  assert.equal(passed,status===200);
  expected.push({status,message});
 }
-const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-auth','--example','typescript_rbac_parity'],{cwd:root,input:JSON.stringify(fixtures),encoding:'utf8',timeout:120000,env:{...process.env,CARGO_INCREMENTAL:'0'},maxBuffer:16*1024*1024}));
+const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','auth','--example','typescript_rbac_parity'],{cwd:root,input:JSON.stringify(fixtures),encoding:'utf8',timeout:120000,env:{...process.env,CARGO_INCREMENTAL:'0'},maxBuffer:16*1024*1024}));
 assert.equal(actual.length,fixtures.length);
 for(const [index,result] of actual.entries())assert.deepEqual(result,expected[index],JSON.stringify(fixtures[index]));
 console.log(`PASS ${fixtures.length} actual TypeScript/native session-authorization comparisons: access, set presence, precedence, scopes, features and subscriptions`);

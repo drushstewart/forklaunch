@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {spawn, execFile} from 'node:child_process';
+import {spawn, execFile} from './fixtures/secure_worker_runtime.mjs';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
 import {createServer} from 'node:net';
@@ -60,7 +60,8 @@ try {
     await command(['--enqueue','unimplemented','{}']);
     const worker=await start();
     const job=await waitState('unimplemented','Failed');
-    assert.equal(job.last_error,'worker_handler_not_implemented');
+    assert.equal(job.attempts,2);
+    assert.equal(Object.hasOwn(job,'last_error'),false);
     await stop(worker);
     console.log('PASS fresh worker never acknowledges an unimplemented handler');
   } else {
@@ -83,7 +84,7 @@ try {
     const restarted=await start();
     await waitState('pending','Completed');
     const failed=await waitState('failure','Failed');
-    assert.equal(failed.attempts,2); assert.equal(failed.last_error,'test_handler_failure');
+    assert.equal(failed.attempts,2); assert.equal(Object.hasOwn(failed,'last_error'),false);
     await stop(restarted);
 
     await command(['--enqueue','cancel','{"sleep_ms":10000,"slow_first":true}']);
@@ -120,10 +121,10 @@ try {
     assert.equal((await inspect('parallel-pending')).status,'Queued');
     const letters=JSON.parse(await command(['--dead-letters','1']));
     assert.equal(letters.length,1); assert.equal(letters[0].id,'failure');
-    assert.deepEqual(Object.keys(letters[0]).sort(),['attempts','id','last_error','queue','status']);
+    assert.deepEqual(Object.keys(letters[0]).sort(),['attempts','id','queue','status']);
     assert.deepEqual(JSON.parse(await command(['--retry','failure'])),{requeued:true});
     const reset=await inspect('failure');
-    assert.equal(reset.status,'Queued'); assert.equal(reset.attempts,0); assert.equal(reset.last_error,null);
+    assert.equal(reset.status,'Queued'); assert.equal(reset.attempts,0); assert.equal(Object.hasOwn(reset,'last_error'),false);
     assert.deepEqual(JSON.parse(await command(['--retry','failure'])),{requeued:false});
     const adminWorker=await start();
     assert.equal((await waitState('failure','Failed')).attempts,2);
@@ -200,7 +201,7 @@ try {
     assert.equal((await batchWait('ok-b','Completed')).attempts,1);
     const batchFailed=await batchWait('fail','Failed');
     assert.equal(batchFailed.attempts,2);
-    assert.equal(batchFailed.last_error,'test_handler_failure');
+    assert.equal(Object.hasOwn(batchFailed,'last_error'),false);
     const batchOutput=await stop(batch);
     assert.match(batchOutput,/batch received: jobs=3/);
     assert.match(batchOutput,/completed=2 retried=1 dead_lettered=1/);

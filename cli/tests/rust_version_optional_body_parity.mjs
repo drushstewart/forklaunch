@@ -100,7 +100,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
   toolCalls++;
  }
  assert.equal(toolCalls,16);console.log('PASS16 optional native MCP declarations and framed POST/unframed DELETE omissions across both adapters/versions');
- run('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','optional_body','--',temporary]);
+ run('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','typescript_optional_body','--',temporary]);
  const docs=JSON.parse(readFileSync(join(temporary,'openapi.json'),'utf8'));
  assert.equal(docs.optional.paths['/presence'].post.requestBody.required,false);
  assert.equal(docs.required.paths['/presence'].post.requestBody.required,true);

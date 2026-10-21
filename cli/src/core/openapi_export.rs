@@ -1,4 +1,6 @@
+mod compiler_metadata;
 mod outputs;
+mod portable;
 
 use std::{
     env, fs,
@@ -289,6 +291,11 @@ pub(crate) fn export_all_services(
             .iter()
             .filter(|project| {
                 matches!(project.r#type, ProjectType::Service | ProjectType::Worker)
+                    && project
+                        .metadata
+                        .as_ref()
+                        .and_then(|metadata| metadata.contract_export)
+                        != Some(false)
                     && (project
                         .metadata
                         .as_ref()
@@ -317,9 +324,6 @@ pub(crate) fn export_all_services(
     };
     let modules_path = app_root.join(&manifest.modules_path);
 
-    let rendered_templates_cache = RenderedTemplatesCache::new();
-    let all_env_vars = find_all_env_vars(&modules_path, &rendered_templates_cache)?;
-
     // Include both services and workers (workers have a server component)
     // Exclude observability services as they are not user application components
 
@@ -329,9 +333,20 @@ pub(crate) fn export_all_services(
         .filter(|p| {
             (p.r#type == ProjectType::Service || p.r#type == ProjectType::Worker)
                 && !OBSERVABILITY_SERVICES.contains(&p.name.as_str())
+                && p.metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.contract_export)
+                    != Some(false)
                 && p.metadata.as_ref().and_then(|m| m.language.as_deref()) != Some("rust")
         })
         .collect();
+
+    if services.is_empty() {
+        return Ok(exported_services);
+    }
+
+    let rendered_templates_cache = RenderedTemplatesCache::new();
+    let all_env_vars = find_all_env_vars(&modules_path, &rendered_templates_cache)?;
 
     // Find IAM service to get its port
     let iam_port = manifest
@@ -390,11 +405,29 @@ pub(crate) fn export_all_services(
             iam_port,
         )?;
 
+        let mut document: serde_json::Value = serde_json::from_str(&fs::read_to_string(&openapi_file)?)?;
+        portable::enrich_imported(&mut document, &service.name)
+            .with_context(|| format!("Failed to normalize TypeScript OpenAPI for {}", service.name))?;
+        fs::write(&openapi_file, serde_json::to_string_pretty(&document)?)?;
+
         outputs.refresh(&service.name)?;
         exported_services.push(service.name.clone());
     }
 
     Ok(exported_services)
+}
+
+// Typed manifests and raw Rust metadata share the same opt-out semantics.
+pub(crate) fn raw_contract_export_enabled(project: &toml::Value) -> bool {
+    project
+        .get("metadata")
+        .and_then(|metadata| {
+            metadata
+                .get("contractExport")
+                .or_else(|| metadata.get("contract_export"))
+        })
+        .and_then(toml::Value::as_bool)
+        != Some(false)
 }
 
 pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Result<Vec<String>> {
@@ -418,11 +451,12 @@ pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Re
                 matches!(
                     project.get("type").and_then(toml::Value::as_str),
                     Some("Service" | "Worker")
-                ) && project
-                    .get("metadata")
-                    .and_then(|metadata| metadata.get("language"))
-                    .and_then(toml::Value::as_str)
-                    == Some("rust")
+                ) && raw_contract_export_enabled(project)
+                    && project
+                        .get("metadata")
+                        .and_then(|metadata| metadata.get("language"))
+                        .and_then(toml::Value::as_str)
+                        == Some("rust")
             })
             .filter_map(|project| {
                 project
@@ -446,7 +480,9 @@ pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Re
     let mut exported_services = Vec::new();
     for project in projects {
         let project_type = project.get("type").and_then(toml::Value::as_str);
-        if !matches!(project_type, Some("Service") | Some("Worker")) {
+        if !matches!(project_type, Some("Service") | Some("Worker"))
+            || !raw_contract_export_enabled(&project)
+        {
             continue;
         }
 
@@ -488,7 +524,14 @@ pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Re
             .and_then(|metadata| metadata.get("cratePath"))
             .and_then(toml::Value::as_str)
             .map(|path| app_root.join(path))
-            .unwrap_or_else(|| app_root.join("crates").join(service_name));
+            .unwrap_or_else(|| {
+                let native = app_root.join("src").join(service_name);
+                if native.join("Cargo.toml").is_file() {
+                    native
+                } else {
+                    app_root.join("crates").join(service_name)
+                }
+            });
 
         let artifact = export_rust_service_artifacts(
             app_root,
@@ -522,6 +565,11 @@ fn export_rust_service_artifacts(
         );
     }
 
+    // Export into separate files: the runtime registry has no SDK layout, while
+    // Cargo may refresh that metadata in the service's normal build outputs.
+    let staging = tempfile::tempdir()?;
+    let staged_openapi = staging.path().join("openapi.json");
+    let staged_contract = staging.path().join("contract.json");
     let cargo = resolve_command("cargo");
     let mut child = ProcessCommand::new(&cargo)
         .args(["run", "--manifest-path"])
@@ -529,8 +577,8 @@ fn export_rust_service_artifacts(
         .arg("--quiet")
         .current_dir(app_root)
         .env("FORKLAUNCH_MODE", "contract")
-        .env("FORKLAUNCH_OPENAPI_OUTPUT", openapi_output)
-        .env("FORKLAUNCH_CONTRACT_OUTPUT", contract_output)
+        .env("FORKLAUNCH_OPENAPI_OUTPUT", &staged_openapi)
+        .env("FORKLAUNCH_CONTRACT_OUTPUT", &staged_contract)
         .stdout(Stdio::null())
         .stderr(Stdio::piped())
         .spawn()
@@ -570,14 +618,14 @@ fn export_rust_service_artifacts(
         }
     }
 
-    if !openapi_output.exists() {
+    if !staged_openapi.exists() {
         bail!(
             "Rust OpenAPI file was not created at {} for service {}",
             openapi_output.display(),
             service_name
         );
     }
-    if !contract_output.exists() {
+    if !staged_contract.exists() {
         bail!(
             "Rust contract artifact was not created at {} for service {}",
             contract_output.display(),
@@ -585,9 +633,9 @@ fn export_rust_service_artifacts(
         );
     }
 
-    let contract = fs::read_to_string(contract_output)
-        .with_context(|| format!("Failed to read {}", contract_output.display()))?;
-    let artifact: serde_json::Value =
+    let contract = fs::read_to_string(&staged_contract)
+        .with_context(|| format!("Failed to read {}", staged_contract.display()))?;
+    let mut artifact: serde_json::Value =
         serde_json::from_str(&contract).context("Invalid exported Rust contract artifact")?;
     if artifact["generator"] != "framework-rs" {
         bail!(
@@ -595,6 +643,15 @@ fn export_rust_service_artifacts(
             service_name
         );
     }
+    compiler_metadata::restore(
+        app_root, crate_path, service_name, contract_output, &mut artifact,
+    )?;
+    let mut document = serde_json::from_slice(&fs::read(&staged_openapi)?)?;
+    if artifact["sdkCompiler"] == "forklaunch.sdk.http.v1" {
+        portable::enrich(&mut document, &artifact, service_name)?;
+    }
+    outputs::write_json(contract_output, &artifact)?;
+    outputs::write_json(openapi_output, &document)?;
     Ok(artifact)
 }
 
@@ -984,11 +1041,102 @@ mod native_package_tests {
     use super::*;
 
     #[test]
-    fn exports_registered_crate_with_different_package_and_default_binary_names() {
+    fn opted_out_auth_and_pure_worker_are_never_planned_or_invoked() {
         let directory = tempfile::tempdir().unwrap();
         let root = directory.path();
-        let crate_path = root.join("custom/native api");
-        fs::create_dir_all(crate_path.join("src")).unwrap();
+        for path in [".forklaunch", "src/auth", "src/insights"] {
+            fs::create_dir_all(root.join(path)).unwrap();
+        }
+        fs::write(
+            root.join("src/auth/server.ts"),
+            "throw new Error('opted-out auth exporter was invoked');",
+        )
+        .unwrap();
+        fs::write(
+            root.join("src/insights/Cargo.toml"),
+            r#"
+[package]
+name = "insights"
+version = "0.0.0"
+edition = "2024"
+[[bin]]
+name = "insights"
+path = "main.rs"
+[workspace]
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("src/insights/main.rs"),
+            "fn main() { panic!(\"opted-out worker exporter was invoked\"); }",
+        )
+        .unwrap();
+        let source = r#"
+id = "test"
+cli_version = "0.1.0"
+app_name = "native-review"
+modules_path = "src"
+app_description = "Native review"
+linter = "clippy"
+formatter = "rustfmt"
+validator = "garde"
+http_framework = "axum"
+runtime = "tokio"
+author = "test"
+license = "MIT"
+project_peer_topology = {}
+[[projects]]
+type = "Service"
+name = "auth"
+description = "Bare auth sidecar"
+[projects.metadata]
+language = "typescript"
+contractExport = false
+openapiPath = "../must-not-plan-auth.json"
+[[projects]]
+type = "Worker"
+name = "insights"
+description = "Pure queue worker"
+[projects.metadata]
+language = "rust"
+cratePath = "src/insights"
+contract_export = false
+openapiPath = "../must-not-plan-worker.json"
+"#;
+        fs::write(root.join(".forklaunch/manifest.toml"), source).unwrap();
+        let manifest: ApplicationManifestData = toml::from_str(source).unwrap();
+        let output = root.join("exports");
+        assert!(
+            export_all_services(root, &manifest, &output)
+                .unwrap()
+                .is_empty()
+        );
+        assert!(export_all_rust_services(root, &output).unwrap().is_empty());
+        assert!(!output.exists());
+        let serialized = toml::to_string(&manifest).unwrap();
+        assert_eq!(serialized.matches("contractExport = false").count(), 2);
+    }
+
+    #[test]
+    fn exports_registered_crate_with_different_package_and_default_binary_names() {
+        assert_export_layout(false);
+    }
+
+    #[test]
+    fn exports_flat_native_project_without_explicit_crate_metadata() {
+        assert_export_layout(true);
+    }
+
+    fn assert_export_layout(native: bool) {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let crate_path = root.join(if native {
+            "src/registered-service"
+        } else {
+            "custom/native api"
+        });
+        let source_prefix = if native { "" } else { "src/" };
+        fs::create_dir_all(crate_path.join(source_prefix)).unwrap();
         fs::create_dir_all(root.join(".forklaunch")).unwrap();
         fs::write(
             crate_path.join("Cargo.toml"),
@@ -999,21 +1147,29 @@ edition = "2024"
 default-run = "custom-server"
 [[bin]]
 name = "custom-server"
-path = "src/main.rs"
+path = "main.rs"
 [[bin]]
 name = "admin-tool"
-path = "src/admin.rs"
+path = "admin.rs"
 [workspace]
-"#,
+"#
+            .replace(
+                "path = \"main.rs\"",
+                &format!("path = \"{source_prefix}main.rs\""),
+            )
+            .replace(
+                "path = \"admin.rs\"",
+                &format!("path = \"{source_prefix}admin.rs\""),
+            ),
         )
         .unwrap();
-        fs::write(crate_path.join("src/main.rs"), r#"fn main() {
+        fs::write(crate_path.join(format!("{source_prefix}main.rs")), r#"fn main() {
     assert_eq!(std::env::var("FORKLAUNCH_MODE").unwrap(), "contract");
     std::fs::write(std::env::var("FORKLAUNCH_OPENAPI_OUTPUT").unwrap(), "{\"openapi\":\"3.1.0\"}").unwrap();
     std::fs::write(std::env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap(), "{\"generator\":\"framework-rs\",\"routes\":[]}").unwrap();
 }"#).unwrap();
         fs::write(
-            crate_path.join("src/admin.rs"),
+            crate_path.join(format!("{source_prefix}admin.rs")),
             "fn main() { panic!(\"wrong binary\"); }",
         )
         .unwrap();
@@ -1027,7 +1183,15 @@ language = "rust"
 cratePath = "custom/native api"
 contractArtifactPath = "custom/contracts/native.json"
 openapiPath = "custom/specs/native.json"
-"#,
+"#
+            .replace(
+                "cratePath = \"custom/native api\"",
+                if native {
+                    ""
+                } else {
+                    "cratePath = \"custom/native api\""
+                },
+            ),
         )
         .unwrap();
         let output = root.join("exported");

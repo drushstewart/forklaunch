@@ -37,7 +37,7 @@ async fn verify() {
             assert_eq!(serde_json::to_value(&value).unwrap(), original);
             let PresencePresenceWritePresenceResponses::Status200(echo) = client
                 .presence_write_presence(PresencePresenceWritePresenceRequest {
-                    body: Some(serde_json::to_string(&value).unwrap()),
+                    body: Some(serde_json::from_value(serde_json::to_value(&value).unwrap()).unwrap()),
                     ..Default::default()
                 })
                 .await

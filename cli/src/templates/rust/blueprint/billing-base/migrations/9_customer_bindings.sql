@@ -1,0 +1,1 @@
+../../../../../../../blueprint-rs/crates/implementations/billing/billing-base/migrations/9_customer_bindings.sql

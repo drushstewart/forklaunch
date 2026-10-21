@@ -1,11 +1,11 @@
 //! Redis is synchronous; call `connect` and cache operations on a blocking executor.
-use std::time::Duration;
+use std::{time::Duration, env};
 
-use forklaunch_core::common::{FrameworkError, FrameworkResult};
-use forklaunch_infrastructure_redis::{RedisTtlCacheConfig, client::RedisTtlCache};
+use forklaunch_core::{common::{FrameworkError, FrameworkResult}, persistence::json::JsonRecordCodec};
+use forklaunch_infrastructure_redis::{RedisTtlCacheConfig, client::{RedisTtlCache, RedisQueue}, json::{JsonCache, JsonQueue}};
 
 pub fn config() -> FrameworkResult<RedisTtlCacheConfig> {
-    let url = std::env::var("REDIS_URL")
+    let url = env::var("REDIS_URL")
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| FrameworkError::new("redis_config_invalid", "REDIS_URL is required"))?;
@@ -21,21 +21,16 @@ pub fn connect() -> FrameworkResult<RedisTtlCache> {
 
 /// Explicit encrypted JSON factory; ENCRYPTION_KEY is only required when this is called.
 pub fn encrypted_cache()
--> FrameworkResult<forklaunch_infrastructure_redis::json::JsonCache<RedisTtlCache>> {
-    let codec = forklaunch_core::persistence::json::JsonRecordCodec::from_env()?;
-    Ok(forklaunch_infrastructure_redis::json::JsonCache::new(
-        connect()?,
-        codec,
-    ))
+-> FrameworkResult<JsonCache<RedisTtlCache>> {
+    let codec = JsonRecordCodec::from_env()?;
+    Ok(JsonCache::new(connect()?, codec))
 }
 
 /// Explicit encrypted FIFO queue factory sharing the configured Redis URL/key ring.
 pub fn encrypted_queue(
     name: &str,
-) -> FrameworkResult<forklaunch_infrastructure_redis::json::JsonQueue> {
-    let codec = forklaunch_core::persistence::json::JsonRecordCodec::from_env()?;
-    let queue = forklaunch_infrastructure_redis::client::RedisQueue::connect(&config()?.url, name)?;
-    Ok(forklaunch_infrastructure_redis::json::JsonQueue::new(
-        queue, codec,
-    ))
+) -> FrameworkResult<JsonQueue> {
+    let codec = JsonRecordCodec::from_env()?;
+    let queue = RedisQueue::connect(&config()?.url, name)?;
+    Ok(JsonQueue::new(queue, codec))
 }

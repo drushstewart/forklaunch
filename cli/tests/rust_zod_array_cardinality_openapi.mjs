@@ -108,7 +108,7 @@ const baselineCandidates=candidates.length;
 candidates.push(...projected);
 let native;
 if(process.env.FORKLAUNCH_CARDINALITY_PROBE_NATIVE==='1'){
- const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-contract','--features',process.env.FORKLAUNCH_CARDINALITY_PROBE_FEATURES==='arbitrary'?'zod-checks,jsonschema/arbitrary-precision':'zod-checks','--example','array_cardinality_parity'],{input:candidates.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+ const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features',process.env.FORKLAUNCH_CARDINALITY_PROBE_FEATURES==='arbitrary'?'zod-checks,jsonschema/arbitrary-precision':'zod-checks','--example','array_cardinality_parity'],{input:candidates.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
  assert.equal(run.status,0,run.stderr);native=run.stdout.trim().split('\n').map(line=>JSON.parse(line));assert.equal(native.length,candidates.length);
  for(let index=0;index<baselineCandidates;index++) {
   const candidate=candidates[index],bound=candidate.schema.minItems??candidate.schema.maxItems;

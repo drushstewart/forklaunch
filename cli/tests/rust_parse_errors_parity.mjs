@@ -34,7 +34,7 @@ for(const correlation_id of [undefined,null,'','fixture-id','用户 😀']) {
   for(const errors of [null,[],[{path:[],message:'Expected string, received number'}]]) cases.push({response_response:true,correlation_id,header_errors,errors});
  }
 }
-const native = spawnSync('cargo', ['run', '--quiet', '--manifest-path', path.join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-validation', '--example', 'parse_errors_parity'], {
+const native = spawnSync('cargo', ['run', '--quiet', '--manifest-path', path.join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-core', '--features', 'http', '--example', 'parse_errors_parity'], {
   input: cases.map(value => JSON.stringify(value)).join('\n') + '\n', encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 300000,
   env: {...process.env, CARGO_INCREMENTAL: '0'},
 });
@@ -71,9 +71,9 @@ for (const [index, value] of cases.entries()) {
     send(body){observed.body=body;return this;},
   };
   parseRequest(req,res,()=>assert.fail('invalid request reached handler'));
-  // Request parse sets this transient type; enriched send applies the injected
-  // default400:string contract. The live canonical fixture verifies final media.
-  assert.equal(observed.type,'application/json');
+  // Actual request middleware declares plain text; Express adds its charset
+  // when sending the string. The live canonical fixture verifies final media.
+  assert.equal(observed.type,'text/plain');
   assert.deepEqual(results[index], {...observed, type:'text/plain; charset=utf-8'});
 }
 console.log(`PASS ${formatCaseCount} actual TypeScript parse-error formatting comparisons and ${requestCaseCount} actual request middleware error bodies/statuses (final media covered live)`);

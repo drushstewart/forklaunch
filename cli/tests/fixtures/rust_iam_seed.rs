@@ -1,7 +1,7 @@
 //! Test-only provisioning for the generated IAM runtime fixture.
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
 use forklaunch_iam_base::directory::{postgres::PostgresDirectoryStore,service::BaseIamDirectory,DirectoryKind,DirectoryStore,DirectoryTransaction};
-use forklaunch_blueprint_core::AuditContext;
+use forklaunch_core::domain::AuditContext;
 use forklaunch_iam_interface::services::{UserService,RoleService,PermissionService,OrganizationService};
 use std::sync::Arc;
 use serde_json::{json,Value};

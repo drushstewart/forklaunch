@@ -68,6 +68,7 @@ impl CliCommand for LibraryCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
         let project_names =
             rust_project::registered_project_names(&app_root_path, RustProjectKind::Library)?;
@@ -192,6 +193,8 @@ impl CliCommand for LibraryCommand {
         );
 
         write_rendered_templates(&rendered_templates, false, &mut stdout)?;
+
+        crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
 
         log_ok!(stdout, "{} deleted successfully!", library_name);
 

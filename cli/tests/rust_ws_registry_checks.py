@@ -7,7 +7,7 @@ import sys
 
 cli = sys.argv[1]
 manifest = Path('.forklaunch/manifest.toml')
-fixture = Path('crates/realtime/src/socket_contract_fixture.json')
+fixture = Path('src/realtime/api/controllers/socket_contract_fixture.json')
 artifact = Path('.forklaunch/socket-contracts/realtime/socket-contract.json')
 marker = artifact.with_name('registry-export.json')
 custom = Path('custom/registry-sockets.json')

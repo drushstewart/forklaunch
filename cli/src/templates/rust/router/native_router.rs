@@ -1,5 +1,6 @@
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::{BodyContract, BodyKind, RouteContract, SchemaRef};
+use forklaunch_core::contract::{BodyContract, BodyKind, RouteContract, SchemaRef};
+use axum::Json;
 
 pub const ROUTE_NAME: &str = "{{{router_name}}}";
 
@@ -14,6 +15,6 @@ pub fn contracts() -> Vec<RouteContract> { vec![contract()] }
 
 pub fn register(router: ForkLaunchRouter) -> ForkLaunchRouter {
     router.get(contract(), || async {
-        axum::Json(serde_json::json!({"route": ROUTE_NAME, "status": "ok"}))
+        Json(serde_json::json!({"route": ROUTE_NAME, "status": "ok"}))
     })
 }

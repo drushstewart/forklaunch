@@ -16,7 +16,7 @@ function run(command, args, env = process.env) {
 }
 let server;
 try {
-  run('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-sdk-rust', '-p', 'forklaunch-sdk-typescript', 'native_sdk_preserves'], { ...process.env, FORKLAUNCH_TEST_NATIVE_SDK_OUTPUT: temporary });
+  run('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-core','--features','build,asyncapi-import', '-p', 'forklaunch-core','--features','build,asyncapi-import', 'native_sdk_preserves'], { ...process.env, FORKLAUNCH_TEST_NATIVE_SDK_OUTPUT: temporary });
   writeFileSync(join(temporary, 'typed-usage.ts'), `
 import { createForkLaunchSdk } from './typed-native-sdk';
 export async function verifyTypes(sdk = createForkLaunchSdk()) {

@@ -1,12 +1,13 @@
 //! Explicit S3 client configuration. Construction never creates a bucket.
-use forklaunch_core::common::{FrameworkError, FrameworkResult};
+use forklaunch_core::{common::{FrameworkError, FrameworkResult}, persistence::json::JsonRecordCodec};
 use forklaunch_infrastructure_s3::{
     S3ObjectStoreConfig,
     aws::{AwsS3ObjectStore, aws_sdk_s3},
 };
+use std::env;
 
 fn required(name: &str) -> FrameworkResult<String> {
-    std::env::var(name)
+    env::var(name)
         .ok()
         .filter(|value| !value.trim().is_empty())
         .ok_or_else(|| FrameworkError::new("s3_config_invalid", format!("{name} is required")))
@@ -40,15 +41,13 @@ pub fn object_store() -> FrameworkResult<AwsS3ObjectStore> {
 
 /// Production/default-chain factory, also honoring local overrides, prefix and presign limits.
 pub async fn configured_object_store() -> FrameworkResult<AwsS3ObjectStore> {
-    forklaunch_infrastructure_s3::aws::environment::S3Environment::from_env()?
-        .into_store()
-        .await
+    forklaunch_infrastructure_s3::aws::environment::S3Environment::from_env()?.into_store().await
 }
 
 /// Explicit encrypted JSON factory using the AWS chain and ENCRYPTION_KEY.
 pub async fn encrypted_object_store()
 -> FrameworkResult<forklaunch_infrastructure_s3::json::JsonObjectStore<AwsS3ObjectStore>> {
-    let codec = forklaunch_core::persistence::json::JsonRecordCodec::from_env()?;
+    let codec = JsonRecordCodec::from_env()?;
     Ok(forklaunch_infrastructure_s3::json::JsonObjectStore::new(
         configured_object_store().await?,
         codec,

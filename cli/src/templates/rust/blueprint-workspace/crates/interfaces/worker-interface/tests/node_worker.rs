@@ -1,0 +1,1 @@
+../../../../../../../../../blueprint-rs/crates/interfaces/worker-interface/tests/node_worker.rs

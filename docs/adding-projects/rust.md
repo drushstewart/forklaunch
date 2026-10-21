@@ -6,7 +6,7 @@ description: Generate Rust services, contracts, and TypeScript or Rust SDKs.
 
 # Rust backend generation
 
-The Rust port lives on `rohin/rust-framework`. It adds Rust services, workers, libraries, routers, contract exports, and generated SDKs to the existing CLI.
+The CLI generates Rust services, workers, libraries and routers alongside TypeScript projects. Application initialization is language neutral; choose the language when adding each project. Framework crates are published under `forklaunch-*`, while generated application folders keep ordinary names such as `core`, `accounts` and `jobs`.
 
 The [framework guide](../../framework-rs/GUIDE.md) and
 [blueprint guide](../../blueprint-rs/GUIDE.md) provide crate/feature catalogs,
@@ -15,13 +15,27 @@ API reference build commands, and operational boundaries.
 ## Create and run a service
 
 ```sh
-forklaunch init application my-app --language rust -D "My app" -A "My team" -L MIT
+forklaunch init application my-app -D "My app" -A "My team" -L MIT
 cd my-app
-forklaunch init service accounts --language rust -d postgresql -D "Accounts service"
-forklaunch init router users --language rust --path crates/accounts
+forklaunch init service accounts --language rust -D "Accounts service"
+forklaunch init router users --language rust --path src/accounts
 cargo test --workspace
 cargo run -p accounts
 ```
+
+The application command prompts for shared tooling settings; it does not require a
+language or SDK target. In scripts, pass `--database postgresql --validator zod
+--formatter prettier --linter eslint --http-framework express --runtime node
+--test-framework vitest` to supply those settings explicitly.
+
+The root `Cargo.toml` is the workspace. Each service or worker owns its Cargo
+package, migrations, tests and scripts under the configured modules directory
+(`src` by default), beside TypeScript projects. Controllers, routes, domain
+schemas/services, persistence, registrations and startup have separate files;
+`lib.rs` and `main.rs` expose and start them. `--mappers` adds optional mapping
+functions. A service without `--database` uses the in-memory starter. Selecting
+`--database postgresql` generates its PostgreSQL repository and service-local
+migrations; configure the database and encryption settings before running it.
 
 The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentation UI at `/docs`. `HOST`/`PORT` (or `SERVICE_HOST`/`SERVICE_PORT`) configure the listener. `DOCS_PATH`, `DOCS_SERVER_URLS`, and `DOCS_SERVER_DESCRIPTIONS` configure documentation. Ctrl-C and SIGTERM stop the HTTP server gracefully.
 
@@ -55,11 +69,15 @@ An existing Cargo workspace retains its members, comments and configuration;
 missing inherited package settings are filled from the application. Generated
 native crates require `workspace.package.edition = "2024"` and a root
 `Cargo.toml`. Incompatible configuration is reported before attachment writes.
-Commit the new Cargo files and bundled `.forklaunch/framework-rs` and, when
-present, `.forklaunch/blueprint-rs` sources with the application.
+Commit the Cargo files, generated SDK sources, and any `.forklaunch/blueprint-rs`
+sources used by selected modules or workers.
+The default framework dependencies resolve exact published versions; there is
+no framework source copy in a default new application.
 
-Native Compose services use a separate `Dockerfile.rust` and
-`Dockerfile.rust.dockerignore`. Existing TypeScript Dockerfiles remain in place.
+Compose selects adjacent root `Dockerfile.rust` and `Dockerfile.typescript`
+files by project language. Each image builds the projects for that language;
+Compose selects the service or worker command. Existing custom Dockerfiles are
+preserved or reported for reconciliation before an owned file is replaced.
 Use `docker compose build inventory` and `docker compose up inventory` to build
 and start the native service. Its HTTP and MCP settings are the same as in a
 Rust-first application. Node and Bun migration fixtures compile relocated native
@@ -68,7 +86,7 @@ separate native container build are validated.
 
 Install the TypeScript application's dependencies before exporting all services,
 then run `forklaunch openapi export` and `forklaunch sdk generate --target all
---from contract` to build the shared HTTP SDK described below. Adding TypeScript
+--from contract` to refresh the project-local HTTP SDKs described below. Adding TypeScript
 scaffolding to a Rust-first app and mixed development with `forklaunch dev` are
 described below.
 
@@ -80,8 +98,9 @@ pnpm install
 pnpm build
 ```
 
-The first TypeScript service, worker, library or module adds a `modules` workspace
-using Node, Express, Zod, Prettier, ESLint and Vitest. Application settings switch
+The first TypeScript service, worker, library or module uses the configured
+modules directory (`src` by default), beside native projects, with Node, Express,
+Zod, Prettier, ESLint and Vitest. Application settings switch
 to those JavaScript tools and mark the app mixed; native projects retain their
 Cargo paths and sources. The root package workspace includes both TypeScript
 projects and existing SDK packages. Existing scripts and dependency versions are
@@ -90,8 +109,8 @@ and JavaScript packages when no custom root build script already exists.
 
 Initialization stages the workspace and requested project before updating the
 application. `--dryrun` leaves it unchanged, and failed project generation does
-not publish the staged workspace. The `modules` directory and foundational
-project names (`core`, `monitoring`, `client-sdk`) must be available. External
+not publish the staged workspace. The foundational project names (`core`, `monitoring`, `client-sdk`) must be
+available; unrelated existing native projects retain their directories. External
 application symlinks are rejected during staging; internal links are preserved.
 Local application scaffolding does not require a platform login.
 
@@ -107,7 +126,7 @@ validation remains separate work.
 ```sh
 forklaunch init module storefront shop --from /path/to/capture/manifest.json --path .
 forklaunch sync library shop --path .
-forklaunch change library -N boutique -D "Captured shop" --path crates/shop --confirm
+forklaunch change library -N boutique -D "Captured shop" --path src/shop --confirm
 ```
 
 Captured storefronts work in Rust, Node, Bun and mixed applications. Initialization
@@ -126,7 +145,9 @@ or SDK routes. Hosting the captured frontend remains a separate deployment step.
 ## Native Better Auth
 
 ```sh
-forklaunch init application my-auth-app --language rust --modules iam-better-auth -D "Auth app" -A "My team" -L MIT
+forklaunch init application my-auth-app -D "Auth app" -A "My team" -L MIT
+cd my-auth-app
+forklaunch init module iam --language rust -m iam-better-auth -d postgresql -D "Authentication"
 ```
 
 The `iam` service includes the configured Better Auth 1.7.6 authentication API,
@@ -167,8 +188,8 @@ delivery implementation. This fixed profile uses six digits, 180 seconds and
 five invalid attempts, and awaits delivery after encrypted storage commits.
 The hook receives a public user projection and the short-lived code, without a
 session token. Delivery targets never come from authentication input. See
-[the delivery API and failure semantics](../../blueprint-rs/crates/implementations/iam/forklaunch-iam-better-auth/README.md#optional-delivered-otp).
-Generated presets do not select a delivery channel. Trusted applications can use
+[the delivery API and failure semantics](../../blueprint-rs/crates/implementations/iam/iam-better-auth/README.md#optional-delivered-otp).
+Generated modules do not select a delivery channel. Trusted applications can use
 `OtpOptions::new(digits, validity, allowed_attempts)` and
 `AuthHttp::with_two_factor_otp_options` to configure 1–32 digits, positive whole
 milliseconds and 1–100 invalid attempts. Existing codes retain their original
@@ -181,7 +202,7 @@ and applies to existing secrets without rewriting them. Nonnegative clock bounds
 and the source's floating-point period arithmetic are explicit; see the native
 README for unsupported historical-clock and lifecycle-option boundaries.
 
-This preset serves one configured tenant. `AuthTransaction::find_unique` performs
+This module serves one configured tenant. `AuthTransaction::find_unique` performs
 exact email/subscription and organization-slug lookups using the existing
 PostgreSQL blind indexes across current and previous encryption keys. It checks
 the decrypted field before returning a match. `get_many` loads up to 4,096 IDs in
@@ -207,7 +228,7 @@ The CLI creates editable factories in `src/infrastructure/redis.rs` and `src/inf
 
 HTTP and MCP startup do not connect these factories automatically. Call `redis_infrastructure::connect()`, `s3_infrastructure::object_store()`, or `s3_infrastructure::configured_object_store().await` where your application needs storage. Both S3 factories honor `S3_PREFIX`, `S3_PRESIGN_MAX_UPLOAD_SECONDS` and `S3_PRESIGN_MAX_DOWNLOAD_SECONDS`; default presign caps are 900 and 300 seconds. These factories expose the raw adapters; application encryption/compliance policies must be supplied separately.
 
-Use `infra remove accounts redis` or `infra remove accounts s3` to undo owned settings. `change service --path crates/accounts --infrastructure redis` replaces the enabled local infrastructure list; an empty `--infrastructure` removes both. Custom factories and settings survive sync, rename and removal, and a shared backend remains while another service uses it. Restoration records are private local files; after a Git clone, removal retains settings and dependencies whose ownership is unknown.
+Use `infra remove accounts redis` or `infra remove accounts s3` to undo owned settings. `change service --path src/accounts --infrastructure redis` replaces the enabled local infrastructure list; an empty `--infrastructure` removes both. Custom factories and settings survive sync, rename and removal, and a shared backend remains while another service uses it. Restoration records are private local files; after a Git clone, removal retains settings and dependencies whose ownership is unknown.
 
 `forklaunch_infrastructure_redis::client::RedisQueue::connect` uses the same `LPUSH`/`RPOP` FIFO layout as TypeScript, including peeks in dequeue order. For a list written by the earlier native `RPUSH`/`LPOP` implementation, use `connect_with_layout(url, key, RedisQueueLayout::LegacyNative)` consistently for its producers and consumers. Drain an existing backlog using its original layout before switching it.
 
@@ -240,63 +261,86 @@ Use `forklaunch infra remove accounts email --path .` to remove a capability. Re
 
 ## Export contracts and SDKs
 
+Controllers own their inline contracts. Domain schemas provide the reusable
+request/response structures, validation and compliance annotations. A private
+contract build host compiles these definitions without starting the service.
+Ordinary `cargo check`, `cargo build` and `cargo test` regenerate the service's
+OpenAPI document, named TypeScript declarations and Rust client:
+
+```text
+src/accounts/
+  api/controllers/
+  domain/schemas/
+  sdk/typescript/{contract.json,openapi.json,sdk.ts,index.ts,package.json}
+  sdk/rust/{Cargo.toml,build.rs,src/lib.rs}
+```
+
+The generated TypeScript package exports discrete types and uses the existing
+universal SDK transport. It does not widen every model to
+`Record<string, unknown>`. Client packages take type-only dependencies on these
+service packages. For example, after creating the `users` router:
+
+```ts
+import { universalSdk } from '@forklaunch/universal-sdk';
+import type { AccountsSdkClient } from './src/accounts/sdk/typescript/sdk';
+
+const openapi = await fetch('http://localhost:8000/openapi.json').then(r => r.json());
+const accounts = await universalSdk<AccountsSdkClient>({
+  host: 'http://localhost:8000',
+  registryOptions: { raw: openapi }
+});
+const users = await accounts.users.listUsers({});
+```
+
+The local Rust SDK package reexports named models and a `Client` backed by
+`forklaunch_universal_sdk`. Its dependency graph does not include the server's
+bootstrapper or persistence implementation. To aggregate local Rust clients:
+
+```sh
+forklaunch init library clients --language rust --sdk-services accounts -D "Service clients"
+```
+
+The aggregate depends on the selected local SDK packages and reexports them;
+it has no separate contract build host. Renaming a service preserves aggregate
+import aliases while updating its dependency path.
+
+Explicit export, imported OpenAPI and freshness checks remain available:
+
 ```sh
 forklaunch openapi export --path .
 forklaunch sdk generate --path . --target all --from contract
 forklaunch sdk generate --path . --target all --from contract --check
+forklaunch sdk generate --path . --target all --from openapi
 ```
 
-Exports are written under `.forklaunch/contracts/<service>/contract.json` and `.forklaunch/openapi/<service>/openapi.json`. TypeScript output lives in `sdks/typescript`; Rust SDK crates live in `sdks/rust`. New TypeScript SDKs include a strict browser-compatible `tsconfig.json`, so their `build` script and `pnpm sdk:typecheck` work directly. SDK regeneration preserves an existing compiler configuration. `--sdk-targets rust` on app initialization omits the TypeScript package scaffold. Rust services require generated SDKs; live TypeScript SDK mode is rejected.
+CLI export includes the portable operation descriptors consumed by the shared
+SDK runtime, including for custom output paths. With framework v0.1.0, use this
+command or the ordinary compilation assets when a consumer needs those
+descriptors; the low-level native offline writer emits standard OpenAPI only.
 
-HTTP SDK generation adds the SDK and existing TypeScript modules to the root
-JavaScript workspace, including TypeScript-first applications with a configured
-modules directory. PNPM membership is merged as YAML; Bun also receives root
-`workspaces` entries. Existing scripts, dependency versions and root workspace
-policies take precedence, while missing module tooling and policies are retained.
-The default root build runs Cargo when present, then all JavaScript package
-builds. A custom root build script remains application-owned. Module source and
-nested workspace files are preserved. Socket-only SDK generation uses the same
-PNPM/Bun workspace integration and provides separate `sdk:socket:generate`,
-`sdk:socket:check`, `sdk:socket:watch` and `sdk:socket:typecheck` scripts. Socket
-`--check` includes root package/workspace drift and leaves these files unchanged.
-Bun workspaces also inherit the generated release-age policy and exact package
-exemptions in root `bunfig.toml`; existing root values and comments are retained.
-Other module-relative Bun options remain in the nested file and can be configured
-separately for root installs.
+The public `universalSdk` options accept an injected `fetch`,
+`maxSseEventBytes` and `maxMultipartResponseBytes`. Portable contracts also accept
+default `headers`, an asynchronous `beforeRequest` hook and `serviceBaseUrls`.
+Request headers override defaults. Remote plaintext transport requires the
+explicit development-only `allowPlaintextDevelopment` option. Fetch is shared by registry
+discovery/refresh and API requests; the size limits bound portable response
+decoders. `forkLaunchQueryOptions`, `forkLaunchMutationOptions` and
+`ForkLaunchSdkHttpError` are exported from `@forklaunch/universal-sdk`.
 
-In a mixed application, the shared `sdks/typescript` package includes both native
-and TypeScript services. `--from contract` uses Rust contracts and TypeScript
-OpenAPI exports; `--from openapi` uses OpenAPI for both. Rust clients are generated
-for both languages too. Run `openapi export` before generation, and use
-`serviceBaseUrls` to point each client at its service origin:
+The root PNPM/Bun workspace includes native SDK packages at the configured
+modules path. Existing scripts and dependency versions are preserved. Generated
+TypeScript services use their SDK compiler during build to emit both targets;
+existing services with custom build hooks require those hooks to export their
+artifacts. `sdk watch` preserves the previous SDK if an artifact is missing or
+malformed and resumes after it becomes valid. `--service` scopes regeneration,
+and `--check` reports stale outputs without writing them.
 
-```ts
-import { createForkLaunchSdk } from './sdks/typescript/src/index.js';
+### Legacy artifact and importer compatibility
 
-const sdk = createForkLaunchSdk({
-  serviceBaseUrls: {
-    'native-api': 'http://localhost:8000',
-    'typescript-api': 'http://localhost:8001'
-  }
-});
-```
-
-`forklaunch sdk watch --from contract` watches both languages, the manifest and
-configured artifact paths. It keeps the previous SDK when an export is missing
-or malformed and resumes after the artifact changes. The CLI records imported
-TypeScript service names in `.forklaunch/sdk/http-sources.json`; keep this file
-with the application so lifecycle regeneration can reject missing exports instead
-of silently dropping clients. A newly registered TypeScript service without an
-export is skipped only by internal lifecycle refresh; explicit SDK generation
-requires every selected service's artifact. `forklaunch dev` rebuilds services;
-contract export and SDK watching remain separate commands.
-
-OpenAPI export refreshes each service's configured `openapiPath` as well as the
-requested `<output>/<service>/openapi.json` layout, for both native and TypeScript
-services. This also applies to `sync all` and release export. Configured paths
-must stay inside the application; conflicting service output paths reject before
-exporters start. Registered copies are replaced atomically so SDK watchers see
-complete documents.
+Existing manifests can retain shared `.forklaunch/contracts`,
+`.forklaunch/openapi` and `sdks/` output paths. The CLI still reads those paths;
+new native scaffolds use the project-local layout above. The following importer
+and legacy client details describe that compatibility path.
 
 `--from openapi` reads the actual OpenAPI 3.0/3.1 JSON artifact at each project's `openapiPath`; export it first. It uses operation IDs and JSON parameter schemas, with JSON, text, URL-encoded form, multipart or raw binary request bodies, resolving document-local schema graphs with expansion limits. Missing artifacts, external/missing references, unguarded recursive aliases, unsupported identifiers and unsupported body formats fail before SDK files are written. The importer preserves every explicit 200–599 status with a JSON, text, binary, or absent body, including declared business-error payloads. Each status currently supports one media type. TypeScript narrows each status to its payload, and Rust returns a separate enum variant; the lowest status retains the original response model name, with `StatusNNN` model suffixes for other variants. Conflicting generated names and duplicate statuses fail before output writes. Empty responses (including 204/205 and HEAD) resolve to `undefined` in TypeScript and `()` in Rust; explicit JSON `null` remains distinct. Text responses decode as strings; binary downloads decode as `Uint8Array` in TypeScript and `Vec<u8>` in Rust. Declared JSON errors override default error types, including `application/problem+json`. Schema-free JSON remains `unknown`/`serde_json::Value`. Nullable schemas support OpenAPI 3.0 `nullable`, null-containing type arrays, and single nullable `anyOf`/`oneOf` alternatives. Dictionaries retain typed values, and open objects preserve additional fields through Serde flattening. Rust `oneOf`, `anyOf`, and multiple-type schemas generate untagged enums with ordered `Variant1`, `Variant2`, etc. branches, including nested arrays and objects. Serde chooses the first deserializable branch; full schema-constraint validation remains the server’s responsibility. Closed structured objects reject unknown fields during decoding. Nullable root objects use a distinct inner model. Text uploads use `body: string`; raw binary uploads use `body: Uint8Array` in TypeScript and `body: Option<Vec<u8>>` in Rust. JSON, text and URL-encoded Rust requests retain `Option<String>`; form strings must already be URL-encoded. TypeScript URL-encoded form requests accept the schema-derived object or `URLSearchParams`; field records encode composite values with the shared TypeScript `safeStringify` implementation. Clients send the contract media type and preserve binary view offsets. Multipart responses, complete schema-constraint conformance and equivalent framework-native code generator behavior remain parity tasks. Artifact paths must stay inside the application.
 
@@ -304,25 +348,25 @@ Rust model fields retain wire presence: optional non-nullable fields use `Option
 
 CLI SDKs preserve guarded recursive schemas from contract and OpenAPI artifacts, including self/mutual references, optional and nullable fields, arrays, dictionaries and object/array unions. TypeScript emits named recursive aliases; Rust emits named structs/enums and transparent wrappers for recursive collection types. Rust boxes direct reference edges while vectors provide their own indirection. Acyclic references retain inline types. Generated `Default` implementations are omitted when required recursive edges would make them recurse forever. External references, resource IDs/dynamic references, unsupported validation siblings and unguarded alias cycles fail before writes; reference processing retains node, depth and byte limits. OpenAPI export rebases standalone schema pointers into their component location without rewriting examples, constants or properties named `$ref`. Run `rust_recursive_sdk_runtime.sh` for strict compilation, live recursive payloads through both SDKs/artifact formats and HTTP/MCP startup/shutdown checks. Both framework-native HTTP generators use the same bounded recursive model compiler and run against these live fixtures. Broader schema constraints, resource IDs, anchors and dynamic references remain open.
 
-`forklaunch_sdk_rust::generate_rust_http_sdk_source(&plan, &options)` generates a transport-capable reqwest client directly from `SdkGenerationPlan`. The plan retains request/field JSON schemas and response body kind, MIME and JSON schemas from the registry. Native clients share the CLI model compiler, Serde presence rules, client/auth/hooks template and bounded SSE implementation, including typed business-error status variants and separate empty versus JSON-null responses. Their generated crates need reqwest features `json` and `query` (plus `multipart` when used), serde with `derive`, and serde_json. The existing `generate_rust_sdk_source` remains a dependency-free request builder for custom transports. Presence, recursive-model and SSE runtime scripts now also compile and invoke native clients against the same HTTP/MCP services.
+`forklaunch_core::rust_sdk::generate_rust_http_sdk_source(&plan, &options)` generates a transport-capable reqwest client directly from `SdkGenerationPlan`. The plan retains request/field JSON schemas and response body kind, MIME and JSON schemas from the registry. Native clients share the CLI model compiler, Serde presence rules, client/auth/hooks template and bounded SSE implementation, including typed business-error status variants and separate empty versus JSON-null responses. Their generated crates need reqwest features `json` and `query` (plus `multipart` when used), serde with `derive`, and serde_json. The existing `generate_rust_sdk_source` remains a dependency-free request builder for custom transports. Presence, recursive-model and SSE runtime scripts now also compile and invoke native clients against the same HTTP/MCP services.
 
-Mixed applications select per-project sync and deletion from the project's
-language. TypeScript service, worker, library and router commands retain the
-application's native workspace, language, SDK targets and artifact settings.
-TypeScript rename and deletion continue to update their own source/package files.
-`forklaunch sync all --confirm` discovers TypeScript projects alongside native
-projects, restores registered native Cargo members at custom paths, and removes
-missing native registrations and their generated library dependencies. It exports
-both languages and refreshes the configured `sdkTargets`; a Rust-only target does
-not create a TypeScript SDK workspace. Unrecognized directories are skipped with
-a warning, and project sync failures stop the command. Use `forklaunch dev` for
-mixed service startup and source reloads.
+Mixed applications select sync, change and deletion behavior from each project's
+language and registered path. `forklaunch sync all --confirm` discovers native
+and TypeScript projects, restores Cargo members at custom paths, and removes
+missing registrations plus their owned local dependencies. Aliased Cargo
+dependencies retain their public alias and features. Missing or malformed
+exports are reported instead of silently inventing service contracts.
 
-`sync`, `change`, and `delete` update Cargo membership, local library dependencies, Compose services, manifest entries, and SDK references. Initialization and sync preserve existing application code. Service/worker conversion replaces the generated project shape. Lifecycle SDK refresh preserves each available service contract independently; a missing artifact falls back only for that service, while malformed artifacts fail explicitly. Generated service fallback methods keep their exported names (`getHealth`, `listUsers`). Deletion refreshes existing Rust SDK crates as well as an existing TypeScript client, including Rust-only applications.
+`sync`, `change` and `delete` reconcile Cargo/package membership, Compose,
+manifest entries and SDK references while preserving custom application code.
+Consumer-only leased workers can change between supported PostgreSQL and Redis
+backends while retaining their handler and event schema. Producer-backed and
+Apalis queue migrations need an explicit migration design; the CLI rejects an
+unsupported conversion before replacing application files.
 
 ### Mixed compliance clients
 
-`modules/client-sdk/compliance.ts` retains TypeScript client types and accepts
+`src/client-sdk/compliance.ts` (or the configured modules path) retains TypeScript client types and accepts
 native compliance adapters without importing nonexistent TypeScript factories:
 
 ```ts
@@ -419,21 +463,40 @@ native and TypeScript changes without starting containers or writing application
 
 ## Portable source and containers
 
-Generated applications include framework source in `.forklaunch/framework-rs`. Commit this directory with the application. Cargo uses relative dependencies, so moving the application or building it inside Docker does not require the CLI author's repository checkout. Existing bundled source is preserved when initialization is repeated.
+New applications use exact published framework versions by default. The 13
+framework packages are listed in [the release guide](rust-releases.md).
+`--framework-snapshot` explicitly embeds framework source under
+`vendor/framework`; `--framework-path` selects a development checkout. These
+source modes are alternatives to `--framework-version`. Local folders omit the
+published crate prefix.
+
+Selected modules/workers still use local `.forklaunch/blueprint-rs` sources. Those 28 blueprint
+crates are excluded from the framework release. Commit these required local
+sources and `Cargo.lock` with an application.
 
 ```sh
+cargo generate-lockfile
 docker compose build accounts
 docker compose up accounts
 ```
 
-The generated Dockerfile builds workspace binaries, and Compose selects the service binary, port, and health check. A relocated generated-service image passes local build, health/OpenAPI, and SIGTERM shutdown checks. Release metadata selects the root `Dockerfile.rust` for native services and workers
-in Node/Bun applications, and the module workspace Dockerfile for TypeScript.
-A project-local Dockerfile takes precedence with its project-local build context.
-Container deployment to ECS has not yet been verified.
+The adjacent root `Dockerfile.rust` and `Dockerfile.typescript` each build the
+relevant projects and required local dependencies. Compose selects the process
+command. The Rust runtime image runs as UID 65532; compiler concurrency defaults
+to two and is configurable through the `CARGO_BUILD_JOBS` build argument.
+A custom project Dockerfile takes precedence in release metadata with its
+project-local build context. Container deployment to ECS is separately tracked.
 
 ## Current boundaries
 
-Generic generated service persistence is an in-memory example. Selecting a database records configuration; it does not create a production database repository or migrations. The PostgreSQL IAM module below provides persistent storage and migrations. New PostgreSQL database workers use the durable queue and runner described below. New Redis workers also use the durable leased queue and runner. Generated Kafka and BullMQ workers also use native durable backends. Billing, messaging, ecommerce and their provider modules have generated native HTTP/MCP runtimes described below. Full authentication coverage, provider crash reconciliation, SDK streaming/multipart helpers, broader conformance, crate publication and production deployment validation remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`.
+The published framework and current CLI generation/lifecycle checks have
+separate receipts in [the release tracker](../../plan/RUST-CRATE-RELEASE-PLAN.html).
+Publication does not imply complete historical feature parity: broader Better
+Auth hooks/plugins, provider crash reconciliation and production deployment
+remain tracked in `plan/RUST-FRAMEWORK-BLUEPRINT-IMPLEMENTATION.md`. Older runtime
+fixtures are being aligned to the current scaffold layout; consult the tracker
+for tests actually executed, rather than treating every retained script as a
+passing current CI result.
 
 ## Validate the port
 
@@ -461,13 +524,13 @@ The Rust E2E job runs generation and lifecycle scripts, checks generated TypeScr
 
 Rust contracts and Axum support all 27 methods exported by the TypeScript router: GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, TRACE, CHECKOUT, COPY, LINK, LOCK, M-SEARCH, MERGE, MKACTIVITY, MKCOL, MOVE, NOTIFY, PROPFIND, PROPPATCH, PURGE, REPORT, SEARCH, SUBSCRIBE, UNLINK, UNLOCK and UNSUBSCRIBE. Use a typed registration method or `ForkLaunchRouter::route(contract, handler)`; mismatched typed methods and duplicate registrations fail at construction. Rust uses `m_search` and `move_resource` for those method names. Extended methods share request validation, authentication, nested paths, telemetry and SDK generation. OpenAPI exports them under the path's `x-forklaunch-http-methods` extension; the CLI importer understands this extension and rejects unknown method tokens. Browser and Node Fetch forbid TRACE, so TypeScript callers need an injected transport for that method. Ordinary OPTIONS requests reach their handler and auth policy; browser CORS preflights retain their configured CORS behavior.
 
-New IAM, CAC and messaging modules expose `routes::contracts()` and `routes::register_router(...)` hooks. `forklaunch init router custom --path crates/cac --language rust` creates an Axum extension whose contracts appear in offline exports and SDKs. Each extension exports `contracts()` and `register(...)`; update both when adding handlers. Rename, sync and delete retain this module structure, and rename preserves edited handler code. Existing modules without these hooks reject router generation before writing files; add the hooks to their library registry and runtime router first. Custom routes begin public; declare their authentication/access policy in the contract as required.
+New IAM, CAC and messaging modules expose `routes::contracts()` and `routes::register_router(...)` hooks. `forklaunch init router custom --path src/cac --language rust` creates an Axum extension whose contracts appear in offline exports and SDKs. Each extension exports `contracts()` and `register(...)`; update both when adding handlers. Rename, sync and delete retain this module structure, and rename preserves edited handler code. Existing modules without these hooks reject router generation before writing files; add the hooks to their library registry and runtime router first. Custom routes begin public; declare their authentication/access policy in the contract as required.
 
 Axum enforces route `auth`, RBAC, and non-public access requirements before running handlers. A protected route without a configured verifier returns 401. Disabling request schema validation does not disable authentication; implicit HEAD requests use their GET route's policy while authentication sees the actual HEAD method. Explicit HEAD routes take precedence.
 
 Configure `RouterConfig::with_authenticator` with an async credential verifier. It receives the framework request and the route contract, including the declared auth method and custom header settings. Return `AuthenticatedSession` only after verification; Axum then evaluates the route's roles, permissions, scope hierarchy, features, and subscription requirements. Native handlers can extract `Session<MyClaims>`; local framework handlers receive verified claims in `request.session`.
 
-`forklaunch-auth::jwt::verify_jwk` and `verify_jwks` accept typed claims and an explicit `jsonwebtoken::Validation` policy. Set the allowed algorithms, issuer, and audience in that policy. The optional `remote-jwks` feature adds `RemoteJwks`, with one cache per configured endpoint, bounded response sizes/timeouts, Cache-Control and Age handling, refresh deduplication, and a refresh cooldown for unknown key IDs. Remote verification rejects symmetric algorithms and never follows token-provided key URLs. Share one verifier across requests rather than constructing a cache for each request.
+`forklaunch_core::auth::jwt::verify_jwk` and `verify_jwks` accept typed claims and an explicit `jsonwebtoken::Validation` policy. Set the allowed algorithms, issuer, and audience in that policy. The optional `remote-jwks` feature adds `RemoteJwks`, with one cache per configured endpoint, bounded response sizes/timeouts, Cache-Control and Age handling, refresh deduplication, and a refresh cooldown for unknown key IDs. Remote verification rejects symmetric algorithms and never follows token-provided key URLs. Share one verifier across requests rather than constructing a cache for each request.
 
 `forklaunch_auth::request_hmac` signs and verifies TypeScript-compatible `HMAC keyId=… ts=… nonce=… signature=…` request headers. It binds the exact method, path without query, transmitted body, normalized millisecond ISO timestamp and nonce. Serialize JSON once and sign/send the same bytes. `SignedBody` preserves the existing TypeScript distinction between absent/empty string bodies and raw buffers. `HmacAuthorization::verify_at` also bounds clock skew; atomic nonce replay claims across replicas remain application-owned. Actual TypeScript signer and header-generator fixtures cover all of these wire forms.
 
@@ -501,13 +564,12 @@ Generate a persistent IAM module in an existing Rust or mixed application:
 
 ```sh
 forklaunch init module --language rust -m iam-base -d postgresql --path .
-# Alternatively, pass --modules iam-base when initializing a Rust application.
 DATABASE_URL=postgres://schema_owner:password@localhost/app cargo run -p iam -- --migrate
 # Export ENCRYPTION_KEY, HMAC_SECRET_KEY and JWKS_PUBLIC_KEY_URL first.
 DATABASE_URL=postgres://restricted_app:password@localhost/app TENANT_ID=acme cargo run -p iam
 ```
 
-Replace the example URLs with your own credentials. Migration and runtime connections use separate database roles. Generated modules bundle blueprint source in `.forklaunch/blueprint-rs`; commit it alongside the bundled framework. Contract/OpenAPI export works without a database connection.
+Replace the example URLs with your own credentials. Migration and runtime connections use separate database roles. Generated modules bundle blueprint source in `.forklaunch/blueprint-rs`; commit it alongside the required parser patch. Contract/OpenAPI export works without a database connection.
 
 The scaffold binds one trusted `TENANT_ID` per process. Login, logout, paginated users and organizations, and permission lookup use PostgreSQL. Provision users through the administrative repository API; the generator creates no default account. The configured `/user`, `/role`, `/permission`, and `/organization` families add thirty directory CRUD and grant-surfacing routes, shared by HTTP and MCP. Internal operations verify request HMAC signatures; protected operations verify JWKS JWTs and declared roles/permissions. User reads and mutations resolve organization membership from storage and enforce it transactionally. Directory users remain separate from credential/session users; the configured TypeScript CRUD mapper ignores passwords, and the native mapper follows that behavior. Sensitive directory fields use identity-bound encryption, rotated-key uniqueness claims and atomic actor audits. Grant the runtime role access to `fl_iam_directory`, `fl_iam_directory_unique_claims`, `fl_iam_directory_audit` and USAGE on `fl_iam_directory_sequence_seq` in addition to the session tables. The legacy `/users/:id` SDK/MCP operation is named `getSessionUser`; `/user/:id` uses `getUser`. Tenant selection from verified identity, cookie/CSRF sessions, email/reset/verification flows, JWT issuance, and OAuth/OIDC providers remain pending.
 
@@ -517,8 +579,8 @@ Base IAM also exposes public `/discovery/auth-methods` (204) and system-role JWT
 
 ## CAC module
 
-Generate `forklaunch init module --language rust -m cac-base --path .`, or pass
-`--modules cac-base` when initializing a Rust/mixed app. IAM and CAC can coexist.
+Generate `forklaunch init module cac --language rust -m cac-base --path .`.
+IAM and CAC can coexist in a language-neutral application.
 Set `HMAC_SECRET_KEY` and trusted `JWKS_PUBLIC_KEY_URL`, then run `cargo run -p cac`.
 Offline exports require neither key configuration nor network access.
 
@@ -540,57 +602,13 @@ The mounted registry drives both SDKs and OpenAPI. Runtime fixtures exercise HMA
 JWT/JWKS/RBAC, both generated SDKs, relocation, embedded-workspace upgrades,
 module coexistence, source preservation, rename/sync/delete and graceful shutdown.
 
-## SMS messaging modules
+## Email and SMS
 
-Generate `forklaunch init module --language rust -m messaging-base --path .` for
-persistence hooks or `-m messaging-twilio` for Twilio delivery. App initialization
-also accepts either variant in `--modules`. Both default to the `messaging`
-service name; choose a separate name when installing both for local development.
-The base provider records `sent` without contacting a carrier, matching TypeScript.
-
-Configure a trusted `TENANT_ID`, `ENCRYPTION_KEY`, restricted `DATABASE_URL`,
-`HMAC_SECRET_KEY` and `JWKS_PUBLIC_KEY_URL`. Apply `cargo run -p messaging --
---migrate` separately using a schema-owner connection. Runtime roles need USAGE
-on `fl_messaging`, SELECT/INSERT/UPDATE/DELETE on `fl_messaging.sms_records`, and
-INSERT on `fl_messaging.pii_read_audit`; SUPERUSER/BYPASSRLS roles are rejected.
-The module stores random-nonce, tenant-derived encrypted records and recipient
-blind indexes, with forced RLS and explicit tenant predicates. Reads, callbacks
-and compliance exports record the verified actor before returning plaintext.
-Audit failures roll back delivery changes and prevent plaintext responses.
-Previous keys configured through `LEGACY_ENCRYPTION_KEYS` support reading older
-records and subject lookup. Callback updates rotate ciphertext and blind indexes;
-rotate all remaining records before retiring their old keys.
-
-Internal `POST /sms` and `GET /sms/:id` use request-bound HMAC authorization.
-`GET /compliance/export/:userId` and `DELETE /compliance/erase/:userId` require a
-verified asymmetric JWT with the `system` role; issuer/audience constraints are
-optional environment settings. The subject is the recipient phone number,
-matching the upstream entity selector. Exports contain only `id`, `to` and
-`body`, plus an explicit failures array. Storage/audit failures return an error
-rather than reporting a successful incomplete subject-access request.
-
-Twilio additionally requires `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
-`TWILIO_FROM_NUMBER` and the exact external HTTPS `TWILIO_STATUS_CALLBACK_URL`.
-Dispatch sends Basic-authenticated form requests and never retries or follows
-redirects. Transport/parse/persistence failures can occur after carrier
-acceptance, so callers must reconcile before retrying. HTTP provider errors
-persist a failed record. Response reads are bounded to 64 KiB with a 15-second
-request deadline. A configured `TWILIO_API_BASE` may use HTTPS, or explicit HTTP
-loopback for fixtures; real-provider credentials are never needed by tests.
-
-`POST /webhook` verifies `X-Twilio-Signature` over the configured URL and every
-form field, including unexpected and repeated fields. Required duplicate fields
-are rejected; Host/forwarded headers never choose the signed URL. This verification
-strengthens the current TypeScript blueprint's unauthenticated webhook controller.
-Callback behavior matches its service: last update wins, `read` means delivered,
-unknown statuses mean queued, missing ErrorMessage clears previous errors, and
-unknown provider IDs fail. Twilio's protocol permits replay; callbacks may repeat.
-
-Both generated SDKs support SMS and URL-encoded callbacks. Fixtures compare the
-actual TypeScript base/Twilio services against Rust, then run generated mixed
-apps through both SDKs, persistence/restarts, tenant isolation, JWT/HMAC failures,
-callback tampering, encryption/auditing and init/rename/sync/delete. Tables and
-migrations are native Rust storage, rather than a shared MikroORM schema.
+Messaging is not a module in either language. Add the managed gateway to a
+service with `forklaunch infra add <service> email` or
+`forklaunch infra add <service> sms`; see
+[managed capabilities](#managed-capabilities). `messaging-base` and
+`messaging-twilio` are retired and `init module` rejects them.
 
 ## Field encryption compatibility
 
@@ -620,11 +638,18 @@ The adapter is available to application code. New PostgreSQL worker binaries use
 
 ## Generated PostgreSQL workers
 
+Worker generation normally includes an accompanying producer service and
+consumer binary. The examples below explicitly select `--consumer-only` for
+queue/runtime operations. This mode emits typed event assets without a
+fabricated HTTP SDK. Select `--runtime apalis` for the native Apalis worker
+runtime; its producer and consumer are distinct commands in the shared image.
+
+
 ```sh
-forklaunch init worker jobs --language rust -t database -d postgresql --path . -D "Jobs"
+forklaunch init worker jobs --language rust -t database -d postgresql --consumer-only --path . -D "Jobs"
 ```
 
-New workers with this backend bundle blueprint source and run a continuous polling loop through `forklaunch-worker-database`'s `runtime` feature. Apply migrations with `cargo run -p jobs -- --migrate` using the owner connection. Start the worker with a restricted `DATABASE_URL` and trusted `TENANT_ID`. Implement application work in `crates/jobs/src/handler.rs`; the initial handler fails with `worker_handler_not_implemented` and leaves jobs subject to their retry budget instead of discarding them.
+New workers with this backend bundle blueprint source and run a continuous polling loop through `forklaunch-worker-database`'s `runtime` feature. Apply migrations with `cargo run -p jobs -- --migrate` using the owner connection. Start the worker with a restricted `DATABASE_URL` and trusted `TENANT_ID`. Implement application work in `src/jobs/domain/services/handler.rs`; the initial handler fails with `worker_handler_not_implemented` and leaves jobs subject to their retry budget instead of discarding them.
 
 The runner processes up to `WORKER_CONCURRENCY` jobs at once (1–256, default 1) and renews each active lease while its handler runs. Multiple processes can consume the same queue. `WORKER_QUEUE` defaults to the crate name. Retry policy uses `WORKER_MAX_ATTEMPTS` and `WORKER_BACKOFF_SECONDS`; polling, leases, renewal, and shutdown drain use `WORKER_POLL_MS`, `WORKER_LEASE_MS`, `WORKER_RENEW_MS`, and `WORKER_DRAIN_MS`. Invalid settings fail startup. Queue operations have bounded timeouts. Renewal must run at least three times per lease duration.
 
@@ -632,7 +657,7 @@ Ctrl-C or SIGTERM stops new claims and drains the active job while renewing its 
 
 With runtime environment variables set, use `cargo run -p jobs -- --enqueue ID JSON` to submit a job and `--inspect ID` to read its state. Inspection omits payloads and lease tokens. Contract/OpenAPI export works without a database connection. Reinitialization, sync, and worker rename preserve the application handler and Cargo metadata; rename updates generated SDKs and contract artifacts.
 
-Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path crates/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch handlers and optional worker HTTP health/control endpoints are described below. Optional scoped distributed signals and durable Kafka workers are described below. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.
+Existing demonstration workers are preserved when reinitialized. To upgrade explicitly, run `forklaunch change worker --path src/jobs -t database -d postgresql --confirm`; backend conversion installs the runner while retaining an existing handler and unrelated Cargo metadata. Batch handlers and optional worker HTTP health/control endpoints are described below. Optional scoped distributed signals and durable Kafka workers are described below. `cli/tests/rust_worker_runtime.sh` tests a relocated generated worker against PostgreSQL, including renewal, drain, retries, forced cancellation, process crashes, tenant isolation, source preservation, rename, and delete.
 
 ## Redis leased worker queue
 
@@ -647,20 +672,20 @@ Real Redis integration tests cover client restart, mixed-queue batches, collisio
 ## Generated Redis workers
 
 ```sh
-forklaunch init worker jobs --language rust -t redis --path . -D "Jobs"
+forklaunch init worker jobs --language rust -t redis --consumer-only --path . -D "Jobs"
 REDIS_URL=redis://localhost:6379/ WORKER_NAMESPACE=my-app TENANT_ID=acme cargo run -p jobs
 ```
 
-The worker bundles portable framework and blueprint sources, requires a trusted tenant and namespace, and runs continuously until Ctrl-C or SIGTERM. Implement idempotent application work in `crates/jobs/src/handler.rs`; the initial handler fails explicitly until implemented. Timing, retry settings, `--enqueue ID JSON`, and `--inspect ID` match the PostgreSQL worker. Redis requires no migration command. OpenAPI and contract export work without Redis credentials.
+The worker uses published framework dependencies and local blueprint sources, requires a trusted tenant and namespace, and runs continuously until Ctrl-C or SIGTERM. Implement idempotent application work in `src/jobs/domain/services/handler.rs`; the initial handler fails explicitly until implemented. Timing, retry settings, `--enqueue ID JSON`, and `--inspect ID` match the PostgreSQL worker. Redis requires no migration command. OpenAPI and contract export work without Redis credentials.
 
-Reinitialization and sync preserve application code. Rename updates imports, artifacts, SDK names, and Compose entries. Explicit backend changes support both Redis and PostgreSQL while preserving existing handlers and unrelated Cargo metadata. Upgrade an existing demonstration worker with `forklaunch change worker --path crates/jobs -t redis --confirm`. Existing documentation and example env files are preserved during conversion; configure the new backend's environment variables before starting it. `bullmq` selects the official BullMQ protocol adapter described below; it uses a separate storage protocol from native leased Redis queues.
+Reinitialization and sync preserve application code. Rename updates imports, artifacts, SDK names, and Compose entries. Explicit backend changes support both Redis and PostgreSQL while preserving existing handlers and unrelated Cargo metadata. Upgrade an existing demonstration worker with `forklaunch change worker --path src/jobs -t redis --confirm`. Existing documentation and example env files are preserved during conversion; configure the new backend's environment variables before starting it. `bullmq` selects the official BullMQ protocol adapter described below; it uses a separate storage protocol from native leased Redis queues.
 
 `cli/tests/rust_redis_worker_runtime.sh` validates a relocated generated worker against Redis, including process crashes, lease recovery, renewal, shutdown drain, retry exhaustion, tenant isolation, rename, backend conversion, and delete.
 
 ## Generated BullMQ workers
 
 ```sh
-forklaunch init worker jobs --language rust -t bullmq --path . -D "Jobs"
+forklaunch init worker jobs --language rust -t bullmq --consumer-only --path . -D "Jobs"
 REDIS_URL=redis://localhost:6379/ REDIS_KEY_PREFIX=my-app cargo run -p jobs
 ```
 
@@ -757,16 +782,34 @@ Redis and PostgreSQL tests cover partial failures, whole-batch errors, invalid f
 
 ## Release builds
 
+Current shared language images are supported by local Docker Compose. Application
+release creation deliberately rejects them: the platform manifest and deployment
+processor do not yet consume native process commands or migration dependencies.
+Adding fields only in the CLI would silently lose that configuration. This is an
+open platform integration requirement, separate from the published framework
+crates. The generated-release CI gate tests successful builds/exports followed by
+that rejection and verifies no unsupported release manifest is produced.
+
+
 Release creation builds Rust workspaces with `cargo build --workspace --release`. When a Rust application also has a JavaScript workspace at its application or modules root, release creation installs and builds that workspace too. Mixed applications must provide its `package.json`. Existing root build scripts are honored; generated SDK workspaces without one build their packages recursively. PNPM and Bun use frozen installation when their lockfile is present. Build/install failure stops before export and release manifest creation.
 
 Mixed applications using Tokio export their TypeScript services through Node; Bun and Node applications retain their configured JavaScript runtime. Rust components use the framework contract exporter. `--prebuilt-openapi` continues to skip installation, builds, and application execution. It honors Rust `cratePath` locations separately from the TypeScript modules directory and rejects paths or symlinks that leave the application snapshot. `rust_release_runtime.sh` exercises these paths through the actual CLI with owned command/platform fixtures; it validates orchestration rather than compiling the fixture applications. Generated service runtime and export suites validate real compiler/runtime behavior separately. `rust_generated_release_runtime.sh` additionally uses real optimized Cargo builds, PNPM, the generated TypeScript SDK, and a minimal tsx service export hook. It verifies shared artifacts and prebuilt reuse with deliberately unbuildable source. Export mode/output variables cannot be overwritten by dummy environment values and are excluded from deployment requirements. Neither suite publishes a release.
 
 ## Packaged CLI sources
 
-`cli/tests/rust_packaged_install.sh` creates a Cargo source archive, installs that archive outside the checkout, then generates and relocates an application with a service, PostgreSQL/Redis/BullMQ/Kafka workers and generated CAC, messaging, ecommerce and billing modules. It checks the complete workspace with Cargo, compiles the bundled optional AWS S3 adapter, exports real framework contracts and OpenAPI without storage credentials, generates both SDK targets, and checks them again. Bundled framework/blueprint files must contain no symlinks or checkout paths. The CLI build CI job runs this regression before uploading its binary.
+`cli/tests/rust_packaged_install.sh` creates and installs an actual Cargo source
+archive outside the checkout, then uses raw init commands to generate and
+relocate an application with a native service, checked mappers, Redis/S3
+infrastructure, an Apalis producer/consumer, a library and router. It verifies
+archive source inventory, Cargo compilation, service tests, both local SDKs,
+HTTP/MCP startup and producer authorization. The CI build job runs this gate
+before uploading its CLI binary. Additional module/backend checks live in their
+own runtime suites.
 
-For local reuse of debug artifacts, set `FORKLAUNCH_PACKAGE_PROFILE=debug`. `FORKLAUNCH_PACKAGE_INSTALL_TARGET` and `FORKLAUNCH_PACKAGE_GENERATED_TARGET` can select existing Cargo caches. This verifies source-archive installation; registry publication and installation of published crate versions remain separate release work.
-
+The registry scaffold gate verifies the published framework versions, including a
+shared Docker image. Source
+archive installation and registry consumption have separate receipts; neither
+publishes the CLI itself.
 
 ## Async S3 object storage
 
@@ -850,7 +893,7 @@ Without signal configuration HTTP controls retain their process-local behavior.
 
 ## Kafka workers
 
-`forklaunch init worker jobs --language rust -t kafka` generates a broker-backed
+`forklaunch init worker jobs --language rust -t kafka --consumer-only` generates a broker-backed
 Kafka worker. It uses `forklaunch_worker_kafka::client::KafkaWorker`, not the original
 in-memory `KafkaWorkerQueue` reference. Configure `KAFKA_BROKERS`, `WORKER_NAMESPACE`,
 `TENANT_ID`, and a stable unique `KAFKA_TRANSACTIONAL_ID` per worker replica. Separate

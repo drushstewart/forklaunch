@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import vm from 'node:vm';
-const root = new URL('../../blueprint-rs/crates/implementations/iam/forklaunch-iam-axum/src/browser/',import.meta.url);
+const root = new URL('../../blueprint-rs/crates/implementations/iam/iam-axum/src/browser/',import.meta.url);
 const html = await readFile(new URL('oidc_relay.html',root),'utf8');
 const csp = await readFile(new URL('oidc_relay.csp',root),'utf8');
 const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];

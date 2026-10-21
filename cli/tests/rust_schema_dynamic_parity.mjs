@@ -79,7 +79,7 @@ for(const [draft,id] of [['04','id'],['06','$id'],['07','$id']]) {
 for(const dialect of ['2019-09','2020-12']) for(const [identity,reference] of [['other%41','otherA#Word'],['other?x=%41','other?x=A#Word'],['other%2fpart','other%2Fpart#Word']]) {
  fixtures.push({schema:{$schema:`https://json-schema.org/draft/${dialect}/schema`,$id:'https://schema.fixture.test/normalized',type:'object',properties:{value:{$ref:reference}},$defs:{Word:{$id:identity,$anchor:'Word',type:'string'}}},cases:[[{value:'a'},true],[{value:1},false]]});
 }
-const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
+const bundled=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','codegen_schema_bundle'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0, differences=0, unsupported=0, allErrorsComparisons=0;
 for(let i=0;i<fixtures.length;i++) {
  let original;

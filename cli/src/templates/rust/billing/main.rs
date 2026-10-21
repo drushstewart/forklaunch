@@ -1,20 +1,21 @@
-use std::{env, sync::Arc};
-use forklaunch_auth::jwt::{RemoteJwks, RemoteJwksConfig};
+use std::{env, sync::Arc, error::Error};
+use forklaunch_core::auth::jwt::{RemoteJwks, RemoteJwksConfig};
 use forklaunch_axum::module_auth::HmacJwksAuth;
-use forklaunch_blueprint_core::AuditContext;
+use forklaunch_core::domain::AuditContext;
 use forklaunch_core::persistence::{TenantContext,encryption::FieldEncryptor};
 use forklaunch_billing_base::services::postgres::PostgresBillingStore;
 use forklaunch_billing_axum::{BillingBackend,BoundCheckoutV1,BoundBillingV1,billing_router};
 {{#stripe}}use forklaunch_billing_stripe::client::StripeBillingClient;
-use forklaunch_blueprint_core::provider_http::ProviderHttpClient;
+use forklaunch_core::http::{instance_gateway::InstanceGatewayClient, provider_http::ProviderHttpClient};
 use std::time::Duration;{{/stripe}}
 use sqlx::postgres::PgPoolOptions;
 use forklaunch_core::telemetry::otlp::TelemetryRuntime;
 use jsonwebtoken::{Algorithm, Validation};
 use {{crate_module}}::{service_info, write_contract_artifacts, request_date_profile_from_env, bound_checkout_config_from_env, bound_billing_config_from_env};
+use tokio::net::TcpListener;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
         write_contract_artifacts(
             env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| ".forklaunch/contracts/contract.json".to_owned()),
@@ -30,7 +31,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-async fn run() -> Result<(), Box<dyn std::error::Error>> {
+async fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
     if !args.is_empty() && args != ["--migrate"] { return Err("Expected no arguments or --migrate".into()); }
     let pool = PgPoolOptions::new().max_connections(10).connect(
@@ -82,14 +83,19 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let gateway = env::var("PLATFORM_GATEWAY_URL").ok().filter(|value|!value.is_empty());
     let instance_id = env::var("INSTANCE_ID").ok().filter(|value|!value.is_empty());
     let instance_key = env::var("INSTANCE_HMAC_KEY").ok().filter(|value|!value.is_empty());
-    let client = if gateway.is_some() && instance_id.is_some() && instance_key.is_some() {
-        StripeBillingClient::with_gateway(forklaunch_blueprint_core::instance_gateway::InstanceGatewayClient::from_env()?)
-    } else {
-        if gateway.is_some() || instance_id.is_some() { return Err("Managed Stripe requires PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY together".into()); }
-        let secret = env::var("STRIPE_API_KEY").ok().filter(|value|!value.is_empty()).or_else(||env::var("STRIPE_SECRET_KEY").ok().filter(|value|!value.is_empty())).ok_or(()).map_err(|_| "STRIPE_API_KEY or STRIPE_SECRET_KEY is required outside managed mode")?;
+    // Stripe keys the application supplies take precedence; the managed gateway
+    // is the fallback when no key is configured.
+    let secret = env::var("STRIPE_API_KEY").ok().filter(|value|!value.is_empty()).or_else(||env::var("STRIPE_SECRET_KEY").ok().filter(|value|!value.is_empty()));
+    let client = if let Some(secret) = secret {
         if let Ok(base) = env::var("STRIPE_API_BASE") {
             StripeBillingClient::with_transport(secret, ProviderHttpClient::new(&base,Duration::from_secs(15),1024*1024)?)?
         } else {StripeBillingClient::new(secret)?}
+    } else if gateway.is_some() && instance_id.is_some() && instance_key.is_some() {
+        StripeBillingClient::with_gateway(InstanceGatewayClient::from_env()?)
+    } else if gateway.is_some() || instance_id.is_some() {
+        return Err("Managed Stripe requires PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY together".into());
+    } else {
+        return Err("Configure STRIPE_API_KEY (or STRIPE_SECRET_KEY), or the managed gateway with PLATFORM_GATEWAY_URL, INSTANCE_ID and INSTANCE_HMAC_KEY".into());
     };
     let mut backend = BillingBackend::stripe(store,client).with_configured_hmac(true).with_configured_subscription_updates(true).with_configured_cached_reads(true).with_configured_payment_link_updates(true);
     if let Some(secret) = env::var("STRIPE_WEBHOOK_SECRET").ok().filter(|value|!value.is_empty()) { backend = backend.with_webhook_secret(secret)?; }
@@ -108,7 +114,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error>> {
     };
     let host = env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned());
     let port: u16 = env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?;
-    let listener = tokio::net::TcpListener::bind((host.as_str(), port)).await?;
+    let listener = TcpListener::bind((host.as_str(), port)).await?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
     {{crate_module}}::routes::register_router(billing_router(backend, auth, service_info())).serve_with_default_mcp(listener, shutdown()).await?;
     if let Some(pool) = publisher_pool { pool.close().await; }

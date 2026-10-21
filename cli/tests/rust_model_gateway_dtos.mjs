@@ -33,8 +33,8 @@ for(const chunk of chunks){
 actions.push({shape:'models',body:{models:[],monthlyTokenBudget:0,tokensUsedThisMonth:0,requestsPerMinute:0}},{shape:'completion',body:{...completion,usage:undefined}});
 if(process.env.FORKLAUNCH_MODEL_DTOS_TS_ONLY==='1')console.log(`PASS ${actions.length} actual TypeScript managed DTO JSON observations`);
 else{
- execFileSync('cargo',['build','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-blueprint-core','--features','instance-gateway','--example','model_gateway'],{cwd:root,stdio:'inherit'});
- const binary=path.join(process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target'),'debug/examples/model_gateway');
+ execFileSync('cargo',['build','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','instance-gateway','--example','model_gateway'],{cwd:root,stdio:'inherit'});
+ const binary=path.join(process.env.CARGO_TARGET_DIR??path.join(root,'framework-rs/target'),'debug/examples/model_gateway');
  const actual=JSON.parse(execFileSync(binary,[],{input:JSON.stringify({base:'http://127.0.0.1:1',actions:actions.map(action=>({kind:'dto',...action}))}),encoding:'utf8'}));
  assert.deepEqual(actual,JSON.parse(JSON.stringify(actions.map(action=>action.body))));
  console.log(`PASS ${actions.length} actual TypeScript/native typed DTO roundtrips: requests, completion required created, catalog, chunk absent/null, extras and finite number semantics`);

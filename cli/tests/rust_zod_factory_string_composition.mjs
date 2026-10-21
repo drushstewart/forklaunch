@@ -177,7 +177,7 @@ if (process.env.FORKLAUNCH_FACTORY_STRING_NATIVE === "1") {
         "--manifest-path",
         "framework-rs/Cargo.toml",
         "-p",
-        "forklaunch-contract",
+        "forklaunch-core",
         "--features",
         features,
         "--example",
@@ -205,7 +205,7 @@ if (process.env.FORKLAUNCH_FACTORY_STRING_NATIVE === "1") {
     "http://example.com",
   ]);
   assert.notEqual(off.status, 0);
-  assert.match(off.stderr, /requires the forklaunch-contract zod-uri feature/);
+  assert.match(off.stderr, /requires the forklaunch-core zod-uri feature/);
   build("zod-uri");
   let count = 0;
   for (const { schema, cases } of native) {

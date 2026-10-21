@@ -42,17 +42,17 @@ public packages.
 | [`@forklaunch/blueprint-core`](../../blueprint/core/package.json) | `1.0.1` | Private fixture | forklaunch-blueprint-core and framework crates |
 | [`@forklaunch/blueprint-ecommerce-stripe`](../../blueprint/ecommerce-stripe/package.json) | `0.0.2` | Private fixture | forklaunch-ecommerce-axum; Rust CLI ecommerce-stripe module |
 | [`@forklaunch/blueprint-iam-base`](../../blueprint/iam-base/package.json) | `0.1.6` | Private fixture | Rust init module iam-base |
-| [`@forklaunch/blueprint-iam-better-auth`](../../blueprint/iam-better-auth/package.json) | `0.0.1` | Private fixture | forklaunch-iam-better-auth and native CLI preset |
+| [`@forklaunch/blueprint-iam-better-auth`](../../blueprint/iam-better-auth/package.json) | `0.0.1` | Private fixture | TypeScript only; Rust services use its generated Rust SDK |
 | [`@forklaunch/implementation-billing-base`](../../blueprint/implementations/billing/base/package.json) | `1.0.41` | Package source | forklaunch-billing-base |
 | [`@forklaunch/implementation-billing-stripe`](../../blueprint/implementations/billing/stripe/package.json) | `1.2.11` | Package source | forklaunch-billing-stripe |
 | [`@forklaunch/implementation-cac-base`](../../blueprint/implementations/cac/base/package.json) | `0.2.7` | Package source | forklaunch-cac-base |
 | [`@forklaunch/implementation-ecommerce-base`](../../blueprint/implementations/ecommerce/base/package.json) | `1.0.13` | Package source | forklaunch-ecommerce-base |
 | [`@forklaunch/implementation-ecommerce-paypal`](../../blueprint/implementations/ecommerce/paypal/package.json) | `1.0.8` | Package source | forklaunch-ecommerce-paypal |
 | [`@forklaunch/implementation-ecommerce-stripe`](../../blueprint/implementations/ecommerce/stripe/package.json) | `1.0.8` | Package source | forklaunch-ecommerce-stripe |
-| [`@forklaunch/implementation-iam-base`](../../blueprint/implementations/iam/base/package.json) | `1.0.40` | Package source | forklaunch-iam-base, forklaunch-iam-axum |
-| [`@forklaunch/implementation-messaging-base`](../../blueprint/implementations/messaging/base/package.json) | `1.1.7` | Package source | forklaunch-messaging-base |
-| [`@forklaunch/implementation-messaging-twilio`](../../blueprint/implementations/messaging/twilio/package.json) | `1.1.7` | Package source | forklaunch-messaging-twilio |
-| [`@forklaunch/implementation-worker-bullmq`](../../blueprint/implementations/worker/bullmq/package.json) | `1.0.38` | Package source | forklaunch-worker-redis optional bullmq feature |
+| [`@forklaunch/implementation-iam-base`](../../blueprint/implementations/iam/base/package.json) | `1.0.40` | Package source | forklaunch-iam-base (HTTP layer generated into the app) |
+| [`@forklaunch/implementation-messaging-base`](../../blueprint/implementations/messaging/base/package.json) | `1.1.7` | Package source | Retired; managed gateway email/SMS |
+| [`@forklaunch/implementation-messaging-twilio`](../../blueprint/implementations/messaging/twilio/package.json) | `1.1.7` | Package source | Retired; managed gateway email/SMS |
+| [`@forklaunch/implementation-worker-bullmq`](../../blueprint/implementations/worker/bullmq/package.json) | `1.0.38` | Package source | None; Rust `--type bullmq` uses the native Redis queue |
 | [`@forklaunch/implementation-worker-database`](../../blueprint/implementations/worker/database/package.json) | `1.0.40` | Package source | forklaunch-worker-database |
 | [`@forklaunch/implementation-worker-kafka`](../../blueprint/implementations/worker/kafka/package.json) | `1.0.38` | Package source | forklaunch-worker-kafka |
 | [`@forklaunch/implementation-worker-redis`](../../blueprint/implementations/worker/redis/package.json) | `1.0.38` | Package source | forklaunch-worker-redis |
@@ -60,12 +60,12 @@ public packages.
 | [`@forklaunch/interfaces-cac`](../../blueprint/interfaces/cac/package.json) | `0.2.6` | Package source | forklaunch-cac-interface |
 | [`@forklaunch/interfaces-ecommerce`](../../blueprint/interfaces/ecommerce/package.json) | `1.0.12` | Package source | forklaunch-ecommerce-interface |
 | [`@forklaunch/interfaces-iam`](../../blueprint/interfaces/iam/package.json) | `1.0.37` | Package source | forklaunch-iam-interface |
-| [`@forklaunch/interfaces-messaging`](../../blueprint/interfaces/messaging/package.json) | `1.1.6` | Package source | forklaunch-messaging-interface |
+| [`@forklaunch/interfaces-messaging`](../../blueprint/interfaces/messaging/package.json) | `1.1.6` | Package source | Retired; managed gateway email/SMS |
 | [`@forklaunch/interfaces-worker`](../../blueprint/interfaces/worker/package.json) | `1.0.35` | Package source | forklaunch-worker-interface |
-| [`@forklaunch/blueprint-messaging-base`](../../blueprint/messaging-base/package.json) | `0.1.1` | Private fixture | generated Rust messaging-base + forklaunch-messaging-axum |
-| [`@forklaunch/blueprint-messaging-twilio`](../../blueprint/messaging-twilio/package.json) | `0.0.2` | Private fixture | generated Rust messaging-twilio + forklaunch-messaging-axum |
-| [`@forklaunch/blueprint-monitoring`](../../blueprint/monitoring/package.json) | `0.1.1` | Private fixture | forklaunch-monitoring-interface and core telemetry |
-| [`@forklaunch/blueprint-sample-worker`](../../blueprint/sample-worker/package.json) | `0.1.1` | Private fixture | sample-worker and generated durable workers |
+| [`@forklaunch/blueprint-messaging-base`](../../blueprint/messaging-base/package.json) | `0.1.1` | Private fixture | Retired; managed gateway email/SMS |
+| [`@forklaunch/blueprint-messaging-twilio`](../../blueprint/messaging-twilio/package.json) | `0.0.2` | Private fixture | Retired; managed gateway email/SMS |
+| [`@forklaunch/blueprint-monitoring`](../../blueprint/monitoring/package.json) | `0.1.1` | Private fixture | forklaunch-core telemetry |
+| [`@forklaunch/blueprint-sample-worker`](../../blueprint/sample-worker/package.json) | `0.1.1` | Private fixture | generated durable workers |
 
 ## Artifact compatibility
 
@@ -101,7 +101,7 @@ and schema types, without general string-to-number/boolean conversion. Booleans
 accept `true`, `false`, `1`, `0`; numeric helpers reject empty/whitespace/non-finite
 values. Compiled socket codecs additionally normalize safe integral JSON decimal
 and exponent spellings for JavaScript-number compatibility. See the
-[validation policy](../../framework-rs/crates/forklaunch-validation/src/lib.rs)
+[validation policy](../../framework-rs/crates/validation/src/lib.rs)
 and socket conformance fixtures for the exact behavior.
 
 PostgreSQL persistence standardizes on optional `sqlx` integrations, with domain

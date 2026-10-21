@@ -1,10 +1,11 @@
 {{#modules}}pub mod {{module}};
 {{/modules}}
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::RouteContract;
+use forklaunch_core::contract::RouteContract;
+use std::iter;
 
 pub fn contracts() -> Vec<RouteContract> {
-    std::iter::empty()
+    iter::empty()
 {{#modules}}        .chain({{module}}::contracts())
 {{/modules}}        .collect()
 }

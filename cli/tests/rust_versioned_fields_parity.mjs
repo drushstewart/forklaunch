@@ -45,7 +45,7 @@ const schemas=Object.fromEntries(['first','last'].map(version=>[version,z.object
   body:z.unknown(),
 })]));
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',
-  path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_fields'],
+  path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_fields'],
   {input:JSON.stringify(cases),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:120000}));
 assert.equal(native.length,cases.length);
 for(const [index,input] of cases.entries()){

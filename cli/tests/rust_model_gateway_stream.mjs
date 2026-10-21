@@ -70,8 +70,8 @@ try{
  }
  if(process.env.FORKLAUNCH_MODEL_STREAM_TS_ONLY==='1')console.log(`PASS ${cases.length} actual signed TypeScript SSE framing/error observations`);
  else{
-  if(!process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY)execFileSync('cargo',['build','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-blueprint-core','--features','instance-gateway','--example','model_gateway'],{cwd:root,stdio:'inherit',timeout:180000});
-  const binary=process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY??path.join(process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target'),'debug/examples/model_gateway');
+  if(!process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY)execFileSync('cargo',['build','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','instance-gateway','--example','model_gateway'],{cwd:root,stdio:'inherit',timeout:180000});
+  const binary=process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY??path.join(process.env.CARGO_TARGET_DIR??path.join(root,'framework-rs/target'),'debug/examples/model_gateway');
   const limits=(total,frame,frames=4096,millis=120000)=>({total,frame,frames,millis});
   const extras=[
    {name:'redirect-refused',raw:Buffer.from(''),status:302,location:'/redirect-probe',error:'model_gateway_request_failed'},

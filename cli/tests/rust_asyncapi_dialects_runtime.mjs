@@ -29,7 +29,7 @@ try {
  await writeFile(path.join(temporary,'package.json'),JSON.stringify({type:'module'}));
  const input=path.join(temporary,'asyncapi.json');
  await writeFile(input,JSON.stringify(document));
- const generated=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,timeout:300000,maxBuffer:16*1024*1024,encoding:'utf8'}));
+ const generated=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','typescript_socket_artifacts','--',input,'all','asyncapi'],{cwd:root,env,timeout:300000,maxBuffer:16*1024*1024,encoding:'utf8'}));
  assert.deepEqual(generated.asyncapi,document);
  const modules=Object.keys(generated.rust);
  for(const name of modules) {
@@ -39,7 +39,7 @@ try {
  await writeFile(path.join(temporary,'src/lib.rs'),modules.map(name=>`pub mod ${name};`).join('\n'));
  await writeFile(path.join(temporary,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',esModuleInterop:true,types:['node'],outDir:'dist',rootDir:'src'},include:['src/*.ts']}));
  execFileSync(process.env.TSC_BIN,['--project',path.join(temporary,'tsconfig.json')],{stdio:'inherit',timeout:60000});
- await writeFile(path.join(temporary,'Cargo.toml'),`[package]\nname="forklaunch-imported-dialects-fixture"\nversion="0.0.0"\nedition="2021"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(framework,'crates/forklaunch-ws'))},features=["transport","json-schema"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\ntokio={version="1",features=["net","macros","rt-multi-thread"]}\ntokio-tungstenite="0.30"\n`);
+ await writeFile(path.join(temporary,'Cargo.toml'),`[package]\nname="forklaunch-imported-dialects-fixture"\nversion="0.0.0"\nedition="2021"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(framework,'crates/ws'))},features=["transport","json-schema"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\ntokio={version="1",features=["net","macros","rt-multi-thread"]}\ntokio-tungstenite="0.30"\n`);
  await writeFile(path.join(temporary,'src/main.rs'),`use forklaunch_ws::transport::{SocketEvent,SocketOptions};
 #[tokio::main] async fn main() {
 let base=std::env::args().nth(1).unwrap();

@@ -35,7 +35,7 @@ async function waitFor(check){const end=Date.now()+5000;while(!check()){assert.o
 try{
  symlinkSync(join(dependencies,'node_modules'),join(temporary,'node_modules'));
  writeFileSync(join(temporary,'schema.json'),JSON.stringify({type:'object',required:['id'],properties:{id:{type:'string'}},additionalProperties:false}));
- run('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','presence_client','--',join(temporary,'schema.json'),join(temporary,'sdk.ts')]);
+ run('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','typescript_presence_client','--',join(temporary,'schema.json'),join(temporary,'sdk.ts')]);
  writeFileSync(join(temporary,'usage.ts'),`
 import {useQuery,useMutation,queryOptions,mutationOptions} from '@tanstack/react-query';
 import {createForkLaunchSdk,forkLaunchQueryOptions,forkLaunchMutationOptions} from './sdk';

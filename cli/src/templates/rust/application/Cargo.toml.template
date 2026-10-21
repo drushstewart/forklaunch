@@ -1,6 +1,5 @@
 [workspace]
 resolver = "3"
-exclude = [".forklaunch/framework-rs", ".forklaunch/blueprint-rs"]
 members = [
 ]
 
@@ -9,6 +8,3 @@ version = "0.1.0"
 edition = "2024"
 license = "{{{license}}}"
 authors = {{{authors}}}
-
-[patch.crates-io]
-serde_json = { path = ".forklaunch/framework-rs/crates/vendor/serde_json" }

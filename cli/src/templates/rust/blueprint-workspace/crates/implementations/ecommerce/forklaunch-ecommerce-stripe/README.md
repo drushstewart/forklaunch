@@ -1,1 +1,0 @@
-../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/forklaunch-ecommerce-stripe/README.md

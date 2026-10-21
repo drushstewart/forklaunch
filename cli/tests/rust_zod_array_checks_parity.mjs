@@ -21,7 +21,7 @@ for(const checks of chains)for(const mode of ['borrowed','checked','union','inte
  expected.push(JSON.parse(JSON.stringify(validator.parse(schema,value))));
 }
 if(process.env.FORKLAUNCH_ARRAY_ORACLE_ONLY!=='1'){
- const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validation','--example','zod_array_checks_parity'],{input:rows.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:128*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+ const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validator','--example','zod_array_checks_parity'],{input:rows.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:128*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
  assert.equal(run.status,0,run.stderr);const actual=run.stdout.trim().split('\n').map(line=>JSON.parse(line));assert.equal(actual.length,rows.length);
  for(let i=0;i<rows.length;i++)assert.deepEqual(actual[i],expected[i],JSON.stringify(rows[i]));
 }

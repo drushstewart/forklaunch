@@ -15,7 +15,7 @@ function run(command,args,options={}){
  const out=spawnSync(command,args,{cwd:root,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'1'},encoding:'utf8',maxBuffer:64*1024*1024,...options});
  assert.equal(out.status,0,out.stdout+'\n'+out.stderr);return out.stdout;
 }
-if(native)run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-contract','--features','zod-checks','--example','uri_schema_parity']);
+if(native)run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','zod-checks','--example','uri_schema_parity']);
 let total=0,nativeCount=0;
 function check(schema,inputs){
  for(const pureInput of [false,true]){

@@ -1,0 +1,30 @@
+# syntax=docker/dockerfile:1.7
+FROM node:22-bookworm-slim AS auth
+WORKDIR /app
+COPY src/@@AUTH@@/package*.json ./
+RUN npm ci --ignore-scripts
+COPY src/@@AUTH@@/tsconfig.json ./
+COPY src/@@AUTH@@/*.ts ./
+COPY src/@@AUTH@@/api ./api
+COPY src/@@AUTH@@/domain ./domain
+COPY src/@@AUTH@@/persistence ./persistence
+COPY src/@@AUTH@@/migrations ./migrations
+COPY src/@@AUTH@@/scripts ./scripts
+RUN npm run build
+USER node
+EXPOSE 3001
+CMD ["npm", "start"]
+
+FROM node:24-bookworm-slim AS web-build
+WORKDIR /app/web
+COPY web/package*.json ./
+RUN npm ci --ignore-scripts
+COPY web/ ./
+COPY --from=service-sdk /app/src/client-sdk/typescript/ /app/src/client-sdk/typescript/
+RUN npm install --prefix /app/src/client-sdk/typescript --ignore-scripts --omit=dev
+RUN npm run build
+
+FROM caddy:2-alpine AS gateway
+COPY infra/Caddyfile /etc/caddy/Caddyfile
+COPY --from=web-build /app/web/dist /srv
+

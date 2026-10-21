@@ -13,7 +13,7 @@ const temporary = mkdtempSync(join(tmpdir(), 'forklaunch-correlation-'));
 try {
   const imported = join(temporary, 'imported.json');
   const exported = join(temporary, 'exported.json');
-  const run = spawnSync('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-asyncapi', '--all-features'], {
+  const run = spawnSync('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-core','--features','build,asyncapi-import', '--all-features'], {
     cwd: root,
     env: {...process.env, FORKLAUNCH_TEST_ASYNCAPI_CORRELATION_DOCUMENT: imported, FORKLAUNCH_TEST_ASYNCAPI_CORRELATION_EXPORT: exported},
     encoding: 'utf8', timeout: 300000, maxBuffer: 16 * 1024 * 1024

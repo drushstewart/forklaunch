@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createComplianceClient } from './compliance.js';
 import { iamSdkClient, legacyApiSdkClient } from './clientSdk.js';
-import { createForkLaunchSdk } from '../../sdks/typescript/src/index.js';
-import type { RegistryOptions } from '@forklaunch/universal-sdk';
+import type { NativeApiSdkClient } from '../native-api/sdk/typescript/index.js';
+import { universalSdk, type RegistryOptions } from '@forklaunch/universal-sdk';
 
 const userId = '12345678-1234-4234-9234-123456789abc';
 const requests: {
@@ -52,7 +52,7 @@ try {
     Extract<RegistryOptions, { raw: unknown }>['raw'],
     { openapi: string }
   > = JSON.parse(
-    readFileSync('../../.forklaunch/openapi/native-api/openapi.json', 'utf8')
+    readFileSync('../native-api/sdk/typescript/openapi.json', 'utf8')
   );
   if ('paths' in raw && raw.paths) {
     raw.paths['/compliance/erase/{userId}']!.delete!.operationId =
@@ -68,10 +68,10 @@ try {
     host: base + '/legacy',
     registryOptions: { raw }
   });
-  const shared = createForkLaunchSdk({
-    serviceBaseUrls: { 'native-api': base + '/native' }
+  const nativeApi = await universalSdk<NativeApiSdkClient>({
+    host: base + '/native',
+    registryOptions: { raw }
   });
-  const nativeApi = { compliance: shared.nativeApi.compliance };
   const legacyCalls: { action: string; userId: string; token: string }[] = [];
   type Request = {
     params: { userId: string };

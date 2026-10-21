@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import {spawn, execFile} from 'node:child_process';
+import {spawn, execFile} from './fixtures/secure_worker_runtime.mjs';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
 import {createServer, connect} from 'node:net';

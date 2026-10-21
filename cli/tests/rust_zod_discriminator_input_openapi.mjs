@@ -85,7 +85,7 @@ const source=z.discriminatedUnion('tag',[z.object({tag:z.literal('a').default(()
 validator.openapi2020(source,{pureInput:true});assert.equal(callbacks,0);
 let native=false;
 if(process.env.FORKLAUNCH_DISCRIMINATOR_INPUT_NATIVE==='1') {
- const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-contract','--features','zod-checks','--example','array_cardinality_parity'],{input:rows.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+ const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','zod-checks','--example','array_cardinality_parity'],{input:rows.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
  assert.equal(run.status,0,run.stderr);const result=run.stdout.trim().split('\n').map(line=>JSON.parse(line));assert.equal(result.length,rows.length);
  for(let i=0;i<rows.length;i++)assert.deepEqual(result[i],rows[i].ajv,JSON.stringify(rows[i].schema));native=true;
 }

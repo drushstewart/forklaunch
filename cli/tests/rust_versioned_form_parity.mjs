@@ -47,6 +47,6 @@ for(const body of [...cases,...failureCases]) {
  fixtures.push({kind:'form',versions:[{name:'fallback',schema:{type:'object'}},{name:'exact',schema:{const:req.body}}],cases:[body]});
  expected.push([{version:'exact',matched:['fallback','exact'],status:200}]);
 }
-const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
+const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
 for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],[...cases,...failureCases][i]);
 console.log(`PASS ${fixtures.length} actual TypeScript wire-parser/native URL-encoded version comparisons, including repeats, bracket arrays and malformed escapes`);

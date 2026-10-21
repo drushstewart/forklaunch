@@ -49,7 +49,7 @@ let client, child;
 try {
   const { SocketClient } = await import(
     pathToFileURL(
-      path.join(root, 'sdks/typescript-websocket/realtime/dist/socket_chat.js'),
+      path.join(root, 'src/client-sdk/typescript-websocket/realtime/dist/socket_chat.js'),
     )
   );
   const url = `ws://127.0.0.1:${server.address().port}/chat`;

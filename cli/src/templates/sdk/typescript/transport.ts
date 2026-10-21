@@ -1,1 +1,1 @@
-../../../../../framework-rs/crates/forklaunch-sdk-typescript/src/transport.ts
+../../../../../framework-rs/crates/core/src/typescript/transport.ts

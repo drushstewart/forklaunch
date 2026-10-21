@@ -792,6 +792,9 @@ impl CliCommand for CreateCommand {
                 // DB_NAME is computed from the component name (same logic as Pulumi):
                 //   strip -service/-worker suffix, replace - with _, append _database
                 // Other Pulumi-injected vars get empty values — Pulumi fills at deploy time.
+                // `${X:-default}` is optional with its default; `${X:?why}` is required.
+                let (value, optional) = compose_interpolation(&value);
+                let value = &value;
                 let effective_value = if key.eq_ignore_ascii_case("DB_NAME") {
                     if let Some(ref sid) = scope_id {
                         let base = sid
@@ -829,7 +832,7 @@ impl CliCommand for CreateCommand {
                             used_by: vec![service_name.clone()],
                             value: Some(effective_value.clone()),
                             // Read out of docker-compose, not declared in code.
-                            optional: None,
+                            optional,
                         });
                         existing_vars.insert(app_key);
                     }
@@ -849,7 +852,7 @@ impl CliCommand for CreateCommand {
                                 scope_id: scope_id.clone(),
                                 used_by: vec![service_name.clone()],
                                 value: Some(effective_value.clone()),
-                                optional: None,
+                                optional,
                             });
                             existing_vars.insert(comp_key);
                         }
@@ -868,7 +871,7 @@ impl CliCommand for CreateCommand {
                     scope_id: scope_id.clone(),
                     used_by: vec![service_name.clone()],
                     value: Some(effective_value.clone()),
-                    optional: None,
+                    optional,
                 });
 
                 existing_vars.insert((key, scope_id.clone()));
@@ -1887,6 +1890,10 @@ fn infer_key_component_property(
     key_upper: &str,
     value: &str,
 ) -> Option<EnvironmentVariableComponentProperty> {
+    // Rust field encryption: 32 random bytes as lowercase hex.
+    if key_upper == "ENCRYPTION_KEY_HEX" {
+        return Some(EnvironmentVariableComponentProperty::HexKey);
+    }
     if key_upper.contains("ENCRYPTION") || key_upper.contains("PRIVATE_KEY") {
         return Some(EnvironmentVariableComponentProperty::PrivatePem);
     }
@@ -2211,7 +2218,27 @@ fn should_passthrough(key: &str, value: &str) -> bool {
     true
 }
 
-const CLI_GENERATED_KEY_VARS: &[&str] = &["HMAC_SECRET_KEY"];
+const CLI_GENERATED_KEY_VARS: &[&str] = &["HMAC_SECRET_KEY", "ENCRYPTION_KEY_HEX"];
+
+/// A whole-value Compose interpolation becomes its default and an optional flag:
+/// `${X:-d}`/`${X-d}` → (`d`, optional), `${X:?m}`/`${X?m}` → (empty, required).
+/// Any other value is a literal and carries no requirement hint.
+fn compose_interpolation(value: &str) -> (String, Option<bool>) {
+    let Some(inner) = value.strip_prefix("${").and_then(|rest| rest.strip_suffix('}')) else {
+        return (value.to_owned(), None);
+    };
+    let name_end = inner
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or(inner.len());
+    let operator = &inner[name_end..];
+    if let Some(default) = operator.strip_prefix(":-").or_else(|| operator.strip_prefix('-')) {
+        return (default.to_owned(), Some(true));
+    }
+    if operator.starts_with(":?") || operator.starts_with('?') {
+        return (String::new(), Some(false));
+    }
+    (value.to_owned(), None)
+}
 
 fn is_cli_generated_key_var(key_upper: &str) -> bool {
     CLI_GENERATED_KEY_VARS
@@ -2637,6 +2664,24 @@ mod tests {
     use tempfile::TempDir;
 
     use super::*;
+
+    #[test]
+    fn compose_interpolations_map_to_defaults_and_requirements() {
+        assert_eq!(compose_interpolation("${RUST_LOG:-info}"), ("info".into(), Some(true)));
+        assert_eq!(compose_interpolation("${STRIPE_API_KEY:-}"), (String::new(), Some(true)));
+        assert_eq!(compose_interpolation("${TENANT_ID:?Configure a tenant}"), (String::new(), Some(false)));
+        assert_eq!(compose_interpolation("http://iam:8002"), ("http://iam:8002".into(), None));
+        assert_eq!(compose_interpolation("prefix-${X:-y}"), ("prefix-${X:-y}".into(), None));
+    }
+
+    #[test]
+    fn rust_encryption_key_is_a_generated_hex_key() {
+        assert!(is_cli_generated_key_var("ENCRYPTION_KEY_HEX"));
+        assert!(matches!(
+            infer_key_component_property("ENCRYPTION_KEY_HEX", ""),
+            Some(EnvironmentVariableComponentProperty::HexKey)
+        ));
+    }
     use crate::core::manifest::{
         ProjectEntry, ResourceInventory, application::ApplicationManifestData,
     };
@@ -2715,6 +2760,7 @@ mod tests {
             is_jest: false,
             platform_application_id: None,
             platform_organization_id: None,
+            framework: None,
             compliance: None,
         }
     }

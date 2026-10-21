@@ -4,12 +4,12 @@ import { createServer } from 'node:net';
 import { randomInt } from 'node:crypto';
 import { join } from 'node:path';
 
-const [app] = process.argv.slice(2);
+const [app, modules = 'modules'] = process.argv.slice(2);
 assert.ok(app);
 const port = await freePortPair();
 const base = `http://127.0.0.1:${port}`;
 const mcp = `http://127.0.0.1:${port + 2000}/mcp`;
-const service = join(app, 'modules/legacy-api');
+const service = join(app, modules, 'legacy-api');
 const env = {
   ...Object.fromEntries(
     Object.entries(process.env).filter(

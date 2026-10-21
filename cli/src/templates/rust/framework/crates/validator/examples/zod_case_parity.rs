@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/validator/examples/zod_case_parity.rs

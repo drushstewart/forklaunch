@@ -1,4 +1,5 @@
 use crate::error::{AppError, Result};
+use std::env;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceConfig {
@@ -6,6 +7,7 @@ pub struct ServiceConfig {
     pub protocol: String,
     pub host: String,
     pub port: u16,
+    pub public_origin: Option<String>,
     pub docs_path: String,
     pub docs_server_urls: Vec<String>,
     pub docs_server_descriptions: Vec<String>,
@@ -15,28 +17,28 @@ pub struct ServiceConfig {
 impl ServiceConfig {
     #[must_use]
     pub fn from_env() -> Self {
-        let name = std::env::var("SERVICE_NAME").unwrap_or_else(|_| "{{{name}}}".to_string());
-        let protocol = std::env::var("PROTOCOL").unwrap_or_else(|_| "http".to_string());
-        let host = std::env::var("SERVICE_HOST")
-            .or_else(|_| std::env::var("HOST"))
+        let name = env::var("SERVICE_NAME").unwrap_or_else(|_| "{{{name}}}".to_string());
+        let protocol = env::var("PROTOCOL").unwrap_or_else(|_| "http".to_string());
+        let host = env::var("SERVICE_HOST")
+            .or_else(|_| env::var("HOST"))
             .unwrap_or_else(|_| "127.0.0.1".to_string());
-        let port = std::env::var("SERVICE_PORT")
-            .or_else(|_| std::env::var("PORT"))
+        let port = env::var("SERVICE_PORT")
+            .or_else(|_| env::var("PORT"))
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(8080);
-        let docs_path = std::env::var("DOCS_PATH").unwrap_or_else(|_| "/docs".to_string());
-        let docs_server_urls = std::env::var("DOCS_SERVER_URLS")
+        let docs_path = env::var("DOCS_PATH").unwrap_or_else(|_| "/docs".to_string());
+        let docs_server_urls = env::var("DOCS_SERVER_URLS")
             .ok()
             .map(|value| csv_values(&value))
             .filter(|values| !values.is_empty())
             .unwrap_or_else(|| vec![format!("{protocol}://{host}:{port}")]);
-        let docs_server_descriptions = std::env::var("DOCS_SERVER_DESCRIPTIONS")
+        let docs_server_descriptions = env::var("DOCS_SERVER_DESCRIPTIONS")
             .ok()
             .map(|value| csv_values(&value))
             .filter(|values| !values.is_empty())
             .unwrap_or_else(|| vec!["Main Server".to_string()]);
-        let database_url = std::env::var("DATABASE_URL")
+        let database_url = env::var("DATABASE_URL")
             .unwrap_or_else(|_| "postgres://localhost/forklaunch".to_string());
 
         Self {
@@ -44,6 +46,7 @@ impl ServiceConfig {
             protocol,
             host,
             port,
+            public_origin: env::var("PUBLIC_ORIGIN").ok(),
             docs_path,
             docs_server_urls,
             docs_server_descriptions,
@@ -54,6 +57,26 @@ impl ServiceConfig {
     #[must_use]
     pub fn bind_addr(&self) -> String {
         format!("{}:{}", self.host, self.port)
+    }
+
+    #[must_use]
+    pub fn origin(&self) -> String {
+        self.public_origin.clone().unwrap_or_else(|| {
+            format!("{}://{}:{}", self.protocol, self.host, self.port)
+        })
+    }
+
+    /// Resolve an ephemeral listener port without replacing configured public URLs.
+    pub fn set_bound_port(&mut self, port: u16) {
+        if self.port == 0 {
+            let previous = format!("{}://{}:0", self.protocol, self.host);
+            self.port = port;
+            for server in &mut self.docs_server_urls {
+                if *server == previous {
+                    *server = format!("{}://{}:{}", self.protocol, self.host, self.port);
+                }
+            }
+        }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -89,6 +112,7 @@ impl Default for ServiceConfig {
             protocol: "http".to_string(),
             host: "127.0.0.1".to_string(),
             port: 8080,
+            public_origin: None,
             docs_path: "/docs".to_string(),
             docs_server_urls: vec!["http://127.0.0.1:8080".to_string()],
             docs_server_descriptions: vec!["Main Server".to_string()],

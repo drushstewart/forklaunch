@@ -1,4 +1,4 @@
-FROM rust:1.91-slim-bookworm AS builder
+FROM rust:1.98-slim-bookworm AS builder
 
 WORKDIR /app
 RUN apt-get update \
@@ -16,6 +16,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release /app/target/release
+# Deployed PostgreSQL URLs verify the server against the AWS RDS CA bundle.
+ADD --chmod=0644 https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /app/certs/rds-global-bundle.pem
 
 ENV HOST=0.0.0.0
 ENV PROTOCOL=http

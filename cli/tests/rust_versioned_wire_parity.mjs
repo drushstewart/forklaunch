@@ -158,6 +158,6 @@ for(const [kind,bytes,charset,parserOptions,contentEncoding,verify,reviver] of c
  }
  fixtures.push({kind,contentType,contentEncoding,parserOptions,verify,reviver,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
 }
-const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000,maxBuffer:32*1024*1024}));
+const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000,maxBuffer:32*1024*1024}));
 for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],`${cases[i][0]} ${cases[i][2]} ${cases[i][4]} ${cases[i][1].subarray(0,64).toString('hex')}`);
 console.log(`PASS ${fixtures.length} actual TypeScript/native JSON/text/form/file wire-parser comparisons: parser options, charsets, compression and bounded decoded bytes`);

@@ -31,10 +31,10 @@ try{
  for(const kind of ['file','binary'])for(const body of ['','水💬\u0000bytes',{active:false,ids:[0,null]},[0,255],false,null])cases.push({kind,arguments:{body}});
  for(const body of [{a:'a+b & 水',ids:['a,b','水'],empty:[],filter:{active:false},nil:null,zero:0,flag:false},{}])cases.push({kind:'form',arguments:{body}});
  for(const body of ['plain 水','a\nb\r\nc',''])cases.push({kind:'text',arguments:{body}});
- for(const body of [{active:false,ids:[0,null]},[false,0,null],false,null])cases.push({kind:'json',arguments:{body}});
+ for(const body of [{active:false,ids:[0,null]},[false,0,null],42,false,null,'','scalar 水','{"flag":"ok"}','"quoted"\n\\tail'])cases.push({kind:'json',arguments:{body}});
  cases.push({kind:'json',contentType:'application/vnd.fixture+json',arguments:{contentType:'application/vnd.fixture+json',body:{ok:true}}});
  writeFileSync(join(temporary,'input.json'),JSON.stringify(cases));
- run('cargo',['test','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-mcp','--all-features','native_mcp_body_transport_conformance'],{...process.env,CARGO_INCREMENTAL:'0',FORKLAUNCH_TEST_MCP_BODY_INPUT:join(temporary,'input.json'),FORKLAUNCH_TEST_MCP_BODY_OUTPUT:join(temporary,'native.json')});
+ run('cargo',['test','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','rmcp-server,zod-regex,zod-checks,zod-uri','native_mcp_body_transport_conformance'],{...process.env,CARGO_INCREMENTAL:'0',FORKLAUNCH_TEST_MCP_BODY_INPUT:join(temporary,'input.json'),FORKLAUNCH_TEST_MCP_BODY_OUTPUT:join(temporary,'native.json')});
  cpSync(join(root,'cli/tests/fixtures/mcp_transport.ts'),join(temporary,'transport.ts'));
  run(join(dependencies,'node_modules/.bin/esbuild'),['transport.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=transport.mjs']);
  run(process.execPath,['transport.mjs']);
@@ -48,6 +48,7 @@ try{
    const parse=async(body,mime)=>[...await new Response(body,{headers:{'content-type':mime}}).formData()];
    assert.deepEqual(await parse(left,native[index].contentType),await parse(right,actual[index].contentType));
   }else{assert.equal(native[index].contentType,actual[index].contentType);assert.deepEqual(left,right,`wire bytes ${index}`);}
+  if(cases[index].kind==='json')assert.deepEqual(JSON.parse(right.toString()),cases[index].arguments.body,`Typed JSON value ${index}`);
  }
  console.log(`PASS ${cases.length} actual FastMCP + repository Zod/generator MCP calls against live HTTP, compared with native wire encoding; named-version POST/GET and mismatched-input regressions pass`);
 }finally{rmSync(temporary,{recursive:true,force:true});}

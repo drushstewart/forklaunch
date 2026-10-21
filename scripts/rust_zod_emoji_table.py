@@ -5,8 +5,8 @@ import hashlib
 from pathlib import Path
 
 root = Path(__file__).resolve().parent.parent
-source = root / "framework-rs/crates/forklaunch-common/data/unicode-16.0.0/emoji-data.txt"
-target = root / "framework-rs/crates/forklaunch-common/src/zod_string_format/emoji_table.rs"
+source = root / "framework-rs/crates/common/data/unicode-16.0.0/emoji-data.txt"
+target = root / "framework-rs/crates/common/src/zod_string_format/emoji_table.rs"
 assert hashlib.sha256(source.read_bytes()).hexdigest() == "f1365a5173eee18e1f98b240cdc492e84a25f1ce7e0c9d1094eb29c41a22696a"
 ranges = []
 for line in source.read_text().splitlines():
@@ -37,7 +37,7 @@ else:
 ts = "// BEGIN GENERATED UNICODE16 EMOJI RANGES\nconst zodEmojiRanges: readonly (readonly [number, number])[] = [\n"
 ts += "".join(f"  [{start}, {end}],\n" for start, end in merged)
 ts += "];\n// END GENERATED UNICODE16 EMOJI RANGES"
-for relative in ["framework/universal-sdk/src/core/zodChecks.ts", "framework-rs/crates/forklaunch-sdk-typescript/src/zod-checks.ts"]:
+for relative in ["framework/universal-sdk/src/core/zodChecks.ts", "framework-rs/crates/core/src/typescript/zod-checks.ts"]:
     helper = root / relative
     content = helper.read_text()
     begin = content.index("// BEGIN GENERATED UNICODE16 EMOJI RANGES")

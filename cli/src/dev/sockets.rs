@@ -158,6 +158,15 @@ impl Exports {
         self.refresh();
     }
 
+    pub(super) fn prepare(&mut self) -> Result<()> {
+        for service in &mut self.services {
+            refresh(&self.root, service).with_context(|| {
+                format!("Unable to prepare development sockets for {}", service.name)
+            })?;
+        }
+        Ok(())
+    }
+
     fn refresh(&mut self) {
         for service in &mut self.services {
             let result = refresh(&self.root, service);

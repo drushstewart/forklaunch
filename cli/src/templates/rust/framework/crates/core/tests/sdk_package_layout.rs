@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/tests/sdk_package_layout.rs

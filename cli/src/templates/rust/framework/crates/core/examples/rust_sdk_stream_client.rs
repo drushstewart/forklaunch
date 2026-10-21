@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/examples/rust_sdk_stream_client.rs

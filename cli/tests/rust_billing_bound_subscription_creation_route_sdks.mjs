@@ -29,7 +29,7 @@ try {
  let args:Vec<_>=std::env::args().collect();let client=BoundSubscriptionClient::new(&args[1]);
  let headers=std::collections::BTreeMap::from([("authorization".into(),args[4].clone())]);
  let result=match args[2].as_str(){
- "create"=>{let response=client.create_bound_subscription(CreateBoundSubscriptionRequest{headers,body:Some(args[5].clone()),..Default::default()}).await.unwrap();let CreateBoundSubscriptionResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
+ "create"=>{let response=client.create_bound_subscription_raw(CreateBoundSubscriptionRequest{headers,body:Some(args[5].clone()),..Default::default()}).await.unwrap();let CreateBoundSubscriptionResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  "inspect"=>{let response=client.inspect_bound_subscription_operation(InspectBoundSubscriptionOperationRequest{params:std::collections::BTreeMap::from([("operationId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let InspectBoundSubscriptionOperationResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  _=>panic!("unexpected operation")};println!("{}",result);
 }`);

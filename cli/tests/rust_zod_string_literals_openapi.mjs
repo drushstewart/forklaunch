@@ -177,7 +177,7 @@ if (process.env.FORKLAUNCH_STRING_LITERAL_NATIVE === "1") {
       "--manifest-path",
       "framework-rs/Cargo.toml",
       "-p",
-      "forklaunch-contract",
+      "forklaunch-core",
       "--features",
       "schema-validation",
       "--example",

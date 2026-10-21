@@ -33,7 +33,7 @@ try {
     },components:{messages:{Bytes:{payload:{$ref:'#/components/schemas/Bytes'}}},schemas:{Bytes:binary.shape}}
   };
   await writeFile(input,JSON.stringify(imported ? document : artifact));
-  const generated = JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-sdk-typescript','--example','socket_artifacts','--',input,'all', imported ? 'asyncapi' : 'socket-contract'],{cwd:root,env,timeout:300000,maxBuffer:8*1024*1024,encoding:'utf8'}));
+  const generated = JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(framework,'Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','typescript_socket_artifacts','--',input,'all', imported ? 'asyncapi' : 'socket-contract'],{cwd:root,env,timeout:300000,maxBuffer:8*1024*1024,encoding:'utf8'}));
   if (imported) assert.deepEqual(generated.asyncapi, document, 'external document must be preserved');
   for (const channel of Object.values(imported ? {} : generated.asyncapi.channels)) {
     for (const message of Object.values(channel.messages)) assert.equal(message.contentType,'application/octet-stream');
@@ -52,7 +52,7 @@ try {
   assert.throws(()=>codec.decode(Buffer.alloc(5)),/byte limit/);
   const original = Buffer.from([255]); const decoded = codec.decode(original); original[0]=0;
   assert.equal(decoded[0],255,'decoded data must own its bytes');
-  await writeFile(path.join(temporary,'Cargo.toml'), `[package]\nname="forklaunch-binary-socket-fixture"\nversion="0.0.0"\nedition="2021"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(framework,'crates/forklaunch-ws'))},features=["transport","json-schema"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\ntokio={version="1",features=["net","macros","rt-multi-thread"]}\ntokio-tungstenite="0.30"\n`);
+  await writeFile(path.join(temporary,'Cargo.toml'), `[package]\nname="forklaunch-binary-socket-fixture"\nversion="0.0.0"\nedition="2021"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(framework,'crates/ws'))},features=["transport","json-schema"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\ntokio={version="1",features=["net","macros","rt-multi-thread"]}\ntokio-tungstenite="0.30"\n`);
   await writeFile(path.join(temporary,'src/lib.rs'),generated.rust.socket_bytes);
   await writeFile(path.join(temporary,'src/main.rs'), `use forklaunch_binary_socket_fixture::*;
 use forklaunch_ws::transport::{SocketEvent,SocketOptions};

@@ -1,1 +1,1 @@
-../../../../../framework-rs/crates/forklaunch-sdk-rust/src/http_client.rs.template
+../../../../../framework-rs/crates/core/src/rust_sdk/http_client.rs.template

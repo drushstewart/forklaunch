@@ -73,6 +73,7 @@ impl CliCommand for ServiceCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
         let project_names =
             rust_project::registered_project_names(&app_root_path, RustProjectKind::Service)?;
@@ -86,6 +87,11 @@ impl CliCommand for ServiceCommand {
             |input: &str| project_names.contains(input),
             |_| "Service not found".to_string(),
         )?;
+
+        crate::sdk::typescript_build::preflight_lifecycle(&app_root_path, &service_name)?;
+        let sdk_manifest: toml::Value = toml::from_str(&read_to_string(&manifest_path)?)?;
+        let sdk_modules = sdk_manifest.get("modules_path").and_then(toml::Value::as_str).unwrap_or("src");
+        crate::init::rust_project::ensure_service_sdk_deletable(&app_root_path, &format!("{sdk_modules}/{service_name}"))?;
 
         if rust_project::is_rust_project(&app_root_path, &service_name)? {
             if !matches.get_flag("continue") {
@@ -264,6 +270,9 @@ impl CliCommand for ServiceCommand {
             .map(|(_, template)| template)
             .collect();
         write_rendered_templates(&rendered_templates, false, &mut stdout)?;
+
+        crate::sdk::typescript_build::remove_hook(&app_root_path, &service_name)?;
+        crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
 
         log_ok!(stdout, "{} deleted successfully!", service_name);
 

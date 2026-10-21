@@ -66,7 +66,7 @@ assert.equal(callbacks,0);
 assert.equal(rejects.every(row=>row.rejected),true);
 let native=false;
 if(process.env.FORKLAUNCH_RECORD_PURE_NATIVE==='1') {
- const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-contract','--features','zod-checks','--example','array_cardinality_parity'],{input:rows.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+ const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','zod-checks','--example','array_cardinality_parity'],{input:rows.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
  assert.equal(run.status,0,run.stderr);
  const results=run.stdout.trim().split('\n').map(line=>JSON.parse(line));assert.equal(results.length,rows.length);
  for(let index=0;index<rows.length;index++)assert.deepEqual(results[index],rows[index].ajv,JSON.stringify(rows[index].schema));

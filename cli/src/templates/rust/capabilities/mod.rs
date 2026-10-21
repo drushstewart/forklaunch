@@ -3,11 +3,13 @@ pub mod nonce_store;
 __EVENT_MODULES__
 
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_blueprint_core::{BlueprintResult, instance_gateway::InstanceGatewayClient,
-    platform_events::PlatformEventVerifier};
-use forklaunch_contract::{BodyContract, ContractRegistry, FieldContract, RouteContract, BodyKind, SchemaRef};
-use axum::{RequestExt, body::to_bytes, extract::{Path, Request}, http::StatusCode, middleware::{self, Next}, response::IntoResponse};
-use std::sync::{Arc, OnceLock};
+use forklaunch_core::domain::BlueprintResult;
+use forklaunch_core::http::instance_gateway::InstanceGatewayClient;
+use forklaunch_core::http::platform_events::PlatformEventVerifier;
+use forklaunch_core::contract::{BodyContract, ContractRegistry, FieldContract, RouteContract, BodyKind, SchemaRef};
+use axum::{RequestExt, body::{to_bytes, Body}, extract::{Path, Request}, http::{StatusCode, Method}, middleware::{self, Next}, response::IntoResponse};
+use std::{sync::{Arc, OnceLock}, env};
+__CLIENT_IMPORTS__use forklaunch_core::contract::AccessLevel;
 
 fn instance_gateway() -> BlueprintResult<InstanceGatewayClient> {
     // Reuse the connection pool after the first successful resolution. A
@@ -23,14 +25,17 @@ __CLIENT_FACTORIES__
 fn text_body() -> BodyContract { BodyContract {kind:BodyKind::Text,schema:SchemaRef::named("String"),content_type:Some("text/plain".into())} }
 
 pub fn contracts() -> Vec<RouteContract> {
-    vec![RouteContract::post("ReceivePlatformEvent", "Receives a signed event from the ForkLaunch platform", "/platform-events/:feature")
+    let mut route = RouteContract::post("ReceivePlatformEvent", "Receives a signed event from the ForkLaunch platform", "/platform-events/:feature")
+        .with_access(AccessLevel::Internal)
         .with_param(FieldContract::required("feature", "String"))
         .with_request_body(BodyContract::json("PlatformEvent"))
         .with_response(200, Some(text_body()))
         .with_response(401, Some(text_body()))
         .with_response(404, Some(text_body()))
         .with_response(500, Some(text_body()))
-        .with_response(503, Some(text_body()))]
+        .with_response(503, Some(text_body()));
+    route.options.mcp = false;
+    vec![route]
 }
 
 pub fn register_contracts(registry: &mut ContractRegistry) {
@@ -51,7 +56,7 @@ impl ManagedCapabilitiesRouterExt for ForkLaunchRouter {
             })
         };
         // The preserved factory allows replicas to share atomic nonce storage.
-        let verifier = Arc::new(std::env::var("INSTANCE_HMAC_KEY").ok().and_then(|key|
+        let verifier = Arc::new(env::var("INSTANCE_HMAC_KEY").ok().and_then(|key|
             PlatformEventVerifier::new(key, nonce_store::store()).ok()));
         router.map_route("/platform-events/:feature", move |route| {
             let verifier = Arc::clone(&verifier);
@@ -66,7 +71,7 @@ impl ManagedCapabilitiesRouterExt for ForkLaunchRouter {
                     };
                     let known = matches!(feature.as_str(), __KNOWN_FEATURES__);
                     let forward_payment = original && feature == "payments";
-                    if request.method() != axum::http::Method::POST || (!known && !forward_payment) {
+                    if request.method() != Method::POST || (!known && !forward_payment) {
                         return next.run(request).await;
                     }
                     let Some(verifier) = verifier.as_ref() else {
@@ -88,7 +93,7 @@ impl ManagedCapabilitiesRouterExt for ForkLaunchRouter {
                     };
                     if forward_payment {
                         // Keep the existing billing receipt and business effects.
-                        return next.run(Request::from_parts(parts, axum::body::Body::from(body))).await;
+                        return next.run(Request::from_parts(parts, Body::from(body))).await;
                     }
                     let result: BlueprintResult<()> = match feature.as_str() {
 __HANDLER_ARMS__

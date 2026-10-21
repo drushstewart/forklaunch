@@ -1,7 +1,7 @@
 use axum::{Extension, Json, http::StatusCode};
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::{BodyContract, BodyKind, RequestContract, ResponseContract, RouteContract, VersionedContract};
-use forklaunch_http::SelectedVersion;
+use forklaunch_core::contract::{BodyContract, BodyKind, RequestContract, ResponseContract, RouteContract, VersionedContract};
+use forklaunch_core::http::SelectedVersion;
 use serde_json::{Value,json};
 
 pub fn contracts() -> Vec<RouteContract> {
@@ -71,8 +71,8 @@ pub fn contracts() -> Vec<RouteContract> {
     vec![route,text,file,form,multipart,scalar,transformed]
 }
 pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
-    let mut hooks=forklaunch_http::VersionBodyHooksRegistry::default();
-    hooks.insert_parser(&contracts()[6],forklaunch_http::BodyParserHooks::default().with_verify(|request,bytes,encoding| {
+    let mut hooks=forklaunch_core::http::VersionBodyHooksRegistry::default();
+    hooks.insert_parser(&contracts()[6],forklaunch_core::http::BodyParserHooks::default().with_verify(|request,bytes,encoding| {
         if encoding!=Some("utf-8") { return Err("unexpected encoding".into()); }
         if request.headers.get("x-reject-body").map(String::as_str)==Some("yes") || bytes.windows(9).any(|window|window==b"wire-deny") {
             return Err("private verification detail".into());
@@ -84,7 +84,7 @@ pub fn register(router:ForkLaunchRouter) -> ForkLaunchRouter {
         Ok(Some(if key=="value" && value=="revive" {json!("revived")} else {value}))
     })).unwrap();
     for version in ["v1","v2"] {
-        hooks.insert(&contracts()[6],version,forklaunch_http::VersionBodyHooks::default()
+        hooks.insert(&contracts()[6],version,forklaunch_core::http::VersionBodyHooks::default()
             .with_optional_preprocess(|body| {
                 let Some(body)=body else { return Ok(Some(json!({"value":"default"}))); };
                 let value=body["value"].as_str().ok_or("expected text")?;

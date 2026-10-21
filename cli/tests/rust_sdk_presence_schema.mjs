@@ -39,7 +39,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     return { value, valid: result.ok, ...(result.ok ? { normalized: result.value } : {}) };
   });
   const app = process.argv[2];
-  writeFileSync(path.join(app, 'crates/presence/src/presence_schema.json'), JSON.stringify(validator.openapi(schema)));
-  writeFileSync(path.join(app, 'crates/presence/src/presence_cases.json'), JSON.stringify(cases));
+  const directory = process.argv[3] ?? path.join(app, 'crates/presence/src');
+  writeFileSync(path.join(directory, 'presence_schema.json'), JSON.stringify(validator.openapi(schema)));
+  writeFileSync(path.join(directory, 'presence_cases.json'), JSON.stringify(cases));
   console.log(`Prepared ${cases.length} actual TypeScript validator presence/null cases`);
 }

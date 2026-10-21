@@ -27,6 +27,8 @@ use crate::{
     },
 };
 
+const MINIO_IMAGE: &str = "cgr.dev/chainguard/minio@sha256:32c504bea4574d8f29d719b37bc0dad920ecf3e22b81dc5cea0bb105af2ce10f";
+
 const MONGO_INIT_COMMAND: &str = r#"sh -c "sleep 5; mongosh --host mongodb:27017 --eval '
 rs.initiate({
     _id: \"rs0\",
@@ -892,7 +894,9 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
         docker_compose.services.insert(
             "minio".to_string(),
             DockerService {
-                image: Some("minio/minio:RELEASE.2025-04-22T22-12-26Z".to_string()),
+                // MinIO no longer publishes community images; Chainguard's build ships
+                // both `minio` and `mc` (used by the healthcheck and bucket init).
+                image: Some(MINIO_IMAGE.to_string()),
                 container_name: Some(format!("{}-minio", app_name)),
                 restart: Some(Restart::Always),
                 environment: Some(minio_environment),
@@ -934,7 +938,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
     docker_compose.services.insert(
         "minio-init".to_string(),
         DockerService {
-            image: Some("minio/mc:RELEASE.2025-04-16T18-13-26Z".to_string()),
+            image: Some(MINIO_IMAGE.to_string()),
             networks: Some(vec![format!("{}-network", app_name)]),
             depends_on: Some(IndexMap::from([(
                 "minio".to_string(),
@@ -1317,7 +1321,7 @@ pub(crate) fn add_s3_to_docker_compose<'a>(
         docker_compose.services.insert(
             "minio".to_string(),
             DockerService {
-                image: Some("minio/minio".to_string()),
+                image: Some(MINIO_IMAGE.to_string()),
                 container_name: Some(format!("{}-minio", app_name)),
                 restart: Some(Restart::Always),
                 environment: Some(minio_environment),
@@ -2234,6 +2238,13 @@ pub(crate) fn add_service_definition_to_docker_compose(
         docker_compose_string,
     )?;
 
+    // Field-encrypted persistence (core 3.x) refuses to start without the app key ring.
+    if !manifest_data.generated_encryption_key.is_empty() {
+        environment.insert(
+            "ENCRYPTION_KEY".to_string(),
+            manifest_data.generated_encryption_key.clone(),
+        );
+    }
     if manifest_data.is_better_auth {
         environment.insert(
             "BETTER_AUTH_SECRET".to_string(),
@@ -2270,7 +2281,8 @@ pub(crate) fn add_service_definition_to_docker_compose(
         );
     }
 
-    if manifest_data.is_iam_configured {
+    // The IAM module itself needs its HMAC secret and JWKS URL too.
+    if manifest_data.is_iam_configured || manifest_data.is_iam {
         add_iam_environment_variables_to_docker_compose(
             &manifest_data.app_name,
             &manifest_data.service_name,
@@ -2406,8 +2418,28 @@ pub(crate) fn add_service_definition_to_docker_compose(
         }
     }
 
+    route_typescript_dockerfiles(base_path, docker_compose_path, &mut docker_compose);
     Ok(to_string(&docker_compose)
         .with_context(|| ERROR_FAILED_TO_ADD_PROJECT_METADATA_TO_DOCKER_COMPOSE)?)
+}
+
+/// Use the mixed application's named TypeScript sibling without changing the
+/// build context. A context-local Dockerfile remains an explicit customization.
+pub(crate) fn route_typescript_dockerfiles(root: &Path, compose_path: &Path, compose: &mut DockerCompose) {
+    let sibling = root.join("Dockerfile.typescript");
+    if !sibling.is_file() { return; }
+    let Ok(sibling) = sibling.canonicalize() else { return; };
+    let base = compose_path.parent().unwrap_or(root);
+    for service in compose.services.values_mut() {
+        let Some(build) = service.build.as_mut() else { continue; };
+        if !matches!(build.dockerfile.as_str(), "Dockerfile" | "./Dockerfile") { continue; }
+        let context = base.join(&build.context);
+        if context.join("Dockerfile").exists() { continue; }
+        let Ok(context) = context.canonicalize() else { continue; };
+        if let Some(relative) = pathdiff::diff_paths(&sibling, &context) {
+            build.dockerfile = relative.to_string_lossy().into_owned();
+        }
+    }
 }
 
 fn get_relative_context_path(
@@ -2454,6 +2486,12 @@ pub(crate) fn add_worker_definition_to_docker_compose(
         docker_compose_path,
         docker_compose_string,
     )?;
+    if !manifest_data.generated_encryption_key.is_empty() {
+        environment.insert(
+            "ENCRYPTION_KEY".to_string(),
+            manifest_data.generated_encryption_key.clone(),
+        );
+    }
 
     environment.insert(
         "QUEUE_NAME".to_string(),
@@ -2581,6 +2619,7 @@ pub(crate) fn add_worker_definition_to_docker_compose(
             .insert(worker_service_name.clone(), worker_service);
     }
 
+    route_typescript_dockerfiles(app_root_path, docker_compose_path, &mut docker_compose);
     Ok(to_string(&docker_compose)
         .with_context(|| ERROR_FAILED_TO_ADD_PROJECT_METADATA_TO_DOCKER_COMPOSE)?)
 }
@@ -3071,6 +3110,7 @@ depends_on:
             is_jest: false,
             platform_application_id: None,
             platform_organization_id: None,
+            framework: None,
             compliance: None,
             language: None,
             application_language: None,

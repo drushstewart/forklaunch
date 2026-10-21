@@ -1,35 +1,62 @@
 #!/usr/bin/env python3
-"""Shared generated clients against native HTTP/MCP and a real tsx HTTP service.
-
-The TypeScript export hook is fixture-owned; this does not assert that mixed
-application TypeScript module scaffolding or dev orchestration is complete.
-"""
+"""Local clients from raw scaffolds plus the manual TS OpenAPI export boundary."""
+import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import select
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 
 repo = Path(__file__).resolve().parents[2]
 binary = Path(os.environ.get('FORKLAUNCH_CLI', repo / 'cli/target/debug/forklaunch')).resolve()
+env = {**os.environ, 'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable',
+       'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1'}
+env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
+if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
+    sys.exit(subprocess.run([sys.executable, str(repo / 'cli/tests/fixtures/worker_runtime_lock.py'),
+        '-c', shlex.join([sys.executable, str(Path(__file__).resolve())])], env=env).returncode)
+print('CLI SHA256:', hashlib.sha256(binary.read_bytes()).hexdigest(), flush=True)
 output = repo / 'cli/tests/output/rust-mixed-sdk-runtime'
 output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
 app = root / 'app'
-env = {**os.environ, 'CARGO_INCREMENTAL': '0'}
 children = []
 
 
 def run(*args, cwd=None, timeout=1800):
+    print('Running:', shlex.join(map(str, args)), flush=True)
     subprocess.run([str(arg) for arg in args], cwd=app if cwd is None else cwd, env=env, check=True, timeout=timeout)
 
 
 def cli(*args):
     run(binary, *args, '--path', app, cwd=root)
+
+
+def project_metadata(name, **updates):
+    """Edit only this registered project's metadata; retain the full manifest."""
+    manifest = app / '.forklaunch/manifest.toml'
+    parts = manifest.read_text().split('[[projects]]')
+    for index, part in enumerate(parts[1:], 1):
+        if re.search(r'^name = ' + re.escape(json.dumps(name)) + r'$', part, re.M):
+            assert '[projects.metadata]' in part
+            for key, value in updates.items():
+                pattern = r'^' + re.escape(key) + r' = .*\n'
+                part = re.sub(pattern, '', part, flags=re.M)
+                if value is not None:
+                    part = part.replace('[projects.metadata]\n', '[projects.metadata]\n' + key + ' = ' + json.dumps(value) + '\n', 1)
+            parts[index] = part
+            manifest.write_text('[[projects]]'.join(parts))
+            parsed = tomllib.loads(manifest.read_text())
+            assert next(project for project in parsed['projects'] if project['name'] == name)['metadata']['sdkLayout'] == 'project-local-v1'
+            return
+    raise AssertionError('Project not registered: ' + name)
 
 
 def start(*args):
@@ -52,7 +79,9 @@ def start(*args):
 
 
 try:
-    cli('init', 'application', 'mixed-sdk', '--language', 'rust', '-D', 'Mixed SDK', '-A', 'ForkLaunch', '-L', 'MIT')
+    cli('init', 'application', 'mixed-sdk', '--database', 'postgresql', '--validator', 'zod',
+        '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
+        '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Mixed SDK', '-A', 'ForkLaunch', '-L', 'MIT')
     cli('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API')
     refused = subprocess.run([str(binary), 'sdk', 'mode', '-t', 'live', '--path', str(app)], cwd=root, env=env, capture_output=True, text=True, timeout=30)
     assert refused.returncode != 0 and 'requires a TypeScript project' in refused.stderr + refused.stdout
@@ -61,21 +90,35 @@ try:
     (tools / 'package.json').write_text('{"private":true}')
     run('npm', 'install', '--ignore-scripts', '--no-audit', '--no-fund', 'tsx@4.20.5',
         'typescript@5.9.3', '@types/node@22', cwd=tools)
-    ts = app / 'services/typescript-api'
-    ts.mkdir(parents=True)
+    cli('init', 'service', 'typescript-api', '--language', 'typescript', '-d', 'postgresql', '-D', 'Manual export hook')
+    ts = app / 'src/typescript-api'
+    # A manually owned export hook produces OpenAPI directly; contract mode
+    # intentionally imports that document rather than a managed build artifact.
+    project_metadata('typescript-api', contractArtifactPath=None)
+    (ts / 'sdk/contract.json').unlink(missing_ok=True)
     (ts / 'node_modules').symlink_to(tools / 'node_modules', target_is_directory=True)
-    (ts / 'package.json').write_text('{"name":"typescript-api","private":true,"type":"module"}')
-    (ts / 'tsconfig.json').write_text('{"compilerOptions":{"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","strict":true}}')
-    profile = {'type': 'object', 'properties': {'id': {'type': 'string'}, 'profileName': {'type': 'string'}}, 'required': ['id', 'profileName']}
+    package = ts / 'package.json'
+    package_data = json.loads(package.read_text())
+    package_data.update({'name': 'typescript-api', 'private': True, 'type': 'module'})
+    # This fixture deliberately owns a plain TypeScript server/export hook.
+    # Keep its normal build contract so later mixed lifecycle reconciliation
+    # can still construct the shared TypeScript image.
+    package_data.setdefault('scripts', {})['build'] = 'tsc -b'
+    package.write_text(json.dumps(package_data))
+    (ts / 'tsconfig.json').write_text(json.dumps({'compilerOptions': {
+        'target': 'ES2022', 'module': 'NodeNext', 'moduleResolution': 'NodeNext',
+        'strict': True, 'skipLibCheck': True, 'rootDir': '.', 'outDir': 'lib',
+    }, 'include': ['server.ts']}))
+    profile = {'type': 'object', 'properties': {'id': {'type': 'string'}, 'profileName': {'type': 'string'}}, 'required': ['id', 'profileName'], 'additionalProperties': False}
     def response(schema):
         return {'description': 'Fixture response', 'content': {'application/json': {'schema': schema}}}
     spec = {'openapi': '3.1.0', 'info': {'title': 'TypeScript profiles', 'version': '1'}, 'paths': {
         '/profiles/{id}': {'get': {'operationId': 'getProfile', 'parameters': [
             {'name': 'id', 'in': 'path', 'required': True, 'schema': {'type': 'string'}}],
             'responses': {'200': response({'$ref': '#/components/schemas/Profile'}),
-                          '404': response({'type': 'object', 'properties': {'errorCode': {'type': 'string'}}, 'required': ['errorCode']})}}},
+                          '404': response({'type': 'object', 'properties': {'errorCode': {'type': 'string'}}, 'required': ['errorCode'], 'additionalProperties': False})}}},
         '/profiles': {'post': {'operationId': 'createProfile', 'requestBody': {'required': True, 'content': {
-            'application/json': {'schema': {'type': 'object', 'properties': {'profileName': {'type': 'string'}}, 'required': ['profileName']}}}},
+            'application/json': {'schema': {'type': 'object', 'properties': {'profileName': {'type': 'string'}}, 'required': ['profileName'], 'additionalProperties': False}}}},
             'responses': {'201': response({'$ref': '#/components/schemas/Profile'})}}}},
         'components': {'schemas': {'Profile': profile}}}
     (ts / 'spec.json').write_text(json.dumps(spec))
@@ -101,17 +144,28 @@ if(process.env.FORKLAUNCH_MODE==='openapi') {
   process.on('SIGTERM',()=>server.close(()=>process.exit(0)));
 }
 ''')
-    manifest = app / '.forklaunch/manifest.toml'
-    text = manifest.read_text().replace('modules_path = "crates"', 'modules_path = "services"')
-    text = re.sub(r'^language = "rust"$', 'language = "mixed"', text, count=1, flags=re.M)
-    text = re.sub(r'^applicationLanguage = "rust"$', 'applicationLanguage = "mixed"', text, count=1, flags=re.M)
-    manifest.write_text(text + '\n[[projects]]\nname = "typescript-api"\ntype = "Service"\ndescription = "Owned tsx fixture"\n[projects.metadata]\nlanguage = "typescript"\n')
+    # TS declarations are application-owned, just as in a normal TS service.
+    # The schema compiler owns its Rust SDK and the native service's TS SDK.
+    authored_types = """import type { ForkLaunchSdkRequest, ForkLaunchSdkResponse } from '@forklaunch/universal-sdk';
+export type Profile = { id: string; profileName: string };
+export type GetProfileRequest = ForkLaunchSdkRequest<{ id: string }>;
+export type CreateProfileRequest = ForkLaunchSdkRequest<never, never, { profileName: string }>;
+export type TypescriptApiSdkClient = {
+  profiles: {
+    getProfile(input: GetProfileRequest): Promise<ForkLaunchSdkResponse<{ 200: Profile; 404: { errorCode: string } }, never, Record<number, 'application/json'>>>;
+    createProfile(input: CreateProfileRequest): Promise<ForkLaunchSdkResponse<{ 201: Profile }, never, Record<number, 'application/json'>>>;
+  };
+};
+"""
+    (ts / 'sdk/index.ts').write_text(authored_types)
     cli('openapi', 'export')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
     # Lifecycle must retain a previously exported TypeScript client.
     cli('sync', 'service', 'native-api')
-    assert 'typescriptApi:' in (app / 'sdks/typescript/src/index.ts').read_text()
+    assert (ts / 'sdk/index.ts').read_text() == authored_types
+    assert (ts / 'sdk/rust/lib.rs').is_file()
+    assert (app / 'src/native-api/sdk/typescript/index.ts').read_text().strip() == "export type * from './sdk.js';"
     cli('sdk', 'generate', '--target', 'all', '--from', 'openapi')
     # Source tracking and generated packages must survive relocation.
     relocated = root / 'relocated-app'
@@ -121,9 +175,11 @@ if(process.env.FORKLAUNCH_MODE==='openapi') {
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
     # Mixed live mode resolves TS source directly while preserving Rust artifacts
     # and shared orchestration; generated mode restores declaration resolution.
-    ts = app / 'services/typescript-api'
+    ts = app / 'src/typescript-api'
     package = ts / 'package.json'
-    package.write_text(json.dumps({'name':'typescript-api','private':True,'type':'module','main':'index.ts'}))
+    package_data = json.loads(package.read_text())
+    package_data['main'] = 'index.ts'
+    package.write_text(json.dumps(package_data))
     (ts / 'index.ts').write_text("export type LiveProfile = { source: 'live' };\n")
     (ts / 'index.d.ts').write_text("export type LiveProfile = { source: 'generated' };\n")
     (tools / 'node_modules/typescript-api').symlink_to(ts, target_is_directory=True)
@@ -131,10 +187,10 @@ if(process.env.FORKLAUNCH_MODE==='openapi') {
     (app / 'tsconfig.json').write_text('{"compilerOptions":{"strict":true},"references":[]}')
     (app / '.vscode').mkdir(exist_ok=True)
     (app / '.vscode/tasks.json').write_text('{"version":"2.0.0","tasks":[{"label":"Owned Cargo task","command":"cargo check","type":"shell"}]}')
-    native_package = app / 'services/native-api/package.json'
+    native_package = app / 'src/native-api/package.json'
     native_package.parent.mkdir(parents=True, exist_ok=True)
     native_package.write_text('{"types":"native-sentinel.d.ts"}')
-    protected_paths = [app/'tsconfig.json',app/'.vscode/tasks.json',app/'Cargo.toml',native_package,app/'sdks/typescript/src/index.ts']
+    protected_paths = [app/'tsconfig.json',app/'.vscode/tasks.json',app/'Cargo.toml',native_package,app/'src/native-api/sdk/typescript/index.ts',ts/'sdk/index.ts']
     protected = {path:path.read_bytes() for path in protected_paths}
     def check_live_type(marker):
         consumer = app/'live-import.mts'
@@ -159,18 +215,30 @@ if(process.env.FORKLAUNCH_MODE==='openapi') {
         assert path.read_bytes()==content, path
     print('PASS mixed live TS imports follow source edits, generated mode restores declarations, dry-run and native artifacts are preserved',flush=True)
     # Watch both the manifest and a relocated TS export even in contract mode.
-    sdk_source = app / 'sdks/typescript/src/index.ts'
+    sdk_source = ts / 'sdk/rust/models.rs'
     manifest = app / '.forklaunch/manifest.toml'
-    artifact = app / '.forklaunch/openapi/typescript-api/openapi.json'
+    artifact = ts / 'sdk/openapi.json'
     custom = app / 'artifacts/typescript/spec.json'
     custom.parent.mkdir(parents=True)
     artifact.rename(custom)
-    manifest.write_text(manifest.read_text() + 'openapiPath = "artifacts/typescript/spec.json"\n')
+    project_metadata('typescript-api', openapiPath='artifacts/typescript/spec.json')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract')
+    cli('init', 'service', 'disposable-api', '--language', 'rust', '-D', 'Lifecycle fixture')
+    # A real local-SDK consumer exercises aggregate reconciliation on deletion.
+    # An app with only project-local SDKs can delete an unrelated service without
+    # reading any other project's temporarily missing export.
+    cli('init', 'library', 'clients', '--language', 'rust', '--sdk-services', 'native-api')
+    aggregate = app / 'src/client-sdk/rust'
+    assert tomllib.loads((aggregate / 'Cargo.toml').read_text())['dependencies'] == {
+        'native_api': {'package': 'native-api-sdk', 'path': '../../native-api/sdk/rust'},
+    }
+    # Compilation publishes the newly added service's contract before the
+    # watcher validates all registered services.
+    run('cargo', 'build', '-p', 'disposable-api', '-p', 'clients')
     watch_log = root / 'watch.log'
     with watch_log.open('w') as log:
         watcher = subprocess.Popen([str(binary), 'sdk', 'watch', '--path', str(app),
-            '--from', 'contract', '--interval-ms', '100'], cwd=app, env=env, stdout=log, stderr=log)
+            '--target', 'all', '--from', 'contract', '--interval-ms', '100'], cwd=app, env=env, stdout=log, stderr=log)
         def wait_for(condition):
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
@@ -183,21 +251,24 @@ if(process.env.FORKLAUNCH_MODE==='openapi') {
             wait_for(lambda: 'Watching contract' in watch_log.read_text())
             changed = json.loads(custom.read_text())
             changed['components']['schemas']['Profile']['properties']['watchMarker'] = {'type': 'string'}
+            completed = watch_log.read_text().count('Generated Rust SDK sources')
             custom.write_text(json.dumps(changed))
-            wait_for(lambda: 'watchMarker' in sdk_source.read_text())
+            wait_for(lambda: 'watch_marker' in sdk_source.read_text()
+                     and watch_log.read_text().count('Generated Rust SDK sources') > completed)
             original = sdk_source.read_bytes()
             custom.unlink()
             wait_for(lambda: 'SDK regeneration failed' in watch_log.read_text())
             assert sdk_source.read_bytes() == original
             # Deleting a disposable native service refreshes the existing SDKs.
-            cli('init', 'service', 'disposable-api', '--language', 'rust', '-D', 'Lifecycle fixture')
             failed = subprocess.run([str(binary), 'delete', 'service', 'disposable-api', '--continue', '--path', str(app)],
                 cwd=app, env=env, capture_output=True, text=True, timeout=60)
-            assert failed.returncode != 0 and 'Restore the TypeScript OpenAPI export' in failed.stderr + failed.stdout
+            assert failed.returncode != 0 and 'Restore the TypeScript OpenAPI export' in failed.stderr + failed.stdout, failed.stdout + failed.stderr
             assert sdk_source.read_bytes() == original
             changed['components']['schemas']['Profile']['properties']['recoveredMarker'] = {'type': 'boolean'}
+            completed = watch_log.read_text().count('Generated Rust SDK sources')
             custom.write_text(json.dumps(changed))
-            wait_for(lambda: 'recoveredMarker' in sdk_source.read_text())
+            wait_for(lambda: 'recovered_marker' in sdk_source.read_text()
+                     and watch_log.read_text().count('Generated Rust SDK sources') > completed)
         finally:
             watcher.terminate()
             try:
@@ -208,6 +279,7 @@ if(process.env.FORKLAUNCH_MODE==='openapi') {
                 raise AssertionError('SDK watch did not terminate')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
+    assert (ts / 'sdk/index.ts').read_text() == authored_types
     print('PASS mixed SDK watch follows custom TS exports, preserves outputs on loss and recovers', flush=True)
     probe = app / 'mixed-probe'
     (probe / 'src').mkdir(parents=True)
@@ -216,46 +288,67 @@ name = "mixed-sdk-probe"
 version = "0.0.0"
 edition = "2024"
 [dependencies]
-native-api-sdk = { path = "../sdks/rust/native-api-sdk" }
-typescript-api-sdk = { path = "../sdks/rust/typescript-api-sdk" }
+native-api-sdk = { path = "../src/native-api/sdk/rust" }
+typescript-api-sdk = { path = "../src/typescript-api/sdk/rust" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 ''')
     (probe / 'src/main.rs').write_text((repo / 'cli/tests/fixtures/rust_mixed_sdk.rs').read_text())
     workspace = app / 'Cargo.toml'
     workspace.write_text(workspace.read_text().replace('members = [', 'members = ["mixed-probe", '))
-    run('cargo', 'build', '-p', 'native-api', '-p', 'mixed-sdk-probe')
+    run('cargo', 'build', '-p', 'native-api', '-p', 'mixed-sdk-probe', '-p', 'clients')
     run('cargo', 'clippy', '-p', 'native-api-sdk', '-p', 'typescript-api-sdk', '-p', 'mixed-sdk-probe', '--', '-D', 'warnings')
     metadata = json.loads(subprocess.check_output(['cargo', 'metadata', '--no-deps', '--format-version', '1'], cwd=app, env=env))
     native = Path(metadata['target_directory']) / 'debug/native-api'
     run('node', repo / 'cli/tests/rust_mcp_service_startup.mjs', native)
     native_url = start(native)
-    ts_url = start(tools / 'node_modules/.bin/tsx', app / 'services/typescript-api/server.ts')
+    ts_url = start(tools / 'node_modules/.bin/tsx', app / 'src/typescript-api/server.ts')
+    runtime = root / 'typescript-runtime'
+    shutil.copytree(repo / 'framework/universal-sdk', runtime, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    run('npm', 'install', '--ignore-scripts', '--package-lock=false', cwd=runtime)
+    run('npm', 'run', 'build', cwd=runtime)
+    scope = tools / 'node_modules/@forklaunch'
+    scope.mkdir(exist_ok=True)
+    (scope / 'universal-sdk').symlink_to(runtime, target_is_directory=True)
     (app / 'mixed-client.mts').write_text('''import assert from 'node:assert/strict';
-import {createForkLaunchSdk} from './sdks/typescript/src/index.js';
+import {readFileSync} from 'node:fs';
+import {universalSdk, type UniversalSdkOptions} from '@forklaunch/universal-sdk';
+import type {NativeApiSdkClient} from './src/native-api/sdk/typescript/index.js';
+import type {TypescriptApiSdkClient} from './src/typescript-api/sdk/index.js';
 const seen:string[]=[];
-const sdk=createForkLaunchSdk({serviceBaseUrls:{'native-api':process.argv[2]!,'typescript-api':process.argv[3]!},
- beforeRequest(request){seen.push(request.service);return {...request,input:{...request.input,headers:{'x-sdk-consumer':'typescript'}}};}});
+const options: Omit<UniversalSdkOptions, 'registryOptions'> = {
+ host:'http://127.0.0.1:1',
+ serviceBaseUrls:{'native-api':process.argv[2]!,'typescript-api':process.argv[3]!},
+ beforeRequest(request){seen.push(request.service);return {...request,input:{...request.input,headers:{'x-sdk-consumer':'typescript'}}};}
+};
+const sdk = {
+ nativeApi:await universalSdk<NativeApiSdkClient>({...options,registryOptions:{raw:JSON.parse(readFileSync('src/native-api/sdk/typescript/openapi.json','utf8'))}}),
+ typescriptApi:await universalSdk<TypescriptApiSdkClient>({...options,registryOptions:{raw:JSON.parse(readFileSync('artifacts/typescript/spec.json','utf8'))}})
+};
 const health=await sdk.nativeApi.health.getHealth();
-assert.equal(health.code,200);if(health.code===200)assert.equal(health.response.status,'ok');
+assert.equal(health.status,200);if(health.status===200)assert.equal(health.response.status,'ok');
 const id='Ada / 🦀 & backend';
 const profile=await sdk.typescriptApi.profiles.getProfile({params:{id}});
-assert.equal(profile.code,200);if(profile.code===200){assert.equal(profile.response.id,id);assert.equal(profile.response.profileName,'Ada');}
+assert.equal(profile.status,200);if(profile.status===200){assert.equal(profile.response.id,id);assert.equal(profile.response.profileName,'Ada');}
 const missing=await sdk.typescriptApi.profiles.getProfile({params:{id:'missing'}});
-assert.equal(missing.code,404);if(missing.code===404)assert.equal(missing.response.errorCode,'not_found');
+assert.equal(missing.status,404);if(missing.status===404)assert.equal(missing.response.errorCode,'not_found');
 const created=await sdk.typescriptApi.profiles.createProfile({body:{profileName:'Grace'}});
-assert.equal(created.code,201);if(created.code===201)assert.equal(created.response.profileName,'Grace');
+assert.equal(created.status,201);if(created.status===201)assert.equal(created.response.profileName,'Grace');
 assert.deepEqual(seen,['native-api','typescript-api','typescript-api','typescript-api']);
 if(false){
  // @ts-expect-error path parameters are required
  sdk.typescriptApi.profiles.getProfile();
- // @ts-expect-error the request body comes from the TypeScript OpenAPI schema
+ // @ts-expect-error the request body is strongly typed
  sdk.typescriptApi.profiles.createProfile({body:{profileName:42}});
- if(profile.code===200){
+ if(profile.status===200){
   // @ts-expect-error undeclared response field
   profile.response.undeclared;
  }
+ if(health.status===200){
+  // @ts-expect-error native schema field is also strongly typed
+  const wrong:string=health.response.recordCount; void wrong;
+ }
 }
-console.log('PASS one strict TypeScript SDK, live Rust/TypeScript requests, escaped params, typed errors, bodies and hooks');
+console.log('PASS public TypeScript SDK, live Rust/TypeScript requests, escaped params, typed errors/bodies and service routing/hooks');
 ''')
     run(tools / 'node_modules/.bin/tsc', '--strict', '--skipLibCheck', '--target', 'ES2022', '--module', 'NodeNext',
         '--moduleResolution', 'NodeNext', '--lib', 'ES2022,DOM', '--types', 'node', '--typeRoots',
@@ -275,4 +368,7 @@ finally:
             child.wait(timeout=5)
             raise AssertionError('Service did not shut down gracefully')
         assert code == 0, f'Service exit status {code}'
-    print(f'Mixed SDK fixture evidence: {root}', flush=True)
+    if env.get('FORKLAUNCH_KEEP_FIXTURE'):
+        print(f'Mixed SDK fixture evidence: {root}', flush=True)
+    else:
+        shutil.rmtree(root)

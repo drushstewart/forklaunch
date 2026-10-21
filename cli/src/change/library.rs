@@ -122,6 +122,7 @@ impl CliCommand for LibraryCommand {
 
         let (app_root_path, project_name) = find_app_root_path(matches, RequiredLocation::Project)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
         let rust_project_name = project_name
             .clone()
             .context("Project path is required for Rust library changes")?;
@@ -325,6 +326,7 @@ impl CliCommand for LibraryCommand {
         move_template_files(&move_templates, dryrun, &mut stdout)?;
 
         if !dryrun {
+            crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(
                 stdout,
                 "{} changed successfully!",

@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/tests/default_schema.rs

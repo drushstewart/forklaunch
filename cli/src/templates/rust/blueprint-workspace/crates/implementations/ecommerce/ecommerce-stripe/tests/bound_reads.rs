@@ -1,0 +1,1 @@
+../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-stripe/tests/bound_reads.rs

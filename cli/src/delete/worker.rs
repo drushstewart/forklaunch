@@ -73,6 +73,7 @@ impl CliCommand for WorkerCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
         let project_names =
             rust_project::registered_project_names(&app_root_path, RustProjectKind::Worker)?;
@@ -86,6 +87,8 @@ impl CliCommand for WorkerCommand {
             |input: &str| project_names.contains(input),
             |_| "Worker not found".to_string(),
         )?;
+
+        crate::sdk::typescript_build::preflight_lifecycle(&app_root_path, &worker_name)?;
 
         if rust_project::is_rust_project(&app_root_path, &worker_name)? {
             if !matches.get_flag("continue") {
@@ -259,6 +262,9 @@ impl CliCommand for WorkerCommand {
             .map(|(_, template)| template)
             .collect();
         write_rendered_templates(&rendered_templates, false, &mut stdout)?;
+
+        crate::sdk::typescript_build::remove_hook(&app_root_path, &worker_name)?;
+        crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
 
         log_ok!(stdout, "{} deleted successfully!", worker_name);
 

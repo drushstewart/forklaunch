@@ -16,7 +16,7 @@ function run(command,args,options={}){
  const out=spawnSync(command,args,{cwd:root,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'1'},encoding:'utf8',maxBuffer:64*1024*1024,...options});
  assert.equal(out.status,0,out.stdout+'\n'+out.stderr);return out.stdout;
 }
-if(native)run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-contract','--features','zod-checks','--example','uri_schema_parity']);
+if(native)run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','zod-checks','--example','uri_schema_parity']);
 const seeds=['','a','A','0','a'.repeat(8),'c'+'a'.repeat(8),'C'+'水'.repeat(8),'c'+'😀'.repeat(4),'c'+'😀'.repeat(3),'c'+'\0'.repeat(8),'a'.repeat(21),'0'.repeat(26),'z'.repeat(26),'I'.repeat(26),'a@b.co','AA==','AB==','AAA=','AAB=','AAAA','AA','AAA','_w','/w==','====','AA=','AAA==','AA==='];
 const values=[...seeds,null,0,true];
 for(const seed of seeds)for(const tail of ['\n','\r','\r\n','\u2028','\u2029','\0',' ','\u0085','\ufeff','-'])values.push(seed+tail);

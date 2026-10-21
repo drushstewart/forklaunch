@@ -45,7 +45,7 @@ for(const fixture of cases){
  assert.equal(passed,status===200);
  expected.push(fixture.resource?{status,message,claims:req.session??null,calls}:{status,message,subject:req.session?.sub??null,calls});
 }
-const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-auth','--example','typescript_basic_parity'],{cwd:root,input:JSON.stringify(cases),encoding:'utf8',timeout:120000,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'2'},maxBuffer:16*1024*1024}));
+const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','auth','--example','typescript_basic_parity'],{cwd:root,input:JSON.stringify(cases),encoding:'utf8',timeout:120000,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'2'},maxBuffer:16*1024*1024}));
 assert.equal(actual.length,cases.length);
 for(const [index,result] of actual.entries())assert.deepEqual(result,expected[index],JSON.stringify(cases[index]));
 console.log(`PASS ${cases.length} actual TypeScript/native Basic/JWT credential comparisons: prefix, token splitting, Node base64, UTF-8, colon fields, denied login, verified subject and async resource claims and sanitized JWT failures`);

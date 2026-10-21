@@ -17,7 +17,7 @@ const http=createServer(async(req,res)=>{
 http.listen(0,'127.0.0.1');await once(http,'listening');
 const port=(http.address() as {port:number}).port;
 const typed={json:'json',text:'text',file:'file',binary:'file',multipart:'multipartForm',form:'urlEncodedForm'};
-const routes=cases.map((input:any,index:number)=>({method:'post',path:`/body/${index}`,contractDetails:{name:`Body${index}`,summary:'Body transport',body:{[typed[input.kind as keyof typeof typed]]:z.unknown(),...(input.contentType?{contentType:input.contentType}:{})},responses:{200:{json:{ok:z.boolean()}}},options:{mcp:true}}}));
+const routes=cases.map((input:any,index:number)=>({method:'post',path:`/body/${index}`,contractDetails:{name:`Body${index}`,summary:'Body transport',body:{[typed[input.kind as keyof typeof typed]]:input.kind==='json'&&typeof input.arguments.body==='string'?z.literal(input.arguments.body):z.unknown(),...(input.contentType?{contentType:input.contentType}:{})},responses:{200:{json:{ok:z.boolean()}}},options:{mcp:true}}}));
 routes.push({method:'post',path:'/body/1000',contractDetails:{name:'Versioned',summary:'Named versions',versions:{
  '2026-01':{body:{json:{revision:z.literal('old')}},responses:{200:{json:{ok:z.boolean()}}}},
  '2026-10':{body:{json:{revision:z.literal('new')}},responses:{200:{json:{ok:z.boolean()}}}}

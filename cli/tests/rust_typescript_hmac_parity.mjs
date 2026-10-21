@@ -36,7 +36,7 @@ for(const fixture of cases) {
  await parseRequestAuth(req,res,()=>{passed=true;});assert.equal(passed,status===200);
  expected.push({status,message,calls,session:req.session??null});
 }
-const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-auth','--example','typescript_hmac_parity'],{cwd:root,input:JSON.stringify(cases),encoding:'utf8',timeout:120000,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'2'},maxBuffer:16*1024*1024}));
+const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','auth','--example','typescript_hmac_parity'],{cwd:root,input:JSON.stringify(cases),encoding:'utf8',timeout:120000,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'2'},maxBuffer:16*1024*1024}));
 assert.equal(actual.length,cases.length);
 for(const [index,result] of actual.entries())assert.deepEqual(result,expected[index],JSON.stringify(cases[index]));
 console.log(`PASS ${cases.length} actual TypeScript/native HMAC header/dispatch comparisons: error ordering, prefix, fields, equals, ignored suffixes, configured key lookup, async denial and absent session`);

@@ -1,0 +1,1 @@
+../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/examples/catalog_parity.rs

@@ -107,9 +107,9 @@ run("cargo", [
   "--manifest-path",
   "framework-rs/Cargo.toml",
   "-p",
-  "forklaunch-sdk-codegen",
+  "forklaunch-core","--features","build,asyncapi-import",
   "--example",
-  "fixed_tuple_models",
+  "codegen_fixed_tuple_models",
 ]);
 // Pin the public TypeScript output captured before Rust qualification changed.
 for (const [name, schema, typescript] of [
@@ -136,7 +136,7 @@ for (const [name, schema, typescript] of [
   ],
 ]) {
   const [model] = JSON.parse(
-    run(path.join(target, "debug/examples/fixed_tuple_models"), [name], {
+    run(path.join(target, "debug/examples/codegen_fixed_tuple_models"), [name], {
       input: JSON.stringify([schema]),
     }),
   );
@@ -171,7 +171,7 @@ for (const name of [
   "S",
 ]) {
   const generated = JSON.parse(
-    run(path.join(target, "debug/examples/fixed_tuple_models"), [name], {
+    run(path.join(target, "debug/examples/codegen_fixed_tuple_models"), [name], {
       input: JSON.stringify(fixtures.map((x) => x.schema)),
     }),
   );
@@ -216,9 +216,9 @@ try {
     "--manifest-path",
     "framework-rs/Cargo.toml",
     "-p",
-    "forklaunch-sdk-rust",
+    "forklaunch-core","--features","build,asyncapi-import",
     "--example",
-    "presence_client",
+    "rust_sdk_presence_client",
     "--",
     schemaPath,
     path.join(work, "src/http.rs"),
@@ -230,9 +230,9 @@ try {
     "--manifest-path",
     "framework-rs/Cargo.toml",
     "-p",
-    "forklaunch-sdk-typescript",
+    "forklaunch-core","--features","build,asyncapi-import",
     "--example",
-    "optional_body",
+    "typescript_optional_body",
     "--",
     work,
   ]);
@@ -260,9 +260,9 @@ try {
       "--manifest-path",
       "framework-rs/Cargo.toml",
       "-p",
-      "forklaunch-sdk-typescript",
+      "forklaunch-core","--features","build,asyncapi-import",
       "--example",
-      "socket_artifacts",
+      "typescript_socket_artifacts",
       "--",
       socketPath,
       "rust",
@@ -274,7 +274,9 @@ try {
     manifest,
     readFileSync(manifest, "utf8") +
       `reqwest={version="0.13.2",features=["json","query"]}
-forklaunch-ws={path=${JSON.stringify(path.join(root, "framework-rs/crates/forklaunch-ws"))},features=["transport","json-schema"]}
+forklaunch-universal-sdk={path=${JSON.stringify(path.join(root,"framework-rs/crates/universal-sdk"))}}
+forklaunch-core={path=${JSON.stringify(path.join(root, "framework-rs/crates/core"))},features=["schema-validation"]}
+forklaunch-ws={path=${JSON.stringify(path.join(root, "framework-rs/crates/ws"))},features=["transport","json-schema"]}
 tokio={version="1",features=["net"]}
 tokio-tungstenite="0.30"
 `,

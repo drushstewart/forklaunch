@@ -1,6 +1,6 @@
 use axum::Json;
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::{BodyContract, BodyKind, RouteContract, SchemaRef};
+use forklaunch_core::contract::{BodyContract, BodyKind, RouteContract, SchemaRef};
 use serde_json::{Value, json};
 
 const TREE: &str = r##"{"type":"object","additionalProperties":false,"required":["label","children","parent"],"properties":{"label":{"type":"string"},"children":{"type":"array","items":{"$ref":"#"}},"parent":{"anyOf":[{"$ref":"#"},{"type":"null"}]},"optional":{"$ref":"#"},"metadata":{"type":"object"}},"examples":[{"label":"literal","children":[],"parent":null,"metadata":{"$ref":"#"}}]}"##;

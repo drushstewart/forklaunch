@@ -4,14 +4,13 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 import time
 
 cli = sys.argv[1]
 name = sys.argv[3] if '--delete' in sys.argv and len(sys.argv) > 3 else 'realtime'
 artifact = Path(f'.forklaunch/socket-contracts/{name}/socket-contract.json')
-rust = Path(f'sdks/rust/{name}-websocket-sdk')
-typescript = Path(f'sdks/typescript-websocket/{name}')
+rust = Path(f'src/client-sdk/rust/{name}-websocket-sdk')
+typescript = Path(f'src/client-sdk/typescript-websocket/{name}')
 ownership = Path(f'.forklaunch/socket-sdk-outputs/{name}')
 generate = [cli, 'sdk', 'generate', '--path', '.', '--from', 'socket-contract', '--target', 'all', '--service', 'realtime']
 
@@ -27,20 +26,20 @@ def run(command, failure=None):
 
 def workspace_has_sdk():
     import tomllib
-    return f'sdks/rust/{name}-websocket-sdk' in tomllib.loads(Path('Cargo.toml').read_text())['workspace']['members']
+    return f'src/client-sdk/rust/{name}-websocket-sdk' in tomllib.loads(Path('Cargo.toml').read_text())['workspace']['members']
 
 
 if '--delete' in sys.argv:
-    edited = rust / 'src/socket_chat.rs'
+    edited = rust / 'socket_chat.rs'
     edited.write_bytes(edited.read_bytes() + b'\n// user-owned retained source\n')
-    manual = typescript / 'src/user.ts'
+    manual = typescript / 'user.ts'
     manual.write_text('// user-owned file\n')
     run([cli, 'delete', 'service', name, '--path', '.', '--continue'])
     assert not workspace_has_sdk()
     assert edited.read_bytes().endswith(b'// user-owned retained source\n')
     assert manual.read_text() == '// user-owned file\n'
     assert not (typescript / 'package.json').exists()
-    assert not (typescript / 'src/socket_chat.ts').exists()
+    assert not (typescript / 'socket_chat.ts').exists()
     assert not Path(f'.forklaunch/asyncapi/{name}').exists()
     assert not artifact.parent.exists()
     assert not list(ownership.glob('*.json'))
@@ -49,13 +48,13 @@ if '--delete' in sys.argv:
     print('PASS explicit service deletion prunes owned socket SDK files/workspace entries and preserves user edits/files')
     sys.exit(0)
 
-fixture = Path('crates/realtime/src/socket_contract_fixture.json')
+fixture = Path('src/realtime/api/controllers/socket_contract_fixture.json')
 original_fixture = fixture.read_bytes()
 original_artifact = artifact.read_bytes()
 config = typescript / 'tsconfig.json'
 original_config = config.read_bytes()
-edited = typescript / 'src/socket_chat.ts'
-manual = rust / 'src/user.rs'
+edited = typescript / 'socket_chat.ts'
+manual = rust / 'user.rs'
 
 try:
     # A temporary missing artifact cannot retire a still-registered socket.
@@ -68,7 +67,9 @@ try:
     settings['compilerOptions']['noUnusedLocals'] = False
     config.write_text(json.dumps(settings))
     run(generate + ['--check'])
-    with tempfile.TemporaryFile() as log:
+    # Preserve ordering evidence when build-time HTTP artifacts and runtime
+    # socket exports arrive in separate writes during one compilation.
+    with Path('socket-retirement-watch.log').open('w+b') as log:
         watch = subprocess.Popen([cli, 'sdk', 'watch', '--path', '.', '--from', 'socket-contract', '--target', 'all', '--service', 'realtime', '--interval-ms', '100'], stdout=log, stderr=log)
         try:
             deadline = time.monotonic() + 30

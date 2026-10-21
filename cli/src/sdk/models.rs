@@ -1,1 +1,1 @@
-../../../framework-rs/crates/forklaunch-sdk-codegen/src/models.rs
+../../../framework-rs/crates/core/src/codegen/models.rs

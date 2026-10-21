@@ -32,19 +32,73 @@ pub(crate) struct DevCommand;
 
 impl CliCommand for DevCommand {
     fn command(&self) -> Command {
-        command("dev", "Run TypeScript and Rust services with local development reloads")
-            .arg(Arg::new("base_path").long("path").short('p'))
-            .arg(Arg::new("services").num_args(0..).help("Compose services to start; defaults to the application"))
-            .arg(Arg::new("compose_file").long("compose-file").short('f').action(ArgAction::Append).help("Additional Compose overrides, resolved from the application root"))
-            .arg(Arg::new("project_name").long("project-name"))
-            .arg(Arg::new("sdk_target").long("sdk-target").value_parser(["typescript", "rust", "all"]).help("Run SDK watch with development; implies --export-contracts"))
-            .arg(Arg::new("sdk_source").long("sdk-source").value_parser(["http", "websocket", "all"]).requires("sdk_target").help("SDK surfaces to watch (default: http)"))
-            .arg(Arg::new("sdk_service").long("sdk-service").requires("sdk_target").help("Limit SDK generation to one registered service"))
-            .arg(Arg::new("export_contracts").long("export-contracts").action(ArgAction::SetTrue).help("Export native contracts and TypeScript OpenAPI before startup and each reload"))
-            .arg(Arg::new("no_watch").long("no-watch").action(ArgAction::SetTrue))
-            .arg(Arg::new("no_deps").long("no-deps").action(ArgAction::SetTrue))
-            .arg(Arg::new("no_build").long("no-build").action(ArgAction::SetTrue))
-            .arg(Arg::new("dryrun").long("dryrun").visible_alias("dry-run").action(ArgAction::SetTrue).help("Print development changes without starting containers or writing app files"))
+        command(
+            "dev",
+            "Run TypeScript and Rust services with local development reloads",
+        )
+        .arg(Arg::new("base_path").long("path").short('p'))
+        .arg(
+            Arg::new("services")
+                .num_args(0..)
+                .help("Compose services to start; defaults to the application"),
+        )
+        .arg(
+            Arg::new("compose_file")
+                .long("compose-file")
+                .short('f')
+                .action(ArgAction::Append)
+                .help("Additional Compose overrides, resolved from the application root"),
+        )
+        .arg(Arg::new("project_name").long("project-name"))
+        .arg(
+            Arg::new("sdk_target")
+                .long("sdk-target")
+                .value_parser(["typescript", "rust", "all"])
+                .help("Run SDK watch with development; implies --export-contracts"),
+        )
+        .arg(
+            Arg::new("sdk_source")
+                .long("sdk-source")
+                .value_parser(["http", "websocket", "all"])
+                .requires("sdk_target")
+                .help("SDK surfaces to watch (default: http)"),
+        )
+        .arg(
+            Arg::new("sdk_service")
+                .long("sdk-service")
+                .requires("sdk_target")
+                .help("Limit SDK generation to one registered service"),
+        )
+        .arg(
+            Arg::new("export_contracts")
+                .long("export-contracts")
+                .action(ArgAction::SetTrue)
+                .help(
+                    "Export native contracts and TypeScript OpenAPI before startup and each reload",
+                ),
+        )
+        .arg(
+            Arg::new("no_watch")
+                .long("no-watch")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("no_deps")
+                .long("no-deps")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("no_build")
+                .long("no-build")
+                .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("dryrun")
+                .long("dryrun")
+                .visible_alias("dry-run")
+                .action(ArgAction::SetTrue)
+                .help("Print development changes without starting containers or writing app files"),
+        )
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
@@ -116,25 +170,30 @@ impl CliCommand for DevCommand {
         let (mut planned, mut changes) = plan(
             &root,
             &manifest,
-            base,
+            base.clone(),
             &selected,
             !matches.get_flag("no_deps"),
         )?;
         let mut typescript_changes = json!({});
-        if matches.get_flag("export_contracts") || matches.contains_id("sdk_target") {
+        if matches.get_flag("export_contracts")
+            || matches.contains_id("sdk_target")
+            || (!matches.get_flag("no_watch")
+                && crate::core::forklaunch_state::generated_section(&root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?.is_some())
+        {
             contracts::enable(&root, &manifest, &mut planned, &mut changes)?;
             let active = active_services(&planned, &selected, !matches.get_flag("no_deps"))?;
             typescript_changes =
                 typescript::enable(&root, &manifest, &active, &mut planned, &changes)?;
         }
-        let socket_exports =
+        let mut socket_exports =
             if matches.get_flag("export_contracts") || matches.contains_id("sdk_target") {
                 Some(sockets::Exports::new(&root, &manifest, &changes)?)
             } else {
                 None
             };
-        let rust_sdk_directory = sdk::rust_watch(
+        let rust_sdk_directories = sdk::rust_watch(
             &root,
+            &manifest,
             matches.get_one::<String>("sdk_target").map(String::as_str),
             &mut planned,
             &mut changes,
@@ -167,8 +226,64 @@ impl CliCommand for DevCommand {
                 );
             }
         }
-        if let Some(directory) = rust_sdk_directory {
+        for directory in rust_sdk_directories {
             fs::create_dir_all(directory)?;
+        }
+        if !matches.get_flag("no_build")
+            && let Some(target) = matches.get_one::<String>("sdk_target")
+        {
+            if let Some(exports) = &mut socket_exports {
+                exports.prepare()?;
+            }
+            let service = matches.get_one::<String>("sdk_service").map(String::as_str);
+            let mut command = sdk::command(&root, target, service)?;
+            sdk::source(
+                &mut command,
+                matches.get_one::<String>("sdk_source").map(String::as_str),
+            );
+            sdk::prepare(&root, &manifest, target, command)?;
+            // The first pass may have created an aggregate socket SDK that
+            // did not exist when the read-only development plan was built.
+            // Reconcile through the same helper to retain authored watches.
+            for directory in
+                sdk::rust_watch(&root, &manifest, Some(target), &mut planned, &mut changes)?
+            {
+                fs::create_dir_all(directory)?;
+            }
+        }
+        if !matches.get_flag("no_build") {
+            let active = active_services(&base, &selected, !matches.get_flag("no_deps"))?;
+            let production_consumers: Vec<String> = active
+                .into_iter()
+                .filter(|name| {
+                    base["services"][name].get("build").is_none()
+                        && base["services"][name]["image"].is_string()
+                        && base["services"][name]["image"] == planned["services"][name]["image"]
+                })
+                .collect();
+            let builders = shared_image_builders(&base, &production_consumers);
+            if !production_consumers.is_empty() && !builders.is_empty() {
+                let mut original = tempfile::Builder::new()
+                    .prefix("forklaunch-production-build-")
+                    .suffix(".json")
+                    .tempfile()?;
+                serde_json::to_writer(&mut original, &base)?;
+                original.flush()?;
+                let status = Process::new(&docker)
+                    .args(["compose", "--project-directory"])
+                    .arg(&root)
+                    .arg("-f")
+                    .arg(original.path())
+                    .arg("build")
+                    .args(builders)
+                    .current_dir(&root)
+                    .stdin(Stdio::null())
+                    .status()?;
+                anyhow::ensure!(
+                    status.success(),
+                    "Shared production image prerequisite failed"
+                );
+            }
         }
         // Resolved Compose may contain environment values; tempfile keeps it private.
         let mut temporary = tempfile::Builder::new()
@@ -177,6 +292,27 @@ impl CliCommand for DevCommand {
             .tempfile()?;
         serde_json::to_writer(&mut temporary, &planned)?;
         temporary.flush()?;
+        if !matches.get_flag("no_build") {
+            let builders = shared_image_builders(&planned, &selected);
+            if !builders.is_empty() {
+                let status = Process::new(&docker)
+                    .args(["compose", "--project-directory"])
+                    .arg(&root)
+                    .arg("-f")
+                    .arg(temporary.path())
+                    .arg("build")
+                    .args(&builders)
+                    .current_dir(&root)
+                    .stdin(Stdio::null())
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .status()?;
+                anyhow::ensure!(
+                    status.success(),
+                    "Shared language image build failed before starting selected processes"
+                );
+            }
+        }
         let mut run = Process::new(&docker);
         run.args(["compose", "--project-directory"])
             .arg(&root)
@@ -206,18 +342,40 @@ impl CliCommand for DevCommand {
             .get_one::<String>("sdk_target")
             .map(|target| -> Result<Process> {
                 let service = matches.get_one::<String>("sdk_service").map(String::as_str);
-                let source = match matches.get_one::<String>("sdk_source").map(String::as_str) {
-                    Some("websocket") => "socket-contract",
-                    Some("all") => "all",
-                    _ => "contract",
-                };
                 let mut command = sdk::command(&root, target, service)?;
-                command.args(["--from", source]);
+                sdk::source(
+                    &mut command,
+                    matches.get_one::<String>("sdk_source").map(String::as_str),
+                );
                 Ok(command)
             })
             .transpose()?;
         supervise(run, watcher, socket_exports)
     }
+}
+
+/// Image-only services need their shared language image built even when the
+/// owning build service is not selected. Building does not start that service.
+fn shared_image_builders(compose: &Value, selected: &[String]) -> Vec<String> {
+    let Some(services) = compose.get("services").and_then(Value::as_object) else {
+        return vec![];
+    };
+    let mut builders = std::collections::BTreeSet::new();
+    for (name, service) in services {
+        if (!selected.is_empty() && !selected.contains(name)) || service.get("build").is_some() {
+            continue;
+        }
+        let Some(image) = service.get("image").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some((owner, _)) = services.iter().find(|(_, candidate)| {
+            candidate.get("build").is_some()
+                && candidate.get("image").and_then(Value::as_str) == Some(image)
+        }) {
+            builders.insert(owner.clone());
+        }
+    }
+    builders.into_iter().collect()
 }
 
 // Compose rejects `up --watch --no-build`. Remove build definitions from this
@@ -299,6 +457,101 @@ fn active_services(
     Ok(active)
 }
 
+/// Contract documents and provenance are build outputs, not service inputs.
+/// Keep their SDK source siblings watched so cross-language type edits still reload.
+fn metadata_watch_ignores(
+    root: &Path,
+    manifest: &toml::Value,
+    watched: &Path,
+) -> Result<Vec<String>> {
+    let watched = contracts::resolved_output(watched)?;
+    let mut outputs = BTreeSet::new();
+    for project in manifest
+        .get("projects")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if !matches!(
+            project.get("type").and_then(toml::Value::as_str),
+            Some("Service" | "Worker")
+        ) {
+            continue;
+        }
+        let metadata = project.get("metadata");
+        for (field, alias) in [
+            ("contractArtifactPath", "contract_artifact_path"),
+            ("openapiPath", "openapi_path"),
+        ] {
+            let Some(relative) = metadata
+                .and_then(|metadata| metadata.get(field).or_else(|| metadata.get(alias)))
+                .and_then(toml::Value::as_str)
+            else {
+                continue;
+            };
+            let output = contracts::resolved_output(&output_path(root, Path::new(relative))?)?;
+            if field == "contractArtifactPath"
+                && metadata
+                    .and_then(|metadata| metadata.get("language"))
+                    .and_then(toml::Value::as_str)
+                    == Some("rust")
+                && metadata
+                    .and_then(|metadata| metadata.get("sdkLayout"))
+                    .and_then(toml::Value::as_str)
+                    == Some("project-local-v1")
+            {
+                outputs.insert(output.with_file_name("provenance.json"));
+            }
+            outputs.insert(output);
+        }
+    }
+    let mut ignores = Vec::new();
+    for output in outputs {
+        let Ok(relative) = output.strip_prefix(&watched) else {
+            continue;
+        };
+        let path = relative
+            .to_str()
+            .context("Invalid development artifact path")?;
+        // Compose interprets ignores as patterns relative to each watch root.
+        ignores.push(glob::Pattern::escape(&path.replace('\\', "/")));
+        // core::build::write_generated_output atomically replaces this exact
+        // metadata file via <stem>.sdk-tmp-<pid>-<sequence>. Watching that staging
+        // event would restart the service even when its final path is ignored.
+        let staged = relative.with_extension("sdk-tmp-");
+        let staged = staged
+            .to_str()
+            .context("Invalid development artifact staging path")?;
+        ignores.push(format!(
+            "{}*",
+            glob::Pattern::escape(&staged.replace('\\', "/"))
+        ));
+    }
+    Ok(ignores)
+}
+
+fn restart_watch_rule(root: &Path, manifest: &toml::Value, path: &Path) -> Result<Value> {
+    let mut ignores = vec![
+        "target/".into(),
+        "**/target/".into(),
+        "**/node_modules/".into(),
+        "**/.git/".into(),
+    ];
+    ignores.extend(metadata_watch_ignores(root, manifest, path)?);
+    Ok(json!({"action":"restart","path":path,"ignore":ignores}))
+}
+
+fn watch_covers(root: &Path, rule: &Value, path: &Path) -> bool {
+    rule["path"].as_str().is_some_and(|watched| {
+        let watched = Path::new(watched);
+        path.starts_with(if watched.is_absolute() {
+            watched.to_path_buf()
+        } else {
+            root.join(watched)
+        })
+    })
+}
+
 fn plan(
     root: &Path,
     manifest: &toml::Value,
@@ -306,6 +559,8 @@ fn plan(
     selected: &[String],
     dependencies: bool,
 ) -> Result<(Value, Value)> {
+    let canonical_root = root.canonicalize()?;
+    let root = canonical_root.as_path();
     let active = active_services(&compose, selected, dependencies)?;
     let services = compose["services"]
         .as_object()
@@ -325,7 +580,9 @@ fn plan(
         }
     }
     let native_project = |project: &toml::Value| {
-        if project.get("variant").and_then(toml::Value::as_str) == Some("storefront") { return false; }
+        if project.get("variant").and_then(toml::Value::as_str) == Some("storefront") {
+            return false;
+        }
         let language = project
             .get("metadata")
             .and_then(|metadata| metadata.get("language"))
@@ -344,13 +601,26 @@ fn plan(
         .and_then(toml::Value::as_array)
         .map(Vec::as_slice)
         .unwrap_or_default();
-    if !projects.iter().any(|project| {
-        native_project(project)
-            && project
-                .get("name")
-                .and_then(toml::Value::as_str)
-                .is_some_and(|name| required.contains(name))
-    }) {
+    let selected_native_command = active.iter().any(|name| {
+        services
+            .get(name)
+            .and_then(|service| service.get("command"))
+            .and_then(Value::as_array)
+            .and_then(|command| command.first())
+            .and_then(Value::as_str)
+            .is_some_and(|command| {
+                command.starts_with("/app/bin/") || command.contains("target/release/")
+            })
+    });
+    if !selected_native_command
+        && !projects.iter().any(|project| {
+            native_project(project)
+                && project
+                    .get("name")
+                    .and_then(toml::Value::as_str)
+                    .is_some_and(|name| required.contains(name))
+        })
+    {
         return Ok((compose, json!({})));
     }
     let mut native = BTreeMap::new();
@@ -385,8 +655,7 @@ fn plan(
         if matches!(
             project.get("type").and_then(toml::Value::as_str),
             Some("Service" | "Worker")
-        ) && required.contains(name)
-        {
+        ) {
             let cargo: toml::Value =
                 toml::from_str(&fs::read_to_string(directory.join("Cargo.toml"))?)?;
             let package = cargo
@@ -410,7 +679,35 @@ fn plan(
             {
                 bail!("Unsupported native binary name");
             }
-            native.insert(name.to_owned(), package.to_owned());
+            let mut binaries = BTreeSet::new();
+            if let Some(entries) = cargo.get("bin").and_then(toml::Value::as_array) {
+                for binary in entries {
+                    binaries.insert(
+                        binary
+                            .get("name")
+                            .and_then(toml::Value::as_str)
+                            .context("Native Cargo binary name missing")?
+                            .to_owned(),
+                    );
+                }
+            }
+            if binaries.is_empty() {
+                binaries.insert(name.to_owned());
+            }
+            for binary in binaries {
+                if required.contains(&binary) {
+                    if binary.is_empty()
+                        || !binary
+                            .bytes()
+                            .all(|c| c.is_ascii_alphanumeric() || c == b'-' || c == b'_')
+                    {
+                        bail!("Unsupported native binary name");
+                    }
+                    if native.insert(binary, package.to_owned()).is_some() {
+                        bail!("Duplicate native binary name in development process inventory");
+                    }
+                }
+            }
         }
     }
     for relative in [
@@ -418,10 +715,14 @@ fn plan(
         "Cargo.lock",
         ".forklaunch/framework-rs",
         ".forklaunch/blueprint-rs",
-        "sdks/rust",
     ] {
         let path = output_path(root, Path::new(relative))?;
         if path.exists() {
+            paths.insert(path);
+        }
+    }
+    for path in sdk::rust_paths(root, manifest)? {
+        if path.is_dir() && !paths.iter().any(|watched| path.starts_with(watched)) {
             paths.insert(path);
         }
     }
@@ -486,13 +787,29 @@ fn plan(
         }
         let command = service["command"].as_array_mut().unwrap();
         command[0] = json!(format!("/app/target/debug/{binary}"));
-        let watch: Vec<_> = paths.iter().map(|path| json!({"action":"restart","path":path,"ignore":["target/","**/target/","**/node_modules/","**/.git/"]})).collect();
+        let mut develop = service.get("develop").cloned().unwrap_or_else(|| json!({}));
+        let mut watch = match develop.get("watch") {
+            Some(watch) => watch
+                .as_array()
+                .context("Development watches must be an array")?
+                .clone(),
+            None => Vec::new(),
+        };
+        for path in &paths {
+            if !watch.iter().any(|rule| watch_covers(root, rule, path)) {
+                watch.push(restart_watch_rule(root, manifest, path)?);
+            }
+        }
+        develop
+            .as_object_mut()
+            .context("Development settings must be an object")?
+            .insert("watch".into(), json!(watch));
         let settings = json!({
             "image":format!("forklaunch-dev-{project}-{}:local", name.to_case(Case::Kebab)),
             "build":{"context":root,"dockerfile_inline":dockerfile},
             "working_dir":"/app",
             "entrypoint":["sh","-c",format!("cargo build --package {package} --bin {binary} && exec \"$@\""),"--"],
-            "develop":{"watch":watch}
+            "develop":develop
         });
         let object = service
             .as_object_mut()
@@ -635,6 +952,190 @@ mod tests {
             "legacy-api":{"entrypoint":["pnpm","run","dev"],"environment":{"PORT":"8001"}}
         },"volumes":{"data":{}}});
         (root, manifest, compose)
+    }
+
+    #[test]
+    fn selected_image_only_process_builds_language_owner_without_starting_it() {
+        let compose = json!({"services":{"api":{"image":"demo-rust:local","build":{"dockerfile":"Dockerfile.rust"}},"worker":{"image":"demo-rust:local"},"auth":{"image":"demo-ts:local","build":{"dockerfile":"Dockerfile.typescript"}}}});
+        assert_eq!(
+            shared_image_builders(&compose, &["worker".into()]),
+            vec!["api"]
+        );
+        assert!(shared_image_builders(&compose, &["auth".into()]).is_empty());
+    }
+
+    #[test]
+    fn selected_role_uses_declared_binary_in_owning_package() {
+        let (root, manifest, mut compose) = fixture();
+        fs::write(root.path().join("services/native-api/Cargo.toml"),
+            "[package]\nname='native-core'\n[[bin]]\nname='native-api'\n[[bin]]\nname='events-consumer'\n").unwrap();
+        compose["services"]["native-outbox"]["command"] = json!(["/app/bin/events-consumer"]);
+        let (planned, _) = plan(
+            root.path(),
+            &manifest,
+            compose,
+            &["native-outbox".into()],
+            true,
+        )
+        .unwrap();
+        assert_eq!(
+            planned["services"]["native-outbox"]["entrypoint"][2],
+            "cargo build --package native-core --bin events-consumer && exec \"$@\""
+        );
+        assert_eq!(
+            planned["services"]["native-outbox"]["command"][0],
+            "/app/target/debug/events-consumer"
+        );
+    }
+
+    #[test]
+    fn existing_typescript_service_rust_sdks_reload_native_consumers_without_owned_sdk_watch() {
+        let (root, mut manifest, mut compose) = fixture();
+        let authored =
+            json!({"action":"sync","path":"assets","target":"/app/assets","ignore":["private/"]});
+        compose["services"]["native-api"]["develop"] = json!({"watch":[authored]});
+        manifest["projects"][2].as_table_mut().unwrap().insert(
+            "metadata".into(),
+            toml::Value::try_from(json!({
+                "language":"typescript", "sdkLayout":"project-local-v1", "staticPath":"modules/legacy-api"
+            })).unwrap(),
+        );
+        let sdk = root.path().join("modules/legacy-api/sdk/rust");
+        fs::create_dir_all(&sdk).unwrap();
+        fs::write(sdk.join("models.rs"), "// generated Rust wire models\n").unwrap();
+        let (_, changes) = plan(root.path(), &manifest, compose, &[], true).unwrap();
+        let watches = changes["native-api"]["develop"]["watch"]
+            .as_array()
+            .unwrap();
+        assert_eq!(watches[0], authored);
+        let rule = watches
+            .iter()
+            .find(|rule| rule["path"] == json!(sdk.canonicalize().unwrap()))
+            .unwrap();
+        assert_eq!(rule["action"], "restart");
+        for source in ["models.rs", "client.rs", "schemas.rs", "Cargo.toml"] {
+            assert!(
+                !rule["ignore"].as_array().unwrap().iter().any(|pattern| {
+                    glob::Pattern::new(pattern.as_str().unwrap())
+                        .unwrap()
+                        .matches(source)
+                }),
+                "Rust SDK input ignored: {source}"
+            );
+        }
+        assert!(!root.path().join("sdks").exists());
+    }
+
+    #[test]
+    fn metadata_outputs_do_not_restart_native_or_typescript_but_sdk_sources_do() {
+        let (root, mut manifest, mut base) = fixture();
+        manifest.as_table_mut().unwrap().insert(
+            "modules_path".into(),
+            toml::Value::String("services".into()),
+        );
+        let metadata = manifest["projects"][0]["metadata"].as_table_mut().unwrap();
+        for (field, value) in [
+            (
+                "contract_artifact_path",
+                "services/native-api/sdk/typescript/contract.json",
+            ),
+            (
+                "openapi_path",
+                "services/native-api/sdk/typescript/openapi.json",
+            ),
+            ("sdkLayout", "project-local-v1"),
+        ] {
+            metadata.insert(field.into(), toml::Value::String(value.into()));
+        }
+        manifest["projects"][2].as_table_mut().unwrap().insert(
+            "metadata".into(),
+            toml::Value::try_from(json!({
+                "language":"typescript",
+                "contractArtifactPath":"services/legacy-api/sdk/contract.json",
+                "openapiPath":"services/legacy-api/sdk/openapi.json"
+            }))
+            .unwrap(),
+        );
+        fs::create_dir_all(root.path().join("services/legacy-api")).unwrap();
+        fs::write(root.path().join("services/legacy-api/server.ts"), "").unwrap();
+        base["services"]["legacy-api"]["working_dir"] = json!("/app/services/legacy-api");
+        base["services"]["legacy-api"]["volumes"] = json!([]);
+        let (mut planned, native) = plan(root.path(), &manifest, base, &[], true).unwrap();
+        typescript::enable(
+            root.path(),
+            &manifest,
+            &BTreeSet::from(["legacy-api".into()]),
+            &mut planned,
+            &native,
+        )
+        .unwrap();
+        let native_rule = planned["services"]["native-api"]["develop"]["watch"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|rule| Path::new(rule["path"].as_str().unwrap()).ends_with("services/native-api"))
+            .unwrap();
+        let ts_rule = &planned["services"]["legacy-api"]["develop"]["watch"][0];
+        let ignored = |rule: &Value, path: &str| {
+            rule["ignore"].as_array().unwrap().iter().any(|pattern| {
+                glob::Pattern::new(pattern.as_str().unwrap())
+                    .unwrap()
+                    .matches(path)
+            })
+        };
+        for file in ["contract.json", "openapi.json", "provenance.json"] {
+            assert!(ignored(native_rule, &format!("sdk/typescript/{file}")));
+            assert!(ignored(
+                ts_rule,
+                &format!("native-api/sdk/typescript/{file}")
+            ));
+            let staged = Path::new(file).with_extension("sdk-tmp-1201-0");
+            assert!(ignored(
+                native_rule,
+                &format!("sdk/typescript/{}", staged.display())
+            ));
+            assert!(ignored(
+                ts_rule,
+                &format!("native-api/sdk/typescript/{}", staged.display())
+            ));
+        }
+        for file in ["contract.json", "openapi.json"] {
+            assert!(ignored(ts_rule, &format!("legacy-api/sdk/{file}")));
+        }
+        for source in [
+            "sdk/typescript/sdk.ts",
+            "sdk/typescript/types.ts",
+            "sdk/typescript/types.sdk-tmp-1201-0",
+            "sdk/typescript/bindings.json",
+            "sdk/rust/mod.rs",
+            "sdk/rust/mod.sdk-tmp-1201-0",
+            ".forklaunch/contracts/lib.rs",
+            "domain/schemas/mod.rs",
+            "domain/schemas/authored.json",
+            "domain/schemas/contract.sdk-tmp-1201-0",
+        ] {
+            assert!(
+                !ignored(native_rule, source),
+                "native source ignored: {source}"
+            );
+            assert!(
+                !ignored(ts_rule, &format!("native-api/{source}")),
+                "mixed source ignored: {source}"
+            );
+        }
+        for source in [
+            "legacy-api/sdk/rust/lib.rs",
+            "legacy-api/sdk/index.ts",
+            "legacy-api/domain/schemas/api.schema.ts",
+        ] {
+            assert!(
+                !ignored(ts_rule, source),
+                "TypeScript source ignored: {source}"
+            );
+        }
+        // Planning remains read-only, including before artifacts have been emitted.
+        assert!(!root.path().join("services/native-api/sdk").exists());
+        assert!(!root.path().join("services/legacy-api/sdk").exists());
     }
 
     #[test]

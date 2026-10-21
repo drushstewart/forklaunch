@@ -1,10 +1,10 @@
 use axum::{Extension, Json, extract::OriginalUri, http::HeaderMap};
 use forklaunch_axum::{ForkLaunchRouter, VersionedHeaders, VersionedParams, VersionedQuery};
-use forklaunch_contract::{
+use forklaunch_core::contract::{
     BodyContract, FieldContract, RequestContract, ResponseContract, RouteContract,
     VersionedContract,
 };
-use forklaunch_http::{
+use forklaunch_core::http::{
     ContractValidationLocation as Location, SelectedVersion, VersionBodyHooksRegistry,
     VersionFieldHooks,
 };

@@ -1,6 +1,8 @@
-use std::fmt;
+//! Service/domain errors shared by application modules. Controllers translate
+//! these into public endpoint errors; internal messages are not HTTP responses.
+use std::{fmt, error::Error, result};
 
-pub type Result<T> = std::result::Result<T, AppError>;
+pub type Result<T> = result::Result<T, AppError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppError {
@@ -19,4 +21,4 @@ impl fmt::Display for AppError {
     }
 }
 
-impl std::error::Error for AppError {}
+impl Error for AppError {}

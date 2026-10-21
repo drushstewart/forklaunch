@@ -59,26 +59,7 @@ fn generate_basic_router(
         }
     }
 
-    let output_path = base_path.to_string_lossy().to_string();
-    let template_dir = PathIO {
-        input_path: Path::new("router").to_string_lossy().to_string(),
-        output_path: output_path.clone(),
-        module_id: None,
-    };
-
-    let ignore_files = vec![];
-    let preserve_files = vec![];
-    let ignore_dirs = vec![];
-
-    let mut rendered_templates = generate_with_template(
-        None,
-        &template_dir,
-        &ManifestData::Router(&manifest_data),
-        &ignore_files,
-        &ignore_dirs,
-        &preserve_files,
-        dryrun,
-    )?;
+    let mut rendered_templates = generate_router_templates(base_path, manifest_data, dryrun)?;
     rendered_templates.extend(
         add_router_to_artifacts(manifest_data, base_path, service_name, manifest_path)
             .with_context(|| "Failed to add service metadata to artifacts")?,
@@ -88,6 +69,40 @@ fn generate_basic_router(
         .with_context(|| "Failed to write service files")?;
 
     Ok(())
+}
+
+fn generate_router_templates(
+    base_path: &Path,
+    manifest_data: &RouterManifestData,
+    dryrun: bool,
+) -> Result<Vec<RenderedTemplate>> {
+    let output_path = base_path.to_string_lossy().to_string();
+    let template_dir = PathIO {
+        input_path: Path::new("router").to_string_lossy().to_string(),
+        output_path: output_path.clone(),
+        module_id: None,
+    };
+
+    // Shared compliance endpoints belong to service/worker initialization, which
+    // also configures their authentication dependencies. Adding a domain router
+    // must not introduce JWT handlers into an application without IAM.
+    let ignore_files = vec![
+        "compliance.controller.ts".to_string(),
+        "compliance.routes.ts".to_string(),
+        "compliance.contract.ts".to_string(),
+    ];
+    let preserve_files = vec![];
+    let ignore_dirs = vec![];
+
+    generate_with_template(
+        None,
+        &template_dir,
+        &ManifestData::Router(&manifest_data),
+        &ignore_files,
+        &ignore_dirs,
+        &preserve_files,
+        dryrun,
+    )
 }
 
 fn add_router_to_artifacts(
@@ -407,6 +422,116 @@ impl CliCommand for RouterCommand {
             Ok(())
         } else {
             bail!(ERROR_DATABASE_INFORMATION)
+        }
+    }
+}
+
+#[cfg(test)]
+mod compliance_tests {
+    use super::*;
+    use crate::core::template::render_embedded_template;
+
+    #[test]
+    fn typescript_router_preserves_service_compliance_ownership_and_authentication() {
+        #[derive(ramhorns::Content)]
+        struct RegistrationFlags {
+            is_database_enabled: bool,
+            is_iam_configured: bool,
+        }
+        for language in ["typescript", "mixed"] {
+            for authenticated in [false, true] {
+                for project_type in [
+                    crate::core::manifest::ProjectType::Service,
+                    crate::core::manifest::ProjectType::Worker,
+                ] {
+                    let directory = tempfile::tempdir().unwrap();
+                    let base = directory.path().join("src/accounts");
+                    std::fs::create_dir_all(&base).unwrap();
+                    let manifest = format!(
+                        r#"
+id = "test"
+cli_version = "0.0.0"
+app_name = "test"
+modules_path = "src"
+app_description = "Test"
+linter = "eslint"
+formatter = "prettier"
+validator = "zod"
+http_framework = "express"
+runtime = "node"
+projects = []
+project_peer_topology = {{}}
+author = "Test"
+license = "MIT"
+language = "{language}"
+"#
+                    );
+                    let mut data: RouterManifestData = toml::from_str(&manifest).unwrap();
+                    data.router_name = "fixture".into();
+                    data.camel_case_name = "fixture".into();
+                    data.pascal_case_name = "Fixture".into();
+                    data.is_database_enabled = true;
+                    let shared = [
+                        "api/controllers/compliance.controller.ts",
+                        "api/routes/compliance.routes.ts",
+                        "api/contracts/compliance.contract.ts",
+                    ];
+                    if authenticated {
+                        for path in shared {
+                            let file = base.join(path);
+                            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+                            std::fs::write(
+                                file,
+                                "// Application-owned protected compliance endpoint\n",
+                            )
+                            .unwrap();
+                        }
+                    }
+                    let generated = generate_router_templates(&base, &data, false).unwrap();
+                    assert!(
+                        generated.iter().any(|item| item
+                            .path
+                            .ends_with("api/controllers/fixture.controller.ts"))
+                    );
+                    assert!(
+                        generated
+                            .iter()
+                            .all(|item| !shared.iter().any(|path| item.path == base.join(path)))
+                    );
+                    for path in shared {
+                        let file = base.join(path);
+                        if authenticated {
+                            assert_eq!(
+                                std::fs::read_to_string(file).unwrap(),
+                                "// Application-owned protected compliance endpoint\n"
+                            );
+                        } else {
+                            assert!(!file.exists());
+                        }
+                    }
+                    // Exercise the actual registration template and AST update;
+                    // adding a router must retain configured JWT dependencies.
+                    let registrations = render_embedded_template(
+                        "project/service/registrations.ts",
+                        &RegistrationFlags {
+                            is_database_enabled: true,
+                            is_iam_configured: authenticated,
+                        },
+                    )
+                    .unwrap();
+                    std::fs::write(base.join("registrations.ts"), registrations).unwrap();
+                    let updated = transform_registrations_ts_add_router(
+                        &RenderedTemplatesCache::new(),
+                        "fixture",
+                        &project_type,
+                        &base,
+                    )
+                    .unwrap();
+                    assert_eq!(updated.contains("JWKS_PUBLIC_KEY_URL:"), authenticated);
+                    assert!(updated.contains("ComplianceDataService:"));
+                    assert!(updated.contains("FixtureService:"));
+                }
+            }
         }
     }
 }

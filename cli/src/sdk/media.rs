@@ -1,1 +1,1 @@
-../../../framework-rs/crates/forklaunch-sdk-codegen/src/media.rs
+../../../framework-rs/crates/core/src/codegen/media.rs

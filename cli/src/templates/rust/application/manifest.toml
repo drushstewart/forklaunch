@@ -1,7 +1,7 @@
 id = "{{{id}}}"
 cli_version = "{{{cli_version}}}"
 app_name = "{{{name}}}"
-modules_path = "crates"
+modules_path = "src"
 docker_compose_path = "docker-compose.yaml"
 dockerfile = "Dockerfile"
 app_description = "{{{description}}}"

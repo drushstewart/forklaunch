@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {appendFileSync,mkdirSync,mkdtempSync,existsSync,writeFileSync} from 'node:fs';
+import {appendFileSync,mkdirSync,mkdtempSync,existsSync,readFileSync,writeFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const cli=process.env.FORKLAUNCH_CLI??path.join(root,'cli/target/debug/forklaunch');
 const output=path.join(root,'cli/tests/output/rust-capabilities-ownership');mkdirSync(output,{recursive:true});
 const app=path.join(mkdtempSync(path.join(output,'run.')),'app');
+const stateHas=key=>{const file=path.join(app,'.forklaunch/local-state.json');return existsSync(file)&&Object.hasOwn(JSON.parse(readFileSync(file,'utf8')),key);};
 const run=(...args)=>execFileSync(cli,args,{cwd:root,stdio:'inherit'});
 run('init','application','ownership-app','--path',app,'--language','rust','-D','Ownership','-A','ForkLaunch','-L','MIT');
 for(const service of ['alpha','beta'])run('init','service',service,'--path',app,'--language','rust','-d','postgresql','-D',service);
@@ -26,7 +27,7 @@ edit('add','alpha','email');edit('add','beta','email');
 assert.equal(target(),'http://beta:8001');
 edit('remove','alpha','email');assert.equal(target(),'http://beta:8001');
 edit('remove','beta','email');assert.deepEqual(compose().services['gateway-mock'],original);
-assert.equal(existsSync(path.join(app,'.forklaunch/native-capabilities/.gateway-mock.json')),false);
+assert.equal(stateHas('_app/gateway-mock'),false);
 // Removing the active callback owner promotes another service with that feature.
 edit('add','alpha','email');edit('add','beta','email');
 edit('remove','beta','email');assert.equal(target(),'http://alpha:8000');
@@ -62,7 +63,7 @@ edit('remove','alpha','email');assert.equal(compose().services.alpha.depends_on?
 edit('add','alpha','email');edit('add','beta','email');
 run('delete','service','alpha','--path',app,'--continue');assert.equal(target(),'http://beta:8001');
 run('delete','service','beta','--path',app,'--continue');assert.deepEqual(compose().services['gateway-mock'],edited);
-assert.equal(existsSync(path.join(app,'.forklaunch/native-capabilities/.gateway-mock.json')),false);
+assert.equal(stateHas('_app/gateway-mock'),false);
 // A customized generated mock is now developer-owned; retain it without stale callbacks.
 let document=compose();delete document.services['gateway-mock'];writeMock(undefined);
 run('init','service','gamma','--path',app,'--language','rust','-d','postgresql','-D','Gamma');

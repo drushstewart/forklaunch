@@ -1,0 +1,1 @@
+../../../../../../../../../../framework-rs/crates/vendor/regress/gen-unicode/src/scripts.rs

@@ -1,5 +1,6 @@
+import {secureJobId} from './fixtures/secure_worker_runtime.mjs';
 import assert from 'node:assert/strict';
-import {spawn, execFile} from 'node:child_process';
+import {spawn, execFile} from './fixtures/secure_worker_runtime.mjs';
 import {promisify} from 'node:util';
 import {once} from 'node:events';
 import {createServer} from 'node:net';
@@ -46,7 +47,7 @@ try {
     await command(['--enqueue','unimplemented','{}']);
     const worker=await start();
     await waitFor(async()=> (await dead()).some(job=>job.id==='unimplemented'),'unimplemented handler never failed');
-    assert.equal((await dead())[0].last_error,'worker_handler_not_implemented');
+    assert.equal(Object.hasOwn((await dead())[0],'last_error'),false);
     await stop(worker);
     console.log('PASS generated Kafka worker never acknowledges an unimplemented handler');
   } else {
@@ -56,7 +57,7 @@ try {
     await waitFor(async()=> (await dead()).some(job=>job.id==='failure'),'Kafka failure was not retained');
     await waitFor(async()=> (await peek()).length===0,'Kafka records were not committed');
     const output=await stop(worker);assert.match(output,/completed=1 retried=1 dead_lettered=1/);
-    assert.deepEqual((await dead()).map(job=>[job.id,job.attempts,job.last_error]),[['failure',2,'test_handler_failure']]);
+    assert.deepEqual((await dead()).map(job=>[job.id,job.attempts]),[['failure',2]]);
     assert.ok(!output.includes('sensitive detail'));
     const restarted=await start();await sleep(1000);assert.match(await stop(restarted),/completed=0/);
     // Kill a separate process while its application handler is running, then recover the uncommitted offset.
@@ -64,7 +65,7 @@ try {
     await command(['--enqueue','crash','{"sleep_ms":4000}'],recoveryScope);
     const crashed=await start({...recoveryScope,KAFKA_TRANSACTIONAL_ID:'crash-replica'});
     await waitFor(async()=> (await peek(recoveryScope)).length===1,'crash job was not pending');
-    await waitFor(()=>crashed.output.includes('test-handler-started crash'),'worker never entered the crash handler');
+    await waitFor(()=>crashed.output.includes(`test-handler-started ${secureJobId('crash')}`),'worker never entered the crash handler');
     await stop(crashed,'SIGKILL');
     assert.equal((await peek(recoveryScope)).length,1);
     const recovered=await start({...recoveryScope,KAFKA_TRANSACTIONAL_ID:'crash-replica'});

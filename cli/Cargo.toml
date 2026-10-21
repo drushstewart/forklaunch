@@ -12,10 +12,11 @@ include = [
     "src/**", "assets/**", "docs/**", "scripts/**", "build.rs", "Cargo.toml", "Cargo.lock", "LICENSE", "README.md",
     "package.json", "bun.lock", "pnpm-lock.yaml", ".rustfmt.toml", ".gitignore", ".npmignore",
     "tests/*.mjs", "tests/*.cjs", "tests/*.ts", "tests/*.sh", "tests/*.py", "tests/*.json", "tests/fixtures/**",
-    "!**/node_modules/**", "!tests/output/**",
+    "!**/node_modules/**", "!tests/output/**", "!**/__pycache__/**", "!**/*.pyc", "!**/*.pyo",
 ]
 
 [dependencies]
+forklaunch-core = { version = "0.1.1", path = "../framework-rs/crates/core", features = ["build", "asyncapi-import", "typescript-source"] }
 url = "2"
 ctrlc = { version = "3.5.2", features = ["termination"] }
 anyhow = "1.0"
@@ -45,6 +46,9 @@ serde_json = { version = "1.0.142", features = ["preserve_order"] }
 # Preserve the internal import name while replacing the unmaintained parser.
 serde_yml = { package = "serde_norway", version = "0.9.42" }
 termcolor = "1.4.1"
+syn = { version = "2", features = ["full", "visit"] }
+prettyplease = "0.2"
+proc-macro2 = { version = "1", features = ["span-locations"] }
 toml = "1.1.0"
 wasm-bindgen = "0.2.100"
 uuid = { version = "1.17.0", features = ["serde", "v4", "v5"] }
@@ -75,3 +79,4 @@ toml_edit = "0.25.15"
 
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.30", features = ["signal", "process"] }
+

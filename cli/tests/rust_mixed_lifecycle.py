@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Actual CLI lifecycle routing for registered Rust and TypeScript projects."""
 import json
+import hashlib
 import os
 from pathlib import Path
 import subprocess
 import tempfile
+import shutil
 import tomllib
 
 repo = Path(__file__).resolve().parents[2]
@@ -13,7 +15,15 @@ output = repo / 'cli/tests/output/rust-mixed-lifecycle'
 output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
 app = root / 'app'
-env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'CARGO_INCREMENTAL': '0'}
+account = 'parity-offline-lifecycle-' + root.name.removeprefix('run.').replace('_', '-')
+account_path = Path.home() / '.forklaunch/accounts' / (account + '.toml')
+assert not account_path.exists()
+env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'CARGO_INCREMENTAL': '0',
+       'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1', 'FORKLAUNCH_ACCOUNT': account}
+shutil.copy2(binary, root / 'forklaunch')
+binary = root / 'forklaunch'
+cli_hash = hashlib.sha256(binary.read_bytes()).hexdigest()
+print('CLI SHA256:', cli_hash, flush=True)
 mixed_fields = None
 
 
@@ -28,7 +38,7 @@ def manifest():
     return tomllib.loads((app / '.forklaunch/manifest.toml').read_text())
 
 
-run('init', 'application', 'mixed-lifecycle', '--language', 'typescript', '--modules-path', 'modules',
+run('init', 'application', 'mixed-lifecycle', '--modules-path', 'modules',
     '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
     '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
     '-D', 'Mixed lifecycle', '-A', 'ForkLaunch', '-L', 'MIT')
@@ -36,27 +46,28 @@ for kind, name, extra in [('service', 'typescript-api', ['-d', 'postgresql']),
                           ('worker', 'typescript-jobs', ['-t', 'database', '-d', 'postgresql']),
                           ('library', 'typescript-models', [])]:
     run('init', kind, name, '--language', 'typescript', '-D', name, *extra)
-# Existing TS apps can register a separate Cargo workspace; automatic migration
-# scaffolding is exercised separately from this per-project dispatch fixture.
-path = app / '.forklaunch/manifest.toml'
-mixed_fields = {'language': 'mixed', 'applicationLanguage': 'mixed', 'sdkTargets': ['rust', 'typescript'],
-    'cargoWorkspace': 'Cargo.toml', 'contractArtifactPath': '.forklaunch/contracts',
-    'openapiPath': '.forklaunch/openapi', 'asyncapiPath': '.forklaunch/asyncapi'}
-path.write_text(''.join(f'{key} = {json.dumps(value)}\n' for key, value in mixed_fields.items()) + path.read_text())
-mixed_fields['app_name'] = 'mixed-lifecycle'
-(app / 'Cargo.toml').write_text('''[workspace]
-resolver = "3"
-members = []
-exclude = [".forklaunch/framework-rs", ".forklaunch/blueprint-rs"]
-[workspace.package]
-version = "0.1.0"
-edition = "2024"
-license = "MIT"
-authors = ["ForkLaunch"]
-''')
-for kind, name, extra in [('service', 'native-api', []), ('worker', 'native-jobs', ['-t', 'redis']),
+# Project initialization owns mixed metadata and the root Cargo workspace.
+# Preserve those actual generated values during every subsequent lifecycle call.
+run('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API')
+mixed_fields = {key: manifest()[key] for key in ['language', 'applicationLanguage', 'sdkTargets', 'cargoWorkspace', 'app_name']}
+assert mixed_fields['language'] == mixed_fields['applicationLanguage'] == 'mixed'
+assert set(mixed_fields['sdkTargets']) == {'rust', 'typescript'}
+for kind, name, extra in [('worker', 'native-jobs', ['-t', 'redis', '--consumer-only']),
                           ('library', 'native-models', [])]:
     run('init', kind, name, '--language', 'rust', '-D', name, *extra)
+native_paths = {project['name']: project['metadata']['cratePath'] for project in manifest()['projects'] if project.get('metadata', {}).get('language') == 'rust'}
+image_inventory = json.loads((app / '.forklaunch/generated.json').read_text())['rustImage']
+assert {'native-api', 'native-jobs'} <= set(image_inventory['binaries'])
+# Rust image may need the TypeScript projects' generated Rust client crates,
+# but must not copy their application implementations or Node dependencies.
+for name in ['typescript-api', 'typescript-jobs']:
+    assert all(not item.startswith(f'modules/{name}/') or item.startswith(f'modules/{name}/sdk/rust/') for item in image_inventory['inputs'])
+assert (app / 'Dockerfile.typescript').is_file()
+assert not (app / 'modules/Dockerfile').exists()
+assert 'COPY . .' not in (app / 'Dockerfile.rust').read_text()
+assert '--locked --release --workspace --bins' in (app / 'Dockerfile.rust').read_text()
+assert len(image_inventory['processes']) >= 2
+print('PASS scoped shared Rust image and adjacent language Dockerfiles', flush=True)
 for kind, name in [('service', 'typescript-api'), ('worker', 'typescript-jobs'), ('library', 'typescript-models')]:
     before = {project['name']: project for project in manifest()['projects']}
     source = {str(p.relative_to(app)): p.read_bytes() for p in (app / 'modules' / name).rglob('*') if p.is_file()}
@@ -108,10 +119,19 @@ for kind, name in [('service', 'typescript-api'), ('worker', 'typescript-jobs'),
     assert manifest()['language'] == 'mixed'
     assert manifest()['applicationLanguage'] == 'mixed'
     for native in ['native-api', 'native-jobs', 'native-models']:
-        assert (app / 'crates' / native / 'Cargo.toml').exists()
+        assert (app / native_paths[native] / 'Cargo.toml').exists()
 for kind, name in [('service', 'native-api'), ('worker', 'native-jobs'), ('library', 'native-models')]:
     run('delete', kind, name, '--continue')
-    assert not (app / 'crates' / name).exists()
+    assert not (app / native_paths[name]).exists()
 assert manifest()['runtime'] == 'node'
+assert json.loads((app / '.forklaunch/generated.json').read_text())['rustImage']['binaries'] == []
 print('PASS actual mixed TypeScript/Rust service, worker, library and router lifecycle dispatch', flush=True)
 print(f'Mixed lifecycle fixture evidence: {root}', flush=True)
+if os.environ.get('FORKLAUNCH_MIXED_LIFECYCLE_RECEIPT'):
+    Path(os.environ['FORKLAUNCH_MIXED_LIFECYCLE_RECEIPT']).write_text(json.dumps({
+        'schemaVersion': 1, 'cliSha256': cli_hash, 'passed': True,
+        'scope': 'Actual raw neutral init and generated mixed metadata; per-language sync, rename and delete dispatch; protected application sources; consumer-only native worker; shared image input isolation; TypeScript router unsupported-edit rejection with byte preservation',
+        'compiled': False, 'scriptSha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    }, indent=2) + '\n')
+shutil.rmtree(root)
+account_path.unlink(missing_ok=True)

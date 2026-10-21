@@ -27,10 +27,13 @@ try {
   let hooks = 0;
   const config = { baseUrl, headers: { authorization: 'Bearer stream-secret' }, beforeRequest: meta => { hooks++; return meta; } };
   const sdk = createForkLaunchSdk(config);
-  const call = (client, mode, options = {}) => client.streams.events.watchEvents({ params: { mode }, ...options });
+  const call = async (client, mode, options = {}) => (await client).streams.events.watchEvents({ params: { mode }, ...options });
   const stats = async () => (await fetch(`${baseUrl}/stream-stats`)).json();
   const before = await stats();
-  assert.equal((await call(createForkLaunchSdk({ baseUrl }), 'finite')).code, 401);
+  // Every compiler path enforces the declared response contract. This fixture
+  // declares only 200, while authentication must still reject the wire request.
+  await assert.rejects(call(createForkLaunchSdk({ baseUrl }), 'finite'), /Undeclared response status/);
+  assert.equal((await fetch(`${baseUrl}/events/finite`)).status, 401);
   assert.equal((await stats()).started, before.started);
   for (const mode of ['finite', 'multiline']) {
     const response = await call(sdk, mode);
@@ -70,7 +73,7 @@ try {
   await assert.rejects(late.next(), /exceeds configured limit/);
   const invalidLimit = (await call(createForkLaunchSdk({ ...config, maxSseEventBytes: 0 }), 'slow')).response[Symbol.asyncIterator]();
   await assert.rejects(invalidLimit.next(), /limit must be positive/);
-  await assert.rejects(call(sdk, 'wrong'), /Expected text\/event-stream/);
+  await assert.rejects(call(sdk, 'wrong'), /Undeclared response content type/);
   const broken = (await call(sdk, 'broken')).response[Symbol.asyncIterator]();
   assert.equal((await broken.next()).done, false);
   assert.equal((await broken.next()).done, false);

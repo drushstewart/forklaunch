@@ -7,27 +7,31 @@ import vm from 'node:vm';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
 const tsc = process.env.TSC_BIN ?? path.join(root,'framework/node_modules/.bin/tsc');
-const ts = require(require.resolve('typescript',{paths:[path.dirname(await realpath(tsc))]}));
+// The native TypeScript compiler has no transpileModule JavaScript API. Use the
+// installed public package's build transpiler, while executing the actual router
+// sources and preserving their imports/inheritance below.
+const {transformSync} = require(require.resolve('esbuild',{paths:[path.dirname(await realpath(tsc))]}));
+const transpile = source => transformSync(source,{loader:'ts',format:'cjs',target:'es2022'}).code;
 const registrations=[];
 const internal = new Proxy({}, {get:(_target,key)=> (..._args) => {if (key!=="use") registrations.push(String(key).toUpperCase());}});
-const baseExports={};
-const baseCompiled=ts.transpileModule(await readFile(path.join(root,'framework/core/src/http/router/expressLikeRouter.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
-vm.runInNewContext(baseCompiled,{exports:baseExports,require:()=>new Proxy({},{get:()=>()=>()=>{}}),process:{env:{NODE_ENV:'test'}}},{filename:'actual-baseRouter.ts'});
-class BaseRouter extends baseExports.ForklaunchExpressLikeRouter {
+const baseModule={exports:{}};
+const baseCompiled=transpile(await readFile(path.join(root,'framework/core/src/http/router/expressLikeRouter.ts'),'utf8'));
+vm.runInNewContext(baseCompiled,{module:baseModule,exports:baseModule.exports,require:()=>new Proxy({},{get:()=>()=>()=>{}}),process:{env:{NODE_ENV:'test'}}},{filename:'actual-baseRouter.ts'});
+class BaseRouter extends baseModule.exports.ForklaunchExpressLikeRouter {
   registerMiddlewareHandler(handler,...args) {handler(...args); return this;}
   registerRoute(_method,_path,handler,...args) {handler(...args); return this;}
 }
-const exports={};
-const compiled = ts.transpileModule(await readFile(path.join(root,'framework/express/src/expressRouter.ts'),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText;
+const routerModule={exports:{}};
+const compiled = transpile(await readFile(path.join(root,'framework/express/src/expressRouter.ts'),'utf8'));
 const localRequire = name => {
   if (name==='@forklaunch/core/http') return {ForklaunchExpressLikeRouter:BaseRouter};
-  if (name==='express') return {default:{Router:()=>internal}};
+  if (name==='express') return {Router:()=>internal};
   if (name==='./middleware/content.parse.middleware') return {contentParse:()=>()=>{}};
   if (name==='./middleware/enrichResponseTransmission.middleware') return {enrichResponseTransmission:()=>{}};
   throw new Error(`Unexpected runtime dependency ${name}`);
 };
-vm.runInNewContext(compiled,{exports,require:localRequire},{filename:'actual-expressRouter.ts'});
-const router = new exports.Router('/',{},{});
+vm.runInNewContext(compiled,{module:routerModule,exports:routerModule.exports,require:localRequire},{filename:'actual-expressRouter.ts'});
+const router = new routerModule.exports.Router('/',{},{});
 const declared = await readFile(path.join(root,'framework/express/index.ts'),'utf8');
 const start = declared.indexOf('export const handlers: {');
 const handlerBlock = declared.slice(start,declared.indexOf('} = {',start));

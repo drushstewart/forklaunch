@@ -17,17 +17,14 @@ let testedCases=0;
 try {
  mkdirSync(path.join(temporary,'src'));
  const crates={
-  'forklaunch-contract':'framework-rs/crates/forklaunch-contract',
-  'forklaunch-core':'framework-rs/crates/forklaunch-core',
-  'forklaunch-openapi':'framework-rs/crates/forklaunch-openapi',
-  'forklaunch-blueprint-core':'blueprint-rs/crates/forklaunch-blueprint-core',
-  'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/forklaunch-billing-interface',
-  'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/forklaunch-billing-axum'
+  'forklaunch-core':'framework-rs/crates/core',
+  'forklaunch-core':'framework-rs/crates/core',
+  'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/billing-interface',
+  'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/billing-axum'
  };
- const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-billing-axum'?', features = ["bound-checkout", "typescript-routing"]':''} }`).join('\n');
- const patches=readFileSync(path.join(root,'blueprint-rs/Cargo.toml'),'utf8').split('[patch.crates-io]')[1].replaceAll('path = "../framework-rs/',`path = "${root}/framework-rs/`);
- writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-bound-checkout-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}\n[patch.crates-io]${patches}`);
- writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_contract::RouteContract> { vec![] }');
+ const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-core'?', features = ["openapi"]':name==='forklaunch-billing-axum'?', features = ["bound-checkout", "typescript-routing"]':''} }`).join('\n');
+ writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-bound-checkout-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}`);
+ writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] }');
  writeFileSync(path.join(temporary,'src/main.rs'),`fn main() {
   let contract=std::path::PathBuf::from(std::env::var("ARTIFACT_DIR").unwrap()).join("contract.json");
   let openapi=contract.with_file_name("openapi.json");
@@ -159,13 +156,13 @@ try {
   .replace('version.workspace = true','version = "0.1.0"').replace('edition.workspace = true','edition = "2024"')
   .replace('license.workspace = true','license = "MIT"').replace('authors.workspace = true','authors = []')
   .replaceAll('../../.forklaunch/',`${root}/`);
- writeFileSync(path.join(temporary,'Cargo.toml'),`${manifest}\n[patch.crates-io]${patches}`);
- writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_contract::RouteContract> { vec![] } pub fn register_router(router: forklaunch_axum::router::ForkLaunchRouter) -> forklaunch_axum::router::ForkLaunchRouter { router }');
+ writeFileSync(path.join(temporary,'Cargo.toml'),`${manifest}`);
+ writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] } pub fn register_router(router: forklaunch_axum::router::ForkLaunchRouter) -> forklaunch_axum::router::ForkLaunchRouter { router }');
  for(const stripe of [false,true]) {
   const render=text=>text.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-checkout-artifacts').replaceAll('{{crate_module}}','fl_billing_bound_checkout_artifacts');
   const renderedManifest=render(manifest);
   assert.equal(renderedManifest.includes('"typescript-routing"'),stripe,'only generated Stripe opts into pinned case routing');
-  writeFileSync(path.join(temporary,'Cargo.toml'),`${renderedManifest}\n[patch.crates-io]${patches}`);
+  writeFileSync(path.join(temporary,'Cargo.toml'),`${renderedManifest}`);
   writeFileSync(path.join(temporary,'src/lib.rs'),render(template));
   const renderedMain=render(mainTemplate);
   assert.equal(renderedMain.includes('BillingBackend::stripe(store,client).with_configured_hmac(true).with_configured_subscription_updates(true)'),stripe,'generated Stripe backend selects configured owner preflight; base template does not');

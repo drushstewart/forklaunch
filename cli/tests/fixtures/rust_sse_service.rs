@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use axum::{Json, body::Body, extract::Path, response::Response};
-use forklaunch_auth::{AuthError, Principal};
+use forklaunch_core::auth::{AuthError, Principal};
 use forklaunch_axum::{ForkLaunchRouter, RouterConfig, session::AuthenticatedSession};
-use forklaunch_contract::{
+use forklaunch_core::contract::{
     AccessLevel, BodyContract, BodyKind, FieldContract, RouteContract, SchemaRef,
 };
 static STARTED: AtomicUsize = AtomicUsize::new(0);

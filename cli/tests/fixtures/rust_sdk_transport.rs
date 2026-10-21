@@ -1,5 +1,5 @@
-use forklaunch_contract::{BodyContract, BodyKind, FieldContract, RouteContract, SchemaRef};
-use forklaunch_http::{Body, FrameworkRequest, FrameworkResponse, LocalRouter};
+use forklaunch_core::contract::{BodyContract, BodyKind, FieldContract, RouteContract, SchemaRef};
+use forklaunch_core::http::{Body, FrameworkRequest, FrameworkResponse, LocalRouter};
 
 pub fn contracts() -> Vec<RouteContract> {
     vec![

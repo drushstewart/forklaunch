@@ -245,6 +245,20 @@ pub(crate) struct ServiceDefinition {
     pub binary: Option<String>,
     #[serde(rename = "nativeWorkerRole", skip_serializing_if = "Option::is_none")]
     pub native_worker_role: Option<String>,
+    /// A native one-shot schema migration the platform runs before the process starts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub migrate: Option<NativeMigration>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct NativeMigration {
+    pub binary: String,
+    pub args: Vec<String>,
+    /// The variable that carries the schema owner's URL to the migration.
+    #[serde(rename = "databaseUrlEnv")]
+    pub database_url_env: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -462,6 +476,24 @@ fn project_is_rust(project: &ProjectEntry) -> bool {
     project_language(project) == ProjectLanguage::Rust
 }
 
+/// Native binaries that migrate a database with `--migrate`: generated PostgreSQL
+/// services read `MIGRATION_DATABASE_URL`; modules and worker consumers take the
+/// owner URL as `DATABASE_URL`. Producers never migrate, so a worker migrates once.
+fn project_native_migration(project: &ProjectEntry, binary: Option<String>) -> Option<NativeMigration> {
+    let database = project.resources.as_ref().and_then(|resources| resources.database.as_deref());
+    if !project_is_rust(project) || database.is_none_or(|database| database != "postgresql") {
+        return None;
+    }
+    let variant = project.variant.as_deref().unwrap_or_default();
+    let database_url_env = match (&project.r#type, variant) {
+        (ProjectType::Service, "") => "MIGRATION_DATABASE_URL",
+        (ProjectType::Service, variant) if variant.starts_with("iam") || variant.starts_with("billing") || variant.starts_with("ecommerce") => "DATABASE_URL",
+        (ProjectType::Worker, _) => "DATABASE_URL",
+        _ => return None,
+    };
+    Some(NativeMigration { binary: binary?, args: vec!["--migrate".into()], database_url_env: database_url_env.into() })
+}
+
 fn project_native_binary(project: &ProjectEntry) -> Option<String> {
     project_is_rust(project).then(|| {
         project
@@ -512,6 +544,80 @@ fn project_abs_path(
     app_root.join(project_relative_path(manifest, project))
 }
 
+// Compose is the configured local build source, including per-language root
+// Dockerfiles with project-specific contexts. Project-local/custom overrides win.
+fn compose_project_build(
+    app_root: &Path,
+    manifest: &ApplicationManifestData,
+    project: &ProjectEntry,
+) -> Option<(String, String, Option<String>)> {
+    if project_abs_path(app_root, manifest, project)
+        .join("Dockerfile")
+        .is_file()
+        || manifest
+            .dockerfile
+            .as_deref()
+            .is_some_and(|path| !matches!(path, "Dockerfile" | "./Dockerfile"))
+    {
+        return None;
+    }
+    let path = app_root.join(
+        manifest
+            .docker_compose_path
+            .as_deref()
+            .unwrap_or("docker-compose.yaml"),
+    );
+    let compose: serde_yml::Value =
+        serde_yml::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
+    let services = compose.get("services")?;
+    let service = services
+        .get(&project.name)
+        .or_else(|| services.get(format!("{}-service", project.name)))
+        .or_else(|| services.get(format!("{}-worker", project.name)))?;
+    let build = service.get("build").or_else(|| {
+        let image = service.get("image")?.as_str()?;
+        services.as_mapping()?.values().find_map(|candidate| {
+            (candidate.get("image").and_then(serde_yml::Value::as_str) == Some(image))
+                .then(|| candidate.get("build"))
+                .flatten()
+        })
+    })?;
+    let context = build.get("context")?.as_str()?;
+    let dockerfile = build
+        .get("dockerfile")
+        .and_then(serde_yml::Value::as_str)
+        .unwrap_or("Dockerfile");
+    let absolute = path.parent()?.join(context);
+    let relative = pathdiff::diff_paths(&absolute, app_root)?;
+    let context = if relative.as_os_str().is_empty() {
+        ".".into()
+    } else {
+        relative.to_string_lossy().into_owned()
+    };
+    Some((
+        context,
+        dockerfile.into(),
+        build
+            .get("target")
+            .and_then(serde_yml::Value::as_str)
+            .map(str::to_owned),
+    ))
+}
+
+/// Shared language images carry per-component commands and migrations in the
+/// release manifest; only Compose build targets remain unrepresentable.
+fn check_release_build_targets(app_root: &Path, manifest: &ApplicationManifestData) -> Result<()> {
+    for project in &manifest.projects {
+        if let Some((_, _, Some(target))) = compose_project_build(app_root, manifest, project) {
+            anyhow::bail!(
+                "Release build targets are not supported by the release manifest contract: project {} selects Compose target {target}; local Docker Compose remains supported",
+                project.name
+            );
+        }
+    }
+    Ok(())
+}
+
 fn project_dockerfile(
     app_root: &Path,
     manifest: &ApplicationManifestData,
@@ -523,7 +629,30 @@ fn project_dockerfile(
     {
         return "Dockerfile".to_string();
     }
-    if project_is_rust(project) && matches!(manifest.runtime.as_str(), "node" | "bun") {
+    if let Some(custom) = manifest
+        .dockerfile
+        .as_deref()
+        .filter(|path| !matches!(*path, "Dockerfile" | "./Dockerfile"))
+    {
+        return custom.into();
+    }
+    if let Some((_, file, _)) = compose_project_build(app_root, manifest, project) {
+        return file;
+    }
+    if !project_is_rust(project) && app_root.join("Dockerfile.typescript").is_file() {
+        return pathdiff::diff_paths(
+            app_root.join("Dockerfile.typescript"),
+            app_root.join(&manifest.modules_path),
+        )
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    }
+    if project_is_rust(project)
+        && (matches!(manifest.runtime.as_str(), "node" | "bun")
+            || (manifest.language.as_deref() == Some("mixed")
+                && app_root.join("Dockerfile.rust").is_file()))
+    {
         return "Dockerfile.rust".to_string();
     }
     manifest
@@ -542,6 +671,9 @@ fn project_build_context(
         return Some(project_path);
     }
 
+    if let Some((context, _, _)) = compose_project_build(app_root, manifest, project) {
+        return Some(context);
+    }
     if project_is_rust(project) {
         let dockerfile = project_dockerfile(app_root, manifest, project);
         if app_root.join(dockerfile).exists() {
@@ -553,13 +685,19 @@ fn project_build_context(
 }
 
 fn project_native_worker_role(project: &ProjectEntry, role: &str) -> Option<String> {
-    (project_is_rust(project)
-        && project
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.worker_control_service)
-            == Some(true))
-    .then(|| role.to_owned())
+    if !project_is_rust(project) { return None; }
+    let metadata = project.metadata.as_ref()?;
+    // Separate producer/consumer executables do not implement the legacy role flag.
+    if metadata.worker_service == Some(true) { return None; }
+    (metadata.worker_control_service == Some(true) && role == "control").then(|| "--control-service".to_owned())
+}
+
+fn project_worker_consumer_binary(project: &ProjectEntry) -> Option<String> {
+    project_native_binary(project).map(|binary| {
+        if project.metadata.as_ref().and_then(|m| m.worker_service) == Some(true) {
+            format!("{binary}-worker")
+        } else { binary }
+    })
 }
 
 fn project_worker_type(project: &ProjectEntry) -> String {
@@ -592,6 +730,9 @@ pub(crate) fn generate_release_manifest(
     openapi_s3_keys: &HashMap<String, String>,
     user_managed_db_projects: &std::collections::HashSet<String>,
 ) -> Result<ReleaseManifest> {
+    let normalized = crate::core::manifest::language::normalized(app_root, manifest)?;
+    let manifest = &normalized;
+    check_release_build_targets(app_root, manifest)?;
     let timestamp = chrono::Utc::now().to_rfc3339();
 
     // Create a single ImportScanner for all topology scans — its result_cache
@@ -736,6 +877,8 @@ pub(crate) fn generate_release_manifest(
                 runtime: project_is_rust(project).then_some(Runtime::Tokio),
                 binary: project_native_binary(project),
                 native_worker_role: None,
+                migrate: project_native_migration(project, project_native_binary(project)),
+                variant: project.variant.clone(),
             });
         } else if project.r#type == ProjectType::Worker {
             let runtime_deps = project_runtime_deps.get(&project.name).cloned();
@@ -836,6 +979,7 @@ pub(crate) fn generate_release_manifest(
                 None
             };
 
+            if project.metadata.as_ref().and_then(|m| m.worker_service) != Some(false) {
             services.push(ServiceDefinition {
                 id: format!("{}-service", project.name),
                 name: format!("{}-service", project.name),
@@ -874,7 +1018,10 @@ pub(crate) fn generate_release_manifest(
                 runtime: project_is_rust(project).then_some(Runtime::Tokio),
                 binary: project_native_binary(project),
                 native_worker_role: project_native_worker_role(project, "control"),
+                migrate: None,
+                variant: project.variant.clone(),
             });
+            }
 
             let worker_type_str = project_worker_type(project);
 
@@ -915,8 +1062,10 @@ pub(crate) fn generate_release_manifest(
                 build_context: project_build_context(app_root, manifest, project),
                 dockerfile: Some(project_dockerfile(app_root, manifest, project)),
                 runtime: project_is_rust(project).then_some(Runtime::Tokio),
-                binary: project_native_binary(project),
+                binary: project_worker_consumer_binary(project),
                 native_worker_role: project_native_worker_role(project, "consumer"),
+                migrate: project_native_migration(project, project_worker_consumer_binary(project)),
+                variant: project.variant.clone(),
             });
         }
     }
@@ -1342,8 +1491,49 @@ mod tests {
             is_jest: false,
             platform_application_id: None,
             platform_organization_id: None,
+            framework: None,
             compliance: None,
         }
+    }
+
+    #[test]
+    fn worker_producer_and_consumer_have_distinct_native_roles() {
+        let root = TempDir::new().unwrap();
+        let mut manifest = rust_release_test_manifest();
+        let worker = manifest.projects.iter_mut().find(|project| project.r#type == ProjectType::Worker).unwrap();
+        worker.metadata.as_mut().unwrap().worker_service = Some(true);
+        let producer = project_native_binary(worker).unwrap();
+        assert_eq!(project_worker_consumer_binary(worker).unwrap(), format!("{producer}-worker"));
+        assert!(project_native_worker_role(worker, "control").is_none());
+        assert!(project_native_worker_role(worker, "consumer").is_none());
+        crate::core::manifest::language::normalized(root.path(), &manifest).unwrap();
+        let worker = manifest.projects.iter_mut().find(|project| project.r#type == ProjectType::Worker).unwrap();
+        worker.metadata.as_mut().unwrap().contract_export = Some(false);
+        assert!(crate::core::manifest::language::normalized(root.path(), &manifest).is_err());
+    }
+
+    #[test]
+    fn release_language_normalization_preserves_legacy_rust_and_rejects_conflicts() {
+        let root = TempDir::new().unwrap();
+        let mut manifest = rust_release_test_manifest();
+        manifest.projects[0].metadata.as_mut().unwrap().language = None;
+        let normalized = crate::core::manifest::language::normalized(root.path(), &manifest).unwrap();
+        assert!(project_is_rust(&normalized.projects[0]));
+        assert!(manifest.projects[0].metadata.as_ref().unwrap().language.is_none());
+        manifest.projects[0].metadata.as_mut().unwrap().language = Some("go".into());
+        assert!(crate::core::manifest::language::normalized(root.path(), &manifest).is_err());
+        manifest.projects[0].metadata.as_mut().unwrap().language = Some("rust".into());
+        manifest.projects[0].metadata.as_mut().unwrap().worker_control_service = Some(true);
+        assert!(crate::core::manifest::language::normalized(root.path(), &manifest).is_err());
+        manifest.projects[0].metadata.as_mut().unwrap().worker_control_service = None;
+        manifest.application_language = Some("typescript".into());
+        assert!(crate::core::manifest::language::normalized(root.path(), &manifest).is_err());
+        manifest.language = Some("mixed".into());
+        manifest.application_language = Some("mixed".into());
+        let worker = manifest.projects.iter_mut().find(|p| p.r#type == ProjectType::Worker).unwrap();
+        worker.metadata.as_mut().unwrap().language = Some("typescript".into());
+        worker.metadata.as_mut().unwrap().worker_control_service = Some(true);
+        assert!(crate::core::manifest::language::normalized(root.path(), &manifest).is_err());
     }
 
     #[test]
@@ -1423,16 +1613,101 @@ mod tests {
     }
 
     #[test]
+    fn mixed_release_respects_compose_context_and_refuses_unsupported_targets() {
+        let root = TempDir::new().unwrap();
+        let mut manifest = rust_release_test_manifest();
+        manifest.dockerfile = None;
+        let project = &manifest.projects[0];
+        std::fs::write(
+            root.path().join("docker-compose.yaml"),
+            format!(
+                "services:\n  {}:\n    build: {{context: ., dockerfile: Dockerfile.typescript}}\n",
+                project.name
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            project_build_context(root.path(), &manifest, project).as_deref(),
+            Some(".")
+        );
+        assert_eq!(
+            project_dockerfile(root.path(), &manifest, project),
+            "Dockerfile.typescript"
+        );
+        std::fs::write(root.path().join("docker-compose.yaml"),format!("services:\n  {}:\n    build: {{context: ., dockerfile: Dockerfile.typescript, target: auth}}\n",project.name)).unwrap();
+        assert!(
+            check_release_build_targets(root.path(), &manifest)
+                .unwrap_err()
+                .to_string()
+                .contains("target auth")
+        );
+        manifest.dockerfile = Some("Custom.Dockerfile".into());
+        assert!(check_release_build_targets(root.path(), &manifest).is_ok());
+        assert_eq!(
+            project_dockerfile(root.path(), &manifest, &manifest.projects[0]),
+            "Custom.Dockerfile"
+        );
+    }
+
+    #[test]
+    fn native_migrations_name_the_binary_and_owner_url_variable() {
+        let manifest = rust_release_test_manifest();
+        let (service, worker) = (&manifest.projects[0], &manifest.projects[1]);
+        let migration = project_native_migration(service, project_native_binary(service)).unwrap();
+        assert_eq!(migration.binary, "accounts");
+        assert_eq!(migration.args, ["--migrate"]);
+        assert_eq!(migration.database_url_env, "MIGRATION_DATABASE_URL");
+        let consumer = project_native_migration(worker, Some("email-worker-worker".into())).unwrap();
+        assert_eq!(consumer.database_url_env, "DATABASE_URL");
+        let mut billing = service.clone();
+        billing.variant = Some("billing-stripe".into());
+        assert_eq!(
+            project_native_migration(&billing, Some("billing".into())).unwrap().database_url_env,
+            "DATABASE_URL"
+        );
+        let mut storeless = service.clone();
+        storeless.resources = None;
+        assert!(project_native_migration(&storeless, Some("accounts".into())).is_none());
+        let mut cac = service.clone();
+        cac.variant = Some("cac-base".into());
+        assert!(project_native_migration(&cac, Some("cac".into())).is_none());
+    }
+
+    #[test]
+    fn release_accepts_owned_shared_process_images() {
+        let root = TempDir::new().unwrap();
+        let manifest = rust_release_test_manifest();
+        std::fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+        std::fs::write(root.path().join("Dockerfile.typescript"), "FROM node:22\n").unwrap();
+        std::fs::write(
+            root.path().join(".forklaunch/generated.json"),
+            serde_json::to_string(&serde_json::json!({"typescriptImage": {
+                "dockerfileSha256": crate::core::forklaunch_state::sha256_hex("FROM node:22\n"), "processes": {"api": {"entry":"server"}}
+            }}))
+            .unwrap(),
+        )
+        .unwrap();
+        // Commands and migrations travel per component, so shared images release.
+        assert!(check_release_build_targets(root.path(), &manifest).is_ok());
+        let mut customized = manifest.clone();
+        customized.dockerfile = Some("Custom.Dockerfile".into());
+        assert!(check_release_build_targets(root.path(), &customized).is_ok());
+        std::fs::write(root.path().join("Dockerfile.typescript"), "FROM custom\n").unwrap();
+        assert!(check_release_build_targets(root.path(), &manifest).is_ok());
+    }
+
+    #[test]
     fn mixed_release_uses_each_languages_dockerfile_for_services_and_workers() {
         for runtime in ["node", "bun"] {
             let root = TempDir::new().unwrap();
             std::fs::write(root.path().join("Dockerfile.rust"), "FROM rust:1.91-slim\n").unwrap();
             std::fs::create_dir_all(root.path().join("modules")).unwrap();
-            std::fs::write(root.path().join("modules/Dockerfile"), "FROM node:22\n").unwrap();
+            std::fs::write(root.path().join("Dockerfile.typescript"), "FROM node:22\n").unwrap();
             let mut manifest = rust_release_test_manifest();
             manifest.runtime = runtime.to_string();
             manifest.modules_path = "modules".to_string();
             manifest.language = Some("mixed".to_string());
+            manifest.application_language = Some("mixed".to_string());
             for project in &mut manifest.projects {
                 if project.r#type == ProjectType::Worker {
                     project.metadata.as_mut().unwrap().worker_control_service = Some(true);
@@ -1470,8 +1745,8 @@ mod tests {
                 let legacy = service.id == "legacy-api";
                 let serialized = serde_json::to_value(&service).unwrap();
                 match service.id.as_str() {
-                    "email-worker-service" => assert_eq!(serialized["nativeWorkerRole"], "control"),
-                    "email-worker-worker" => assert_eq!(serialized["nativeWorkerRole"], "consumer"),
+                    // The legacy binary takes `--control-service`; its consumer takes no flag.
+                    "email-worker-service" => assert_eq!(serialized["nativeWorkerRole"], "--control-service"),
                     _ => assert!(serialized.get("nativeWorkerRole").is_none()),
                 }
                 if legacy {
@@ -1496,7 +1771,7 @@ mod tests {
                 assert_eq!(
                     service.dockerfile.as_deref(),
                     Some(if legacy {
-                        "Dockerfile"
+                        "../Dockerfile.typescript"
                     } else {
                         "Dockerfile.rust"
                     })

@@ -289,6 +289,7 @@ impl CliCommand for StorefrontCommand {
             is_jest: manifest_data.is_jest,
             platform_application_id: manifest_data.platform_application_id.clone(),
             platform_organization_id: manifest_data.platform_organization_id.clone(),
+            framework: manifest_data.framework.clone(),
             compliance: manifest_data.compliance.clone(),
 
             // Storefront-specific fields. LibraryManifestData's shape is reused

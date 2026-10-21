@@ -6,7 +6,7 @@ import {randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {actualHttpSources} from './rust_actual_http_fixture.mjs';
-import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
+import {probeMcp} from './rust_mcp_probe.mjs';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {load}=actualHttpSources(root);
 const {createHmacToken}=load(path.join(root,'framework/core/src/http/createHmacToken.ts'));
@@ -28,7 +28,7 @@ try{
   await new Promise(resolve=>setTimeout(resolve,100));
  }
  const tools=await probeMcp(base);
- const tool=tools.find(tool=>tool.name.toLowerCase().includes('receiveplatformevent'));assert.ok(tool,JSON.stringify(tools));
+ assert.ok(!tools.some(tool=>tool.name.toLowerCase().includes('receiveplatformevent')),'Internal signed callbacks must be omitted from MCP tools');
  if(process.argv.includes('--bounded-store')){
   for(const [feature,status] of [['email',200],['sms',200],['voice',503]]){
    const body=JSON.stringify({id:`bounded_${feature}`,feature,type:`${feature}.fixture`});
@@ -45,9 +45,11 @@ try{
   assert.equal((await post(feature,body,authorization)).status,200);
   assert.equal((await post(feature,body,authorization)).status,401);
   assert.equal((await post(feature,body,signed(feature,body))).status,200,'Event-ID deduplication belongs to the business handler');
-  const result=await mcpRpc(base,'tools/call',{name:tool.name,arguments:{params:{feature},body:JSON.parse(body)},_meta:{}});
-  assert.equal(result.isError,true,'MCP cannot bypass callback authentication');
  }
+ const oversized=JSON.stringify({id:'oversized',feature:'email',type:'email.test',data:'x'.repeat(1024*1024)});
+ assert.ok([401,413].includes((await post('email',oversized,signed('email',oversized))).status),'Signed bodies remain bounded');
+ const secured=await fetch(`${base}/health`);
+ assert.equal(secured.headers.get('x-content-type-options'),'nosniff','Native callback integration retains shared HTTP security middleware');
  assert.equal((await post('unknown','{}')).status,404);
  const encodedBody=JSON.stringify({id:'encoded-email',feature:'email',type:'email.delivered'});
  assert.equal((await post('%65mail',encodedBody,signed('%65mail',encodedBody))).status,200,'Dispatch must use the decoded route parameter while signatures bind the actual URL');

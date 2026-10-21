@@ -238,7 +238,14 @@ fn rust_project_dependency_info(
                 .get("cratePath")
                 .and_then(toml::Value::as_str)
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("crates").join(name));
+                .unwrap_or_else(|| {
+                    let native = PathBuf::from("src").join(name);
+                    if app_root.join(&native).join("Cargo.toml").is_file() {
+                        native
+                    } else {
+                        PathBuf::from("crates").join(name)
+                    }
+                });
             Some(RustProjectDependencyInfo {
                 name: name.to_string(),
                 crate_path: clean_path(&app_root.join(crate_path)),
@@ -339,7 +346,16 @@ fn classify_rust_path_dependency(
         let sdk_path = Path::new("sdks")
             .join("rust")
             .join(format!("{}-sdk", project.name));
-        if project.is_network_target && dependency_path.ends_with(sdk_path) {
+        let native_sdk_path = Path::new("src/client-sdk/rust").join(&project.name);
+        let native_named_sdk_path =
+            Path::new("src/client-sdk/rust").join(format!("{}-sdk", project.name));
+        let local_sdk_path = Path::new(&project.crate_path).join("sdk/rust");
+        if project.is_network_target
+            && (dependency_path.ends_with(sdk_path)
+                || dependency_path.ends_with(native_sdk_path)
+                || dependency_path.ends_with(native_named_sdk_path)
+                || dependency_path.ends_with(local_sdk_path))
+        {
             return Some((project.name.clone(), "network"));
         }
     }
@@ -438,6 +454,84 @@ mod tests {
         let deps = extract_sdk_dependencies_from_source(source).unwrap();
 
         assert_eq!(deps.len(), 0);
+    }
+
+    #[test]
+    fn detects_flat_native_projects_shared_core_and_service_sdk_paths() {
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        for path in [
+            ".forklaunch",
+            "src/notes/api/routes",
+            "src/insights",
+            "src/core/security",
+            "src/client-sdk/rust/notes",
+        ] {
+            std::fs::create_dir_all(root.join(path)).unwrap();
+        }
+        std::fs::write(root.join(".forklaunch/manifest.toml"), r#"
+projects = [
+  { type = "Service", name = "notes", metadata = { language = "rust" } },
+  { type = "Worker", name = "insights", metadata = { language = "rust", cratePath = "src/insights" } },
+  { type = "Library", name = "security", metadata = { language = "rust", cratePath = "src/core/security" } },
+]
+"#).unwrap();
+        std::fs::write(
+            root.join("src/notes/Cargo.toml"),
+            r#"
+[package]
+name = "notes"
+version = "0.1.0"
+[lib]
+path = "lib.rs"
+[dependencies]
+security = { path = "../core/security" }
+"#,
+        )
+        .unwrap();
+        std::fs::write(root.join("src/notes/lib.rs"), "pub mod api;\n").unwrap();
+        std::fs::write(
+            root.join("src/notes/api/routes/notes.rs"),
+            "use security::Principal;\n",
+        )
+        .unwrap();
+        std::fs::write(
+            root.join("src/insights/Cargo.toml"),
+            r#"
+[package]
+name = "insights"
+version = "0.1.0"
+[dependencies]
+backend = { path = "../client-sdk/rust/notes" }
+"#,
+        )
+        .unwrap();
+        let dependencies = find_all_rust_service_dependencies(root).unwrap();
+        assert_eq!(
+            dependencies["notes"],
+            vec![("security".into(), "local".into())]
+        );
+        assert_eq!(
+            dependencies["insights"],
+            vec![("notes".into(), "network".into())]
+        );
+    }
+
+    #[test]
+    fn service_local_sdk_is_a_network_dependency() {
+        let projects = vec![RustProjectDependencyInfo {
+            name: "notes".into(),
+            crate_path: PathBuf::from("src/notes"),
+            is_network_target: true,
+        }];
+        assert_eq!(
+            classify_rust_path_dependency(Path::new("src/notes/sdk/rust"), &projects),
+            Some(("notes".into(), "network")),
+        );
+        assert_eq!(
+            classify_rust_path_dependency(Path::new("src/notes"), &projects),
+            Some(("notes".into(), "local")),
+        );
     }
 
     #[test]

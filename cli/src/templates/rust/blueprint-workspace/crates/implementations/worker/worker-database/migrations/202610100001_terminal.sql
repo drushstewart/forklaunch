@@ -1,0 +1,1 @@
+../../../../../../../../../../blueprint-rs/crates/implementations/worker/worker-database/migrations/202610100001_terminal.sql

@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core-macros/src/schema_self.rs

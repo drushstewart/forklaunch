@@ -32,8 +32,8 @@ const recursive={$schema:'https://json-schema.org/draft/2020-12/schema',$defs:{N
 fixtures.push({schema:recursive,cases:[]});
 fixtures.push({schema:{type:'array',prefixItems:[{type:'number'}],items:{type:'string'},minItems:1,maxItems:1},cases:[{value:['x'],valid:true},{value:[1],valid:false}],broad:true});
 const schemas=fixtures.map(entry=>entry.schema);
-run('cargo',['build','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-sdk-codegen','--example','fixed_tuple_models']);
-const generated=JSON.parse(run(path.join(target,'debug/examples/fixed_tuple_models'),[],{input:JSON.stringify(schemas)}));
+run('cargo',['build','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','build,asyncapi-import','--example','codegen_fixed_tuple_models']);
+const generated=JSON.parse(run(path.join(target,'debug/examples/codegen_fixed_tuple_models'),[],{input:JSON.stringify(schemas)}));
 assert.equal(generated.length,fixtures.length);
 for(const [index,item] of generated.entries())if(!fixtures[index].broad)assert.ok(item.sequences>0);
 const work=mkdtempSync(path.join(tmpdir(),'fl-fixed-tuple-models-'));

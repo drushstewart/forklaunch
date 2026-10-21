@@ -9,9 +9,11 @@ import vm from 'node:vm';
 export async function compareCheckout({base,call,providerBase,setProviderFailure}){
  const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..');
  const require=createRequire(import.meta.url),tsc=process.env.TSC_BIN??path.join(root,'framework/node_modules/.bin/tsc');
- const ts=require(require.resolve('typescript',{paths:[path.dirname(await realpath(tsc))]}));
+ // TypeScript 7 no longer exposes transpileModule. Execute these actual
+ // controller sources with the same esbuild installed for the public SDK.
+ const {transform}=require(require.resolve('esbuild',{paths:[path.dirname(await realpath(tsc))]}));
  async function load(relative,imports={}){
-  const exports={};vm.runInNewContext(ts.transpileModule(await readFile(path.join(root,relative),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,require(spec){if(spec in imports)return imports[spec];throw Error('unexpected runtime import '+spec);}});return exports;
+  const module={exports:{}};const {code}=await transform(await readFile(path.join(root,relative),'utf8'),{loader:'ts',format:'cjs',target:'es2022',sourcefile:relative});vm.runInNewContext(code,{module,exports:module.exports,require(spec){if(spec in imports)return imports[spec];throw Error('unexpected runtime import '+spec);}});return module.exports;
  }
  class UniqueConstraintViolationException extends Error{}
  async function json(endpoint,options){const response=await call(base,endpoint,options);if(response.status===409)throw new UniqueConstraintViolationException();assert.equal(response.status,200,await response.clone().text());return response.json();}

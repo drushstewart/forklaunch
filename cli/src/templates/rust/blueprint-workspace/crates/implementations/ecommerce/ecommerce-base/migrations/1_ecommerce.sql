@@ -1,0 +1,1 @@
+../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/migrations/1_ecommerce.sql

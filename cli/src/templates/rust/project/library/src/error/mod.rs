@@ -1,6 +1,6 @@
-use std::fmt;
+use std::{fmt, error::Error, result};
 
-pub type Result<T> = std::result::Result<T, LibraryError>;
+pub type Result<T> = result::Result<T, LibraryError>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LibraryError {
@@ -15,4 +15,4 @@ impl fmt::Display for LibraryError {
     }
 }
 
-impl std::error::Error for LibraryError {}
+impl Error for LibraryError {}

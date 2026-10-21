@@ -1,4 +1,5 @@
-use forklaunch_blueprint_core::{BlueprintError, BlueprintResult};
+use forklaunch_core::domain::BlueprintError;
+use forklaunch_core::domain::BlueprintResult;
 use forklaunch_worker_database::runner::JobHandler;
 use forklaunch_worker_interface::Job;
 
@@ -6,6 +7,7 @@ pub struct ApplicationHandler;
 
 impl JobHandler for ApplicationHandler {
     async fn process(&self, _job: Job) -> BlueprintResult<()> {
+        // Install authorization and an acknowledged audit sink before decrypting.
         // Implement idempotent application work here. Return Ok(()) only after
         // that work succeeds. The runner renews the lease and acknowledges it.
         Err(BlueprintError::new(

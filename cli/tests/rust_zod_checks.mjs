@@ -31,7 +31,7 @@ assert.equal(
   readFileSync(
     path.join(
       root,
-      "framework-rs/crates/forklaunch-sdk-typescript/src/zod-checks.ts",
+      "framework-rs/crates/core/src/typescript/zod-checks.ts",
     ),
     "utf8",
   ),
@@ -63,7 +63,7 @@ if (native)
     "--manifest-path",
     "framework-rs/Cargo.toml",
     "-p",
-    "forklaunch-contract",
+    "forklaunch-core",
     "--features",
     "zod-uri,zod-checks",
     "--example",
@@ -436,7 +436,7 @@ for (const value of ["\ud800", "\udfff", "a\ud800"]) {
 const socketRegistration = load(
   path.join(
     root,
-    "framework-rs/crates/forklaunch-sdk-typescript/src/zod-checks.ts",
+    "framework-rs/crates/core/src/typescript/zod-checks.ts",
   ),
 ).registerZodChecks;
 const sharedEngine = registerZodChecks(new Ajv2020({ strict: false }));

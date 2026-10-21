@@ -13,7 +13,10 @@ cp "$SCRIPT_DIR/fixtures/rust_typescript_authorization.rs" crates/authorization/
 python3 - <<'PY'
 from pathlib import Path
 p=Path('crates/authorization/Cargo.toml')
-p.write_text(p.read_text().replace('[dependencies]\n','[dependencies]\nserde_json = "1"\nforklaunch-validation = { path = "../../.forklaunch/framework-rs/crates/forklaunch-validation" }\nforklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["oidc"] }\n'))
+p.write_text(p.read_text().replace('[dependencies]\n','[dependencies]\nserde_json = "1"\nforklaunch-validator = { path = "../../.forklaunch/framework-rs/crates/validator" }\n'))
+# Ordinary service already owns the core dependency; enable its OIDC module.
+import re
+p.write_text(re.sub(r'(forklaunch-core = \{[^\n]*features = \[)', r'\1"oidc", ', p.read_text()))
 p=Path('crates/authorization/src/lib.rs')
 s='pub mod policy_fixture;\n'+p.read_text()
 s=s.replace('for contract in routes::contracts() {','for contract in routes::contracts().into_iter().chain(policy_fixture::contracts()) {')
@@ -22,7 +25,7 @@ p=Path('crates/authorization/src/main.rs')
 p.write_text(p.read_text().replace('router(state).serve_with_default_mcp','authorization::policy_fixture::register(router(state)).serve_with_default_mcp'))
 PY
 cargo build -p authorization
-cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-auth --features oidc oidc
+cargo test --manifest-path .forklaunch/framework-rs/Cargo.toml -p forklaunch-core --features oidc oidc
 "$CLI" openapi export --path .
 "$CLI" sdk generate --path . --target all --from contract
 "${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --project sdks/typescript/tsconfig.json --noEmit

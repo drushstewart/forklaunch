@@ -1,0 +1,1 @@
+../../../../../../../../../blueprint-rs/crates/interfaces/ecommerce-interface/examples/module_contract.rs

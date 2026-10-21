@@ -1,4 +1,4 @@
-use forklaunch_blueprint_core::platform_events::{MemoryPlatformEventNonces, PlatformEventNonceStore};
+use forklaunch_core::http::platform_events::{MemoryPlatformEventNonces, PlatformEventNonceStore};
 use std::sync::Arc;
 
 /// One store is shared by every managed callback in this service process.

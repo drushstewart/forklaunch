@@ -516,6 +516,7 @@ impl CliCommand for SyncAllCommand {
             &mut stdout,
         )?;
 
+        crate::core::github_configs::reconcile_github_configs(&app_root_path)?;
         if manifest_data.runtime == "tokio" {
             writeln!(stdout)?;
             log_header!(stdout, Color::Green, "Sync all completed");

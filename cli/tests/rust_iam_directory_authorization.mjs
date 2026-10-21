@@ -4,7 +4,7 @@ import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import path from 'node:path';
 import {mcpRpc,probeMcp} from './rust_mcp_probe.mjs';
-export async function probeDirectoryAuthorization({start,environment,call,jwt,fixture,binary,createForkLaunchSdk}) {
+export async function probeDirectoryAuthorization({start,environment,call,jwt,fixture,binary,universalSdk}) {
   const settings={...environment('directory',false,true),IAM_DIRECTORY_AUTHORIZATION:'stored-session'};
   const action=kind=>promisify(execFile)(path.join(path.dirname(binary),'examples','seed'),['--directory-auth',kind],{env:process.env,timeout:30000,maxBuffer:1024*1024});
   let server=await start('directory',false,settings);
@@ -16,9 +16,9 @@ export async function probeDirectoryAuthorization({start,environment,call,jwt,fi
   await call(server.baseUrl,rolePath,'GET',undefined,200,authorization);
   await call(server.baseUrl,rolePath,'GET',undefined,403,jwt('user-1',['admin','system'],['platform:read']));
   await call(server.baseUrl,rolePath,'GET',undefined,403,authorization+'x');
-  const sdk=createForkLaunchSdk({baseUrl:server.baseUrl,headers:{authorization}});
-  assert.equal((await sdk.iam.user.getUser({params:{id:member.id}})).code,200);
-  assert.equal((await sdk.iam.user.getUser({params:{id:outsider.id}})).code,404);
+  const sdk=(await universalSdk({host:server.baseUrl,registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,headers:{authorization}}));
+  assert.equal((await sdk.user.getUser({params:{id:member.id}})).code,200);
+  assert.equal((await sdk.user.getUser({params:{id:outsider.id}})).code,404);
   const tools=await probeMcp(server.baseUrl,['getRole','getUser']);
   assert.ok(tools.length>=40);
   const mcpRole=async status=>{

@@ -3,7 +3,7 @@
 use toml_edit::{Array, DocumentMut, Item, Table, value};
 
 use super::*;
-use crate::core::application_output::output_path;
+use crate::core::{application_output::output_path, docker::DockerCompose};
 
 fn table<'a>(parent: &'a mut Table, name: &str) -> Result<&'a mut Table> {
     parent
@@ -27,6 +27,116 @@ pub(super) fn dockerfile(root: &Path) -> Result<&'static str> {
     )
 }
 
+#[derive(Content)]
+pub(super) struct TypeScriptDockerTemplate<'a> {
+    pub(super) app_name: &'a str,
+    pub(super) is_node: bool,
+    pub(super) is_bun: bool,
+    pub(super) is_in_memory_database: bool,
+}
+
+pub(super) fn recognized_typescript_default(manifest: &Value, actual: &str) -> Result<bool> {
+    let runtime = manifest
+        .get("runtime")
+        .and_then(Value::as_str)
+        .unwrap_or("node");
+    let app_name = manifest
+        .get("app_name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    for memory in [false, true] {
+        let rendered = crate::core::template::render_embedded_template(
+            "application/Dockerfile",
+            &TypeScriptDockerTemplate {
+                app_name,
+                is_node: runtime == "node",
+                is_bun: runtime == "bun",
+                is_in_memory_database: memory,
+            },
+        )?;
+        for file in ["Dockerfile", "Dockerfile.typescript"] {
+            let marked = crate::core::watermark::apply_watermark(&RenderedTemplate {
+                path: PathBuf::from(file),
+                content: rendered.clone(),
+                context: None,
+            })?;
+            if actual.trim_end() == rendered.trim_end() || actual.trim_end() == marked.trim_end() {
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn plan_typescript_sibling(
+    root: &Path,
+    manifest: &Value,
+) -> Result<Option<(PathBuf, PathBuf, String)>> {
+    if manifest
+        .get("dockerfile")
+        .and_then(Value::as_str)
+        .is_some_and(|path| !matches!(path, "Dockerfile" | "./Dockerfile"))
+    {
+        return Ok(None);
+    }
+    let modules = manifest
+        .get("modules_path")
+        .and_then(Value::as_str)
+        .unwrap_or("modules");
+    let runtime = manifest
+        .get("runtime")
+        .and_then(Value::as_str)
+        .unwrap_or("node");
+    let app_name = manifest
+        .get("app_name")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let destination = output_path(root, Path::new("Dockerfile.typescript"))?;
+    for candidate in [
+        Path::new(modules).join("Dockerfile"),
+        PathBuf::from("Dockerfile"),
+    ] {
+        let source = output_path(root, &candidate)?;
+        if !source.is_file() {
+            continue;
+        }
+        let actual = read_to_string(&source)?;
+        let receipt = crate::core::forklaunch_state::generated_section(root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?;
+        let mut recognized = if let Some(receipt) = receipt {
+            super::typescript_image::preflight(root)?;
+            receipt["dockerfilePath"].as_str() == candidate.to_str()
+                && receipt["dockerfileSha256"].as_str() == Some(crate::core::forklaunch_state::sha256_hex(&actual).as_str())
+        } else { false };
+        for memory in [false, true] {
+            let rendered = crate::core::template::render_embedded_template(
+                "application/Dockerfile",
+                &TypeScriptDockerTemplate {
+                    app_name,
+                    is_node: runtime == "node",
+                    is_bun: runtime == "bun",
+                    is_in_memory_database: memory,
+                },
+            )?;
+            let marked = crate::core::watermark::apply_watermark(&RenderedTemplate {
+                path: source.clone(),
+                content: rendered.clone(),
+                context: None,
+            })?;
+            recognized |= [rendered, marked]
+                .iter()
+                .any(|expected| actual.trim_end() == expected.trim_end());
+        }
+        if !recognized {
+            continue;
+        }
+        if destination.exists() && read_to_string(&destination)?.trim_end() != actual.trim_end() {
+            bail!("TypeScript sibling Dockerfile conflicts with the generated source; reconcile it before adding Rust projects");
+        }
+        return Ok(Some((source, destination, actual)));
+    }
+    Ok(None)
+}
+
 pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
     let manifest_path = output_path(root, Path::new(".forklaunch/manifest.toml"))?;
     let mut manifest = read_manifest_value(&manifest_path)?;
@@ -36,6 +146,7 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
     ) {
         return Ok(());
     }
+    dependencies::preflight_mixed_image(root)?;
     // Project manifest views accept both spellings; emit only one canonical key.
     let application = manifest
         .as_table_mut()
@@ -79,16 +190,7 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
     {
         bail!("Cargo workspace.members must be an array");
     }
-    let exclude = workspace
-        .entry("exclude")
-        .or_insert(value(Array::new()))
-        .as_array_mut()
-        .context("Cargo workspace.exclude must be an array")?;
-    for path in [".forklaunch/framework-rs", ".forklaunch/blueprint-rs"] {
-        if !exclude.iter().any(|entry| entry.as_str() == Some(path)) {
-            exclude.push(path);
-        }
-    }
+    // Framework crates come from the registry; nothing vendored needs excluding.
     let package = table(workspace, "package")?;
     package.entry("version").or_insert(value("0.1.0"));
     let edition = package.entry("edition").or_insert(value("2024"));
@@ -110,7 +212,33 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
         authors.push(author);
     }
     package.entry("authors").or_insert(value(authors));
+    let typescript = plan_typescript_sibling(root, &manifest)?;
     let mut outputs = Vec::new();
+    let mut compose_migration = None;
+    if let Some((source, _, _)) = &typescript {
+        let compose_relative = manifest
+            .get("docker_compose_path")
+            .and_then(Value::as_str)
+            .unwrap_or("docker-compose.yaml");
+        let compose_path = output_path(root, Path::new(compose_relative))?;
+        if compose_path.is_file() {
+            compose_migration = Some((
+                compose_path.clone(),
+                yaml_from_str::<DockerCompose>(&read_to_string(compose_path)?)?,
+            ));
+        }
+        let specific_ignore = source.with_file_name(format!("{}.dockerignore", source.file_name().unwrap().to_string_lossy()));
+        let ignore = if specific_ignore.is_file() { specific_ignore } else { source.parent().unwrap().join(".dockerignore") };
+        let target = output_path(root, Path::new("Dockerfile.typescript.dockerignore"))?;
+        if ignore.is_file() {
+            let content = read_to_string(&ignore)?;
+            if target.exists() {
+                anyhow::ensure!(read_to_string(&target)? == content, "TypeScript sibling ignore rules conflict with the owned source");
+            } else {
+                outputs.push((target, content));
+            }
+        }
+    }
     for (destination, template) in [
         ("Dockerfile.rust", "rust/application/Dockerfile"),
         (
@@ -151,18 +279,165 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
     for (destination, source) in outputs {
         write(destination, source)?;
     }
+    ensure_root_ignore_rules(root)?;
+    if let Some((source, destination, content)) = typescript {
+        write(&destination, content)?;
+        use crate::core::forklaunch_state::{self, TYPESCRIPT_IMAGE};
+        if let Some(mut receipt) = forklaunch_state::generated_section(root, TYPESCRIPT_IMAGE)? {
+            receipt["dockerfilePath"] = json!("Dockerfile.typescript");
+            forklaunch_state::set_generated_section(root, TYPESCRIPT_IMAGE, Some(receipt))?;
+            let old_ignore = source.with_file_name(format!("{}.dockerignore", source.file_name().unwrap().to_string_lossy()));
+            if old_ignore.is_file() { remove_file(old_ignore)?; }
+        }
+        remove_file(source)?;
+        if let Some((compose_path, mut compose)) = compose_migration {
+            crate::core::docker::route_typescript_dockerfiles(root, &compose_path, &mut compose);
+            write(compose_path, yaml_to_string(&compose)?)?;
+        }
+        if matches!(
+            manifest.get("dockerfile").and_then(Value::as_str),
+            Some("Dockerfile" | "./Dockerfile")
+        ) {
+            manifest.as_table_mut().unwrap().remove("dockerfile");
+        }
+    }
     write_manifest_value(&manifest_path, &manifest)
+}
+
+/// The Cargo workspace root owns build outputs that the TypeScript workspace's
+/// own ignore file cannot reach. Missing rules are appended; existing ones stay.
+pub(super) fn ensure_root_ignore_rules(root: &Path) -> Result<()> {
+    let path = root.join(".gitignore");
+    let rules = render_static_rust_template("rust/application/gitignore");
+    let Ok(existing) = read_to_string(&path) else {
+        return Ok(write(path, rules)?);
+    };
+    let present: std::collections::HashSet<&str> = existing.lines().map(str::trim).collect();
+    let missing: Vec<&str> = rules
+        .lines()
+        .filter(|rule| !rule.trim().is_empty() && !rule.starts_with('#') && !present.contains(rule.trim()))
+        .collect();
+    if missing.is_empty() {
+        return Ok(());
+    }
+    let separator = if existing.is_empty() || existing.ends_with('\n') { "" } else { "\n" };
+    write(path, format!("{existing}{separator}\n# ForkLaunch build outputs\n{}\n", missing.join("\n")))?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn root_ignore_rules_cover_build_outputs_and_preserve_user_rules() {
+        let root = tempfile::tempdir().unwrap();
+        ensure_root_ignore_rules(root.path()).unwrap();
+        let generated = read_to_string(root.path().join(".gitignore")).unwrap();
+        assert!(generated.lines().any(|rule| rule == "**/target/"));
+        assert!(generated.lines().any(|rule| rule == "**/.forklaunch/compliance.json"));
+        write(root.path().join(".gitignore"), "**/target/\ncoverage/").unwrap();
+        ensure_root_ignore_rules(root.path()).unwrap();
+        let merged = read_to_string(root.path().join(".gitignore")).unwrap();
+        assert!(merged.starts_with("**/target/\ncoverage/\n\n# ForkLaunch build outputs\n"));
+        assert_eq!(merged.matches("**/target/").count(), 1);
+        ensure_root_ignore_rules(root.path()).unwrap();
+        assert_eq!(read_to_string(root.path().join(".gitignore")).unwrap(), merged, "Reconciliation is idempotent");
+    }
+
+    #[test]
+    fn owned_contract_image_moves_to_language_sibling() {
+        for runtime in ["node", "bun"] {
+            let root = fixture();
+            write(root.path().join(".forklaunch/manifest.toml"), format!("runtime='{runtime}'\napp_name='demo'\nmodules_path='modules'\n")).unwrap();
+            write(root.path().join("Dockerfile"), "# generated compiler image\n").unwrap();
+            write(root.path().join("Dockerfile.dockerignore"), "node_modules\n").unwrap();
+            write(root.path().join(crate::core::forklaunch_state::GENERATED), serde_json::to_string(&json!({"typescriptImage":{"dockerfilePath":"Dockerfile", "dockerfileSha256":crate::core::forklaunch_state::sha256_hex("# generated compiler image\n"), "ignoreSha256":crate::core::forklaunch_state::sha256_hex("node_modules\n")}})).unwrap()).unwrap();
+            let manifest_before = read_to_string(root.path().join(".forklaunch/manifest.toml")).unwrap();
+            write(root.path().join("Dockerfile"), "# user customization\n").unwrap();
+            assert!(ensure_workspace(root.path(), false).is_err());
+            assert_eq!(read_to_string(root.path().join(".forklaunch/manifest.toml")).unwrap(), manifest_before);
+            assert!(!root.path().join("Dockerfile.typescript").exists());
+            write(root.path().join("Dockerfile"), "# generated compiler image\n").unwrap();
+            write(root.path().join("Dockerfile.typescript"), "# custom sibling\n").unwrap();
+            assert!(ensure_workspace(root.path(), false).is_err());
+            assert_eq!(read_to_string(root.path().join("Dockerfile.typescript")).unwrap(), "# custom sibling\n");
+            remove_file(root.path().join("Dockerfile.typescript")).unwrap();
+            ensure_workspace(root.path(), false).unwrap();
+            assert!(!root.path().join("Dockerfile").exists());
+            assert!(!root.path().join("Dockerfile.dockerignore").exists());
+            assert_eq!(read_to_string(root.path().join("Dockerfile.typescript")).unwrap(), "# generated compiler image\n");
+            super::super::typescript_image::preflight(root.path()).unwrap();
+        }
+    }
+
     fn fixture() -> tempfile::TempDir {
         let root = tempfile::tempdir().unwrap();
         create_dir_all(root.path().join(".forklaunch")).unwrap();
         write(root.path().join(".forklaunch/manifest.toml"), "runtime = \"node\"\nmodules_path = \"modules\"\nauthor = \"Example\"\nlicense = \"MIT\"\n").unwrap();
         root
+    }
+
+    #[test]
+    fn recognized_typescript_default_moves_beside_rust_and_routes_existing_workers() {
+        for runtime in ["node", "bun"] {
+            let root = fixture();
+            write(
+                root.path().join(".forklaunch/manifest.toml"),
+                format!("runtime='{runtime}'\napp_name='demo'\nmodules_path='modules'\n"),
+            )
+            .unwrap();
+            create_dir_all(root.path().join("modules")).unwrap();
+            let content = crate::core::template::render_embedded_template(
+                "application/Dockerfile",
+                &TypeScriptDockerTemplate {
+                    app_name: "demo",
+                    is_node: runtime == "node",
+                    is_bun: runtime == "bun",
+                    is_in_memory_database: false,
+                },
+            )
+            .unwrap();
+            write(root.path().join("modules/Dockerfile"), &content).unwrap();
+            write(
+                root.path().join("modules/.dockerignore"),
+                "node_modules\n.env\n",
+            )
+            .unwrap();
+            write(root.path().join("docker-compose.yaml"),"services:\n  api:\n    build: {context: ./modules, dockerfile: ./Dockerfile}\n  worker:\n    build: {context: ./modules, dockerfile: ./Dockerfile}\n  custom:\n    build: {context: ./modules, dockerfile: Custom.Dockerfile}\n").unwrap();
+            ensure_workspace(root.path(), true).unwrap();
+            assert!(root.path().join("modules/Dockerfile").exists());
+            assert!(!root.path().join("Dockerfile.typescript").exists());
+            ensure_workspace(root.path(), false).unwrap();
+            assert!(!root.path().join("modules/Dockerfile").exists());
+            assert_eq!(
+                read_to_string(root.path().join("Dockerfile.typescript")).unwrap(),
+                content
+            );
+            assert!(root.path().join("Dockerfile.rust").is_file());
+            assert_eq!(
+                read_to_string(root.path().join("Dockerfile.typescript.dockerignore")).unwrap(),
+                "node_modules\n.env\n"
+            );
+            let compose: DockerCompose =
+                yaml_from_str(&read_to_string(root.path().join("docker-compose.yaml")).unwrap())
+                    .unwrap();
+            for name in ["api", "worker"] {
+                assert_eq!(
+                    compose.services[name].build.as_ref().unwrap().dockerfile,
+                    "../Dockerfile.typescript"
+                );
+            }
+            assert_eq!(
+                compose.services["custom"]
+                    .build
+                    .as_ref()
+                    .unwrap()
+                    .dockerfile,
+                "Custom.Dockerfile"
+            );
+            ensure_workspace(root.path(), false).unwrap();
+        }
     }
 
     #[test]
@@ -215,6 +490,7 @@ mod tests {
         assert!(source.starts_with("# user-owned workspace"));
         let cargo: Value = toml::from_str(&source).unwrap();
         assert_eq!(cargo["workspace"]["members"][0].as_str(), Some("tools"));
+        assert!(cargo["workspace"].get("exclude").is_none_or(|exclude| !exclude.as_array().unwrap().iter().any(|entry| entry.as_str() == Some("vendor/framework"))));
         assert_eq!(
             cargo["workspace"]["package"]["version"].as_str(),
             Some("2.0.0")

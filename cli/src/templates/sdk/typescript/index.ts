@@ -1,1 +1,1 @@
-../../../../../framework-rs/crates/forklaunch-sdk-typescript/src/http_client.ts.template
+../../../../../framework-rs/crates/core/src/typescript/http_client.ts.template

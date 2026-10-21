@@ -2,6 +2,14 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/cli/target}"
+export CARGO_INCREMENTAL=0
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
+export FORKLAUNCH_SKIP_FORMAT=1
+export FORKLAUNCH_FRAMEWORK_SNAPSHOT=1
+if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-0}" != 1 ]; then
+    exec python3 "$SCRIPT_DIR/fixtures/worker_runtime_lock.py" "$SCRIPT_DIR/rust_kafka_container_runtime.sh"
+fi
 FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-${FORKLAUNCH_TEST_CLI:-}}"
 run_cli() {
     if [ -n "$FORKLAUNCH_CLI" ]; then "$FORKLAUNCH_CLI" "$@";
@@ -9,21 +17,33 @@ run_cli() {
 }
 mkdir -p "$SCRIPT_DIR/output/rust-kafka-container-runtime"
 RUN_ROOT="$(mktemp -d "$SCRIPT_DIR/output/rust-kafka-container-runtime/run.XXXXXX")"
+if [ -n "$FORKLAUNCH_CLI" ]; then
+    cp "$FORKLAUNCH_CLI" "$RUN_ROOT/forklaunch"
+    FORKLAUNCH_CLI="$RUN_ROOT/forklaunch"
+    shasum -a 256 "$FORKLAUNCH_CLI"
+fi
+PASSED=false
 NETWORK="forklaunch-rust-kafka-container-$$"
 BROKER="$NETWORK-broker"
 WORKER="$NETWORK-worker"
 IMAGE="forklaunch-rust-kafka-container:smoke-$$"
 cleanup() {
-    docker rm -f "$WORKER" "$BROKER" >/dev/null 2>&1 || true
+    if [ "$PASSED" != true ]; then
+        docker logs "$BROKER" > "$RUN_ROOT/kafka-broker-failure.log" 2>&1 || true
+        docker logs "$WORKER" > "$RUN_ROOT/kafka-worker-failure.log" 2>&1 || true
+    fi
+    docker rm -f "$WORKER" "$BROKER" "$NETWORK-command" >/dev/null 2>&1 || true
     docker network rm "$NETWORK" >/dev/null 2>&1 || true
     docker image rm "$IMAGE" >/dev/null 2>&1 || true
+    if [ "$PASSED" = true ] && [ "${FORKLAUNCH_KEEP_FIXTURE:-0}" != 1 ]; then rm -rf "$RUN_ROOT"; fi
 }
 trap cleanup EXIT
-run_cli init application container-app --path "$RUN_ROOT/app" --language rust -D 'Kafka container runtime' -A ForkLaunch -L MIT
-run_cli init worker jobs --path "$RUN_ROOT/app" --language rust -t kafka -D Jobs
-cp "$SCRIPT_DIR/fixtures/rust_kafka_worker_handler.rs" "$RUN_ROOT/app/crates/jobs/src/handler.rs"
+run_cli init application container-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Kafka container runtime' -A ForkLaunch -L MIT
+run_cli init worker jobs --path "$RUN_ROOT/app" --language rust --consumer-only -t kafka -D Jobs
+cp "$SCRIPT_DIR/fixtures/rust_kafka_container_handler.rs" "$RUN_ROOT/app/src/jobs/domain/services/handler.rs"
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
-docker build --progress=plain -t "$IMAGE" "$RUN_ROOT/relocated-app"
+cargo generate-lockfile --manifest-path "$RUN_ROOT/relocated-app/Cargo.toml"
+docker build --progress=plain -f "$RUN_ROOT/relocated-app/Dockerfile.rust" -t "$IMAGE" "$RUN_ROOT/relocated-app"
 docker network create "$NETWORK" >/dev/null
 docker run --detach --name "$BROKER" --network "$NETWORK" --network-alias broker \
     --memory 1536m --cpus 2 --tmpfs /var/lib/redpanda/data:rw,size=512m,mode=1777 \
@@ -37,48 +57,13 @@ for _ in $(seq 1 60); do
 done
 test "$healthy" = true
 # No broker or tenant configuration is needed to export offline artifacts.
+# The nonroot runtime image is immutable; offline exports use explicit writable
+# output locations instead of trying to create application files under /app.
 docker run --rm --env FORKLAUNCH_MODE=contract --env OTEL_EXPORTER_OTLP_PROTOCOL=invalid \
-    "$IMAGE" /app/target/release/jobs
-worker_command() {
-    docker run --rm --network "$NETWORK" --env KAFKA_BROKERS=broker:9092 \
-        --env WORKER_NAMESPACE=container-parity --env TENANT_ID=container-tenant \
-        --env KAFKA_TRANSACTIONAL_ID=container-cli --env KAFKA_PUBLISHER_ID=container-enqueue \
-        "$IMAGE" /app/target/release/jobs "$@"
-}
-worker_command --migrate
-docker run --detach --name "$WORKER" --network "$NETWORK" --publish 127.0.0.1::8000 \
-    --env KAFKA_BROKERS=broker:9092 --env WORKER_NAMESPACE=container-parity --env TENANT_ID=container-tenant \
-    --env KAFKA_TRANSACTIONAL_ID=container-worker --env WORKER_HTTP_ADDR=0.0.0.0:8000 \
-    --env WORKER_CONTROL_TOKEN=container-parity-control-token-32-chars \
-    --health-cmd 'curl --fail --silent http://127.0.0.1:8000/health >/dev/null' \
-    --health-interval 1s --health-timeout 3s --health-retries 30 \
-    "$IMAGE" /app/target/release/jobs >/dev/null
-healthy=false
-for _ in $(seq 1 60); do
-    if [ "$(docker inspect --format '{{.State.Health.Status}}' "$WORKER")" = healthy ]; then healthy=true; break; fi
-    if [ "$(docker inspect --format '{{.State.Running}}' "$WORKER")" != true ]; then break; fi
-    sleep 1
-done
-if [ "$healthy" != true ]; then docker logs "$WORKER"; exit 1; fi
-worker_command --enqueue container-job '{}'
-processed=false
-for _ in $(seq 1 60); do
-    if docker logs "$WORKER" 2>&1 | rg -q 'test-handler-started container-job'; then processed=true; break; fi
-    sleep 1
-done
-test "$processed" = true
-# A bounded inspection also loads the native client in a separate Linux process.
-committed=false
-for _ in $(seq 1 20); do
-    if worker_command --peek 10 | python3 -c 'import json,sys; assert json.load(sys.stdin) == []'; then committed=true; break; fi
-    sleep 1
-done
-test "$committed" = true
-ADDRESS="$(docker port "$WORKER" 8000/tcp)"
-curl --fail --silent --max-time 10 "http://$ADDRESS/ready" >/dev/null
-curl --fail --silent --max-time 10 --request POST \
-    --header 'Authorization: Bearer container-parity-control-token-32-chars' \
-    "http://$ADDRESS/control/pause" >/dev/null
-docker stop --time 15 "$WORKER" >/dev/null
-test "$(docker inspect --format '{{.State.ExitCode}}' "$WORKER")" = 0
-echo 'PASS generated Kafka Linux container, bundled librdkafka/OpenSSL, offline export, migration, enqueue, processing, inspection, health, controls and SIGTERM'
+    --env FORKLAUNCH_CONTRACT_OUTPUT=/tmp/contract.json \
+    --env FORKLAUNCH_OPENAPI_OUTPUT=/tmp/openapi.json \
+    "$IMAGE" sh -ec '/app/bin/jobs; cat "$FORKLAUNCH_CONTRACT_OUTPUT"; printf "\n"; cat "$FORKLAUNCH_OPENAPI_OUTPUT"' | \
+    python3 -c 'import json,sys; decoder=json.JSONDecoder(); raw=sys.stdin.read(); contract,offset=decoder.raw_decode(raw); openapi,end=decoder.raw_decode(raw[offset:].lstrip()); assert isinstance(contract.get("routes"),list); assert openapi.get("openapi","").startswith("3."); assert not raw[offset:].lstrip()[end:].strip()'
+python3 "$SCRIPT_DIR/fixtures/rust_kafka_container_probe.py" "$RUN_ROOT" "$IMAGE" "$NETWORK" "$BROKER" "$WORKER"
+PASSED=true
+echo 'PASS generated Kafka Linux container, bundled librdkafka/OpenSSL, offline export, encrypted broker payload, rejected configuration/input, processing, inspection, health, controls and SIGTERM'

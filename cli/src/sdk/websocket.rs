@@ -1,19 +1,20 @@
-//! Offline raw socket artifacts use the bundled native generators.
+//! Offline raw socket artifacts use the framework compiler embedded in the CLI.
 use std::{
     collections::BTreeMap,
     fs,
-    io::{Read as _, Seek as _, Write as _},
+    io::{Read as _, Write as _},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
-    thread,
-    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use termcolor::{StandardStream, WriteColor};
 
+mod compiler;
 mod ownership;
+
+#[cfg(test)]
+use std::process::Command;
 
 pub(crate) fn generate_from(
     root: &Path,
@@ -41,6 +42,7 @@ pub(crate) fn generate_from(
     let mut removals = BTreeMap::new();
     let mut count = 0;
     let mut inputs = Vec::new();
+    let mut registry_snapshots = Vec::new();
     for project in manifest
         .get("projects")
         .and_then(toml::Value::as_array)
@@ -128,7 +130,12 @@ pub(crate) fn generate_from(
                 {
                     retired = true;
                     if language == "rust" {
-                        retired_members.push(format!("sdks/rust/{name}-websocket-sdk"));
+                        retired_members.push(
+                            crate::sdk::sdk_base(&root)?
+                                .join(format!("rust/{name}-websocket-sdk"))
+                                .to_string_lossy()
+                                .into_owned(),
+                        );
                     }
                 }
             }
@@ -148,13 +155,19 @@ pub(crate) fn generate_from(
             bail!("Socket artifact path must stay inside the application");
         }
         inputs.push(artifact.clone());
+        let registry = if imported {
+            None
+        } else {
+            ownership::registry_snapshot(&root, name, &artifact, project)?
+        };
+        let registry_exported = registry.is_some();
+        registry_snapshots.extend(registry);
         let compiled = compile(&root, &artifact, target, source)
             .with_context(|| format!("Socket artifact compilation failed for {name}"))?;
         if compiled["asyncapi"]["asyncapi"] != "3.0.0" || !compiled["asyncapi"]["info"].is_object()
         {
             bail!("Invalid compiled AsyncAPI document");
         }
-        let registry_exported = !imported && ownership::registry_exported(&root, name, &artifact)?;
         if !imported {
             let asyncapi_output = project
                 .get("metadata")
@@ -189,8 +202,11 @@ pub(crate) fn generate_from(
             )?;
         }
         if matches!(target, "rust" | "all") {
-            let member = format!("sdks/rust/{name}-websocket-sdk");
-            stage_rust(&mut files, name, &member, &compiled)?;
+            let member = crate::sdk::sdk_base(&root)?
+                .join(format!("rust/{name}-websocket-sdk"))
+                .to_string_lossy()
+                .into_owned();
+            stage_rust(&root, &mut files, name, &member, &compiled)?;
             ownership::stage_package(
                 &root,
                 &mut files,
@@ -248,6 +264,9 @@ pub(crate) fn generate_from(
             bail!("Conflicting socket output removal: {}", relative.display());
         }
     }
+    for snapshot in registry_snapshots {
+        snapshot.verify(&root)?;
+    }
     if check {
         if let Some(relative) = removals.keys().next() {
             bail!("Stale generated socket SDK output: {}", relative.display());
@@ -268,11 +287,7 @@ pub(crate) fn generate_from(
         );
     } else {
         ownership::remove_unchanged(&root, &removals)?;
-        for (relative, content) in files {
-            let destination = root.join(relative);
-            fs::create_dir_all(destination.parent().context("Socket output parent")?)?;
-            super::write_if_changed(destination, content)?;
-        }
+        write_staged_outputs(&root, &files)?;
         log_ok!(
             stdout,
             "Generated socket SDKs{} for {count} service(s)",
@@ -285,6 +300,22 @@ pub(crate) fn generate_from(
     }
     Ok(())
 }
+
+fn write_staged_outputs(root: &Path, files: &BTreeMap<PathBuf, String>) -> Result<()> {
+    // Watchers use ownership hashes to observe completed generation. Publish
+    // those receipts only after every source and package file is on disk.
+    for receipts in [false, true] {
+        for (relative, content) in files {
+            if relative.starts_with(".forklaunch/socket-sdk-outputs") != receipts {
+                continue;
+            }
+            let destination = root.join(relative);
+            fs::create_dir_all(destination.parent().context("Socket output parent")?)?;
+            super::write_if_changed(destination, content)?;
+        }
+    }
+    Ok(())
+}
 fn zod_uri_enabled(value: Option<&std::ffi::OsStr>) -> Result<bool> {
     match value {
         None => Ok(false),
@@ -293,6 +324,7 @@ fn zod_uri_enabled(value: Option<&std::ffi::OsStr>) -> Result<bool> {
         Some(_) => bail!("FORKLAUNCH_SDK_ZOD_URI must be unset, 0 or 1"),
     }
 }
+#[cfg(test)]
 fn configure_uri_feature(command: &mut Command, value: Option<&std::ffi::OsStr>) -> Result<()> {
     if zod_uri_enabled(value)? {
         command.args(["--features", "zod-uri"]);
@@ -307,6 +339,7 @@ fn zod_checks_enabled(value: Option<&std::ffi::OsStr>) -> Result<bool> {
         Some(_) => bail!("FORKLAUNCH_SDK_ZOD_CHECKS must be unset, 0 or 1"),
     }
 }
+#[cfg(test)]
 fn configure_checks_feature(command: &mut Command, value: Option<&std::ffi::OsStr>) -> Result<()> {
     if zod_checks_enabled(value)? {
         command.args(["--features", "zod-checks"]);
@@ -321,6 +354,7 @@ fn zod_regex_enabled(value: Option<&std::ffi::OsStr>) -> Result<bool> {
         Some(_) => bail!("FORKLAUNCH_SDK_ZOD_REGEX must be unset, 0 or 1"),
     }
 }
+#[cfg(test)]
 fn configure_regex_feature(command: &mut Command, value: Option<&std::ffi::OsStr>) -> Result<()> {
     if zod_regex_enabled(value)? {
         command.args(["--features", "zod-regex"]);
@@ -328,63 +362,19 @@ fn configure_regex_feature(command: &mut Command, value: Option<&std::ffi::OsStr
     Ok(())
 }
 fn compile(root: &Path, artifact: &Path, target: &str, source: &str) -> Result<Value> {
-    let manifest = root.join(".forklaunch/framework-rs/Cargo.toml").canonicalize().context("Bundled Rust framework missing; generate or upgrade the application's bundled framework first")?;
-    if !manifest.starts_with(root) {
-        bail!("Bundled socket compiler must stay inside the application");
+    let mut features = Vec::new();
+    if zod_uri_enabled(std::env::var_os("FORKLAUNCH_SDK_ZOD_URI").as_deref())? {
+        features.push("zod-uri");
     }
-    let mut output = tempfile::tempfile()?;
-    let mut command = Command::new(crate::core::openapi_export::resolve_command("cargo"));
-    command
-        .args(["run", "--quiet", "--manifest-path"])
-        .arg(manifest);
-    command.args(["-p", "forklaunch-sdk-typescript"]);
-    // Opt-in uses pinned Ada/C++20; inherited by watch and sync invocations.
-    configure_uri_feature(
-        &mut command,
-        std::env::var_os("FORKLAUNCH_SDK_ZOD_URI").as_deref(),
-    )?;
-    configure_checks_feature(
-        &mut command,
-        std::env::var_os("FORKLAUNCH_SDK_ZOD_CHECKS").as_deref(),
-    )?;
-    configure_regex_feature(
-        &mut command,
-        std::env::var_os("FORKLAUNCH_SDK_ZOD_REGEX").as_deref(),
-    )?;
-    let mut child = command
-        .args(["--example", "socket_artifacts", "--"])
-        .arg(artifact)
-        .arg(target)
-        .arg(source)
-        .current_dir(root)
-        .env("CARGO_INCREMENTAL", "0")
-        .stdin(Stdio::null())
-        .stdout(output.try_clone()?)
-        .stderr(Stdio::inherit())
-        .spawn()?;
-    let deadline = Instant::now() + Duration::from_secs(300);
-    loop {
-        if let Some(status) = child.try_wait()? {
-            if !status.success() {
-                bail!("Bundled socket compiler exited with {status}");
-            }
-            break;
-        }
-        if Instant::now() >= deadline || output.metadata()?.len() > 64 * 1024 * 1024 {
-            let _ = child.kill();
-            let _ = child.wait();
-            bail!("Bundled socket compiler exceeded its time/output limit");
-        }
-        thread::sleep(Duration::from_millis(100));
+    if zod_checks_enabled(std::env::var_os("FORKLAUNCH_SDK_ZOD_CHECKS").as_deref())? {
+        features.push("zod-checks");
     }
-    if output.metadata()?.len() > 64 * 1024 * 1024 {
-        bail!("Socket compiler output exceeds 64 MiB");
+    if zod_regex_enabled(std::env::var_os("FORKLAUNCH_SDK_ZOD_REGEX").as_deref())? {
+        features.push("zod-regex");
     }
-    output.rewind()?;
-    let mut bytes = Vec::new();
-    output.read_to_end(&mut bytes)?;
-    serde_json::from_slice(&bytes).context("Invalid bundled socket compiler output")
+    compiler::compile(root, artifact, target, source, &features)
 }
+
 fn pretty(value: &Value) -> Result<String> {
     Ok(format!("{}\n", serde_json::to_string_pretty(value)?))
 }
@@ -442,17 +432,27 @@ fn stage_typescript(
     name: &str,
     compiled: &Value,
 ) -> Result<()> {
-    let directory = format!("sdks/typescript-websocket/{name}");
+    let base = crate::sdk::sdk_base(root)?;
+    let native = base != Path::new("sdks");
+    let directory = base
+        .join(format!("typescript-websocket/{name}"))
+        .to_string_lossy()
+        .into_owned();
+    let source_directory = if native {
+        directory.clone()
+    } else {
+        format!("{directory}/src")
+    };
     let mut index = String::new();
     for (module, source) in sources(compiled, "typescript")? {
         index.push_str(&format!("export * as {module} from './{module}.js';\n"));
         stage(
             files,
-            format!("{directory}/src/{module}.ts"),
+            format!("{source_directory}/{module}.ts"),
             source.as_str().unwrap().into(),
         )?;
     }
-    stage(files, format!("{directory}/src/index.ts"), index)?;
+    stage(files, format!("{source_directory}/index.ts"), index)?;
     stage(
         files,
         format!("{directory}/package.json"),
@@ -470,37 +470,56 @@ fn stage_typescript(
             files,
             config,
             pretty(
-                &json!({"compilerOptions":{"strict":true,"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","esModuleInterop":true,"declaration":true,"outDir":"dist","types":["node"]},"include":["src/**/*.ts"]}),
+                &json!({"compilerOptions":{"strict":true,"target":"ES2022","module":"NodeNext","moduleResolution":"NodeNext","esModuleInterop":true,"declaration":true,"outDir":"dist","types":["node"]},"include":[if native { "*.ts" } else { "src/**/*.ts" }]}),
             )?,
         )?;
     }
     Ok(())
 }
 fn stage_rust(
+    root: &Path,
     files: &mut BTreeMap<PathBuf, String>,
     name: &str,
     directory: &str,
     compiled: &Value,
 ) -> Result<()> {
+    let native = crate::sdk::sdk_base(root)? != Path::new("sdks");
+    let source_directory = if native {
+        directory.to_owned()
+    } else {
+        format!("{directory}/src")
+    };
+    let lib = if native {
+        "[lib]\npath = \"lib.rs\"\n"
+    } else {
+        ""
+    };
+    let framework = if root.join("vendor/framework/Cargo.toml").exists() {
+        "vendor/framework"
+    } else {
+        ".forklaunch/framework-rs"
+    };
+    let framework = format!(
+        "{}{framework}",
+        "../".repeat(Path::new(directory).components().count())
+    );
     let mut index = String::from("#![forbid(unsafe_code)]\n");
     for (module, source) in sources(compiled, "rust")? {
         index.push_str(&format!("pub mod {module};\n"));
         stage(
             files,
-            format!("{directory}/src/{module}.rs"),
+            format!("{source_directory}/{module}.rs"),
             source.as_str().unwrap().into(),
         )?;
     }
-    stage(files, format!("{directory}/src/lib.rs"), index)?;
-    stage(
-        files,
-        format!("{directory}/Cargo.toml"),
-        format!(
-            r#"[package]
+    stage(files, format!("{source_directory}/lib.rs"), index)?;
+    let manifest = format!(
+        r#"[package]
 name = "{name}-websocket-sdk"
 version = "0.1.0"
 edition = "2024"
 
+{lib}
 [features]
 default = []
 zod-uri = ["forklaunch-ws/zod-uri"]
@@ -508,14 +527,19 @@ zod-checks = ["forklaunch-ws/zod-checks"]
 zod-regex = ["forklaunch-ws/zod-regex"]
 
 [dependencies]
-forklaunch-ws = {{ path = "../../../.forklaunch/framework-rs/crates/forklaunch-ws", features = ["transport", "json-schema"] }}
+forklaunch-ws = {{ path = "{framework}/crates/ws", features = ["transport", "json-schema"] }}
 serde = {{ version = "1", features = ["derive"] }}
 serde_json = "1"
 tokio = {{ version = "1", features = ["net"] }}
 tokio-tungstenite = "0.30"
 "#
-        ),
+    );
+    let manifest_path = format!("{directory}/Cargo.toml");
+    let manifest = crate::init::rust_project::dependencies::render_for_path(
+        &root.join(&manifest_path),
+        &manifest,
     )?;
+    stage(files, manifest_path, manifest)?;
     Ok(())
 }
 fn stage_workspace(
@@ -548,7 +572,11 @@ fn stage_workspace(
             .get_mut("packages")
             .and_then(serde_yml::Value::as_sequence_mut)
             .context("pnpm workspace packages must be an array")?;
-        let sdk = serde_yml::Value::String("sdks/typescript-websocket/*".into());
+        let pattern = crate::sdk::sdk_base(root)?
+            .join("typescript-websocket/*")
+            .to_string_lossy()
+            .into_owned();
+        let sdk = serde_yml::Value::String(pattern.clone());
         let updated = if packages.contains(&sdk) {
             content
         } else {
@@ -590,10 +618,7 @@ fn stage_workspace(
                 let mut updated = content;
                 updated.insert_str(
                     insertion,
-                    &format!(
-                        "{separator}{}- 'sdks/typescript-websocket/*'\n",
-                        " ".repeat(sequence_indent)
-                    ),
+                    &format!("{separator}{}- '{pattern}'\n", " ".repeat(sequence_indent)),
                 );
                 updated
             } else {
@@ -650,6 +675,224 @@ pub(crate) fn rename_service(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn socket_registry_export_gap_preserves_edited_sdk_before_retirement() {
+        use super::*;
+        fn snapshot(root: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+            let mut files = BTreeMap::new();
+            let mut directories = vec![root.to_path_buf()];
+            while let Some(directory) = directories.pop() {
+                for entry in fs::read_dir(directory).unwrap() {
+                    let path = entry.unwrap().path();
+                    if path.is_dir() {
+                        directories.push(path);
+                    } else {
+                        files.insert(
+                            path.strip_prefix(root).unwrap().into(),
+                            fs::read(path).unwrap(),
+                        );
+                    }
+                }
+            }
+            files
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        fs::create_dir_all(root.join(".forklaunch")).unwrap();
+        fs::write(root.join(".forklaunch/manifest.toml"),
+            "[[projects]]\nname='realtime'\ntype='Service'\n[projects.metadata]\ncontractArtifactPath='custom/registry.json'\n").unwrap();
+        fs::write(root.join("Cargo.toml"), "[workspace]\nmembers=[]\n").unwrap();
+        fs::create_dir_all(root.join("custom")).unwrap();
+        let portable: Value = serde_json::from_str(include_str!(
+            "../../tests/fixtures/rust_socket_contract.json"
+        ))
+        .unwrap();
+        let mut registry = json!({"generator":"framework-rs","service":{"name":"realtime","version":"1.0.0"},"sockets":portable["sockets"]});
+        let contract = root.join("custom/registry.json");
+        fs::write(&contract, serde_json::to_vec(&registry).unwrap()).unwrap();
+        crate::core::openapi_export::export_registered_sockets(&root, "realtime", None, &registry)
+            .unwrap();
+        let mut stdout = StandardStream::stdout(termcolor::ColorChoice::Never);
+        generate_from(
+            &root,
+            "all",
+            "socket-contract",
+            Some("realtime"),
+            false,
+            &mut stdout,
+            false,
+        )
+        .unwrap();
+        let edited = root.join("sdks/typescript-websocket/realtime/src/socket_chat.ts");
+        let text = format!(
+            "{}\n// authored obsolete source\n",
+            fs::read_to_string(&edited).unwrap()
+        );
+        fs::write(&edited, &text).unwrap();
+        // Compilation updates its registry before the runtime export can remove
+        // the old portable artifact. Both generation and check must be read-only.
+        registry["sockets"] = json!({});
+        fs::write(&contract, serde_json::to_vec(&registry).unwrap()).unwrap();
+        let before = snapshot(&root);
+        for check in [false, true] {
+            let error = generate_from(
+                &root,
+                "all",
+                "socket-contract",
+                Some("realtime"),
+                check,
+                &mut stdout,
+                false,
+            )
+            .unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("does not match the current service registry"),
+                "{error:#}"
+            );
+            assert_eq!(snapshot(&root), before);
+        }
+        crate::core::openapi_export::export_registered_sockets(&root, "realtime", None, &registry)
+            .unwrap();
+        generate_from(
+            &root,
+            "all",
+            "socket-contract",
+            Some("realtime"),
+            false,
+            &mut stdout,
+            false,
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(edited).unwrap(), text);
+        assert!(
+            !root
+                .join("sdks/typescript-websocket/realtime/package.json")
+                .exists()
+        );
+        assert!(
+            !root
+                .join("sdks/rust/realtime-websocket-sdk/Cargo.toml")
+                .exists()
+        );
+    }
+
+    #[test]
+    fn socket_ownership_receipts_remain_old_until_all_outputs_are_written() {
+        use super::*;
+        let root = tempfile::tempdir().unwrap();
+        let receipt = PathBuf::from(".forklaunch/socket-sdk-outputs/chat/rust.json");
+        fs::create_dir_all(root.path().join(receipt.parent().unwrap())).unwrap();
+        fs::write(root.path().join(&receipt), "previous verified outputs").unwrap();
+        // A blocked destination fails after another SDK source was updated.
+        // Its receipt must not advertise a completed generation.
+        fs::create_dir_all(root.path().join("src/z.rs")).unwrap();
+        let files = BTreeMap::from([
+            (receipt.clone(), "next verified outputs".to_owned()),
+            (PathBuf::from("src/a.rs"), "pub const A: u8 = 1;".to_owned()),
+            (PathBuf::from("src/z.rs"), "pub const Z: u8 = 2;".to_owned()),
+        ]);
+        assert!(write_staged_outputs(root.path(), &files).is_err());
+        assert_eq!(
+            fs::read_to_string(root.path().join(&receipt)).unwrap(),
+            "previous verified outputs"
+        );
+        fs::remove_dir(root.path().join("src/z.rs")).unwrap();
+        write_staged_outputs(root.path(), &files).unwrap();
+        for (path, source) in files {
+            assert_eq!(fs::read_to_string(root.path().join(path)).unwrap(), source);
+        }
+    }
+    #[test]
+    fn socket_sdk_respects_registry_and_local_framework_selection() {
+        for modules in ["src", "modules"] {
+            for config in ["version = '0.1.0'", "path = '/custom/framework'"] {
+                let temporary = tempfile::tempdir().unwrap();
+                let root = temporary.path();
+                fs::create_dir_all(root.join(".forklaunch")).unwrap();
+                fs::write(
+                    root.join(".forklaunch/manifest.toml"),
+                    format!("modules_path = '{modules}'\n"),
+                )
+                .unwrap();
+                fs::write(root.join(".forklaunch/framework-dependencies.toml"), config).unwrap();
+                let directory = if modules == "src" {
+                    "src/client-sdk/rust/notes-websocket-sdk"
+                } else {
+                    "sdks/rust/notes-websocket-sdk"
+                };
+                let compiled = json!({"rust": {"socket_notes": "pub const READY: bool = true;"}});
+                let mut files = BTreeMap::new();
+                stage_rust(root, &mut files, "notes", directory, &compiled).unwrap();
+                let document: toml::Value =
+                    toml::from_str(&files[Path::new(&format!("{directory}/Cargo.toml"))]).unwrap();
+                let dependency = &document["dependencies"]["forklaunch-ws"];
+                assert_eq!(
+                    dependency["features"].as_array().unwrap(),
+                    &vec![
+                        toml::Value::String("transport".into()),
+                        toml::Value::String("json-schema".into()),
+                    ]
+                );
+                if config.starts_with("version") {
+                    assert_eq!(dependency["version"].as_str(), Some("=0.1.0"));
+                    assert!(dependency.get("path").is_none());
+                } else {
+                    assert_eq!(
+                        dependency["path"].as_str(),
+                        Some("/custom/framework/crates/ws")
+                    );
+                }
+                assert_eq!(
+                    document["features"]["zod-uri"][0].as_str(),
+                    Some("forklaunch-ws/zod-uri")
+                );
+                assert!(
+                    !root.join(directory).exists(),
+                    "planning must not write SDK files"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_socket_outputs_share_client_sdk_layout_and_flat_sources() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path();
+        fs::create_dir_all(root.join(".forklaunch")).unwrap();
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            "language = \"mixed\"\nmodules_path = \"src\"\n",
+        )
+        .unwrap();
+        fs::create_dir_all(root.join("vendor/framework")).unwrap();
+        fs::write(root.join("vendor/framework/Cargo.toml"), "[workspace]\n").unwrap();
+        let compiled = json!({"typescript": {"socket_notes": "export const ready = true;"}, "rust": {"socket_notes": "pub const READY: bool = true;"}});
+        let mut files = BTreeMap::new();
+        stage_typescript(root, &mut files, "notes", &compiled).unwrap();
+        stage_rust(
+            root,
+            &mut files,
+            "notes",
+            "src/client-sdk/rust/notes-websocket-sdk",
+            &compiled,
+        )
+        .unwrap();
+        assert!(files.contains_key(Path::new(
+            "src/client-sdk/typescript-websocket/notes/index.ts"
+        )));
+        assert!(files.contains_key(Path::new("src/client-sdk/rust/notes-websocket-sdk/lib.rs")));
+        let cargo: toml::Value =
+            toml::from_str(&files[Path::new("src/client-sdk/rust/notes-websocket-sdk/Cargo.toml")])
+                .unwrap();
+        assert_eq!(cargo["lib"]["path"].as_str(), Some("lib.rs"));
+        assert_eq!(
+            cargo["dependencies"]["forklaunch-ws"]["path"].as_str(),
+            Some("../../../../vendor/framework/crates/ws")
+        );
+    }
+
     #[test]
     fn uri_generator_opt_in_is_explicit() {
         use std::ffi::OsStr;

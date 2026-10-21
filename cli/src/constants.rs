@@ -599,6 +599,34 @@ pub(crate) fn get_service_module_name(service_type: &Module) -> String {
     }
 }
 
+/// Modules that are no longer generated. Messaging goes through the managed
+/// gateway in both languages; existing applications keep their services.
+pub(crate) const RETIRED_MODULES: [&str; 2] = ["messaging-base", "messaging-twilio"];
+
+pub(crate) fn offered_modules() -> Vec<&'static str> {
+    Module::VARIANTS
+        .into_iter()
+        .filter(|module| !RETIRED_MODULES.contains(module))
+        .collect()
+}
+
+/// Accepts every module id so a retired one gets a directed error, but lists
+/// only the offered ones.
+pub(crate) fn module_value_parser() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(Module::VARIANTS.map(|module| {
+        clap::builder::PossibleValue::new(module).hide(RETIRED_MODULES.contains(&module))
+    }))
+}
+
+pub(crate) fn ensure_module_offered(module: &Module) -> anyhow::Result<()> {
+    if matches!(module, Module::BaseMessaging | Module::TwilioMessaging) {
+        anyhow::bail!(
+            "The messaging module is retired: send email and SMS through the managed gateway with `forklaunch infra add <service> email` or `forklaunch infra add <service> sms`"
+        );
+    }
+    Ok(())
+}
+
 pub(crate) fn get_service_module_description(name: &str, service_type: &Module) -> String {
     format!(
         "{} service implementation for {}, providing {}",
@@ -672,6 +700,16 @@ mod tests {
     fn modules_without_a_cache_declare_none() {
         assert_eq!(get_service_module_cache(&Module::BaseIam), None);
         assert_eq!(get_service_module_cache(&Module::BetterAuthIam), None);
+    }
+
+    #[test]
+    fn messaging_modules_are_retired_but_still_parse() {
+        for module in RETIRED_MODULES {
+            let parsed = module.parse::<Module>().unwrap();
+            assert!(ensure_module_offered(&parsed).unwrap_err().to_string().contains("managed gateway"));
+            assert!(!offered_modules().contains(&module));
+        }
+        assert!(ensure_module_offered(&Module::BaseCac).is_ok());
     }
 }
 

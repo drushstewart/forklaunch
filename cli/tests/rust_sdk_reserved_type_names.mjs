@@ -88,16 +88,16 @@ run("cargo", [
   "--manifest-path",
   "framework-rs/Cargo.toml",
   "-p",
-  "forklaunch-sdk-codegen",
+  "forklaunch-core","--features","build,asyncapi-import",
   "--example",
-  "fixed_tuple_models",
+  "codegen_fixed_tuple_models",
 ]);
 let count = 0;
 const modules = [],
   types = [];
 for (const name of ["Self", "self", "SELF", "Self_", "ModelSelf", "Selfish"]) {
   const generated = JSON.parse(
-    run(path.join(target, "debug/examples/fixed_tuple_models"), [name], {
+    run(path.join(target, "debug/examples/codegen_fixed_tuple_models"), [name], {
       input: JSON.stringify(fixtures.map((x) => x.schema)),
     }),
   );

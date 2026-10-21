@@ -39,7 +39,7 @@ for (const body of [undefined, { message: 'wire JSON', nested: { b: 2, a: 1 } }]
   fixtures.push({ secret, method, path: requestPath, kind: body === undefined ? 'absent' : 'bytes',
     body: [...Buffer.from(body === undefined ? '' : common.safeStringify(body))], timestamp: match[1], nonce: match[2], signature: match[3] });
 }
-const result = spawnSync('cargo', ['run', '--quiet', '--manifest-path', 'framework-rs/Cargo.toml', '-p', 'forklaunch-auth', '--example', 'request_hmac_parity'],
+const result = spawnSync('cargo', ['run', '--quiet', '--manifest-path', 'framework-rs/Cargo.toml', '-p', 'forklaunch-core','--features','auth', '--example', 'request_hmac_parity'],
   { cwd: root, encoding: 'utf8', input: JSON.stringify(fixtures), timeout: 120000 });
 assert.equal(result.status, 0, result.stderr);
 const outputs = JSON.parse(result.stdout);

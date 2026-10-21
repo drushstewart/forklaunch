@@ -28,7 +28,7 @@ try {
  let args:Vec<_>=std::env::args().collect();let client=BoundPaymentLinkExpirationClient::new(&args[1]);
  let headers=std::collections::BTreeMap::from([("authorization".into(),args[4].clone())]);
  let result=match args[2].as_str(){
- "create"=>{let response=client.recover_bound_payment_link_expiration(RecoverBoundPaymentLinkExpirationRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[6].clone()),("operationId".into(),args[3].clone())]),headers,body:Some(args[5].clone()),..Default::default()}).await.unwrap();let RecoverBoundPaymentLinkExpirationResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
+ "create"=>{let response=client.recover_bound_payment_link_expiration_raw(RecoverBoundPaymentLinkExpirationRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[6].clone()),("operationId".into(),args[3].clone())]),headers,body:Some(args[5].clone()),..Default::default()}).await.unwrap();let RecoverBoundPaymentLinkExpirationResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  "inspect"=>{let response=client.inspect_bound_payment_link_expiration(InspectBoundPaymentLinkExpirationRequest{params:std::collections::BTreeMap::from([("publicId".into(),args[6].clone()),("operationId".into(),args[3].clone())]),headers,..Default::default()}).await.unwrap();let InspectBoundPaymentLinkExpirationResponses::Status200(value)=response else{panic!("unexpected status")};serde_json::to_value(value).unwrap()},
  _=>panic!("unexpected operation")};println!("{}",result);
 }`);

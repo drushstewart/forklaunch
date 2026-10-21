@@ -119,6 +119,7 @@ fn generate_basic_worker(
             "seeder.ts".to_string(),
             "compliance.controller.ts".to_string(),
             "compliance.routes.ts".to_string(),
+            "compliance.contract.ts".to_string(),
             "enforce-retention.ts".to_string(),
         ]
     } else {
@@ -127,7 +128,7 @@ fn generate_basic_worker(
     // compliance endpoints authenticate via IAM-issued JWTs
     // (JWKS_PUBLIC_KEY_URL is only registered when IAM is configured)
     if !manifest_data.is_iam_configured {
-        for file in ["compliance.controller.ts", "compliance.routes.ts"] {
+        for file in ["compliance.controller.ts", "compliance.routes.ts", "compliance.contract.ts"] {
             if !ignore_files.iter().any(|f| f == file) {
                 ignore_files.push(file.to_string());
             }
@@ -694,6 +695,8 @@ impl CliCommand for WorkerCommand {
                     .value_parser(rust_project::PROJECT_LANGUAGE_VARIANTS)
                     .default_value("typescript"),
             )
+            .arg(Arg::new("consumer-only").long("consumer-only").action(ArgAction::SetTrue).help("Generate only the Rust worker consumer, without its producer HTTP/MCP service"))
+            .arg(Arg::new("worker-runtime").long("runtime").value_parser(["leased","apalis"]).help("Rust worker runtime; Apalis requires PostgreSQL"))
             .arg(
                 Arg::new("type")
                     .short('t')
@@ -730,6 +733,8 @@ impl CliCommand for WorkerCommand {
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
+        if matches.get_flag("consumer-only") && !rust_project::uses_rust_generation(matches) { anyhow::bail!("--consumer-only is available for Rust worker generation only"); }
+        if matches.contains_id("worker-runtime") && !rust_project::uses_rust_generation(matches) { anyhow::bail!("--runtime is available for Rust worker generation only"); }
         if rust_project::uses_rust_generation(matches) {
             return rust_project::generate_rust_worker(matches);
         }
@@ -739,6 +744,7 @@ impl CliCommand for WorkerCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
         let existing_manifest_data = from_str::<ApplicationManifestData>(
             &read_to_string(manifest_path).with_context(|| ERROR_FAILED_TO_READ_MANIFEST)?,
@@ -888,6 +894,7 @@ impl CliCommand for WorkerCommand {
             is_database_worker: r#type == WorkerType::Database,
             platform_application_id: manifest_data.platform_application_id.clone(),
             platform_organization_id: manifest_data.platform_organization_id.clone(),
+            framework: manifest_data.framework.clone(),
             compliance: manifest_data.compliance.clone(),
 
             is_postgres: if let Some(database) = &database {
@@ -999,6 +1006,13 @@ impl CliCommand for WorkerCommand {
         .with_context(|| "Failed to create worker")?;
 
         if !dryrun {
+            crate::sdk::typescript_build::prepare_default_service(
+                &app_root_path,
+                &worker_name,
+                &manifest_data.runtime,
+                manifest_data.is_iam_configured,
+            )?;
+            crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(stdout, "{} initialized successfully!", worker_name);
         }
 

@@ -11,6 +11,24 @@ use crate::core::application_output::output_path;
 
 pub(super) struct Outputs(BTreeMap<String, (PathBuf, PathBuf)>);
 
+/// Keep compiler-owned bytes and provenance when an export only changes JSON
+/// formatting. All writes still use the generated-output safety checks.
+pub(super) fn write_json(path: &Path, document: &serde_json::Value) -> Result<()> {
+    let existing = fs::symlink_metadata(path)
+        .ok()
+        .filter(|metadata| metadata.is_file() && !metadata.file_type().is_symlink())
+        .and_then(|_| fs::read(path).ok())
+        .filter(|bytes| {
+            serde_json::from_slice::<serde_json::Value>(bytes)
+                .is_ok_and(|existing| existing == *document)
+        });
+    let bytes = match existing {
+        Some(bytes) => bytes,
+        None => serde_json::to_vec_pretty(document)?,
+    };
+    forklaunch_core::build::write_generated_output(path, bytes)
+}
+
 fn identity(path: &Path) -> Result<PathBuf> {
     let mut existing = path;
     let mut suffix = Vec::new();
@@ -80,17 +98,10 @@ impl Outputs {
         if identity(exported)? == identity(registered)? {
             return Ok(());
         }
-        let parent = registered
-            .parent()
-            .context("OpenAPI artifact parent missing")?;
-        fs::create_dir_all(parent)?;
-        // Publish a complete document so SDK watchers cannot observe a partial copy.
-        let temporary = tempfile::NamedTempFile::new_in(parent)?;
-        fs::copy(exported, temporary.path())?;
-        temporary
-            .persist(registered)
-            .with_context(|| format!("Failed to refresh {}", registered.display()))?;
-        Ok(())
+        let document = serde_json::from_slice(&fs::read(exported)?)
+            .context("Invalid exported OpenAPI document")?;
+        write_json(registered, &document)
+            .with_context(|| format!("Failed to refresh {}", registered.display()))
     }
 }
 
@@ -105,16 +116,125 @@ mod tests {
         let registered = root.path().join("schemas/api.json");
         let plan = Outputs::plan(root.path(), &directory, [("api", registered.to_str())]).unwrap();
         fs::create_dir_all(directory.join("api")).unwrap();
-        fs::write(directory.join("api/openapi.json"), "fresh").unwrap();
+        let fresh = serde_json::json!({"openapi":"3.1.0","info":{"title":"fresh"}});
+        fs::write(directory.join("api/openapi.json"), fresh.to_string()).unwrap();
         plan.refresh("api").unwrap();
-        assert_eq!(fs::read_to_string(&registered).unwrap(), "fresh");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&fs::read(&registered).unwrap()).unwrap(),
+            fresh
+        );
         assert_eq!(
             fs::read_to_string(directory.join("api/openapi.json")).unwrap(),
-            "fresh"
+            fresh.to_string()
         );
         fs::write(&registered, "stale").unwrap();
         plan.refresh("api").unwrap();
-        assert_eq!(fs::read_to_string(registered).unwrap(), "fresh");
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&fs::read(registered).unwrap()).unwrap(),
+            fresh
+        );
+    }
+
+    #[test]
+    fn identical_json_export_preserves_compiler_bytes_timestamps_and_provenance() {
+        use forklaunch_core::{
+            build::{
+                http_artifact_sources,
+                provenance::{BuildContext, HttpOutputs, InputScope, InputSnapshot, record_http},
+            },
+            contract::{BodyContract, ContractRegistry, RouteContract},
+        };
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("sdk")).unwrap();
+        fs::write(root.path().join("source.rs"), "// declared contract input").unwrap();
+        let mut registry = ContractRegistry::default();
+        registry.register(
+            RouteContract::get("get", "Get", "/item")
+                .with_response(200, Some(BodyContract::json("String"))),
+        );
+        let mut contract: serde_json::Value =
+            serde_json::from_str(&registry.clone().into_artifact().to_json()).unwrap();
+        contract["rustClientName"] = "ItemsClient".into();
+        contract["rustOutputLayout"] = "service-module".into();
+        let source = contract.to_string();
+        let compiled = http_artifact_sources(&source, "items").unwrap();
+        let contract_path = root.path().join("sdk/contract.json");
+        let openapi_path = root.path().join("sdk/openapi.json");
+        fs::write(&contract_path, source).unwrap();
+        fs::write(root.path().join("sdk/index.ts"), compiled.typescript).unwrap();
+        fs::write(root.path().join("sdk/client.rs"), compiled.rust).unwrap();
+        fs::write(
+            &openapi_path,
+            forklaunch_core::openapi::generate_portable_openapi_json(&registry).unwrap(),
+        )
+        .unwrap();
+        let context = BuildContext {
+            host: "fixture-host".into(),
+            target: "fixture-target".into(),
+            features: Vec::new(),
+            configuration: BTreeMap::new(),
+        };
+        let receipt = record_http(
+            root.path(),
+            InputSnapshot::capture(root.path(), &[InputScope::required("source.rs")]).unwrap(),
+            context.clone(),
+            "items",
+            HttpOutputs {
+                contract: "sdk/contract.json".into(),
+                typescript: "sdk/index.ts".into(),
+                rust: "sdk/client.rs".into(),
+                additional: vec!["sdk/openapi.json".into()],
+            },
+        )
+        .unwrap();
+        receipt.verify(root.path(), &context).unwrap();
+        let original = [&contract_path, &openapi_path].map(|path| {
+            (
+                fs::read(path).unwrap(),
+                fs::metadata(path).unwrap().modified().unwrap(),
+            )
+        });
+        let output = root.path().join("exports");
+        let plan =
+            Outputs::plan(root.path(), &output, [("items", Some("sdk/openapi.json"))]).unwrap();
+        let mut openapi: serde_json::Value = serde_json::from_slice(&original[1].0).unwrap();
+        write_json(&output.join("items/openapi.json"), &openapi).unwrap();
+        write_json(&contract_path, &contract).unwrap();
+        plan.refresh("items").unwrap();
+        for (path, (bytes, modified)) in [&contract_path, &openapi_path].into_iter().zip(original) {
+            assert_eq!(fs::read(path).unwrap(), bytes);
+            assert_eq!(fs::metadata(path).unwrap().modified().unwrap(), modified);
+        }
+        receipt.verify(root.path(), &context).unwrap();
+        // Genuine changes still publish and invalidate the prior compiler receipt.
+        openapi["info"]["title"] = "Changed".into();
+        write_json(&output.join("items/openapi.json"), &openapi).unwrap();
+        plan.refresh("items").unwrap();
+        assert_eq!(
+            serde_json::from_slice::<serde_json::Value>(&fs::read(openapi_path).unwrap()).unwrap(),
+            openapi
+        );
+        assert!(receipt.verify(root.path(), &context).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn equivalent_json_does_not_bypass_generated_output_file_checks() {
+        let root = tempfile::tempdir().unwrap();
+        let document = serde_json::json!({"openapi":"3.1.0"});
+        let target = root.path().join("target.json");
+        fs::write(&target, document.to_string()).unwrap();
+        let alias = root.path().join("alias.json");
+        std::os::unix::fs::symlink(&target, &alias).unwrap();
+        assert!(write_json(&alias, &document).is_err());
+        assert!(
+            fs::symlink_metadata(alias)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+        assert_eq!(fs::read_to_string(target).unwrap(), document.to_string());
+        assert!(write_json(root.path(), &document).is_err());
     }
 
     #[test]

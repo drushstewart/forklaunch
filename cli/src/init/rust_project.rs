@@ -30,17 +30,52 @@ use crate::core::{
 // Embed source only, so released CLIs generate portable apps without a repository checkout.
 static FRAMEWORK_CRATES: Dir =
     include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/framework/crates");
-const FRAMEWORK_CARGO: &str = include_str!("../templates/rust/framework/Cargo.toml.template");
+const FRAMEWORK_LOCK: &str = include_str!("../templates/rust/framework/Cargo.lock.template");
 
+mod blueprint_sources;
+mod http_adapter;
+mod conversion;
+mod library_rename;
+mod discovery;
+pub(crate) mod dependencies;
 mod mixed;
+mod agent;
+mod language_images;
+mod local_runtime;
+mod typescript_image;
 mod modules;
-mod relay;
+mod native_layout;
+mod native_mappers;
+mod contracts_layout;
+mod service_database;
+mod sdk_consumer;
+
+pub(crate) fn ensure_service_sdk_deletable(root: &Path, service_path: &str) -> Result<()> {
+    sdk_consumer::ensure_service_deletable(root, service_path)
+}
+pub(crate) fn rename_service_sdk_dependency(root: &Path, old_path: &str, new_path: &str, old: &str, new: &str) -> Result<()> {
+    sdk_consumer::rename_service(root, old_path, new_path, old, new)
+}
+
+mod sdk_typescript;
+mod typescript_runtime;
 mod worker;
 pub(crate) use modules::generate_rust_module;
+
+
+/// Formats generated Rust with the application's rustfmt settings.
+pub(crate) fn format_rust_source(path: &Path, source: &str) -> String {
+    native_layout::format_source(path, source)
+}
 
 pub(crate) fn ensure_native_capability_sources(root: &Path) -> Result<()> {
     ensure_native_infrastructure_sources(root)?;
     modules::ensure_blueprint_sources(root, false)
+}
+
+/// Write blueprint crates newly referenced by committed manifest edits.
+pub(crate) fn ensure_referenced_blueprint_sources(root: &Path) -> Result<()> {
+    blueprint_sources::ensure(root, false, &[])
 }
 
 pub(crate) fn ensure_native_infrastructure_sources(root: &Path) -> Result<()> {
@@ -64,7 +99,7 @@ pub(crate) fn uses_rust_generation(matches: &ArgMatches) -> bool {
     matches!(selected_language(matches), "rust" | "mixed")
 }
 
-fn sdk_targets_from_matches(matches: &ArgMatches) -> Vec<String> {
+pub(super) fn sdk_targets_from_matches(matches: &ArgMatches) -> Vec<String> {
     matches
         .get_many::<String>("sdk-targets")
         .map(|targets| normalize_sdk_targets(targets.map(String::as_str)))
@@ -106,6 +141,38 @@ fn normalize_sdk_targets<'a>(targets: impl IntoIterator<Item = &'a str>) -> Vec<
     }
 }
 
+pub(crate) fn preflight_mixed_images(root: &Path) -> Result<()> {
+    language_images::preflight(root)
+}
+
+pub(crate) fn preflight_typescript_runtime_change(root: &Path) -> Result<()> {
+    typescript_image::preflight_runtime(root)
+}
+
+pub(crate) fn enable_typescript_contract_image(root: &Path) -> Result<()> {
+    typescript_image::enable_contract_image(root)
+}
+
+/// Retire a vendored `@forklaunch/universal-sdk` copy (see `typescript_runtime`).
+pub(crate) fn migrate_vendored_universal_sdk(root: &Path) -> Result<()> {
+    typescript_runtime::migrate(root)
+}
+
+pub(super) fn prepare_mixed_workspace_images(root: &Path) -> Result<()> {
+    mixed::ensure_workspace(root, false)?;
+    language_images::reconcile(root)
+}
+
+pub(crate) fn refresh_mixed_images(root: &Path) -> Result<()> {
+    let path = root.join(".forklaunch/manifest.toml");
+    if path.is_file() && (read_manifest_value(&path)?.get("language").and_then(Value::as_str) == Some("mixed") || crate::core::forklaunch_state::build_plan(root)?.get("contracts").is_some_and(|contracts| contracts.as_object().is_some_and(|contracts| !contracts.is_empty()))) {
+        language_images::preflight(root)?;
+        language_images::reconcile(root)?;
+    }
+    // Every TypeScript project command ends here; CI follows language changes.
+    crate::core::github_configs::reconcile_github_configs(root)
+}
+
 fn sdk_targets_from_manifest(manifest: &Value) -> Vec<String> {
     manifest
         .get("sdkTargets")
@@ -135,13 +202,14 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         .into_iter()
         .flatten()
         .collect();
-    if modules
+    if let Some(module) = modules
         .iter()
-        .any(|module| modules::BuiltinModule::from_variant(module).is_none())
+        .find(|module| modules::TYPESCRIPT_ONLY_MODULES.contains(&module.as_str()))
     {
-        bail!(
-            "Rust application module generation currently supports iam-base, iam-better-auth, cac-base, messaging-base, messaging-twilio, ecommerce-stripe, billing-base and billing-stripe; add other modules after their Rust adapters are implemented"
-        );
+        bail!("{module} is a TypeScript module; add it with `forklaunch init module --module {module}`. Rust services call it through its generated Rust SDK");
+    }
+    if modules.iter().any(|module| modules::BuiltinModule::from_variant(module).is_none()) {
+        bail!("Rust application module generation supports iam-base, cac-base, ecommerce-stripe, billing-base and billing-stripe");
     }
     if !modules.is_empty()
         && option(matches, "database").is_some_and(|database| database != "postgresql")
@@ -172,6 +240,11 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         RenderedTemplate {
             path: root_path.join("Cargo.toml"),
             content: root_cargo_toml(&license, &author),
+            context: None,
+        },
+        RenderedTemplate {
+            path: root_path.join("rust-toolchain.toml"),
+            content: render_static_rust_template("rust/application/rust-toolchain.toml"),
             context: None,
         },
         RenderedTemplate {
@@ -262,27 +335,63 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
     ];
 
     if has_typescript_sdk_target(&sdk_targets) {
-        templates.extend(mixed_typescript_sdk_templates(&root_path, &name));
+        templates.extend(
+            mixed_typescript_sdk_templates(&root_path, &name, &sdk_targets)
+                .into_iter()
+                .map(|mut template| {
+                    let relative = template
+                        .path
+                        .strip_prefix(&root_path)
+                        .expect("SDK template path");
+                    let relative = relative
+                        .to_string_lossy()
+                        .replace("sdks/typescript", "src/client-sdk/typescript")
+                        .replace("typescript/src/index.ts", "typescript/index.ts");
+                    template.path = root_path.join(relative);
+                    template.content = template
+                        .content
+                        .replace("sdks/typescript", "src/client-sdk/typescript")
+                        .replace("./src/index.ts", "./index.ts")
+                        .replace("src/**/*.ts", "**/*.ts");
+                    template
+                }),
+        );
     }
 
     let mut module_names = std::collections::HashSet::new();
     for module in &modules {
-        let kind = modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
+        let kind =
+            modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
         if !module_names.insert(kind.service_name()) {
-            bail!("Conflicting Rust modules target the same service: {}", kind.service_name());
+            bail!(
+                "Conflicting Rust modules target the same service: {}",
+                kind.service_name()
+            );
         }
     }
 
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     write_rust_rendered_templates(&templates, dryrun, &mut stdout)?;
+    if !dryrun {
+        // Select framework crates before anything else resolves Rust sources.
+        dependencies::configure(&root_path, matches)?;
+    }
     ensure_embedded_framework(&root_path, dryrun)?;
     if !dryrun {
-        create_dir_all(root_path.join("crates"))
-            .with_context(|| format!("Failed to create {}", root_path.join("crates").display()))?;
+        super::rust_source::write_rust_guidance(&root_path)?;
+    }
+    if !dryrun {
+        create_dir_all(root_path.join("src/core")).with_context(|| {
+            format!("Failed to create {}", root_path.join("src/core").display())
+        })?;
     }
     for module in modules {
-        let kind = modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
+        let kind =
+            modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
         modules::generate_module_at(&root_path, kind.service_name(), matches, dryrun, kind)?;
+    }
+    if !dryrun {
+        crate::core::github_configs::reconcile_github_configs(&root_path)?;
     }
     log_ok!(
         stdout,
@@ -298,11 +407,40 @@ pub(crate) fn generate_rust_service(matches: &ArgMatches) -> Result<()> {
     generate_rust_project(matches, RustProjectKind::Service)
 }
 
+pub(crate) fn generate_rust_agent(matches: &ArgMatches) -> Result<()> {
+    let name = matches.get_one::<String>("name").context("Agent name is required")?.clone();
+    let dryrun = matches.get_flag("dryrun");
+    let servers = agent::mcp_servers(matches)?;
+    let app_root = find_manifest_root(
+        &matches
+            .get_one::<String>("base_path")
+            .map(PathBuf::from)
+            .unwrap_or(std::env::current_dir().context("Failed to read current directory")?),
+    )?;
+    let services = agent::services(matches, &app_root)?;
+    generate_rust_project(matches, RustProjectKind::Service)?;
+    if dryrun {
+        return Ok(());
+    }
+    agent::mark_variant(&app_root, &name)?;
+    agent::compose(&app_root, &name, &services, &servers)?;
+    agent::sources(
+        &app_root,
+        &name,
+        matches.get_one::<String>("instructions").map(String::as_str),
+        &services,
+        &servers,
+    )?;
+    // Fill local values for the agent's new required settings.
+    language_images::reconcile(&app_root)
+}
+
 pub(crate) fn generate_rust_worker(matches: &ArgMatches) -> Result<()> {
     generate_rust_project(matches, RustProjectKind::Worker)
 }
 
 pub(crate) fn generate_rust_library(matches: &ArgMatches) -> Result<()> {
+    if let Some(services)=matches.try_get_many::<String>("sdk-services").ok().flatten() { return sdk_consumer::generate(matches,services.cloned().collect()); }
     generate_rust_project(matches, RustProjectKind::Library)
 }
 
@@ -331,25 +469,68 @@ pub(crate) fn generate_rust_router(matches: &ArgMatches) -> Result<()> {
     if app_root.join(registered_path).canonicalize()? != service_path.canonicalize()? {
         bail!("Rust router path must match the registered service crate directory");
     }
+    if contracts_layout::is_native_service(&service_path) {
+        let mut stdout = StandardStream::stdout(ColorChoice::Always);
+        native_layout::generate_router(&service_path, &router_name, dryrun, &mut stdout)?;
+        return add_router_to_manifest(&app_root, &service_name, &router_name, dryrun);
+    }
     let builtin = modules::module_kind(&app_root, &service_name)?.is_some();
     if builtin {
-        let lib = read_to_string(service_path.join("src/lib.rs"))?;
-        let main = read_to_string(service_path.join("src/main.rs"))?;
+        let flat = service_path.join("lib.rs").exists();
+        let registry = service_path.join("api/contracts/registry.rs");
+        let lib = read_to_string(if shared_module_contracts(&service_path) { registry } else { service_path.join(if flat { "sdk.rs" } else { "src/lib.rs" }) })?;
+        let main =
+            read_to_string(service_path.join(if flat { "server.rs" } else { "src/main.rs" }))?;
         if !lib.contains("routes::contracts()") || !main.contains("routes::register_router(") {
-            bail!("This existing module does not expose custom router hooks. Add routes::contracts() to its registry and routes::register_router(...) around its runtime router before generating extensions");
+            bail!(
+                "This existing module does not expose custom router hooks. Add routes::contracts() to its registry and routes::register_router(...) around its runtime router before generating extensions"
+            );
         }
     }
-    let routes_dir = service_path.join("src").join("routes");
+    if !builtin && !service_path.join("src/contracts/mod.rs").exists() {
+        bail!(
+            "This service predates build-time contracts; add a shared src/contracts module before generating a typed router"
+        );
+    }
+    let routes_dir = service_routes_directory(&service_path);
     let route_file = routes_dir.join(format!("{router_module}.rs"));
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
 
     write_text_file_preserving_existing(
         &route_file,
-        &if builtin { native_router_rs(&router_name) } else { router_rs(&router_name) },
+        &if builtin && shared_module_contracts(&service_path) {
+            let source = native_router_rs(&router_name);
+            let (contract, handler) = source.split_once("pub fn register(").context("module route template")?;
+            write_text_file_preserving_existing(&service_path.join("api/contracts/extensions").join(format!("{router_module}.rs")),
+                &contract.replace("use forklaunch_axum::ForkLaunchRouter;", ""), dryrun, &mut stdout)?;
+            format!("use forklaunch_axum::ForkLaunchRouter;\npub use crate::api::contracts::extensions::{router_module}::{{contract, contracts, ROUTE_NAME}};\npub fn register({handler}")
+        } else if builtin {
+            native_router_rs(&router_name)
+        } else {
+            router_rs(&router_name)
+        },
         dryrun,
         &mut stdout,
     )?;
 
+    if !builtin && service_path.join("src/contracts/mod.rs").exists() {
+        let contracts_dir = service_path.join("src/contracts");
+        write_text_file_preserving_existing(
+            &contracts_dir.join(format!("{router_module}.rs")),
+            &router_contract_rs(&router_name),
+            dryrun,
+            &mut stdout,
+        )?;
+        let mut modules = rust_route_modules(&contracts_dir)?;
+        modules.retain(|module| module != "models");
+        modules.push(router_module.clone());
+        write_text_file(
+            &contracts_dir.join("mod.rs"),
+            &contracts_mod_rs(&modules),
+            dryrun,
+            &mut stdout,
+        )?;
+    }
     rewrite_routes_mod(&routes_dir, dryrun, &mut stdout)?;
     add_router_to_manifest(&app_root, &service_name, &router_name, dryrun)?;
 
@@ -409,6 +590,7 @@ struct RustCrateTemplate {
 
 #[derive(Content)]
 struct RustRouterTemplate {
+    router_module: String,
     router_name: String,
     route_title: String,
     response_name: String,
@@ -474,22 +656,21 @@ pub(crate) fn is_rust_project(app_root: &Path, name: &str) -> Result<bool> {
     }
     let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
     let manifest = read_manifest_value(&manifest_path)?;
-    if project_table(&manifest, name).and_then(|project| project.get("variant")).and_then(Value::as_str) == Some("storefront") {
+    if project_table(&manifest, name)
+        .and_then(|project| project.get("variant"))
+        .and_then(Value::as_str)
+        == Some("storefront")
+    {
         return Ok(false);
     }
-    Ok(project_table(&manifest, name)
+    if let Some(language) = project_table(&manifest, name)
         .and_then(|project| project.get("metadata"))
-        .and_then(Value::as_table)
         .and_then(|metadata| metadata.get("language"))
         .and_then(Value::as_str)
-        .map(|language| language == "rust")
-        .unwrap_or_else(|| {
-            app_root
-                .join("crates")
-                .join(name)
-                .join("Cargo.toml")
-                .exists()
-        }))
+    {
+        return Ok(language == "rust");
+    }
+    Ok(discovery::path(app_root, &manifest, name)?.is_some())
 }
 
 pub(crate) fn registered_project_names(
@@ -512,22 +693,75 @@ pub(crate) fn registered_project_names(
         .collect())
 }
 
+/// Earlier generated build scripts wrote declarations to the crate root. Move
+/// only that exact generated output; a customized destination stays as written.
+fn migrate_compliance_artifact(crate_dir: &Path) -> Result<()> {
+    const RERUN: &str = "println!(\"cargo:rerun-if-changed=compliance.json\");";
+    const JOIN: &str = ".join(\"compliance.json\")";
+    const WRITE: &str = "std::fs::write(path, metadata)?;";
+    let build = crate_dir.join("build.rs");
+    let Ok(source) = read_to_string(&build) else {
+        return Ok(());
+    };
+    if source.matches(RERUN).count() != 1
+        || source.matches(JOIN).count() != 1
+        || source.matches(WRITE).count() != 1
+    {
+        return Ok(());
+    }
+    let line = source
+        .lines()
+        .find(|line| line.contains(WRITE))
+        .context("Expected compliance write")?;
+    let indent = &line[..line.len() - line.trim_start().len()];
+    let create = "std::fs::create_dir_all(path.parent().expect(\"crate-local artifact directory\"))?;";
+    let statements = if line.trim() == WRITE {
+        format!("{create}\n{indent}{WRITE}")
+    } else {
+        format!("{create} {WRITE}")
+    };
+    let updated = source
+        .replace(RERUN, "println!(\"cargo:rerun-if-changed=.forklaunch/compliance.json\");")
+        .replace(JOIN, ".join(\".forklaunch/compliance.json\")")
+        .replace(WRITE, &statements);
+    write(&build, native_layout::format_source(&build, &updated))?;
+    // The crate-root file was build output; the next build regenerates it.
+    let legacy = crate_dir.join("compliance.json");
+    if legacy.is_file() {
+        remove_file(legacy)?;
+    }
+    Ok(())
+}
+
 pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &str) -> Result<()> {
     if !is_rust_project(app_root, name)? {
         bail!("Project {name} is not a Rust project; refusing native sync cleanup");
     }
     let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
-    let crate_path = PathBuf::from(crate_path_for_project(&manifest, name)
-        .unwrap_or_else(|| format!("crates/{name}")));
+    let crate_path = discovery::path(app_root, &manifest, name)?
+        .context("Missing Rust project path")?;
     let crate_dir = app_root.join(&crate_path);
     if !crate_dir.join("Cargo.toml").exists() {
         delete_rust_project(app_root, kind, name)?;
         return Ok(());
     }
 
+    migrate_compliance_artifact(&crate_dir)?;
+    mixed::ensure_root_ignore_rules(app_root)?;
     add_cargo_member(app_root, &crate_path.to_string_lossy(), false)?;
     let description = cargo_description(&crate_dir.join("Cargo.toml"))?
         .unwrap_or_else(|| format!("Generated {name} {}", kind.label()));
+    discovery::register(app_root, kind, name, &crate_path, &description)?;
+    discovery::routers(app_root, name, &crate_dir)?;
+    if let Some(host) = contracts_layout::directory(&crate_dir) {
+        if host.join("Cargo.toml").is_file() {
+            let host = host.canonicalize()?;
+            add_cargo_member(app_root, &host.strip_prefix(app_root.canonicalize()?)?.to_string_lossy(), false)?;
+        }
+    }
+    if crate_dir.join("sdk/rust/Cargo.toml").is_file() {
+        add_cargo_member(app_root, &format!("{}/sdk/rust", crate_path.display()), false)?;
+    }
     if let Some(module) = modules::module_kind(app_root, name)? {
         modules::ensure_module_compose(app_root, name, module, false)?;
         return ensure_rust_package_scripts(app_root, kind, name, false);
@@ -547,7 +781,20 @@ pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &s
         worker::compose(app_root, name, backend)?;
         return ensure_rust_package_scripts(app_root, kind, name, false);
     }
-    let templates = rust_crate_templates(&crate_dir, name, &description, kind)
+    let flat = crate_dir.join("lib.rs").exists();
+    let templates = if flat && kind == RustProjectKind::Service {
+        let host = contracts_layout::directory(&crate_dir).context("Missing service contracts")?.canonicalize()?;
+        add_cargo_member(app_root, &host.strip_prefix(app_root.canonicalize()?)?.to_string_lossy(), false)?;
+        native_layout::service_templates(&crate_dir, name, &description)
+    } else {
+        let templates = rust_crate_templates(&crate_dir, name, &description, kind);
+        if flat {
+            native_layout::flatten(&crate_dir, name, kind, templates)
+        } else {
+            templates
+        }
+    };
+    let templates = native_layout::framework_paths(app_root, templates)
         .into_iter()
         .filter(|template| !template.path.exists())
         .collect::<Vec<_>>();
@@ -574,6 +821,8 @@ pub(crate) fn add_rust_workspace_member(app_root: &Path, member: &str) -> Result
 }
 
 pub(crate) fn sync_all_rust_projects(app_root: &Path, stdout: &mut StandardStream) -> Result<()> {
+    // Reconcile removed projects before any surviving project rebuilds the shared image.
+    cleanup_missing_rust_projects(app_root)?;
     let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
     let mut names = std::collections::BTreeSet::new();
     for project in manifest
@@ -592,9 +841,10 @@ pub(crate) fn sync_all_rust_projects(app_root: &Path, stdout: &mut StandardStrea
             names.insert(name.to_owned());
         }
     }
-    let crates_dir = app_root.join("crates");
-    if crates_dir.exists() {
-        for entry in std::fs::read_dir(&crates_dir)? {
+    for relative in discovery::roots(&manifest) {
+        let directory = app_root.join(relative);
+        if !directory.is_dir() { continue; }
+        for entry in std::fs::read_dir(directory)? {
             let entry = entry?;
             if entry.path().join("Cargo.toml").is_file()
                 && let Some(name) = entry.file_name().to_str()
@@ -611,6 +861,7 @@ pub(crate) fn sync_all_rust_projects(app_root: &Path, stdout: &mut StandardStrea
     }
 
     cleanup_missing_rust_projects(app_root)?;
+    blueprint_sources::prune(app_root)?;
     ensure_rust_local_library_dependencies(app_root, false)?;
     Ok(())
 }
@@ -620,20 +871,49 @@ pub(crate) fn delete_rust_project(
     kind: RustProjectKind,
     name: &str,
 ) -> Result<()> {
+    delete_rust_project_inner(app_root, kind, name, true)
+}
+
+fn delete_rust_project_inner(
+    app_root: &Path,
+    kind: RustProjectKind,
+    name: &str,
+    reconcile: bool,
+) -> Result<()> {
     let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
     let mut manifest = read_manifest_value(&manifest_path)?;
     let crate_path = crate_path_for_project(&manifest, name)
         .unwrap_or_else(|| Path::new("crates").join(name).to_string_lossy().to_string());
+    if contracts_layout::directory(&app_root.join(&crate_path)).is_some() {
+        sdk_consumer::ensure_service_deletable(app_root, &crate_path)?;
+    }
     let capabilities = project_table(&manifest, name)
         .and_then(|project| project.get("resources"))
         .and_then(|resources| resources.get("capabilities"))
         .and_then(Value::as_array)
-        .map(|features| features.iter().filter_map(Value::as_str).map(str::to_owned).collect::<Vec<_>>())
+        .map(|features| {
+            features
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_owned)
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
+    language_images::preflight(app_root)?;
     remove_project_from_manifest_value(&mut manifest, name, Some(kind))?;
     write_manifest_value(&manifest_path, &manifest)?;
     crate::infra::capabilities::cleanup_deleted_native_service(app_root, name, &capabilities)?;
     remove_cargo_member(app_root, &crate_path)?;
+    // A sync cleanup may run after the entire project directory was removed.
+    // Its generated host remains an owned workspace member even without a Cargo manifest.
+    remove_cargo_member(app_root, &format!("{crate_path}/.forklaunch/contracts"))?;
+    if let Some(host) = contracts_layout::directory(&app_root.join(&crate_path)) {
+        let host = host.canonicalize()?;
+        remove_cargo_member(app_root, &host.strip_prefix(app_root.canonicalize()?)?.to_string_lossy())?;
+        if host.parent() == app_root.canonicalize()?.join(&crate_path).parent() { remove_path_if_exists(&host)?; }
+    }
+    remove_cargo_member(app_root, &format!("{crate_path}/domain"))?;
+    remove_cargo_member(app_root, &format!("{crate_path}/sdk/rust"))?;
     cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name)?;
     remove_rust_docker_compose_project(app_root, name)?;
     crate::infra::native_local::delete_ownership(app_root, name)?;
@@ -641,7 +921,7 @@ pub(crate) fn delete_rust_project(
     if kind == RustProjectKind::Library {
         remove_registered_library_dependency(app_root, &manifest, name, &crate_path)?;
     }
-    ensure_rust_local_library_dependencies(app_root, false)?;
+    if reconcile { ensure_rust_local_library_dependencies(app_root, false)?; }
 
     let crate_dir = app_root.join(&crate_path);
     if crate_dir.exists() {
@@ -649,6 +929,10 @@ pub(crate) fn delete_rust_project(
             .with_context(|| format!("Failed to remove {}", crate_dir.display()))?;
     }
 
+    if reconcile {
+        blueprint_sources::prune(app_root)?;
+        language_images::reconcile(app_root)?;
+    }
     Ok(())
 }
 
@@ -662,18 +946,30 @@ fn cleanup_generated_outputs_for_deleted_rust_project(
     }
 
     if crate::sdk::websocket::cleanup_service(app_root, name)? {
-        remove_cargo_member(app_root, &format!("sdks/rust/{name}-websocket-sdk"))?;
+        remove_cargo_member(
+            app_root,
+            &crate::sdk::sdk_base(app_root)?
+                .join(format!("rust/{name}-websocket-sdk"))
+                .to_string_lossy(),
+        )?;
     }
-    crate::core::openapi_export::export_registered_sockets(app_root, name, None, &json!({"sockets": {}}))?;
+    crate::core::openapi_export::export_registered_sockets(
+        app_root,
+        name,
+        None,
+        &json!({"sockets": {}}),
+    )?;
     remove_rust_project_artifacts(app_root, name)?;
 
-    let sdk_member = Path::new("sdks")
+    let sdk_member = crate::sdk::sdk_base(app_root)?
         .join("rust")
         .join(format!("{name}-sdk"))
         .to_string_lossy()
         .to_string();
     remove_cargo_member(app_root, &sdk_member)?;
-    remove_path_if_exists(&app_root.join(&sdk_member))
+    remove_path_if_exists(&app_root.join(&sdk_member))?;
+    crate::sdk::generate::cleanup_service_generated_files(app_root, name)?;
+    Ok(())
 }
 
 pub(crate) fn remove_rust_project_artifacts(app_root: &Path, name: &str) -> Result<()> {
@@ -714,8 +1010,12 @@ pub(crate) fn change_rust_project(
     let target_crate_path = if target_name == current_name {
         current_crate_path.clone()
     } else {
-        Path::new(&current_crate_path).parent().unwrap_or_else(||Path::new("crates"))
-            .join(target_name).to_string_lossy().to_string()
+        Path::new(&current_crate_path)
+            .parent()
+            .unwrap_or_else(|| Path::new("crates"))
+            .join(target_name)
+            .to_string_lossy()
+            .to_string()
     };
     let current_kind = project_table(&manifest, current_name)
         .and_then(|project| project.get("type"))
@@ -723,6 +1023,12 @@ pub(crate) fn change_rust_project(
         .and_then(kind_from_manifest_type)
         .unwrap_or(RustProjectKind::Library);
     let target_kind = to_kind.unwrap_or(current_kind);
+    if target_kind == RustProjectKind::Service && let Some(database) = database {
+        if database != "postgresql" { bail!("Rust service storage supports PostgreSQL only"); }
+        if modules::module_kind(app_root,current_name)?.is_none() && !app_root.join(&current_crate_path).join("persistence/database.rs").is_file() {
+            bail!("Existing in-memory storage requires an explicit migration; initialize a new service with --database postgresql");
+        }
+    }
     let current_backend = if current_kind == RustProjectKind::Worker {
         worker::backend(app_root, current_name)?
     } else {
@@ -751,6 +1057,11 @@ pub(crate) fn change_rust_project(
         })
         .unwrap_or("database");
     let target_backend = worker::Backend::from_options(target_worker_type, target_database);
+    if target_kind == RustProjectKind::Worker && target_backend.is_none()
+        && (current_kind != target_kind || worker_type.is_some() || database.is_some())
+    {
+        bail!("Unsupported Rust worker backend: {target_worker_type}/{target_database}; supported backends are PostgreSQL database, Redis, Kafka, and BullMQ");
+    }
     let keep_persistent_worker = persistent_worker
         && target_kind == RustProjectKind::Worker
         && target_backend == current_backend;
@@ -772,21 +1083,35 @@ pub(crate) fn change_rust_project(
                     .any(|key| resources.get(*key).and_then(Value::as_str).is_some())
             });
     if managed_capabilities && target_kind != RustProjectKind::Service {
-        bail!("Remove managed capabilities before converting this native service to another project kind");
+        bail!(
+            "Remove managed capabilities before converting this native service to another project kind"
+        );
     }
     if managed_infrastructure && target_kind != RustProjectKind::Service {
-        bail!("Remove native infrastructure before converting this service to another project kind");
+        bail!(
+            "Remove native infrastructure before converting this service to another project kind"
+        );
     }
     if persistent_module.is_some()
         && (!matches!(target_kind, RustProjectKind::Service)
             || database.is_some_and(|database| database != "postgresql"))
     {
-        bail!("Rust built-in modules must remain services with their supported PostgreSQL configuration");
+        bail!(
+            "Rust built-in modules must remain services with their supported PostgreSQL configuration"
+        );
+    }
+
+    if current_kind != target_kind || convert_worker {
+        conversion::preflight(app_root, current_name, current_kind)?;
+    }
+    if current_kind == RustProjectKind::Service && target_kind != current_kind {
+        sdk_consumer::ensure_service_deletable(app_root, &current_crate_path)?;
     }
 
     if current_name != target_name {
         if project_table(&manifest, target_name).is_some()
             || app_root.join(&target_crate_path).exists()
+            || app_root.join(&target_crate_path).with_file_name(format!("{target_name}-contracts")).exists()
         {
             bail!("Project destination {target_name} already exists");
         }
@@ -794,11 +1119,20 @@ pub(crate) fn change_rust_project(
             format!(".forklaunch/contracts/{target_name}"),
             format!(".forklaunch/openapi/{target_name}"),
             format!(".forklaunch/asyncapi/{target_name}"),
-            format!("sdks/rust/{target_name}-sdk"),
+            crate::sdk::sdk_base(app_root)?
+                .join(format!("rust/{target_name}-sdk"))
+                .to_string_lossy()
+                .into_owned(),
             format!(".forklaunch/socket-contracts/{target_name}"),
             format!(".forklaunch/socket-sdk-outputs/{target_name}"),
-            format!("sdks/rust/{target_name}-websocket-sdk"),
-            format!("sdks/typescript-websocket/{target_name}"),
+            crate::sdk::sdk_base(app_root)?
+                .join(format!("rust/{target_name}-websocket-sdk"))
+                .to_string_lossy()
+                .into_owned(),
+            crate::sdk::sdk_base(app_root)?
+                .join(format!("typescript-websocket/{target_name}"))
+                .to_string_lossy()
+                .into_owned(),
         ] {
             if app_root.join(&relative).exists() {
                 bail!("Generated output destination {relative} already exists");
@@ -809,6 +1143,10 @@ pub(crate) fn change_rust_project(
         return Ok(target_name.to_string());
     }
 
+    language_images::preflight(app_root)?;
+    let library_edits = if current_kind == RustProjectKind::Library && current_name != target_name {
+        library_rename::plan(app_root, &current_crate_path, &target_crate_path, current_name, target_name)?
+    } else { Vec::new() };
     if current_name != target_name {
         let from = app_root.join(&current_crate_path);
         let to = app_root.join(&target_crate_path);
@@ -818,7 +1156,29 @@ pub(crate) fn change_rust_project(
             })?;
         }
         replace_cargo_member(app_root, &current_crate_path, &target_crate_path)?;
+        if to.join(".forklaunch/contracts/Cargo.toml").is_file() {
+            replace_cargo_member(app_root, &format!("{current_crate_path}/.forklaunch/contracts"), &format!("{target_crate_path}/.forklaunch/contracts"))?;
+        }
         update_package_name(&to.join("Cargo.toml"), target_name)?;
+        sdk_consumer::rename_service(app_root,&current_crate_path,&target_crate_path,current_name,target_name)?;
+        let old_host = from.with_file_name(format!("{current_name}-contracts"));
+        if old_host.join("Cargo.toml").is_file() {
+            let new_host = to.with_file_name(format!("{target_name}-contracts"));
+            anyhow::ensure!(!new_host.exists(), "Contract package rename destination exists");
+            rename(&old_host, &new_host)?;
+            replace_cargo_member(app_root, &old_host.strip_prefix(app_root)?.to_string_lossy(), &new_host.strip_prefix(app_root)?.to_string_lossy())?;
+            native_layout::rename_project(&new_host, current_name, target_name)?;
+        }
+        if to.join("lib.rs").exists() {
+            native_layout::rename_project(&to, current_name, target_name)?;
+            if to.join("domain/Cargo.toml").exists() {
+                replace_cargo_member(
+                    app_root,
+                    &format!("{current_crate_path}/domain"),
+                    &format!("{target_crate_path}/domain"),
+                )?;
+            }
+        }
     }
 
     {
@@ -865,19 +1225,36 @@ pub(crate) fn change_rust_project(
             "openapiPath".to_string(),
             Value::String(format!(".forklaunch/openapi/{target_name}/openapi.json")),
         );
+        if contracts_layout::is_native_service(&app_root.join(&target_crate_path))
+            || contracts_layout::has_local_sdk(&app_root.join(&target_crate_path)) {
+            contracts_layout::set_artifact_paths(metadata, target_name);
+        }
         metadata.insert(
             "asyncapiPath".to_string(),
             Value::String(format!(".forklaunch/asyncapi/{target_name}/asyncapi.json")),
         );
-        if metadata.get("socketContractArtifactPath").and_then(Value::as_str)
-            == Some(format!(".forklaunch/socket-contracts/{current_name}/socket-contract.json").as_str())
+        if metadata
+            .get("socketContractArtifactPath")
+            .and_then(Value::as_str)
+            == Some(
+                format!(".forklaunch/socket-contracts/{current_name}/socket-contract.json")
+                    .as_str(),
+            )
         {
-            metadata.insert("socketContractArtifactPath".into(), Value::String(format!(".forklaunch/socket-contracts/{target_name}/socket-contract.json")));
+            metadata.insert(
+                "socketContractArtifactPath".into(),
+                Value::String(format!(
+                    ".forklaunch/socket-contracts/{target_name}/socket-contract.json"
+                )),
+            );
         }
         if metadata.get("asyncapiArtifactPath").and_then(Value::as_str)
             == Some(format!(".forklaunch/asyncapi/{current_name}/asyncapi.json").as_str())
         {
-            metadata.insert("asyncapiArtifactPath".into(), Value::String(format!(".forklaunch/asyncapi/{target_name}/asyncapi.json")));
+            metadata.insert(
+                "asyncapiArtifactPath".into(),
+                Value::String(format!(".forklaunch/asyncapi/{target_name}/asyncapi.json")),
+            );
         }
         if let Some(worker_type) = worker_type {
             metadata.insert(
@@ -894,7 +1271,17 @@ pub(crate) fn change_rust_project(
     }
     write_manifest_value(&manifest_path, &manifest)?;
 
+    for (path, source) in library_edits {
+        write(&path, source).with_context(|| format!("Failed to update library consumer {}", path.display()))?;
+    }
+
     let crate_dir = app_root.join(&target_crate_path);
+    if let Some(description) = description {
+        let cargo_path = crate_dir.join("Cargo.toml");
+        let mut cargo: toml_edit::DocumentMut = read_to_string(&cargo_path)?.parse()?;
+        cargo["package"]["description"] = toml_edit::value(description);
+        write(cargo_path, cargo.to_string())?;
+    }
     if keep_persistent_worker {
         if current_name != target_name {
             worker::rename_sources(app_root, current_name, target_name)?;
@@ -921,12 +1308,16 @@ pub(crate) fn change_rust_project(
         }
         return Ok(target_name.to_owned());
     }
-    if current_kind == RustProjectKind::Service && current_kind == target_kind {
-        // Metadata and infrastructure edits preserve existing service handlers,
-        // factories and custom configuration instead of replacing source.
+    if current_kind == target_kind {
+        // Metadata edits preserve application-owned source for every project kind.
+        // Backend changes are applied explicitly below.
         if current_name != target_name {
-            modules::rename_sources(app_root, current_name, target_name)?;
-            rename_native_service_defaults(&crate_dir, current_name, target_name)?;
+            if !crate_dir.join("lib.rs").exists() {
+                modules::rename_sources(app_root, current_name, target_name)?;
+                if current_kind == RustProjectKind::Service {
+                    rename_native_service_defaults(&crate_dir, current_name, target_name)?;
+                }
+            }
         }
     } else {
         match target_kind {
@@ -948,13 +1339,22 @@ pub(crate) fn change_rust_project(
     if current_name != target_name {
         rename_rust_project_outputs(app_root, current_name, target_name)?;
     }
+    if current_kind != target_kind {
+        if current_kind == RustProjectKind::Service {
+            remove_cargo_member(app_root, &format!("{target_crate_path}/domain"))?;
+            remove_path_if_exists(&crate_dir.join("domain/Cargo.toml"))?;
+        }
+        cleanup_generated_outputs_for_deleted_rust_project(app_root, current_kind, target_name)?;
+    }
 
+    language_images::reconcile(app_root)?;
     Ok(target_name.to_string())
 }
 
 // Generated artifacts retain their schemas while their service metadata and SDK
 // names follow the renamed project. Other services' artifacts are left intact.
 fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> {
+    let local_artifacts = sdk_consumer::rename_local_artifacts(root, old, new)?;
     let imported = crate::sdk::websocket::imported_service(root, old)?;
     crate::infra::capabilities::rename_native_ownership(root, old, new)?;
     crate::infra::native_local::rename_ownership(root, old, new)?;
@@ -983,8 +1383,16 @@ fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> 
             write(&path, serde_json::to_string_pretty(&artifact)?)?;
         }
     }
-    crate::sdk::websocket::rename_service(root, old, new, &mut StandardStream::stdout(ColorChoice::Always))?;
-    let old_member = format!("sdks/rust/{old}-sdk");
+    crate::sdk::websocket::rename_service(
+        root,
+        old,
+        new,
+        &mut StandardStream::stdout(ColorChoice::Always),
+    )?;
+    let old_member = crate::sdk::sdk_base(root)?
+        .join(format!("rust/{old}-sdk"))
+        .to_string_lossy()
+        .into_owned();
     if root.join(&old_member).exists() {
         remove_cargo_member(root, &old_member)?;
         remove_path_if_exists(&root.join(&old_member))?;
@@ -1004,6 +1412,13 @@ fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> 
             false,
             &mut StandardStream::stdout(ColorChoice::Always),
         )?;
+    }
+    crate::sdk::generate::cleanup_service_generated_files(root, old)?;
+    if local_artifacts {
+        return crate::sdk::generate::generate_or_check_sdk_outputs(
+            root, "all", "contract", Some(new), false,
+            &mut StandardStream::stdout(ColorChoice::Always),
+        );
     }
     crate::sdk::generate::regenerate_sdk_outputs_if_present(
         root,
@@ -1032,6 +1447,8 @@ pub(crate) fn change_rust_application(
         return Ok(target_name);
     }
 
+    if new_name.is_some() { language_images::preflight(app_root)?; }
+
     let root = manifest
         .as_table_mut()
         .context("ForkLaunch manifest root must be a TOML table")?;
@@ -1054,6 +1471,7 @@ pub(crate) fn change_rust_application(
     write_manifest_value(&manifest_path, &manifest)?;
     update_rust_root_cargo_metadata(app_root, author, license)?;
     update_rust_readme(app_root, &target_name, description)?;
+    if new_name.is_some() { language_images::reconcile(app_root)?; }
 
     Ok(target_name)
 }
@@ -1073,7 +1491,22 @@ pub(crate) fn change_rust_router(
             .to_string_lossy()
             .to_string()
     });
-    let routes_dir = app_root.join(&crate_path).join("src").join("routes");
+    let native_dir = app_root.join(&crate_path);
+    if contracts_layout::is_native_service(&native_dir) {
+        native_layout::change_router(
+            &native_dir,
+            existing_name,
+            Some(new_name),
+            dryrun,
+            &mut StandardStream::stdout(ColorChoice::Always),
+        )?;
+        if !dryrun {
+            replace_router_in_manifest_value(&mut manifest, project_name, existing_name, new_name)?;
+            write_manifest_value(&manifest_path, &manifest)?;
+        }
+        return Ok(());
+    }
+    let routes_dir = service_routes_directory(&app_root.join(&crate_path));
     let old_module = existing_name.to_case(Case::Snake);
     let new_module = new_name.to_case(Case::Snake);
 
@@ -1097,13 +1530,54 @@ pub(crate) fn change_rust_router(
                 let old_response = format!("{}Response", existing_name.to_case(Case::Pascal));
                 let new_response = format!("{}Response", new_name.to_case(Case::Pascal));
                 regex::Regex::new(&format!(r"\b{}\b", regex::escape(&old_response)))?
-                    .replace_all(&source, new_response.as_str()).into_owned()
-                    .replace(&format!("\"{}\"", escape_rust_string(existing_name)), &format!("\"{}\"", escape_rust_string(new_name)))
-                    .replace(&format!("\"/{}\"", escape_rust_string(existing_name)), &format!("\"/{}\"", escape_rust_string(new_name)))
-                    .replace(&format!("Get {}", existing_name.to_case(Case::Title)), &format!("Get {}", new_name.to_case(Case::Title)))
-            } else { router_rs(new_name) },
+                    .replace_all(&source, new_response.as_str())
+                    .into_owned()
+                    .replace(
+                        &format!("\"{}\"", escape_rust_string(existing_name)),
+                        &format!("\"{}\"", escape_rust_string(new_name)),
+                    )
+                    .replace(
+                        &format!("\"/{}\"", escape_rust_string(existing_name)),
+                        &format!("\"/{}\"", escape_rust_string(new_name)),
+                    )
+                    .replace(
+                        &format!("Get {}", existing_name.to_case(Case::Title)),
+                        &format!("Get {}", new_name.to_case(Case::Title)),
+                    )
+            } else {
+                router_rs(new_name)
+            },
         )
         .with_context(|| format!("Failed to update Rust router {new_name}"))?;
+        let project_dir = app_root.join(&crate_path);
+        let shared_module = shared_module_contracts(&project_dir);
+        let contracts_dir = if shared_module { project_dir.join("api/contracts/extensions") } else { project_dir.join("src/contracts") };
+        if shared_module {
+            let source = read_to_string(&new_file)?.replace(&format!("extensions::{old_module}::"), &format!("extensions::{new_module}::"));
+            write(&new_file, source)?;
+        }
+        if contracts_dir.join("mod.rs").exists() {
+            let old_contract = contracts_dir.join(format!("{old_module}.rs"));
+            let new_contract = contracts_dir.join(format!("{new_module}.rs"));
+            if old_contract.exists() {
+                let source = read_to_string(&old_contract)?;
+                let old_response = format!("{}Response", existing_name.to_case(Case::Pascal));
+                let new_response = format!("{}Response", new_name.to_case(Case::Pascal));
+                let source = regex::Regex::new(&format!(r"\b{}\b", regex::escape(&old_response)))?
+                    .replace_all(&source, new_response.as_str())
+                    .into_owned()
+                    .replace(&format!("/{existing_name}"), &format!("/{new_name}"))
+                    .replace(&format!("\"{existing_name}\""), &format!("\"{new_name}\""))
+                    .replace(&format!("Get {}", existing_name.to_case(Case::Title)), &format!("Get {}", new_name.to_case(Case::Title)))
+                    .replace(
+                        &format!("List {}", existing_name.to_case(Case::Title)),
+                        &format!("List {}", new_name.to_case(Case::Title)),
+                    );
+                rename(&old_contract, &new_contract)?;
+                write(new_contract, source)?;
+            }
+            if shared_module { rewrite_module_extensions(&contracts_dir, false, &mut StandardStream::stdout(ColorChoice::Always))?; } else { rewrite_contracts_mod(&contracts_dir)?; }
+        }
         rewrite_routes_mod(
             &routes_dir,
             false,
@@ -1129,12 +1603,35 @@ pub(crate) fn delete_rust_router(
             .to_string_lossy()
             .to_string()
     });
-    let routes_dir = app_root.join(&crate_path).join("src").join("routes");
+    let native_dir = app_root.join(&crate_path);
+    if contracts_layout::is_native_service(&native_dir) {
+        native_layout::change_router(
+            &native_dir,
+            router_name,
+            None,
+            false,
+            &mut StandardStream::stdout(ColorChoice::Always),
+        )?;
+        remove_router_from_manifest_value(&mut manifest, project_name, router_name)?;
+        write_manifest_value(&manifest_path, &manifest)?;
+        return remove_rust_project_artifacts(app_root, project_name);
+    }
+    let routes_dir = service_routes_directory(&app_root.join(&crate_path));
     let router_module = router_name.to_case(Case::Snake);
     let route_file = routes_dir.join(format!("{router_module}.rs"));
     if route_file.exists() {
         remove_file(&route_file)
             .with_context(|| format!("Failed to remove {}", route_file.display()))?;
+    }
+    let project_dir = app_root.join(&crate_path);
+        let shared_module = shared_module_contracts(&project_dir);
+        let contracts_dir = if shared_module { project_dir.join("api/contracts/extensions") } else { project_dir.join("src/contracts") };
+    if contracts_dir.join("mod.rs").exists() {
+        let contract = contracts_dir.join(format!("{router_module}.rs"));
+        if contract.exists() {
+            remove_file(contract)?;
+        }
+        if shared_module { rewrite_module_extensions(&contracts_dir, false, &mut StandardStream::stdout(ColorChoice::Always))?; } else { rewrite_contracts_mod(&contracts_dir)?; }
     }
     rewrite_routes_mod(
         &routes_dir,
@@ -1148,6 +1645,9 @@ pub(crate) fn delete_rust_router(
 
 fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<()> {
     let dryrun = matches.get_flag("dryrun");
+    if kind == RustProjectKind::Service && option(matches, "database").is_some_and(|database| database != "postgresql") {
+        bail!("Rust service storage currently supports explicit --database postgresql; omit --database for the in-memory starter");
+    }
     let name = required_name(matches, kind.label())?;
     let description = option(matches, "description")
         .unwrap_or_else(|| format!("Generated {name} {}", kind.label()));
@@ -1160,12 +1660,23 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
     let crate_path = crate_path_for_project(&manifest, &name)
         .map(PathBuf::from)
-        .unwrap_or_else(|| Path::new("crates").join(&name));
+        .unwrap_or_else(|| {
+            let modules = Path::new(manifest.get("modules_path").and_then(Value::as_str).unwrap_or("src"));
+            if kind == RustProjectKind::Library {
+                modules.join("core").join(&name)
+            } else {
+                modules.join(&name)
+            }
+        });
     let crate_dir = app_root.join(&crate_path);
     if let Some(project) = project_table(&manifest, &name) {
         if !is_rust_project(&app_root, &name)?
             || project.get("type").and_then(Value::as_str) != Some(kind.manifest_type())
-            || project.get("variant").and_then(Value::as_str).and_then(modules::BuiltinModule::from_variant).is_some()
+            || project
+                .get("variant")
+                .and_then(Value::as_str)
+                .and_then(modules::BuiltinModule::from_variant)
+                .is_some()
         {
             bail!(
                 "Project {name} already exists with a different project kind or module; use its change command"
@@ -1176,6 +1687,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
             "An existing crate occupies the destination for {name}; sync it before initialization"
         );
     }
+    language_images::preflight(&app_root)?;
     mixed::ensure_workspace(&app_root, dryrun)?;
     let mut stdout = StandardStream::stdout(ColorChoice::Always);
     ensure_embedded_framework(&app_root, dryrun)?;
@@ -1194,19 +1706,111 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     } else {
         None
     };
-    let templates = if let Some(backend) = backend {
-        modules::ensure_blueprint_sources(&app_root, dryrun)?;
-        worker::templates(&app_root, &crate_dir, &name, &description, backend)?
+    let native_layout = !crate_dir.join("src/lib.rs").exists();
+    let postgres = kind == RustProjectKind::Service && (option(matches, "database").as_deref() == Some("postgresql") || crate_dir.join("persistence/database.rs").is_file());
+    if postgres && (!native_layout || (crate_dir.join("Cargo.toml").is_file() && !crate_dir.join("persistence/database.rs").is_file())) {
+        bail!("Choose --database postgresql when initializing a new native service; existing storage requires an explicit migration");
+    }
+    let new_project = !crate_dir.join("Cargo.toml").exists();
+    let existing_service = crate_dir.join("consumer/lib.rs").is_file();
+    let consumer_only = matches.try_get_one::<bool>("consumer-only").ok().flatten().copied().unwrap_or(false);
+    if existing_service && consumer_only { bail!("Removing an existing worker service requires an explicit process migration"); }
+    let worker_service = kind == RustProjectKind::Worker && native_layout && (existing_service || (new_project && !consumer_only));
+    let worker_contracts = kind == RustProjectKind::Worker && native_layout && backend.is_some() && (new_project || existing_service || contracts_layout::directory(&crate_dir).is_some());
+    if worker_contracts && new_project && contracts_layout::new_host_directory(&crate_dir).exists() { bail!("The worker contract destination already exists; choose another project name"); }
+    let existing_apalis=crate_dir.join("worker_hooks.rs").is_file() || crate_dir.join("consumer/worker_hooks.rs").is_file();
+    let apalis=kind==RustProjectKind::Worker && option(matches,"worker-runtime").map_or(existing_apalis,|runtime|runtime=="apalis");
+    if kind==RustProjectKind::Worker && (!new_project && apalis!=existing_apalis) { bail!("Changing worker runtime requires an explicit queue migration"); }
+    if apalis && (!native_layout || backend!=Some(worker::Backend::Postgres)) { bail!("Apalis requires a native PostgreSQL worker"); }
+
+    if new_project && native_layout && (kind == RustProjectKind::Service || worker_service) {
+        let host = contracts_layout::new_host_directory(&crate_dir);
+        anyhow::ensure!(!host.exists(), "Contract package destination already exists: {}", host.display());
+    }
+
+    let templates = if kind == RustProjectKind::Service && native_layout {
+        let templates = native_layout::service_templates(&crate_dir, &name, &description);
+        if postgres {
+            let sqlx09 = option(matches, "postgres-driver").as_deref()==Some("sqlx-09") || (option(matches,"postgres-driver").is_none() && read_to_string(crate_dir.join("Cargo.toml")).ok().and_then(|text|toml::from_str::<Value>(&text).ok()).and_then(|cargo|cargo.get("dependencies")?.get("sqlx")?.get("version")?.as_str().map(str::to_owned)).is_some_and(|version|version.starts_with("0.9")));
+            service_database::templates(&crate_dir, &name, templates, sqlx09)?
+        } else { templates }
+    } else if apalis {
+        let templates = worker::apalis_templates(&app_root,&crate_dir,&name,&description)?;
+        blueprint_sources::ensure(&app_root, dryrun, &templates)?;
+        templates
+    } else if let Some(backend) = backend {
+        let templates = worker::templates(&app_root, &crate_dir, &name, &description, backend)?;
+        blueprint_sources::ensure(&app_root, dryrun, &templates)?;
+        templates
     } else {
         rust_crate_templates(&crate_dir, &name, &description, kind)
     };
 
+    let templates = if native_layout && kind != RustProjectKind::Service && !apalis {
+        native_layout::flatten(&crate_dir, &name, kind, templates)
+    } else {
+        templates
+    };
+    let templates = if worker_service { worker::service_templates(&crate_dir, &name, &description, templates, apalis, backend.context("Worker service requires a supported queue backend")?)? } else if worker_contracts { worker::consumer_contracts(&crate_dir,&name,templates)? } else { templates };
+    let templates = if native_layout { native_mappers::templates(&crate_dir, matches.try_get_one::<bool>("mappers").ok().flatten().copied().unwrap_or(false), templates)? } else { templates };
+    let templates = native_layout::framework_paths(&app_root, templates);
+    let templates = if native_layout {
+        templates
+            .into_iter()
+            .filter(|template| !template.path.exists())
+            .collect()
+    } else {
+        templates
+    };
     write_rust_rendered_templates(&templates, dryrun, &mut stdout)?;
     add_cargo_member(&app_root, &crate_path.to_string_lossy(), dryrun)?;
+    if native_layout && kind == RustProjectKind::Service {
+        add_cargo_member(
+            &app_root,
+            &contracts_layout::directory(&crate_dir).unwrap_or_else(|| contracts_layout::new_host_directory(&crate_dir)).strip_prefix(&app_root)?.to_string_lossy(),
+            dryrun,
+        )?;
+    }
+    if worker_contracts { add_cargo_member(&app_root, &contracts_layout::directory(&crate_dir).unwrap_or_else(|| contracts_layout::new_host_directory(&crate_dir)).strip_prefix(&app_root)?.to_string_lossy(), dryrun)?; }
+    if (kind == RustProjectKind::Service || worker_service) && contracts_layout::new_host_directory(&crate_dir).join("Cargo.toml").is_file() {
+        add_cargo_member(&app_root, &format!("{}/sdk/rust", crate_path.display()), dryrun)?;
+    }
     add_project_to_manifest(&app_root, kind, &name, &description, matches, dryrun)?;
+    if !dryrun {
+        let path = app_root.join(".forklaunch/manifest.toml");
+        let mut manifest = read_manifest_value(&path)?;
+        if let Some(project) = project_table_mut(&mut manifest, &name) {
+            if contracts_layout::new_host_directory(&crate_dir).join("Cargo.toml").is_file() && (kind == RustProjectKind::Service || worker_service) {
+                project.get_mut("metadata").and_then(Value::as_table_mut).context("missing metadata")?.insert("sdkLayout".into(),Value::String("project-local-v1".into()));
+            }
+            if kind==RustProjectKind::Worker { project.get_mut("metadata").and_then(Value::as_table_mut).context("missing metadata")?.insert("workerService".into(), Value::Boolean(worker_service)); }
+            if kind==RustProjectKind::Worker && (new_project || existing_service) { project.get_mut("metadata").and_then(Value::as_table_mut).context("missing metadata")?.insert("contractExport".into(), Value::Boolean(worker_service)); }
+            if kind==RustProjectKind::Worker { project.get_mut("metadata").and_then(Value::as_table_mut).context("missing metadata")?.insert("workerRuntime".into(),Value::String(if apalis{"apalis"}else{"leased"}.into())); }
+            if new_project && kind == RustProjectKind::Service {
+                if !postgres { if let Some(resources)=project.get_mut("resources").and_then(Value::as_table_mut) { resources.remove("database"); } }
+                project.get_mut("metadata").and_then(Value::as_table_mut).context("missing metadata")?.insert("persistence".into(), Value::String(if postgres { "postgresql" } else { "memory" }.into()));
+            }
+            project
+                .get_mut("metadata")
+                .and_then(Value::as_table_mut)
+                .context("missing metadata")?
+                .insert(
+                    "cratePath".into(),
+                    Value::String(crate_path.to_string_lossy().into_owned()),
+                );
+            if contracts_layout::is_native_service(&crate_dir) {
+                contracts_layout::set_artifact_paths(
+                    project.get_mut("metadata").and_then(Value::as_table_mut).context("missing metadata")?,
+                    &name,
+                );
+            }
+        }
+        write_manifest_value(&path, &manifest)?;
+    }
     ensure_rust_local_library_dependencies(&app_root, dryrun)?;
     ensure_rust_docker_compose_project(&app_root, kind, &name, dryrun)?;
     ensure_rust_package_scripts(&app_root, kind, &name, dryrun)?;
+    if !dryrun && postgres { service_database::compose(&app_root, &name)?; }
     if !dryrun && let Some(backend) = backend {
         worker::mark(&app_root, &name, backend)?;
         worker::compose(&app_root, &name, backend)?;
@@ -1223,6 +1827,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
         }
     }
 
+    if !dryrun { language_images::reconcile(&app_root)?; }
     log_ok!(
         stdout,
         "Generated Rust {} {} at {}",
@@ -1251,8 +1856,33 @@ fn service_templates(crate_dir: &Path, name: &str, description: &str) -> Vec<Ren
     let crate_module = name.to_case(Case::Snake);
     vec![
         RenderedTemplate {
+            path: crate_dir.join("src/persistence/compliance_schema.rs"),
+            content: render_static_rust_template("rust/project/service/src/persistence/compliance_schema.rs"),
+            context: None,
+        },
+        RenderedTemplate {
+            path: crate_dir.join("build.rs"),
+            content: render_static_rust_template("rust/project/service/build.rs"),
+            context: None,
+        },
+        RenderedTemplate {
+            path: crate_dir.join("src/contracts/mod.rs"),
+            content: contracts_mod_rs(&["health".to_string()]),
+            context: None,
+        },
+        RenderedTemplate {
+            path: crate_dir.join("src/contracts/models.rs"),
+            content: render_static_rust_template("rust/project/service/src/contracts/models.rs"),
+            context: None,
+        },
+        RenderedTemplate {
+            path: crate_dir.join("src/contracts/health.rs"),
+            content: render_static_rust_template("rust/project/service/src/contracts/health.rs"),
+            context: None,
+        },
+        RenderedTemplate {
             path: crate_dir.join("Cargo.toml"),
-            content: project_cargo_toml(name, description, true),
+            content: service_cargo_toml(name, description),
             context: None,
         },
         RenderedTemplate {
@@ -1395,50 +2025,122 @@ fn framework_rs_path() -> String {
     "../../.forklaunch/framework-rs".to_string()
 }
 
-fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result<()> {
+/// Whether a vendored framework snapshot holds exactly the sources this CLI
+/// would have vendored (its root manifest and lockfile are rewritten after
+/// copying, so only `crates/` is compared). Build outputs are ignored.
+pub(crate) fn vendored_framework_unmodified(snapshot: &Path) -> Result<bool> {
+    let mut expected = std::collections::BTreeMap::new();
+    fn collect(dir: &Dir<'_>, files: &mut std::collections::BTreeMap<PathBuf, Vec<u8>>) {
+        for file in dir.files() {
+            if !super::rust_source::is_source_path(file.path()) { continue; }
+            let mut path = file.path().to_path_buf();
+            match path.file_name().and_then(|name| name.to_str()) {
+                Some("Cargo.toml.template") => path.set_file_name("Cargo.toml"),
+                Some("Cargo.lock.template") => path.set_file_name("Cargo.lock"),
+                _ => {}
+            }
+            files.insert(path, file.contents().to_vec());
+        }
+        for child in dir.dirs() {
+            if super::rust_source::is_source_path(child.path()) { collect(child, files); }
+        }
+    }
+    collect(&FRAMEWORK_CRATES, &mut expected);
+    let crates = snapshot.join("crates");
+    let mut actual = std::collections::BTreeMap::new();
+    let mut pending = vec![crates.clone()];
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&directory) else { return Ok(false) };
+        for entry in entries {
+            let entry = entry?;
+            let path = entry.path();
+            if entry.file_type()?.is_dir() {
+                if entry.file_name() != "target" { pending.push(path); }
+            } else {
+                actual.insert(path.strip_prefix(&crates)?.to_path_buf(), std::fs::read(&path)?);
+            }
+        }
+    }
+    Ok(actual == expected)
+}
+
+/// Framework crates come from the `[framework]` selection: the registry, or an
+/// external checkout referenced in place. Nothing is vendored. Applications that
+/// still carry an unmodified vendored snapshot are migrated here.
+pub(crate) fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result<()> {
     if dryrun {
         return Ok(());
     }
-    let root = app_root.join(".forklaunch/framework-rs");
-    create_dir_all(&root)?;
-    let cargo = root.join("Cargo.toml");
-    if !cargo.exists() {
-        write(cargo, FRAMEWORK_CARGO)?;
+    if !dependencies::configured(app_root) {
+        dependencies::migrate_vendored_framework(app_root, dryrun)?;
     }
-    write_embedded_sources(&FRAMEWORK_CRATES, &root.join("crates"))?;
-    ensure_literal_json_patch(
-        app_root,
-        ".forklaunch/framework-rs/crates/vendor/serde_json",
-    )?;
-    ensure_literal_json_patch(&root, "crates/vendor/serde_json")
+    if dependencies::configured(app_root) {
+        return dependencies::prepare(app_root, dryrun);
+    }
+    // A modified snapshot stays authoritative until the application removes it.
+    if app_root.join("vendor/framework/Cargo.toml").exists()
+        && !app_root.join("vendor/framework/Cargo.lock").exists()
+    {
+        write(app_root.join("vendor/framework/Cargo.lock"), FRAMEWORK_LOCK)?;
+    }
+    remove_literal_json_patch(app_root)
 }
 
-// Existing applications need the same transitive parser as newly generated roots.
-// Preserve explicit application patches; their compatibility remains application-owned.
-fn ensure_literal_json_patch(root: &Path, vendor: &str) -> Result<()> {
+/// Applications use upstream `serde_json`. Earlier releases patched it to a
+/// vendored copy; remove only that generated patch and its copy, keeping any
+/// patch the application chose itself.
+pub(super) fn remove_literal_json_patch(root: &Path) -> Result<()> {
     let path = root.join("Cargo.toml");
-    if !path.exists() {
+    let Ok(original) = read_to_string(&path) else {
         return Ok(());
-    }
-    let original = read_to_string(&path)?;
+    };
     let mut cargo: toml_edit::DocumentMut = original.parse()?;
-    if cargo
+    let generated = cargo
         .get("patch")
         .and_then(|patch| patch.get("crates-io"))
         .and_then(|registry| registry.get("serde_json"))
-        .is_some()
-    {
-        return Ok(());
+        .and_then(|patch| patch.get("path"))
+        .and_then(|path| path.as_str())
+        .is_some_and(|path| path.ends_with("vendor/serde_json"));
+    if generated {
+        let registry = cargo["patch"]["crates-io"].as_table_like_mut().context("Expected [patch.crates-io]")?;
+        registry.remove("serde_json");
+        if registry.is_empty() {
+            let patch = cargo["patch"].as_table_like_mut().context("Expected [patch]")?;
+            patch.remove("crates-io");
+            if patch.is_empty() {
+                cargo.remove("patch");
+            }
+        }
     }
-    let mut patch = toml_edit::InlineTable::new();
-    patch.insert("path", vendor.into());
-    cargo["patch"]["crates-io"]["serde_json"] = toml_edit::value(patch);
-    write(path, cargo.to_string())?;
+    if let Some(excludes) = cargo
+        .get_mut("workspace")
+        .and_then(|workspace| workspace.get_mut("exclude"))
+        .and_then(|exclude| exclude.as_array_mut())
+    {
+        excludes.retain(|value| value.as_str() != Some("vendor/serde_json"));
+    }
+    let updated = cargo.to_string();
+    if updated != original {
+        write(&path, updated)?;
+    }
+    // The generated copy identifies itself; anything else under that path stays.
+    let vendored = root.join("vendor/serde_json");
+    if read_to_string(vendored.join("UPSTREAM.md"))
+        .is_ok_and(|notes| notes.starts_with("# serde_json 1.0.151: literal map keys"))
+    {
+        remove_dir_all(&vendored)?;
+        let vendor = root.join("vendor");
+        if std::fs::read_dir(&vendor)?.next().is_none() {
+            std::fs::remove_dir(vendor)?;
+        }
+    }
     Ok(())
 }
 
-fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
+pub(super) fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
     for file in dir.files() {
+        if !super::rust_source::is_source_path(file.path()) { continue; }
         // Cargo excludes nested manifests and lockfiles from published CLI sources.
         // Restore their names when writing the embedded workspaces.
         let mut path = root.join(file.path());
@@ -1459,9 +2161,18 @@ fn write_embedded_sources(dir: &Dir<'_>, root: &Path) -> Result<()> {
         }
     }
     for child in dir.dirs() {
+        if !super::rust_source::is_source_path(child.path()) { continue; }
         write_embedded_sources(child, root)?;
     }
     Ok(())
+}
+
+fn service_routes_directory(directory: &Path) -> PathBuf {
+    if directory.join("lib.rs").exists() {
+        directory.join("api/routes")
+    } else {
+        directory.join("src/routes")
+    }
 }
 
 fn service_lib_rs(name: &str) -> String {
@@ -1522,28 +2233,67 @@ fn routes_mod_rs(modules: &[String]) -> String {
     )
 }
 
+fn contracts_mod_rs(modules: &[String]) -> String {
+    let mut modules = modules.to_vec();
+    modules.sort();
+    modules.dedup();
+    render_rust_template(
+        "rust/project/service/src/contracts/mod.rs",
+        &RustRoutesModTemplate {
+            has_health: false,
+            modules: modules
+                .into_iter()
+                .map(|module| RustRouteModuleTemplate { module })
+                .collect(),
+        },
+    )
+}
+
+fn router_contract_rs(router_name: &str) -> String {
+    render_rust_template(
+        "rust/router/contract.rs",
+        &RustRouterTemplate {
+            router_module: router_name.to_case(Case::Snake),
+            router_name: escape_rust_string(router_name),
+            route_title: router_name.to_case(Case::Title),
+            response_name: format!("{}Response", router_name.to_case(Case::Pascal)),
+        },
+    )
+}
+
 fn native_routes_mod_rs(modules: &[String]) -> String {
     let mut modules = modules.to_vec();
     modules.sort();
     modules.dedup();
-    render_rust_template("rust/router/native_routes_mod.rs", &RustRoutesModTemplate {
-        has_health: false,
-        modules: modules.into_iter().map(|module| RustRouteModuleTemplate { module }).collect(),
-    })
+    render_rust_template(
+        "rust/router/native_routes_mod.rs",
+        &RustRoutesModTemplate {
+            has_health: false,
+            modules: modules
+                .into_iter()
+                .map(|module| RustRouteModuleTemplate { module })
+                .collect(),
+        },
+    )
 }
 
 fn native_router_rs(router_name: &str) -> String {
-    render_rust_template("rust/router/native_router.rs", &RustRouterTemplate {
-        router_name: escape_rust_string(router_name),
-        route_title: router_name.to_case(Case::Title),
-        response_name: format!("{}Response", router_name.to_case(Case::Pascal)),
-    })
+    render_rust_template(
+        "rust/router/native_router.rs",
+        &RustRouterTemplate {
+            router_module: router_name.to_case(Case::Snake),
+            router_name: escape_rust_string(router_name),
+            route_title: router_name.to_case(Case::Title),
+            response_name: format!("{}Response", router_name.to_case(Case::Pascal)),
+        },
+    )
 }
 
 fn router_rs(router_name: &str) -> String {
     render_rust_template(
         "rust/router/router.rs",
         &RustRouterTemplate {
+            router_module: router_name.to_case(Case::Snake),
             router_name: escape_rust_string(router_name),
             route_title: router_name.to_case(Case::Title),
             response_name: format!("{}Response", router_name.to_case(Case::Pascal)),
@@ -1680,7 +2430,7 @@ fn render_rust_template<T: Content>(template_path: &str, data: &T) -> String {
         .unwrap_or_else(|error| panic!("Invalid embedded Rust template {template_path}: {error:#}"))
 }
 
-fn render_static_rust_template(template_path: &str) -> String {
+pub(super) fn render_static_rust_template(template_path: &str) -> String {
     render_rust_template(template_path, &EmptyRustTemplate {})
 }
 
@@ -1706,7 +2456,14 @@ fn project_cargo_toml(name: &str, description: &str, has_binary: bool) -> String
     )
 }
 
-fn application_manifest(
+fn service_cargo_toml(name: &str, description: &str) -> String {
+    let base = project_cargo_toml(name, description, true).replace("[dependencies]", "[dependencies]\nserde_json = \"1\"");
+    format!(
+        "{base}\n[build-dependencies]\nforklaunch-core = {{ path = \"../../.forklaunch/framework-rs/crates/core\", features = [\"compliance-artifact\", \"typed-schema\", \"build\"] }}\n"
+    )
+}
+
+pub(crate) fn application_manifest(
     name: &str,
     description: &str,
     author: &str,
@@ -1729,7 +2486,8 @@ fn application_manifest(
     )
 }
 
-fn mixed_typescript_sdk_templates(root_path: &Path, name: &str) -> Vec<RenderedTemplate> {
+fn mixed_typescript_sdk_templates(root_path: &Path, name: &str, sdk_targets: &[String]) -> Vec<RenderedTemplate> {
+    let target = if sdk_targets.iter().any(|target| target == "rust") { "all" } else { "typescript" };
     let package_name = name.to_case(Case::Kebab);
     vec![
         RenderedTemplate {
@@ -1743,12 +2501,12 @@ fn mixed_typescript_sdk_templates(root_path: &Path, name: &str) -> Vec<RenderedT
                     "dev": "forklaunch dev",
                     "rust:build": "cargo build --workspace",
                     "rust:test": "cargo test --workspace",
-                    "rust:fmt": "cargo fmt --all",
-                    "rust:lint": "cargo clippy --workspace --all-targets",
-                    "sdk:generate": "forklaunch sdk generate --target typescript --from contract",
-                    "sdk:check": "forklaunch sdk generate --target typescript --from contract --check",
-                    "sdk:typecheck": "pnpm --filter @forklaunch-generated/sdk build",
-                    "sdk:watch": "forklaunch sdk watch --target typescript --from contract"
+                    "rust:fmt": "cargo fmt",
+                    "rust:lint": "cargo clippy --workspace --all-targets --no-deps",
+                    "sdk:generate": format!("forklaunch sdk generate --target {target} --from contract"),
+                    "sdk:check": format!("forklaunch sdk generate --target {target} --from contract --check"),
+                    "sdk:typecheck": "pnpm --filter '@forklaunch-generated/*' --if-present build",
+                    "sdk:watch": format!("forklaunch sdk watch --target {target} --from contract")
                 }
             }))
             .unwrap(),
@@ -1756,7 +2514,7 @@ fn mixed_typescript_sdk_templates(root_path: &Path, name: &str) -> Vec<RenderedT
         },
         RenderedTemplate {
             path: root_path.join("pnpm-workspace.yaml"),
-            content: "packages:\n  - \"sdks/typescript\"\n".to_string(),
+            content: "packages:\n  - \"sdks/typescript\"\n  - \"src/client-sdk/events/typescript\"\n  - \"src/*/events/typescript\"\n".to_string(),
             context: None,
         },
         RenderedTemplate {
@@ -1845,7 +2603,9 @@ fn remove_rust_docker_compose_project(app_root: &Path, name: &str) -> Result<()>
     }
     let mut compose = read_or_create_rust_docker_compose(&compose_path)?;
     compose.services.shift_remove(name);
-    compose.services.retain(|_, service| modules::ecommerce_worker_owner(service) != Some(name));
+    compose
+        .services
+        .retain(|_, service| modules::ecommerce_worker_owner(service) != Some(name) && worker::producer_owner(service) != Some(name));
     write(&compose_path, yaml_to_string(&compose)?)
         .with_context(|| format!("Failed to update {}", compose_path.display()))
 }
@@ -1887,6 +2647,10 @@ fn rust_docker_service(
     environment.insert("RUST_LOG".to_string(), "info".to_string());
     if let Some(port) = port {
         environment.insert("PORT".to_string(), port.to_string());
+        environment.insert(
+            "PUBLIC_ORIGIN".to_string(),
+            format!("http://localhost:{port}"),
+        );
     }
     if matches!(kind, RustProjectKind::Worker) {
         environment.insert("QUEUE_NAME".to_string(), format!("{app_name}-{name}-dev"));
@@ -1958,6 +2722,8 @@ fn ensure_rust_package_scripts(
         return Ok(());
     }
 
+    // The first native project may create the root package/workspace here.
+    sdk_typescript::reconcile(app_root)?;
     let package_path = app_root.join("package.json");
     if !package_path.exists() {
         return Ok(());
@@ -1983,11 +2749,11 @@ fn ensure_rust_package_scripts(
     );
     scripts.insert(
         "rust:fmt".to_string(),
-        JsonValue::String("cargo fmt --all".to_string()),
+        JsonValue::String("cargo fmt".to_string()),
     );
     scripts.insert(
         "rust:lint".to_string(),
-        JsonValue::String("cargo clippy --workspace --all-targets".to_string()),
+        JsonValue::String("cargo clippy --workspace --all-targets --no-deps".to_string()),
     );
     scripts.insert(
         format!("build:{name}"),
@@ -2003,9 +2769,17 @@ fn ensure_rust_package_scripts(
             JsonValue::String(format!("cargo run -p {name}")),
         );
     }
+    if kind==RustProjectKind::Worker {
+        let manifest=read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+        if project_table(&manifest,name).and_then(|project|project.get("metadata")).and_then(|metadata|metadata.get("workerService")).and_then(Value::as_bool)==Some(true) {
+            scripts.insert(format!("dev:{name}:worker"),JsonValue::String(format!("cargo run -p {name} --bin {name}-worker")));
+            scripts.insert(format!("dev:{name}:server"),JsonValue::String(format!("cargo run -p {name} --bin {name}")));
+        }
+    }
 
     write(&package_path, serde_json::to_string_pretty(&package)?)
-        .with_context(|| format!("Failed to update {}", package_path.display()))
+        .with_context(|| format!("Failed to update {}", package_path.display()))?;
+    Ok(())
 }
 
 fn remove_rust_package_scripts(app_root: &Path, name: &str) -> Result<()> {
@@ -2020,6 +2794,8 @@ fn remove_rust_package_scripts(app_root: &Path, name: &str) -> Result<()> {
         .and_then(JsonValue::as_object_mut)
     {
         for script in [
+            format!("dev:{name}:worker"),
+            format!("dev:{name}:server"),
             format!("dev:{name}"),
             format!("build:{name}"),
             format!("test:{name}"),
@@ -2029,7 +2805,8 @@ fn remove_rust_package_scripts(app_root: &Path, name: &str) -> Result<()> {
     }
 
     write(&package_path, serde_json::to_string_pretty(&package)?)
-        .with_context(|| format!("Failed to update {}", package_path.display()))
+        .with_context(|| format!("Failed to update {}", package_path.display()))?;
+    sdk_typescript::reconcile(app_root)
 }
 
 fn read_package_json(package_path: &Path) -> Result<JsonValue> {
@@ -2075,6 +2852,13 @@ fn edit_cargo_members(root: &Path, update: impl FnOnce(&mut toml_edit::Array)) -
         .as_array_mut()
         .context("Expected workspace.members array")?;
     update(members);
+    // Keep one member per line, as the generated workspace starts out.
+    for member in members.iter_mut() {
+        member.decor_mut().set_prefix("\n    ");
+        member.decor_mut().set_suffix("");
+    }
+    members.set_trailing("\n");
+    members.set_trailing_comma(true);
     let updated = cargo.to_string();
     if updated != original {
         write(path, updated)?;
@@ -2416,7 +3200,8 @@ fn update_rust_project_local_library_dependencies(
     let project_dir = app_root.join(&project.crate_path);
 
     dependencies.retain(|dependency_name, dependency| {
-        if library_names.contains(dependency_name) {
+        let package = dependency.get("package").and_then(Value::as_str).unwrap_or(dependency_name);
+        if library_names.contains(package) {
             return true;
         }
 
@@ -2434,6 +3219,27 @@ fn update_rust_project_local_library_dependencies(
         if library.name == project.name {
             continue;
         }
+        // A relocated registered library leaves an unresolved local path behind.
+        // Repair that reference by package identity, retaining aliases and flags.
+        // Existing valid overrides and registry/git dependencies remain owned by the app.
+        let mut referenced = false;
+        for (alias, dependency) in dependencies.iter_mut() {
+            let package = dependency.get("package").and_then(Value::as_str).unwrap_or(alias);
+            if package != library.name { continue; }
+            referenced = true;
+            if let Some(path) = dependency_path(dependency)
+                && !project_dir.join(path).join("Cargo.toml").is_file()
+                && let Some(table) = dependency.as_table_mut()
+            {
+                table.insert("path".into(), Value::String(relative_cargo_path(&project.crate_path, &library.crate_path)));
+            }
+        }
+        // Existing dependency flags and explicit aliases belong to the application.
+        if referenced || dependencies.values().any(|dependency| {
+            dependency_path(dependency).is_some_and(|path| {
+                normalize_path(project_dir.join(path)) == normalize_path(app_root.join(&library.crate_path))
+            })
+        }) { continue; }
         let mut dependency = Map::new();
         dependency.insert(
             "path".to_string(),
@@ -2477,12 +3283,13 @@ fn remove_registered_library_dependency(
         let Some(dependencies) = cargo.get_mut("dependencies").and_then(Value::as_table_mut) else {
             continue;
         };
-        let matches_registration = dependencies
-            .get(name)
-            .and_then(dependency_path)
-            .is_some_and(|path| normalize_path(project_dir.join(path)) == removed_path);
-        if matches_registration {
-            dependencies.remove(name);
+        let previous_count = dependencies.len();
+        dependencies.retain(|alias, dependency| {
+            let package = dependency.get("package").and_then(Value::as_str).unwrap_or(alias);
+            package != name || !dependency_path(dependency)
+                .is_some_and(|path| normalize_path(project_dir.join(path)) == removed_path)
+        });
+        if dependencies.len() != previous_count {
             write(&cargo_path, toml::to_string_pretty(&cargo)?)
                 .with_context(|| format!("Failed to update {}", cargo_path.display()))?;
         }
@@ -2563,11 +3370,11 @@ fn detect_rust_project_kind(app_root: &Path, name: &str) -> Result<RustProjectKi
         return Ok(kind);
     }
 
-    let crate_dir = app_root.join("crates").join(name);
-    if crate_dir.join("src").join("jobs").join("mod.rs").exists() {
+    let crate_dir = app_root.join(discovery::path(app_root, &manifest, name)?.context("Missing Rust project path")?);
+    if ["consumer/worker.rs", "consumer/worker_hooks.rs", "worker.rs", "src/jobs/mod.rs"].iter().any(|path| crate_dir.join(path).is_file()) {
         return Ok(RustProjectKind::Worker);
     }
-    if crate_dir.join("src").join("routes").join("mod.rs").exists() {
+    if ["api/routes/mod.rs", "src/routes/mod.rs"].iter().any(|path| crate_dir.join(path).is_file()) {
         return Ok(RustProjectKind::Service);
     }
     Ok(RustProjectKind::Library)
@@ -2610,44 +3417,17 @@ fn remove_project_from_manifest_value(
 }
 
 fn cleanup_missing_rust_projects(app_root: &Path) -> Result<()> {
-    let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
-    let mut manifest = read_manifest_value(&manifest_path)?;
-    let missing_projects = manifest
-        .get("projects")
-        .and_then(Value::as_array)
-        .map(|projects| {
-            projects
-                .iter()
-                .filter_map(|project| {
-                    let name = project.get("name").and_then(Value::as_str)?;
-                    let metadata = project.get("metadata").and_then(Value::as_table)?;
-                    if metadata.get("language").and_then(Value::as_str) != Some("rust") {
-                        return None;
-                    }
-                    let crate_path = metadata
-                        .get("cratePath")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
-                        .unwrap_or_else(|| format!("crates/{name}"));
-                    if app_root.join(&crate_path).join("Cargo.toml").exists() {
-                        None
-                    } else {
-                        Some((name.to_string(), crate_path))
-                    }
-                })
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    for (name, crate_path) in &missing_projects {
-        remove_project_from_manifest_value(&mut manifest, name, None)?;
-        remove_cargo_member(app_root, crate_path)?;
+    let manifest = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?;
+    let missing: Vec<_> = rust_workspace_projects(&manifest).into_iter()
+        .filter(|project| !app_root.join(&project.crate_path).join("Cargo.toml").is_file())
+        .collect();
+    for project in &missing {
+        delete_rust_project_inner(app_root, project.kind, &project.name, false)?;
     }
-
-    if !missing_projects.is_empty() {
-        write_manifest_value(&manifest_path, &manifest)?;
+    if !missing.is_empty() {
+        ensure_rust_local_library_dependencies(app_root, false)?;
+        language_images::reconcile(app_root)?;
     }
-
     Ok(())
 }
 
@@ -2728,10 +3508,14 @@ fn rename_native_service_defaults(crate_dir: &Path, old: &str, new: &str) -> Res
             continue;
         }
         let namespace = regex::Regex::new(&format!(
-            r"\b{}::", regex::escape(&old.to_case(Case::Snake)),
+            r"\b{}::",
+            regex::escape(&old.to_case(Case::Snake)),
         ))?;
         let source = namespace
-            .replace_all(&read_to_string(&path)?, format!("{}::", new.to_case(Case::Snake)))
+            .replace_all(
+                &read_to_string(&path)?,
+                format!("{}::", new.to_case(Case::Snake)),
+            )
             .into_owned()
             .replace(
                 &format!("unwrap_or_else(|_| \"{old}\".to_string())"),
@@ -2819,7 +3603,43 @@ fn update_rust_readme(app_root: &Path, target_name: &str, description: Option<&s
 }
 
 fn ensure_service_shape(crate_dir: &Path, name: &str) -> Result<()> {
+    if crate_dir.join("lib.rs").exists() {
+        return native_layout::convert_shape(crate_dir, name, RustProjectKind::Service);
+    }
     let crate_module = name.to_case(Case::Snake);
+    create_dir_all(crate_dir.join("src/contracts"))?;
+    create_dir_all(crate_dir.join("src/persistence"))?;
+    let compliance = crate_dir.join("src/persistence/compliance_schema.rs");
+    if !compliance.exists() {
+        write(&compliance, "//! Conversion requires an explicit audit of existing owned storage.\npub fn declarations() -> Vec<forklaunch_core::persistence::compliance::ComplianceEntity> {\n    compile_error!(\"Declare the converted service owned storage before emitting compliance metadata\");\n}\n")?;
+    }
+    write(
+        crate_dir.join("build.rs"),
+        render_static_rust_template("rust/project/service/build.rs"),
+    )?;
+    write(
+        crate_dir.join("src/contracts/mod.rs"),
+        contracts_mod_rs(&["health".to_string()]),
+    )?;
+    write(
+        crate_dir.join("src/contracts/health.rs"),
+        render_static_rust_template("rust/project/service/src/contracts/health.rs"),
+    )?;
+    write(
+        crate_dir.join("src/contracts/models.rs"),
+        render_static_rust_template("rust/project/service/src/contracts/models.rs"),
+    )?;
+    let cargo_path = crate_dir.join("Cargo.toml");
+    let manifest = read_to_string(&cargo_path)?;
+    let mut manifest: toml::Value = toml::from_str(&manifest)?;
+    let features = manifest["dependencies"]["forklaunch-core"].as_table_mut().unwrap()
+        .entry("features").or_insert_with(|| toml::Value::Array(Vec::new())).as_array_mut().unwrap();
+    if !features.iter().any(|feature| feature.as_str() == Some("typed-schema")) {
+        features.push(toml::Value::String("typed-schema".into()));
+    }
+    let generated: toml::Value = toml::from_str(&service_cargo_toml(name, ""))?;
+    manifest["build-dependencies"] = generated["build-dependencies"].clone();
+    write(cargo_path, toml::to_string_pretty(&manifest)?)?;
     create_dir_all(crate_dir.join("src").join("routes"))?;
     create_dir_all(crate_dir.join("src").join("domain"))?;
     create_dir_all(crate_dir.join("src").join("persistence"))?;
@@ -2860,6 +3680,9 @@ fn ensure_service_shape(crate_dir: &Path, name: &str) -> Result<()> {
 }
 
 fn ensure_worker_shape(crate_dir: &Path, name: &str) -> Result<()> {
+    if crate_dir.join("lib.rs").exists() {
+        return native_layout::convert_shape(crate_dir, name, RustProjectKind::Worker);
+    }
     let crate_module = name.to_case(Case::Snake);
     create_dir_all(crate_dir.join("src").join("jobs"))?;
     create_dir_all(crate_dir.join("src").join("config"))?;
@@ -2887,6 +3710,9 @@ fn ensure_worker_shape(crate_dir: &Path, name: &str) -> Result<()> {
 }
 
 fn ensure_library_shape(crate_dir: &Path, name: &str) -> Result<()> {
+    if crate_dir.join("lib.rs").exists() {
+        return native_layout::convert_shape(crate_dir, name, RustProjectKind::Library);
+    }
     let crate_module = name.to_case(Case::Snake);
     create_dir_all(crate_dir.join("src").join("error"))?;
     create_dir_all(crate_dir.join("src").join("models"))?;
@@ -2912,18 +3738,40 @@ fn ensure_library_shape(crate_dir: &Path, name: &str) -> Result<()> {
     Ok(())
 }
 
+fn rewrite_contracts_mod(directory: &Path) -> Result<()> {
+    let mut modules = rust_route_modules(directory)?;
+    modules.retain(|module| module != "models" && directory.join(format!("{module}.rs")).exists());
+    write(directory.join("mod.rs"), contracts_mod_rs(&modules))?;
+    Ok(())
+}
+
 fn rewrite_routes_mod(routes_dir: &Path, dryrun: bool, stdout: &mut StandardStream) -> Result<()> {
     let mut modules = rust_route_modules(routes_dir)?;
     let native = routes_dir.join("mod.rs").exists()
         && read_to_string(routes_dir.join("mod.rs"))?.contains("pub fn register_router(");
-    if native { modules.retain(|module| routes_dir.join(format!("{module}.rs")).exists()); }
-    let content = if native { native_routes_mod_rs(&modules) } else { routes_mod_rs(&modules) };
-    write_text_file(
-        &routes_dir.join("mod.rs"),
-        &content,
-        dryrun,
-        stdout,
-    )
+    if native {
+        modules.retain(|module| routes_dir.join(format!("{module}.rs")).exists());
+    }
+    let content = if native {
+        native_routes_mod_rs(&modules)
+    } else {
+        routes_mod_rs(&modules)
+    };
+    if let Some(project) = routes_dir.parent().and_then(Path::parent) {
+        if shared_module_contracts(project) {
+            rewrite_module_extensions(&project.join("api/contracts/extensions"), dryrun, stdout)?;
+        }
+    }
+    write_text_file(&routes_dir.join("mod.rs"), &content, dryrun, stdout)
+}
+
+fn shared_module_contracts(project: &Path) -> bool {
+    read_to_string(project.join("sdk.rs")).is_ok_and(|source| source.contains("pub use crate::api::contracts::registry::*"))
+}
+
+fn rewrite_module_extensions(directory: &Path, dryrun: bool, stdout: &mut StandardStream) -> Result<()> {
+    let modules = rust_route_modules(directory)?.into_iter().filter(|module| directory.join(format!("{module}.rs")).is_file()).collect::<Vec<_>>();
+    write_text_file(&directory.join("mod.rs"), &modules::extension_contracts_mod(&modules), dryrun, stdout)
 }
 
 fn rust_route_modules(routes_dir: &Path) -> Result<Vec<String>> {
@@ -3024,7 +3872,12 @@ fn write_rust_rendered_templates(
             }
             continue;
         }
-        writable_templates.push(template.clone());
+        let mut template = template.clone();
+        template.content = dependencies::render_for_path(&template.path, &template.content)?;
+        if !dryrun {
+            template.content = native_layout::format_source(&template.path, &template.content);
+        }
+        writable_templates.push(template);
     }
 
     write_rendered_templates(&writable_templates, dryrun, stdout)
@@ -3043,13 +3896,19 @@ fn is_user_editable_rust_file(path: &Path) -> bool {
         })
         .collect::<Vec<_>>();
 
-    if components.iter().any(|component| *component == "tests") {
+    if components
+        .iter()
+        .any(|component| *component == "tests" || *component == "__test__")
+    {
         return true;
     }
 
     let Some(src_index) = components.iter().position(|component| *component == "src") else {
         return false;
     };
+    if components.get(src_index + 2).is_some() && components[src_index + 1] != "lib.rs" {
+        return true;
+    }
     let Some(section) = components.get(src_index + 1).copied() else {
         return false;
     };
@@ -3077,7 +3936,8 @@ fn write_text_file(
         create_dir_all(parent)
             .with_context(|| format!("Failed to create parent directory for {}", path.display()))?;
     }
-    write(path, content).with_context(|| format!("Failed to write {}", path.display()))
+    write(path, native_layout::format_source(path, content))
+        .with_context(|| format!("Failed to write {}", path.display()))
 }
 
 fn write_text_file_preserving_existing(
@@ -3113,28 +3973,43 @@ fn escape_rust_string(value: &str) -> String {
 #[cfg(test)]
 mod workspace_tests {
     #[test]
-    fn literal_json_patch_updates_existing_roots_idempotently_and_preserves_overrides() {
+    fn native_snapshots_use_upstream_serde_json_without_a_root_patch() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join(".forklaunch")).unwrap();
+        std::fs::write(root.path().join(".forklaunch/manifest.toml"), "modules_path = \"src\"\n").unwrap();
+        let cargo_path = root.path().join("Cargo.toml");
+        let original = "# application-owned workspace\n[workspace]\nmembers = []\n";
+        std::fs::write(&cargo_path, original).unwrap();
+        super::ensure_embedded_framework(root.path(), false).unwrap();
+        assert_eq!(std::fs::read_to_string(&cargo_path).unwrap(), original);
+        // Nothing is vendored: the published framework crates are selected.
+        assert!(!root.path().join("vendor").exists());
+        assert!(!root.path().join(".forklaunch/framework-rs").exists());
+        assert!(super::dependencies::configured(root.path()));
+    }
+
+    #[test]
+    fn earlier_generated_parser_patches_are_removed_and_application_patches_kept() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("Cargo.toml");
-        std::fs::write(&path, "# user comment\n[workspace]\nmembers = []\n").unwrap();
-        super::ensure_literal_json_patch(
-            root.path(),
-            ".forklaunch/framework-rs/crates/vendor/serde_json",
-        )
-        .unwrap();
-        let first = std::fs::read_to_string(&path).unwrap();
-        assert!(first.contains("# user comment"));
-        let cargo: toml::Value = toml::from_str(&first).unwrap();
-        assert_eq!(
-            cargo["patch"]["crates-io"]["serde_json"]["path"].as_str(),
-            Some(".forklaunch/framework-rs/crates/vendor/serde_json")
-        );
-        super::ensure_literal_json_patch(root.path(), "replacement").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), first);
+        std::fs::write(&path, "# user comment\n[workspace]\nmembers = []\nexclude = [\".forklaunch/blueprint-rs\", \"vendor/serde_json\"]\n[patch.crates-io]\nserde_json = { path = \"vendor/serde_json\" }\n").unwrap();
+        std::fs::create_dir_all(root.path().join("vendor/serde_json")).unwrap();
+        std::fs::write(root.path().join("vendor/serde_json/UPSTREAM.md"), "# serde_json 1.0.151: literal map keys\n").unwrap();
+        super::remove_literal_json_patch(root.path()).unwrap();
+        let migrated = std::fs::read_to_string(&path).unwrap();
+        assert!(migrated.contains("# user comment") && !migrated.contains("serde_json") && !migrated.contains("[patch"), "{migrated}");
+        assert!(migrated.contains(".forklaunch/blueprint-rs"));
+        assert!(!root.path().join("vendor").exists());
+        super::remove_literal_json_patch(root.path()).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), migrated);
+
         let custom = "[workspace]\nmembers = []\n[patch.crates-io]\nserde_json = { path = \"custom/json\" }\n";
         std::fs::write(&path, custom).unwrap();
-        super::ensure_literal_json_patch(root.path(), "replacement").unwrap();
+        std::fs::create_dir_all(root.path().join("vendor/serde_json")).unwrap();
+        std::fs::write(root.path().join("vendor/serde_json/lib.rs"), "// application source").unwrap();
+        super::remove_literal_json_patch(root.path()).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), custom);
+        assert!(root.path().join("vendor/serde_json/lib.rs").is_file());
     }
 
     use super::*;
@@ -3168,6 +4043,8 @@ cratePath = "crates/jobs"
             &api,
             r#"[dependencies]
 models = { path = "../../shared/models" }
+domain_models = { package = "models", path = "../../shared/models", features = ["custom"] }
+external_models = { package = "models", path = "../../vendor/models" }
 manual = { path = "../../shared/manual" }
 "#,
         )
@@ -3181,6 +4058,8 @@ models = { path = "../../vendor/models" }
             .unwrap();
         let cargo: Value = toml::from_str(&read_to_string(api).unwrap()).unwrap();
         assert!(cargo["dependencies"].get("models").is_none());
+        assert!(cargo["dependencies"].get("domain_models").is_none());
+        assert_eq!(cargo["dependencies"]["external_models"]["path"].as_str(), Some("../../vendor/models"));
         assert_eq!(
             cargo["dependencies"]["manual"]["path"].as_str(),
             Some("../../shared/manual")
@@ -3310,5 +4189,61 @@ language = "rust"
             Some("crates/a")
         );
         assert!(source.contains("# user comment"));
+    }
+}
+
+#[cfg(test)]
+mod compliance_artifact_tests {
+    use super::*;
+
+    #[test]
+    fn sync_moves_generated_declarations_beside_the_contract_host_only() {
+        // Build scripts exactly as earlier releases generated them.
+        const NATIVE_SERVICE: &str = "mod build_assets;\n#[path = \"persistence/compliance_schema.rs\"]\nmod compliance_schema;\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n    println!(\"cargo:rerun-if-changed=persistence/compliance_schema.rs\");\n    println!(\"cargo:rerun-if-changed=compliance.json\");\n    let path = std::path::PathBuf::from(std::env::var(\"CARGO_MANIFEST_DIR\")?).join(\"compliance.json\");\n    let metadata = forklaunch_core::persistence::compliance::compliance_manifest(&compliance_schema::declarations()).to_string();\n    if std::fs::read_to_string(&path).ok().as_deref() != Some(metadata.as_str()) {\n        std::fs::write(path, metadata)?;\n    }\n    println!(\"cargo:rerun-if-changed=domain/schemas\");\n    println!(\"cargo:rerun-if-changed=api/contracts\");\n    println!(\"cargo:rerun-if-changed=sdk.rs\");\n    println!(\"cargo:rerun-if-changed=build_assets.rs\");\n    let evidence = forklaunch_core::build::provenance::ServiceBuild::capture(&[])?;\n    let output = forklaunch_core::build::service_sdks(&contracts::registry(), \"{{{name}}}\", \"ForkLaunchClient\")?;\n    let evidence = evidence.include_assets(&build_assets::declared_assets(&output)?)?;\n    let evidence = if let Some(bindings) = build_assets::binding_declarations()? { evidence.with_bindings(bindings) } else { evidence };\n    build_assets::emit(&output)?;\n    evidence.record(\"{{{name}}}\", &output)?;\n    Ok(())\n}\n";
+        const APALIS_WORKER: &str = "#[path = \"persistence/compliance_schema.rs\"]\nmod compliance_schema;\nmod build_assets;\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n    println!(\"cargo:rerun-if-changed=persistence/compliance_schema.rs\");\n    println!(\"cargo:rerun-if-changed=compliance.json\");\n    println!(\"cargo:rerun-if-changed=build_assets.rs\");\n    let metadata = forklaunch_core::persistence::compliance::compliance_manifest(&compliance_schema::declarations()).to_string();\n    let path = std::path::Path::new(env!(\"CARGO_MANIFEST_DIR\")).join(\"compliance.json\");\n    if std::fs::read_to_string(&path).ok().as_deref() != Some(metadata.as_str()) { std::fs::write(path, metadata)?; }\n    build_assets::generate()\n}\n";
+        for (template, legacy) in [("native-service", NATIVE_SERVICE), ("apalis-worker", APALIS_WORKER)] {
+            let root = tempfile::tempdir().unwrap();
+            let legacy = legacy.to_owned();
+            assert!(!legacy.contains("create_dir_all"), "{template}");
+            write(root.path().join("build.rs"), &legacy).unwrap();
+            write(root.path().join("compliance.json"), "{}").unwrap();
+            migrate_compliance_artifact(root.path()).unwrap();
+            let migrated = read_to_string(root.path().join("build.rs")).unwrap();
+            assert_eq!(migrated.matches(".forklaunch/compliance.json").count(), 2, "{template}");
+            assert!(migrated.contains("create_dir_all(path.parent()"), "{template}");
+            syn::parse_file(&migrated).unwrap();
+            assert!(!root.path().join("compliance.json").exists());
+
+            let custom = legacy.replace(".join(\"compliance.json\")", ".join(\"audit/compliance.json\")");
+            write(root.path().join("build.rs"), &custom).unwrap();
+            migrate_compliance_artifact(root.path()).unwrap();
+            assert_eq!(read_to_string(root.path().join("build.rs")).unwrap(), custom);
+        }
+    }
+}
+
+#[cfg(test)]
+mod source_snapshot_tests {
+    use super::*;
+    use include_dir::{DirEntry, File};
+
+    #[test]
+    fn receipts_source_writer_omits_nested_generated_state() {
+        let entries = [
+            DirEntry::File(File::new("core/src/build/mod.rs", b"source")),
+            DirEntry::File(File::new("core/compiler-tests/__pycache__/fixture.pyc", b"cache")),
+            DirEntry::File(File::new("core/tests/module.pyc", b"cache")),
+            DirEntry::File(File::new("core/tests/node_modules/pkg/index.js", b"dependency")),
+            DirEntry::File(File::new("core/.env.production", b"secret")),
+            DirEntry::File(File::new("core/.env.example", b"example")),
+        ];
+        let dir = Dir::new("", &entries);
+        let root = tempfile::tempdir().unwrap();
+        write_embedded_sources(&dir, root.path()).unwrap();
+        assert!(root.path().join("core/src/build/mod.rs").is_file());
+        assert!(root.path().join("core/.env.example").is_file());
+        assert!(!root.path().join("core/compiler-tests").exists());
+        assert!(!root.path().join("core/tests").exists());
+        assert!(!root.path().join("core/.env.production").exists());
     }
 }

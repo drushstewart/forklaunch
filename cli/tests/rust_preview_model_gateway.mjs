@@ -75,8 +75,8 @@ try {
   if (process.env.FORKLAUNCH_PREVIEW_GATEWAY_TS_ONLY === '1') {
     console.log(`Preview model gateway actual TypeScript: ${cases.length} cases PASS.`);
   } else {
-  if (!process.env.FORKLAUNCH_PREVIEW_GATEWAY_BINARY) execFileSync('cargo', ['build', '--manifest-path', 'blueprint-rs/Cargo.toml', '-p', 'forklaunch-blueprint-core', '--features', 'instance-gateway', '--example', 'preview_model_gateway'], { cwd: root, stdio: 'inherit', timeout: 180000 });
-  const binary = process.env.FORKLAUNCH_PREVIEW_GATEWAY_BINARY ?? path.join(root, 'blueprint-rs/target/debug/examples/preview_model_gateway');
+  if (!process.env.FORKLAUNCH_PREVIEW_GATEWAY_BINARY) execFileSync('cargo', ['build', '--manifest-path', 'framework-rs/Cargo.toml', '-p', 'forklaunch-core', '--features', 'instance-gateway', '--example', 'preview_model_gateway'], { cwd: root, stdio: 'inherit', timeout: 180000 });
+  const binary = process.env.FORKLAUNCH_PREVIEW_GATEWAY_BINARY ?? path.join(root, 'framework-rs/target/debug/examples/preview_model_gateway');
   const extras = [
     { name: 'default-above-preview-cap', kind: 'default', raw: raw.padEnd(8193, ' ') },
     { name: 'default-malformed-error-code', kind: 'default', raw: 'invalid private body' },

@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/tests/subject_outbox_postgres.rs

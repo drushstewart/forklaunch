@@ -22,7 +22,7 @@ const fixtures=[
  {schema:{anyOf:[{allOf:[{type:'string'},{enum:['a','b']}]},{type:'integer'}]},valid:['a','b',1],invalid:['c',true]},
 ];
 const inputs=fixtures.map(({schema,valid,invalid})=>({schema,cases:[...valid.map(value=>[value,true]),...invalid.map(value=>[value,false])]}));
-const outputs=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-sdk-codegen','--example','schema_bundle'],{cwd:root,input:JSON.stringify(inputs),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
+const outputs=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','--example','codegen_schema_bundle'],{cwd:root,input:JSON.stringify(inputs),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
 const temporary=mkdtempSync(path.join(tmpdir(),'fl-schema-types-'));
 try {
  let source='';

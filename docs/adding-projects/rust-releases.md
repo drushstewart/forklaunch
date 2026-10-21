@@ -116,9 +116,9 @@ Optional adapter and deployment checks remain separate from this release verific
 ## Native framework release acceptance
 
 Encryption is implemented in core; native worker support belongs to the existing
-blueprint worker-interface crate. Blueprint crates stay local in this framework-only
-release; generated workers retain their implementation snapshot and consume the
-published framework dependencies.
+blueprint worker-interface crate. Framework releases publish framework crates only;
+the blueprint follows in its own `rust-blueprint-v*` release, and generated workers
+depend on the published worker-interface and implementation crates.
 Publication order includes runtime, build and versioned development dependencies.
 The macro crate tests its public facade through an unversioned local development
 path, which Cargo omits from published metadata. This repository-only backedge

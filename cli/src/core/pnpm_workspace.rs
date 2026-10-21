@@ -178,8 +178,146 @@ fn ensure_minimum_release_age(pnpm_workspace: &mut PnpmWorkspace) {
 /// serialises this map directly without running the `ensure_*` helpers. Leaving
 /// it out there is what makes a newly scaffolded app fail to install for the
 /// first 24 hours after a framework release.
+/// Keep the scaffold's first-party release cohort coherent. Transitive caret
+/// ranges otherwise admit a newer core with a different exact MikroORM identity.
+/// Only new workspaces receive these defaults; existing user overrides survive.
+pub(crate) fn framework_release_overrides() -> Value {
+    use super::package_json::package_json_constants::*;
+    Value::Mapping(
+        [
+            (
+                Value::String("@forklaunch/better-auth-mikro-orm-fork".into()),
+                Value::String(BETTER_AUTH_MIKRO_ORM_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/bunrun".into()),
+                Value::String(BUNRUN_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/common".into()),
+                Value::String(COMMON_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/core".into()),
+                Value::String(CORE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/express".into()),
+                Value::String(EXPRESS_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/hyper-express".into()),
+                Value::String(HYPER_EXPRESS_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-billing-base".into()),
+                Value::String(BILLING_BASE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-billing-stripe".into()),
+                Value::String(BILLING_STRIPE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-ecommerce-base".into()),
+                Value::String(ECOMMERCE_BASE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-ecommerce-paypal".into()),
+                Value::String(ECOMMERCE_PAYPAL_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-ecommerce-stripe".into()),
+                Value::String(ECOMMERCE_STRIPE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-iam-base".into()),
+                Value::String(IAM_BASE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-messaging-base".into()),
+                Value::String(MESSAGING_BASE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-messaging-twilio".into()),
+                Value::String(MESSAGING_TWILIO_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-cac-base".into()),
+                Value::String(CAC_BASE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-worker-bullmq".into()),
+                Value::String(WORKER_BULLMQ_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-worker-redis".into()),
+                Value::String(WORKER_REDIS_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-worker-database".into()),
+                Value::String(WORKER_DATABASE_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/implementation-worker-kafka".into()),
+                Value::String(WORKER_KAFKA_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/infrastructure-redis".into()),
+                Value::String(INFRASTRUCTURE_REDIS_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/infrastructure-s3".into()),
+                Value::String(INFRASTRUCTURE_S3_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/interfaces-billing".into()),
+                Value::String(BILLING_INTERFACES_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/interfaces-ecommerce".into()),
+                Value::String(ECOMMERCE_INTERFACES_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/interfaces-iam".into()),
+                Value::String(IAM_INTERFACES_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/interfaces-messaging".into()),
+                Value::String(MESSAGING_INTERFACES_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/interfaces-cac".into()),
+                Value::String(CAC_INTERFACES_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/interfaces-worker".into()),
+                Value::String(WORKER_INTERFACES_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/internal".into()),
+                Value::String(INTERNAL_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/testing".into()),
+                Value::String(TESTING_VERSION.trim_start_matches('~').into()),
+            ),
+            (
+                Value::String("@forklaunch/universal-sdk".into()),
+                Value::String(UNIVERSAL_SDK_VERSION.trim_start_matches(['~', '^']).into()),
+            ),
+            (
+                Value::String("@forklaunch/validator".into()),
+                Value::String(VALIDATOR_VERSION.trim_start_matches('~').into()),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    )
+}
+
 fn default_other() -> BTreeMap<String, Value> {
     BTreeMap::from([
+        ("overrides".to_string(), framework_release_overrides()),
         ("minimumReleaseAge".to_string(), Value::Number(1440.into())),
         (
             "minimumReleaseAgeExclude".to_string(),
@@ -449,6 +587,32 @@ mod tests {
         let mut ws: PnpmWorkspace = from_str("packages:\n- core\n").unwrap();
         sanitize_minimum_release_age_exclude(&mut ws);
         assert!(!to_string(&ws).unwrap().contains("minimumReleaseAgeExclude"));
+    }
+
+    #[test]
+    fn fresh_workspace_pins_declared_framework_cohort() {
+        let dir = tempfile::tempdir().unwrap();
+        let generated = generate_pnpm_workspace(dir.path().to_str().unwrap(), &Vec::new())
+            .unwrap()
+            .unwrap();
+        let workspace: PnpmWorkspace = from_str(&generated.content).unwrap();
+        assert_eq!(
+            workspace.other["overrides"]["@forklaunch/core"].as_str(),
+            Some("3.0.1")
+        );
+        assert_eq!(
+            workspace.other["overrides"]["@forklaunch/testing"].as_str(),
+            Some("1.2.35")
+        );
+        let mut customized = workspace;
+        customized
+            .other
+            .insert("overrides".into(), from_str("custom: 1.2.3").unwrap());
+        let roundtrip: PnpmWorkspace = from_str(&to_string(&customized).unwrap()).unwrap();
+        assert_eq!(
+            roundtrip.other["overrides"]["custom"].as_str(),
+            Some("1.2.3")
+        );
     }
 
     #[test]

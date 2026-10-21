@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/tests/sdk_object_shapes.rs

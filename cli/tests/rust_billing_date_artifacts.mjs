@@ -16,17 +16,14 @@ function run(command,args,env={}) {
 try {
  mkdirSync(path.join(temporary,'src'));
  const crates={
-  'forklaunch-contract':'framework-rs/crates/forklaunch-contract',
-  'forklaunch-core':'framework-rs/crates/forklaunch-core',
-  'forklaunch-openapi':'framework-rs/crates/forklaunch-openapi',
-  'forklaunch-blueprint-core':'blueprint-rs/crates/forklaunch-blueprint-core',
-  'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/forklaunch-billing-interface',
-  'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/forklaunch-billing-axum'
+  'forklaunch-core':'framework-rs/crates/core',
+  'forklaunch-core':'framework-rs/crates/core',
+  'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/billing-interface',
+  'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/billing-axum'
  };
- const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-billing-axum'?', features = ["bound-checkout"]':''} }`).join('\n');
- const patches=readFileSync(path.join(root,'blueprint-rs/Cargo.toml'),'utf8').split('[patch.crates-io]')[1].replaceAll('path = "../framework-rs/',`path = "${root}/framework-rs/`);
- writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-date-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}\n[patch.crates-io]${patches}`);
- writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_contract::RouteContract> { vec![] }');
+ const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-core'?', features = ["openapi"]':name==='forklaunch-billing-axum'?', features = ["bound-checkout"]':''} }`).join('\n');
+ writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-date-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}`);
+ writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] }');
  writeFileSync(path.join(temporary,'src/main.rs'),`fn main() {
   let contract=std::path::PathBuf::from(std::env::var("ARTIFACT_DIR").unwrap()).join("contract.json");
   let openapi=contract.with_file_name("openapi.json");

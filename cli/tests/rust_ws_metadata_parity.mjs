@@ -54,7 +54,7 @@ try{
  execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-ws','--all-features','framework_schema_entry_conformance'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_FRAMEWORK_SOCKET_CONTRACT:framework},stdio:'inherit',timeout:300000});
  cases.push(JSON.parse(await readFile(framework,'utf8')));
  await writeFile(input,JSON.stringify(cases));
- execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-asyncapi','raw::tests'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_RAW_SOCKET_INPUT:input,FORKLAUNCH_TEST_RAW_SOCKET_OUTPUT:output,FORKLAUNCH_TEST_RAW_SOCKET_REFERENCES:references},stdio:'inherit',timeout:300000});
+ execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','raw::tests'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_RAW_SOCKET_INPUT:input,FORKLAUNCH_TEST_RAW_SOCKET_OUTPUT:output,FORKLAUNCH_TEST_RAW_SOCKET_REFERENCES:references},stdio:'inherit',timeout:300000});
  const native=JSON.parse(await readFile(output,'utf8'));
  const documents=[];
  for(let index=0;index<cases.length;index++){

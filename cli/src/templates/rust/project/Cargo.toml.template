@@ -10,12 +10,9 @@ description = "{{{description}}}"
 {{#uses_framework}}
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
-forklaunch-axum = { path = "{{{framework_rs_path}}}/crates/forklaunch-axum", features = ["mcp"] }
-forklaunch-common = { path = "{{{framework_rs_path}}}/crates/forklaunch-common" }
-forklaunch-contract = { path = "{{{framework_rs_path}}}/crates/forklaunch-contract" }
-forklaunch-core = { path = "{{{framework_rs_path}}}/crates/forklaunch-core", features = ["otlp"] }
-forklaunch-http = { path = "{{{framework_rs_path}}}/crates/forklaunch-http" }
-forklaunch-openapi = { path = "{{{framework_rs_path}}}/crates/forklaunch-openapi" }
+forklaunch-axum = { path = "{{{framework_rs_path}}}/crates/axum", features = ["mcp"] }
+forklaunch-common = { path = "{{{framework_rs_path}}}/crates/common" }
+forklaunch-core = {path = "{{{framework_rs_path}}}/crates/core", features = ["typed-schema", "openapi", "http", "otlp"] }
 {{/uses_framework}}
 {{#has_binary}}
 

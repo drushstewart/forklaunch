@@ -8,17 +8,13 @@ description = "{{{description}}}"
 
 [dependencies]
 serde_json = "1"
-forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/forklaunch-axum", features = ["mcp", "remote-jwks"] }
+forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/axum", features = ["mcp", "remote-jwks"] }
 axum = "0.8"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal"] }
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres"] }
-forklaunch-core = { path = "../../.forklaunch/framework-rs/crates/forklaunch-core", features = ["postgres", "encryption", "otlp"] }
-forklaunch-contract = { path = "../../.forklaunch/framework-rs/crates/forklaunch-contract" }
-forklaunch-openapi = { path = "../../.forklaunch/framework-rs/crates/forklaunch-openapi" }
-forklaunch-iam-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/forklaunch-iam-interface" }
-forklaunch-iam-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-base", features = ["postgres", "jwt-sessions", "browser-sessions", "oidc-sessions"] }
-forklaunch-iam-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/forklaunch-iam-axum", features = ["browser-sessions", "oidc-sessions"] }
+forklaunch-core = {path = "../../.forklaunch/framework-rs/crates/core", features = ["openapi", "auth", "encryption", "oidc", "otlp", "postgres", "remote-jwks", "domain"] }
+forklaunch-iam-interface = { path = "../../.forklaunch/blueprint-rs/crates/interfaces/iam-interface" }
+forklaunch-iam-base = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/iam-base", features = ["postgres", "jwt-sessions", "browser-sessions", "oidc-sessions"] }
+forklaunch-iam-axum = { path = "../../.forklaunch/blueprint-rs/crates/implementations/iam/iam-axum", features = ["browser-sessions", "oidc-sessions"] }
 
-forklaunch-auth = { path = "../../.forklaunch/framework-rs/crates/forklaunch-auth", features = ["remote-jwks", "oidc"] }
-forklaunch-blueprint-core = { path = "../../.forklaunch/blueprint-rs/crates/forklaunch-blueprint-core" }
 jsonwebtoken = "9"

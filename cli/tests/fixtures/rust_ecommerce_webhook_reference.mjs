@@ -5,10 +5,12 @@ import {readFile,realpath} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import vm from 'node:vm';
-export async function compareWebhooks({base,otherBase,peerBase,call,providerBase,bridgeBinary,setCaptureFailure,captureCount,mcpRpc,sdk}){
+export async function compareWebhooks({base,otherBase,peerBase,call,providerBase,bridgeBinary,setCaptureFailure,captureCount,mcpRpc,client}){
  const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../../..'),require=createRequire(import.meta.url);
  const tsc=process.env.TSC_BIN??path.join(root,'framework/node_modules/.bin/tsc');
- const ts=require(require.resolve('typescript',{paths:[path.dirname(await realpath(tsc))]}));
+ // TypeScript 7 no longer exposes transpileModule. Execute these actual
+ // controller sources with the same esbuild installed for the public SDK.
+ const {transform}=require(require.resolve('esbuild',{paths:[path.dirname(await realpath(tsc))]}));
  const Stripe=require(process.env.STRIPE_SDK_PATH??require.resolve('stripe',{paths:[path.dirname(await realpath(tsc)),path.join(root,'blueprint/ecommerce-stripe')]}));
  const db=new URL(process.env.FORKLAUNCH_TEST_POSTGRES_URL);db.username=process.env.FORKLAUNCH_TEST_ROLE;db.password='parity-test-only';
  const bridgeEnv={...process.env,DATABASE_URL:db.toString(),TENANT_ID:`${process.env.FORKLAUNCH_TEST_ROLE}-a`,ENCRYPTION_KEY:'ecommerce-fixture-key',FORKLAUNCH_FIXTURE_PROVIDER_BASE:providerBase};
@@ -19,7 +21,7 @@ export async function compareWebhooks({base,otherBase,peerBase,call,providerBase
   const timer=setTimeout(()=>child.kill('SIGKILL'),15000);
   try{assert.equal(await new Promise(resolve=>child.once('close',resolve)),0,stderr);const result=JSON.parse(stdout);if(result.error)throw Object.assign(new Error(result.error),{code:result.error});return result.ok;}finally{clearTimeout(timer);}
  }
- async function load(relative,imports={}){const exports={};vm.runInNewContext(ts.transpileModule(await readFile(path.join(root,relative),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,Buffer,Date,require(spec){if(spec in imports)return imports[spec];throw Error('unexpected runtime import '+spec);}});return exports;}
+ async function load(relative,imports={}){const module={exports:{}};const {code}=await transform(await readFile(path.join(root,relative),'utf8'),{loader:'ts',format:'cjs',target:'es2022',sourcefile:relative});vm.runInNewContext(code,{module,exports:module.exports,Buffer,Date,require(spec){if(spec in imports)return imports[spec];throw Error('unexpected runtime import '+spec);}});return module.exports;}
  async function value(response){assert.equal(response.status,200,await response.clone().text());return response.json();}
  async function json(endpoint,options){return value(await call(base,endpoint,options));}
  const schema={array:value=>value,optional:value=>value,string:{},unknown:{},schemaValidator:{},handlers:{}};
@@ -43,7 +45,7 @@ export async function compareWebhooks({base,otherBase,peerBase,call,providerBase
  const tokens=new Proxy({}, {get:(_,key)=>key}),telemetry={info(){},warn(){},error(){}};
  const ci={resolve:token=>({PaypalClient:paypalClient,STRIPE_WEBHOOK_SECRET:'whsec_fixture',PAYPAL_WEBHOOK_ID:'paypal-webhook-fixture'}[token]??telemetry),scopedResolver:token=>()=>services[token]};
  const handlers={};schema.handlers.post=(_validator,route,_options,callback)=>{handlers[route]=callback;return callback;};
- await load('blueprint/ecommerce-stripe/api/controllers/webhook.controller.ts',{'node:crypto':require('node:crypto'),'../../schema':schema,'@forklaunch/interfaces-ecommerce/types':{OrderStatus:{PENDING:'pending',PAID:'paid'}},stripe:{default:Stripe},'../../domain/schemas/webhook.schema':webhookSchema,'../../bootstrapper':{ci,tokens}});
+ await load('blueprint/ecommerce-stripe/api/controllers/webhook.controller.ts',{'node:crypto':require('node:crypto'),'../../schema':schema,'@forklaunch/interfaces-ecommerce/types':{OrderStatus:{PENDING:'pending',PAID:'paid'}},stripe:Stripe,'../../domain/schemas/webhook.schema':webhookSchema,'../../bootstrapper':{ci,tokens}});
  const created=[];let serial=0,cases=0;
  const address={name:'Buyer',line1:'Private Street',city:'Oakland',state:'CA',postalCode:'94601',country:'US'};
  await json('/catalog-import',{method:'POST',body:{products:[{externalId:'webhook-product',handle:'webhook-owned',title:'Callback fixture',variants:[{externalId:'webhook-variant',title:'Box',priceCents:100,initialStock:100}]}]}});
@@ -99,7 +101,7 @@ export async function compareWebhooks({base,otherBase,peerBase,call,providerBase
  assert.deepEqual(await state(distinctPurchase),{payment:'succeeded',order:'paid',cart:0});
  cases+=2;
  const sdkPurchase=await checkout('stripe'),sdkEvent=event('stripe',sdkPurchase,'sdk-webhook');
- const sdkResult=await sdk.createForkLaunchSdk({serviceBaseUrls:{ecommerce:base}}).ecommerce.webhook.handleStripeWebhook({body:sdkEvent,headers:headers('stripe',JSON.stringify(sdkEvent))});assert.equal(sdkResult.code,200);assert.equal(sdkResult.response,'Webhook event processed');
+ const sdkResult=await client.webhook.handleStripeWebhook({body:sdkEvent,headers:headers('stripe',JSON.stringify(sdkEvent))});assert.equal(sdkResult.code,200);assert.equal(sdkResult.response,'Webhook event processed');
  const mcpDenied=await mcpRpc(base,'tools/call',{name:'handleStripeWebhook',arguments:{body:sdkEvent,headers:{'stripe-signature':'invalid'}}});assert.equal(mcpDenied.isError,true);
  let paid=0;for(const purchase of created)if((await state(purchase)).order==='paid')paid++;
  console.log(`PASS ${cases-4} actual TypeScript/Rust provider webhook controller comparisons and 4 native replay/concurrency scenarios over restricted PostgreSQL/provider boundaries: verification, exact PayPal event preservation, paid/failed/mismatch, capture rollback/retry, replay, tenant isolation, SDK and MCP guards`);

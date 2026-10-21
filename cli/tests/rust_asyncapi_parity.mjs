@@ -14,7 +14,7 @@ const Ajv = createRequire(parserPath)('ajv');
 const temporary = mkdtempSync(join(tmpdir(), 'forklaunch-asyncapi-parity-'));
 try {
   const output = join(temporary, 'asyncapi.json');
-  const run = spawnSync('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-asyncapi', '--all-features'], {
+  const run = spawnSync('cargo', ['test', '--quiet', '--manifest-path', join(root, 'framework-rs/Cargo.toml'), '-p', 'forklaunch-core','--features','build,asyncapi-import', '--all-features'], {
     cwd: root, env: { ...process.env, FORKLAUNCH_TEST_ASYNCAPI_DOCUMENT: output, FORKLAUNCH_TEST_ASYNCAPI_TRAITS: `${output}.traits.json` },
     encoding: 'utf8', timeout: 300000, maxBuffer: 16 * 1024 * 1024
   });

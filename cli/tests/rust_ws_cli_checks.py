@@ -27,15 +27,15 @@ def run(args=(), failure=None):
 
 
 def snapshot():
-    paths = [Path('Cargo.toml'), Path('pnpm-workspace.yaml')]
-    for directory in ['sdks', '.forklaunch/asyncapi', '.forklaunch/socket-sdk-outputs']:
+    paths = [Path('Cargo.toml'), Path('src/pnpm-workspace.yaml')]
+    for directory in ['src/client-sdk', '.forklaunch/asyncapi', '.forklaunch/socket-sdk-outputs']:
         paths += [p for p in Path(directory).rglob('*') if p.is_file()]
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 
 
 baseline = snapshot()
 try:
-    source = Path('sdks/typescript-websocket/realtime/src/socket_chat.ts')
+    source = Path('src/client-sdk/typescript-websocket/realtime/socket_chat.ts')
     content = source.read_bytes()
     source.write_bytes(content + b'\n// drift\n')
     run(['--check'], failure='out of date')
@@ -48,9 +48,9 @@ try:
     assert len(removed) >= 2
     for name in removed:
         del reduced['sockets'][name]
-    preserved = Path(f'sdks/typescript-websocket/realtime/src/socket_{removed[0]}.ts')
+    preserved = Path(f'src/client-sdk/typescript-websocket/realtime/socket_{removed[0]}.ts')
     preserved.write_bytes(preserved.read_bytes() + b'\n// user-owned obsolete module\n')
-    manual = Path('sdks/rust/realtime-websocket-sdk/src/user.rs')
+    manual = Path('src/client-sdk/rust/realtime-websocket-sdk/user.rs')
     manual.write_text('// user-owned source\n')
     artifact.write_text(json.dumps(reduced))
     before = snapshot()
@@ -59,8 +59,8 @@ try:
     run()
     run(['--check'])
     for name in removed:
-        assert not Path(f'sdks/rust/realtime-websocket-sdk/src/socket_{name}.rs').exists()
-        source = Path(f'sdks/typescript-websocket/realtime/src/socket_{name}.ts')
+        assert not Path(f'src/client-sdk/rust/realtime-websocket-sdk/socket_{name}.rs').exists()
+        source = Path(f'src/client-sdk/typescript-websocket/realtime/socket_{name}.ts')
         if source == preserved:
             assert source.read_bytes().endswith(b'// user-owned obsolete module\n')
         else:
@@ -98,8 +98,8 @@ try:
         run(failure='must stay inside the application')
         assert snapshot() == baseline
         manifest.write_text(original_manifest)
-        directory = Path('sdks/typescript-websocket/realtime/src')
-        saved = directory.with_name('src.saved')
+        directory = Path('src/client-sdk/typescript-websocket/realtime')
+        saved = directory.with_name('realtime.saved')
         directory.rename(saved)
         directory.symlink_to(outside, target_is_directory=True)
         try:

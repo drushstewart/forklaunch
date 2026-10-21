@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/examples/typescript_basic_parity.rs

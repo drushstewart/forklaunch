@@ -1,0 +1,1 @@
+../../../../../../../../../../blueprint-rs/crates/implementations/ecommerce/ecommerce-base/migrations/9_payment_provider_bindings.sql

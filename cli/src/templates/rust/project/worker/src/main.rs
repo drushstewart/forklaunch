@@ -1,16 +1,17 @@
-use std::{env, fs, path::Path};
+use std::{env, fs, path::Path, error::Error, io};
 
 use {{crate_module}}::{
     WORKER_NAME, build_context, config::WorkerConfig, run_once, write_contract_artifacts,
 };
+use forklaunch_core::telemetry::otlp::TelemetryRuntime;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn Error>> {
     if export_contract_artifacts()? {
         return Ok(());
     }
 
-    let telemetry = forklaunch_core::telemetry::otlp::TelemetryRuntime::start(
+    let telemetry = TelemetryRuntime::start(
         WORKER_NAME, env!("CARGO_PKG_VERSION"),
     ).await?;
     let result = run();
@@ -20,7 +21,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn run() -> Result<(), Box<dyn std::error::Error>> {
+fn run() -> Result<(), Box<dyn Error>> {
     let context = build_context(WorkerConfig::from_env())?;
     let report = run_once(&context)?;
     println!(
@@ -30,7 +31,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn export_contract_artifacts() -> std::io::Result<bool> {
+fn export_contract_artifacts() -> io::Result<bool> {
     let mode = env::var("FORKLAUNCH_MODE").unwrap_or_default();
     if mode != "openapi" && mode != "contract" {
         return Ok(false);

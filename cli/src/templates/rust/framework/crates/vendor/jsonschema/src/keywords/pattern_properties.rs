@@ -1,0 +1,1 @@
+../../../../../../../../../../framework-rs/crates/vendor/jsonschema/src/keywords/pattern_properties.rs

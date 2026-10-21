@@ -25,9 +25,8 @@ async fn verify() {
     assert!(matches!(
         StreamsClient::new(&base)
             .events_watch_events(input("finite"))
-            .await
-            .unwrap(),
-        Reply::Error { status: 401, .. }
+            .await,
+        Err(SdkError::Contract(_))
     ));
     for mode in ["finite", "multiline"] {
         let Reply::Status200(mut stream) = client.events_watch_events(input(mode)).await.unwrap()
@@ -83,10 +82,10 @@ async fn verify() {
         .send()
         .await
         .unwrap();
-    let mut invalid_type = streams_sdk::SdkEventStream::<u8>::from_response(raw, 1048576).unwrap();
+    let mut invalid_type = streams_sdk::SdkEventStream::<u8>::from_response(raw, 1048576, "{}").unwrap();
     assert!(matches!(
         invalid_type.next().await,
-        Err(SdkError::Decode(_))
+        Err(SdkError::Contract(_))
     ));
     assert!(invalid_type.next().await.unwrap().is_none());
     assert!(client.clone().with_sse_event_limit(0).is_err());
@@ -117,7 +116,7 @@ async fn verify() {
     assert!(matches!(late.next().await, Err(SdkError::Sse(_))));
     assert!(matches!(
         client.events_watch_events(input("wrong")).await,
-        Err(SdkError::Stream(_))
+        Err(SdkError::Contract(_))
     ));
     let Reply::Status200(mut stream) = client.events_watch_events(input("broken")).await.unwrap()
     else {

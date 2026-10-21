@@ -17,7 +17,7 @@ if mode == 'deleted':
 else:
     name = 'renamed-shop' if mode == 'renamed' else 'spare-shop'
     worker = services[f'{name}-inventory-worker']
-    assert worker['command'] == [f'./target/release/{name}', '--worker']
+    assert worker['command'] == [f'/app/bin/{name}', '--worker']
     assert worker['x-forklaunch-ecommerce-worker-for'] == name
     assert worker['image'] == services[name]['image']
     assert not worker.get('ports')

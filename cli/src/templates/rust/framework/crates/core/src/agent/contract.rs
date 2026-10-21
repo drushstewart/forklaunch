@@ -1,0 +1,1 @@
+../../../../../../../../../framework-rs/crates/core/src/agent/contract.rs

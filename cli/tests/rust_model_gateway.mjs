@@ -48,8 +48,8 @@ try{
  }
  if(process.env.FORKLAUNCH_MODEL_GATEWAY_TS_ONLY==='1')console.log(`PASS ${cases.length} actual TypeScript managed model observations`);
  else{
-  if(!process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY)execFileSync('cargo',['build','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-blueprint-core','--features','instance-gateway','--example','model_gateway'],{cwd:root,stdio:'inherit',timeout:180000});
-  const binary=process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY??path.join(process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target'),'debug/examples/model_gateway');
+  if(!process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY)execFileSync('cargo',['build','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','instance-gateway','--example','model_gateway'],{cwd:root,stdio:'inherit',timeout:180000});
+  const binary=process.env.FORKLAUNCH_MODEL_GATEWAY_BINARY??path.join(process.env.CARGO_TARGET_DIR??path.join(root,'framework-rs/target'),'debug/examples/model_gateway');
   const extras=[];for(const chunked of [false,true])for(const bytes of [1048576,1048577])extras.push({kind:chunked?'chat':'models',...(chunked?{body}:{}),name:'raw-cap-'+bytes,raw:JSON.stringify(catalog).padEnd(bytes,' '),chunked,valid:bytes===1048576});
   queue=[...cases,...extras];const child=spawn(binary,[],{cwd:root,stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);
   child.stdin.end(JSON.stringify({base,actions:queue.map(({kind,body})=>({kind,body}))}));

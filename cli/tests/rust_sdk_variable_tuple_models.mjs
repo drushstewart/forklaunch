@@ -41,15 +41,15 @@ for(const tail of [{type:['string','null']},{anyOf:[{type:'string'},{type:'boole
  const validate=new Ajv2020({strict:false}).compile(schema);
  fixtures.push({schema,cases:[[],['x'],['x',null],['x',true],['x','y'],['x',42]].map(value=>({value,valid:validate(value)}))});
 }
-run('cargo',['build','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-sdk-codegen','--example','fixed_tuple_models']);
-const generated=JSON.parse(run(path.join(target,'debug/examples/fixed_tuple_models'),[],{input:JSON.stringify(fixtures.map(entry=>entry.schema))}));
+run('cargo',['build','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','build,asyncapi-import','--example','codegen_fixed_tuple_models']);
+const generated=JSON.parse(run(path.join(target,'debug/examples/codegen_fixed_tuple_models'),[],{input:JSON.stringify(fixtures.map(entry=>entry.schema))}));
 // Root references exercise both the local visitor type and generic parameter scopes.
 for(const name of ['SequenceVisitor','A','D','S']) {
  const schema={$schema:dialect,type:'array',prefixItems:[{$ref:'#'}],items:{$ref:'#'},maxItems:3};
  const inputs=[[],[[]],[[[]]],[[],[]],['x'],[null],[[],[],[],[]]];
  const validate=new Ajv2020({strict:false}).compile(schema);
  fixtures.push({schema,cases:inputs.map(value=>({value,valid:validate(value)}))});
- const [named]=JSON.parse(run(path.join(target,'debug/examples/fixed_tuple_models'),[name],{input:JSON.stringify([schema])}));
+ const [named]=JSON.parse(run(path.join(target,'debug/examples/codegen_fixed_tuple_models'),[name],{input:JSON.stringify([schema])}));
  assert.equal(named.root,name);generated.push(named);
 }
 assert.equal(generated.length,fixtures.length);

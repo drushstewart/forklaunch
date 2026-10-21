@@ -5,6 +5,7 @@ import {once} from 'node:events';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {actualValidator} from './rust_actual_validator_fixture.mjs';
+process.env.RUSTUP_TOOLCHAIN = 'stable';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {statics:v,validator,load}=actualValidator(root,(spec,file,load)=>spec==='@forklaunch/core/ws'?load(path.join(root,'framework/core/src/ws/webSocketLike.ts')):undefined);
 const {ForklaunchWebSocket}=load(path.join(root,'framework/ws/src/webSocket.ts'));

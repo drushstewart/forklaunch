@@ -31,6 +31,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
             .execute(&pool)
             .await?;
+    } else if std::env::args().any(|arg| arg == "--wait-checkout-lock") {
+        // Prove both checkout requests overlap at the real database boundary.
+        // A fixed provider delay cannot guarantee overlap on a loaded CI host.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(8);
+        loop {
+            let waiting: (i64,) = sqlx::query_as(
+                "SELECT count(*) FROM pg_locks lock JOIN pg_stat_activity activity ON activity.pid=lock.pid WHERE lock.locktype='advisory' AND NOT lock.granted AND activity.usename=$1 AND activity.datname=current_database()",
+            )
+            .bind(&role)
+            .fetch_one(&pool)
+            .await?;
+            if waiting.0 > 0 {
+                println!("PASS concurrent checkout waits on its database advisory lock");
+                break;
+            }
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "Second checkout did not reach the database lock while first checkout was pricing"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+        }
     } else if std::env::args().any(|arg| arg == "--inspect") {
         let audits: Vec<(String,)> = sqlx::query_as(
             "SELECT actor_id FROM fl_ecommerce.pii_read_audit WHERE tenant_id=ANY($1)",

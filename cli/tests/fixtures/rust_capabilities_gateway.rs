@@ -1,5 +1,8 @@
 use messages::capabilities::*;
-use forklaunch_blueprint_core::{email_client::{EmailAddresses,EmailSendRequest},sms_client::SmsSendRequest,voice_client::StartOutboundCallRequest};
+use forklaunch_core::http::email_client::EmailAddresses;
+use forklaunch_core::http::email_client::EmailSendRequest;
+use forklaunch_core::http::sms_client::SmsSendRequest;
+use forklaunch_core::http::voice_client::StartOutboundCallRequest;
 #[tokio::main]
 async fn main() -> Result<(),Box<dyn std::error::Error>> {
     let email=email_client()?;

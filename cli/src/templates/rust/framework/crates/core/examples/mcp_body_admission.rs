@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/examples/mcp_body_admission.rs

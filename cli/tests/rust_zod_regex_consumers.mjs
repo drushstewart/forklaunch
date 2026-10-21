@@ -108,9 +108,9 @@ try {
     "--manifest-path",
     "framework-rs/Cargo.toml",
     "-p",
-    "forklaunch-sdk-typescript",
+    "forklaunch-core","--features","build,asyncapi-import",
     "--example",
-    "socket_artifacts",
+    "typescript_socket_artifacts",
   ];
   run("cargo", build);
   const binary = path.join(target, "debug/examples/socket_artifacts");
@@ -172,7 +172,7 @@ try {
   }
   writeFileSync(
     path.join(work, "Cargo.toml"),
-    `[package]\nname="fl-zod-regex-consumers"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(root, "framework-rs/crates/forklaunch-ws"))},features=["transport","json-schema","zod-regex"]}\nserde={version="1",features=["derive"]}\nserde_json="=1.0.151"\ntokio={version="1",features=["net"]}\ntokio-tungstenite="0.30"\n`,
+    `[package]\nname="fl-zod-regex-consumers"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nforklaunch-ws={path=${JSON.stringify(path.join(root, "framework-rs/crates/ws"))},features=["transport","json-schema","zod-regex"]}\nserde={version="1",features=["derive"]}\nserde_json="=1.0.151"\ntokio={version="1",features=["net"]}\ntokio-tungstenite="0.30"\n`,
   );
   writeFileSync(path.join(work, "src/lib.rs"), generated.rust.socket_checks);
   writeFileSync(

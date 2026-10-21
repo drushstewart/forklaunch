@@ -1,1 +1,1 @@
-../../../../../framework-rs/crates/forklaunch-sdk-typescript/src/sse.ts
+../../../../../framework-rs/crates/core/src/typescript/sse.ts

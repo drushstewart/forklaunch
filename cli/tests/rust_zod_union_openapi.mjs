@@ -87,7 +87,7 @@ if(process.env.FORKLAUNCH_UNCONSTRAINED_NATIVE==='1'){
  const target=path.resolve(process.env.CARGO_TARGET_DIR??path.join(root,'framework-rs/target'));
  const env={...process.env,CARGO_TARGET_DIR:target,CARGO_BUILD_JOBS:process.env.CARGO_BUILD_JOBS??'1',CARGO_INCREMENTAL:'0'};
  const run=(command,args,options={})=>{const result=spawnSync(command,args,{cwd:root,env,encoding:'utf8',maxBuffer:8*1024*1024,...options});assert.equal(result.status,0,result.stdout+'\n'+result.stderr);return result.stdout;};
- run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-contract','--features','schema-validation','--example','uri_schema_parity']);
+ run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','--features','schema-validation','--example','uri_schema_parity']);
  let native=0;
  for(const {schema,values:inputs} of factoryNative){
   const result=run(path.join(target,'debug/examples/uri_schema_parity'),[],{input:[schema,...inputs].map(JSON.stringify).join('\n')+'\n'}).trim().split('\n');

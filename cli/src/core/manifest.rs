@@ -19,6 +19,7 @@ use crate::{
 };
 
 pub(crate) mod application;
+pub(crate) mod language;
 pub(crate) mod library;
 pub(crate) mod router;
 pub(crate) mod service;
@@ -130,6 +131,18 @@ pub(crate) fn next_available_redis_partition(projects: &[ProjectEntry]) -> u32 {
 
 #[derive(Debug, Serialize, Deserialize, Content, Clone, Default)]
 pub(crate) struct ProjectMetadata {
+    /// Explicit generated service SDK ownership; absent retains legacy layouts.
+    #[serde(rename="sdkLayout", alias="sdk_layout", default, skip_serializing_if="Option::is_none")]
+    pub(crate) sdk_layout: Option<String>,
+    /// Explicit opt-out for components without a framework HTTP contract exporter.
+    /// Absent means enabled, preserving existing service and worker behavior.
+    #[serde(
+        rename = "contractExport",
+        alias = "contract_export",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) contract_export: Option<bool>,
     #[serde(
         rename = "staticPath",
         alias = "static_path",
@@ -189,6 +202,13 @@ pub(crate) struct ProjectMetadata {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) worker_type: Option<String>,
+    #[serde(rename="workerRuntime",default,skip_serializing_if="Option::is_none")]
+    pub(crate) worker_runtime: Option<String>,
+    /// Worker project owns an independently runnable producer HTTP/MCP service.
+    #[serde(rename="workerService",default,skip_serializing_if="Option::is_none")]
+    pub(crate) worker_service: Option<bool>,
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub(crate) persistence: Option<String>,
     /// Generated durable worker supports a separate control-only executable role.
     #[serde(
         rename = "workerControlService",
@@ -263,6 +283,18 @@ pub(crate) struct ProjectEntry {
 /// Note: entity field classifications and retention policies are NOT stored here.
 /// They are scanned from source code at release/audit time and uploaded directly
 /// to the platform. This prevents leaking sensitive compliance metadata in the repo.
+/// `[framework]`: which Rust framework and blueprint crates the application uses.
+/// Kept on typed manifest views so TypeScript lifecycle edits preserve it.
+#[derive(Debug, Serialize, Deserialize, Content, Clone, Default, PartialEq)]
+pub(crate) struct FrameworkDependencies {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) blueprint_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) path: Option<String>,
+}
+
 #[derive(Debug, Serialize, Deserialize, Content, Clone, Default)]
 pub(crate) struct ComplianceManifestConfig {
     /// Allowed deployment regions (e.g., `["us-east-1", "eu-west-1"]`).
@@ -368,6 +400,9 @@ macro_rules! internal_config_struct {
             $vis platform_organization_id: Option<String>,
             #[serde(default, skip_serializing_if = "Option::is_none")]
             $vis compliance: Option<crate::core::manifest::ComplianceManifestConfig>,
+            // Rust framework crate selection; see `core::forklaunch_state`.
+            #[serde(default, skip_serializing_if = "Option::is_none")]
+            $vis framework: Option<crate::core::manifest::FrameworkDependencies>,
         }
     };
 }
@@ -477,6 +512,7 @@ macro_rules! config_struct {
                         platform_application_id: shadow.platform_application_id.clone(),
                         platform_organization_id: shadow.platform_organization_id.clone(),
                         compliance: shadow.compliance.clone(),
+                        framework: shadow.framework.clone(),
 
                         is_eslint: shadow.linter == "eslint",
                         is_biome: shadow.formatter == "biome",

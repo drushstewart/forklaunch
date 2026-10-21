@@ -1,0 +1,188 @@
+name: @@APP@@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: @@DATABASE@@
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run local setup first}
+      API_DB_PASSWORD: ${API_DB_PASSWORD:?Run local setup first}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD:?Run local setup first}
+      WORKER_DB_PASSWORD: ${WORKER_DB_PASSWORD:?Run local setup first}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./infra/init-db.sh:/docker-entrypoint-initdb.d/001-roles.sh:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -h 127.0.0.1 -U postgres -d @@DATABASE@@"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+  @@AUTH@@:
+    build:
+      context: .
+      dockerfile: Dockerfile.typescript
+      target: auth
+    environment:
+      DATABASE_URL: postgres://@@AUTH_ROLE@@:${AUTH_DB_PASSWORD}@postgres/@@DATABASE@@?options=-csearch_path%3Dauth
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET:?Run local setup first}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Run local setup first}
+      BETTER_AUTH_URL: ${PUBLIC_ORIGIN:-https://localhost:@@PORT@@}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://localhost:@@PORT@@}
+      SEED_DEMO: "@@SEED_DEMO@@"
+      DEMO_PASSWORD: ${DEMO_PASSWORD:?Run local setup first}
+      PORT: "3001"
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://localhost:3001/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+    depends_on:
+      postgres:
+        condition: service_healthy
+  migrate-notes:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    command: [@@SERVICE_BINARY@@, --migrate-only]
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres/@@DATABASE@@
+      DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+  migrate-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    command: [@@WORKER_BINARY@@, --migrate-only]
+    environment:
+      DATABASE_URL: postgres://postgres:${POSTGRES_PASSWORD}@postgres/@@DATABASE@@
+      DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT: "true"
+    depends_on:
+      migrate-notes:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+  @@SERVICE@@:
+    stop_grace_period: 30s
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    command: [@@SERVICE_BINARY@@]
+    environment:
+      DATABASE_URL: postgres://@@SERVICE_ROLE@@:${API_DB_PASSWORD}@postgres/@@DATABASE@@
+      DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT: "true"
+      ENCRYPTION_KEY_HEX: ${ENCRYPTION_KEY_HEX:?Run local setup first}
+      ENCRYPTION_KEY_ID: ${ENCRYPTION_KEY_ID:-primary}
+      ENCRYPTION_PREVIOUS_KEYS_JSON: ${ENCRYPTION_PREVIOUS_KEYS_JSON:-}
+      ENCRYPTION_LEGACY_KEY_HEX: ${ENCRYPTION_LEGACY_KEY_HEX:-}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
+      AUTH_INTERNAL_URL: http://@@AUTH@@:3001
+      # Explicit local-review exception: Docker auth traffic is not TLS encrypted.
+      ALLOW_PLAINTEXT_AUTH_TRANSPORT: "true"
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://localhost:@@PORT@@}
+      # Preserve MCP host validation for the gateway and internal Docker callers.
+      MCP_ALLOWED_HOSTS: ${MCP_ALLOWED_HOSTS:-localhost,127.0.0.1,@@SERVICE@@:8000}
+      LISTEN_ADDR: 0.0.0.0:8000
+      S3_URL: http://objects:9000
+      S3_BUCKET: @@DATABASE@@
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: @@DATABASE@@
+      S3_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD:?Run local setup first}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Run local setup first}@redis:6379/0
+    depends_on:
+      migrate-notes:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      @@AUTH@@:
+        condition: service_healthy
+      init-objects:
+        condition: service_completed_successfully
+  @@WORKER@@:
+    restart: unless-stopped
+    stop_grace_period: 30s
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    command: [@@WORKER_BINARY@@]
+    environment:
+      DATABASE_URL: postgres://@@WORKER_ROLE@@:${WORKER_DB_PASSWORD}@postgres/@@DATABASE@@
+      DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT: "true"
+      ENCRYPTION_KEY_HEX: ${ENCRYPTION_KEY_HEX}
+      ENCRYPTION_KEY_ID: ${ENCRYPTION_KEY_ID:-primary}
+      ENCRYPTION_PREVIOUS_KEYS_JSON: ${ENCRYPTION_PREVIOUS_KEYS_JSON:-}
+      ENCRYPTION_LEGACY_KEY_HEX: ${ENCRYPTION_LEGACY_KEY_HEX:-}
+      INTERNAL_AUTH_SECRET: ${INTERNAL_AUTH_SECRET}
+      @@CALLBACK_URL_ENV@@: http://@@SERVICE@@:8000
+      # Explicit local-review exception; callback payload encryption is separate from TLS.
+      ALLOW_PLAINTEXT_SERVICE_TRANSPORT: "true"
+      S3_URL: http://objects:9000
+      S3_BUCKET: @@DATABASE@@
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: @@DATABASE@@
+      S3_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD}
+    depends_on:
+      migrate-worker:
+        condition: service_completed_successfully
+      @@SERVICE@@:
+        condition: service_started
+      init-objects:
+        condition: service_completed_successfully
+
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.typescript
+      target: gateway
+      additional_contexts:
+        service-sdk: service:@@SERVICE@@
+    ports:
+      - "127.0.0.1:@@PORT@@:443"
+    volumes:
+      - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
+      - gateway-data:/data
+    depends_on:
+      - @@SERVICE@@
+      - @@AUTH@@
+  objects:
+    image: cgr.dev/chainguard/minio@sha256:6476f81b9739912fa9f50ceae2bb049a30336527cccd24beccfbeb4145f8f696
+    command: [server, /data, --console-address, ":9001"]
+    environment:
+      MINIO_ROOT_USER: @@DATABASE@@
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORE_PASSWORD:?Run local setup first}
+    volumes:
+      - objects:/data
+  redis:
+    image: redis:7-alpine
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Run local setup first}
+    command:
+      [
+        sh,
+        -c,
+        'exec redis-server --requirepass "$$REDIS_PASSWORD" --save "" --appendonly no',
+      ]
+  init-objects:
+    build:
+      context: .
+      dockerfile: Dockerfile.rust
+    command: [@@SERVICE_BINARY@@, --init-objects]
+    restart: on-failure
+    environment:
+      S3_URL: http://objects:9000
+      S3_BUCKET: @@DATABASE@@
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: @@DATABASE@@
+      S3_SECRET_ACCESS_KEY: ${OBJECT_STORE_PASSWORD}
+    depends_on:
+      - objects
+volumes:
+  database:
+  gateway-data:
+  objects:

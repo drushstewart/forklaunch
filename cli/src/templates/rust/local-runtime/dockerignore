@@ -1,0 +1,13 @@
+**/target
+**/node_modules
+.git
+.env
+secrets
+**/dist
+artifacts
+
+**/.env.local
+**/.env.*.local
+
+**/.env*
+!**/.env.example

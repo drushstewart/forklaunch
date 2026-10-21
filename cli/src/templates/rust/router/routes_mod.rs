@@ -1,8 +1,8 @@
 {{#modules}}pub mod {{module}};
 {{/modules}}
 use crate::AppState;
-use forklaunch_contract::RouteContract;
-use forklaunch_http::LocalRouter;
+use forklaunch_core::contract::RouteContract;
+use forklaunch_core::http::LocalRouter;
 
 {{#has_health}}pub use health::HealthResponse;
 {{/has_health}}

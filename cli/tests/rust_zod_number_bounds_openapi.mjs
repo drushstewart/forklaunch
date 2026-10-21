@@ -56,7 +56,7 @@ let callbacks=0;validator.openapi2020(z.object({number:z.number().min(Infinity).
 let native=false;
 if(process.env.FORKLAUNCH_NUMBER_BOUNDS_NATIVE==='1'){
  const features=process.env.FORKLAUNCH_NUMBER_BOUNDS_ARBITRARY==='1'?'zod-checks,jsonschema/arbitrary-precision':'zod-checks';
- const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-contract','--features',features,'--example','array_cardinality_parity'],{input:rows.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+ const run=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features',features,'--example','array_cardinality_parity'],{input:rows.map(({schema,values})=>JSON.stringify({schema,values})).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:8*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
  assert.equal(run.status,0,run.stderr);const result=run.stdout.trim().split('\n').map(line=>JSON.parse(line));assert.equal(result.length,rows.length);
  for(let i=0;i<rows.length;i++)assert.deepEqual(result[i],rows[i].ajv,JSON.stringify(rows[i].schema));native=true;
 }

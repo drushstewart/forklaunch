@@ -36,7 +36,7 @@ server.on('connection', (socket, request) => {
   });
 });
 try {
-  const moduleUrl = name => pathToFileURL(path.join(root, `sdks/typescript-websocket/realtime/dist/socket_${name}.js`));
+  const moduleUrl = name => pathToFileURL(path.join(root, `src/client-sdk/typescript-websocket/realtime/dist/socket_${name}.js`));
   const { SocketClient: RequestClient } = await import(moduleUrl('chat'));
   const { SocketClient: ReplyClient } = await import(moduleUrl('responses'));
   const base = `ws://127.0.0.1:${server.address().port}`;

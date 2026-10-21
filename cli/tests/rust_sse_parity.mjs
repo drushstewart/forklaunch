@@ -52,7 +52,7 @@ try {
     return [1,2,3,5,Math.max(1,bytes.length)].map(size => Array.from({ length: Math.ceil(bytes.length/size) }, (_, index) => [...bytes.subarray(index*size, (index+1)*size)]));
   });
   await writeFile(path.join(temporary, 'cases.json'), JSON.stringify(cases));
-  execFileSync('cargo', ['test', '--quiet', '--manifest-path', 'framework-rs/Cargo.toml', '-p', 'forklaunch-http', 'native_sse_transport_conformance'], { cwd: root, env: { ...process.env, FORKLAUNCH_TEST_SSE_INPUT: path.join(temporary, 'cases.json'), FORKLAUNCH_TEST_SSE_OUTPUT: path.join(temporary, 'events.json') }, encoding: 'utf8', timeout: 180000 });
+  execFileSync('cargo', ['test', '--quiet', '--manifest-path', 'framework-rs/Cargo.toml', '-p', 'forklaunch-core','--features','http', 'native_sse_transport_conformance'], { cwd: root, env: { ...process.env, FORKLAUNCH_TEST_SSE_INPUT: path.join(temporary, 'cases.json'), FORKLAUNCH_TEST_SSE_OUTPUT: path.join(temporary, 'events.json') }, encoding: 'utf8', timeout: 180000 });
   const native = JSON.parse(await readFile(path.join(temporary, 'events.json'), 'utf8'));
   for (let index = 0; index < cases.length; index++) {
     chunks = cases[index];

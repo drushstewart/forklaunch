@@ -1,5 +1,5 @@
 // Optional scoped Pub/Sub control. Disconnects drain; restarts begin running.
-use std::{env, future::Future, sync::Arc};
+use std::{env, future::{self, Future}, sync::Arc, error};
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_database::{
     control::{WorkerControl, forward_signals},
@@ -8,8 +8,10 @@ use forklaunch_worker_database::{
 };
 use forklaunch_worker_interface::{DistributedSignal};
 use forklaunch_worker_redis::signals::{RedisSignalBus, RedisSignalPublisher, SignalOptions};
+use crate::events;
+use forklaunch_worker_kafka::client::{KafkaRunReport, KafkaRunnerConfig, KafkaWorker};
 
-type Error = Box<dyn std::error::Error>;
+type Error = Box<dyn error::Error>;
 
 fn configuration() -> Result<Option<(String, String, TenantContext, String)>, Error> {
     let url = match env::var("WORKER_SIGNAL_REDIS_URL") {
@@ -17,6 +19,7 @@ fn configuration() -> Result<Option<(String, String, TenantContext, String)>, Er
         Err(env::VarError::NotPresent) => return Ok(None),
         Err(error) => return Err(error.into()),
     };
+    events::transport_policy()?.redis(&url)?;
     let namespace = env::var("WORKER_SIGNAL_NAMESPACE")
         .map_err(|_| "WORKER_SIGNAL_NAMESPACE is required with WORKER_SIGNAL_REDIS_URL")?;
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
@@ -39,7 +42,7 @@ pub async fn publish(action: &str) -> Result<(), Error> {
     Ok(())
 }
 
-pub async fn run<H, F>(worker: &forklaunch_worker_kafka::client::KafkaWorker, handler: &H, config: &forklaunch_worker_kafka::client::KafkaRunnerConfig, http_config: Option<&HttpConfig>, shutdown: F) -> Result<forklaunch_worker_kafka::client::KafkaRunReport, Error>
+pub async fn run<H, F>(worker: &KafkaWorker, handler: &H, config: &KafkaRunnerConfig, http_config: Option<&HttpConfig>, shutdown: F) -> Result<KafkaRunReport, Error>
 where H: JobHandler, F: Future<Output = ()> + Send {
     let mut bus = if let Some((url, namespace, tenant, queue)) = configuration()? {
         Some(RedisSignalBus::connect(&url, &namespace, &tenant, &queue, SignalOptions::default()).await?)
@@ -53,11 +56,11 @@ where H: JobHandler, F: Future<Output = ()> + Send {
         callback
     });
     let control = WorkerControl::new();
-    let consuming = worker.run(handler, config, &control, std::future::pending());
+    let consuming = worker.run(handler, config, &control, future::pending());
     let work = http::serve_controlled(&control, http_config, publish, consuming, shutdown);
     let forwarding = async {
-        if let Some(bus) = bus.as_mut() { forward_signals(bus, &control, std::future::pending()).await }
-        else { std::future::pending().await }
+        if let Some(bus) = bus.as_mut() { forward_signals(bus, &control, future::pending()).await }
+        else { future::pending().await }
     };
     tokio::pin!(work, forwarding);
     tokio::select! {

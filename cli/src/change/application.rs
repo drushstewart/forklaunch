@@ -57,7 +57,7 @@ use crate::{
                 application_up_packages_script, project_clean_script, project_dev_local_script,
                 project_dev_server_script, project_dev_worker_client_script, project_format_script,
                 project_lint_fix_script, project_lint_script, project_start_server_script,
-                project_start_worker_script, project_test_script, project_up_latest_script,
+                project_start_worker_script, project_test_script, project_up_latest_script, project_retention_enforce_script,
             },
             project_package_json::{
                 ProjectDependencies, ProjectDevDependencies, ProjectPackageJson, ProjectScripts,
@@ -695,6 +695,45 @@ fn change_linter(
     Ok((removal_templates, symlink_templates))
 }
 
+/// Rewrite only static module specifiers; leave comments and application strings intact.
+fn migrate_module_imports(
+    base: &Path,
+    projects: &HashMap<String, ProjectPackageJson>,
+    from: &str,
+    to: &str,
+    cache: &mut RenderedTemplatesCache,
+) -> Result<()> {
+    use oxc_ast::ast::{SourceType, Statement};
+    for name in projects.keys() {
+        for entry in walkdir::WalkDir::new(base.join(name)).follow_links(false).into_iter()
+            .filter_entry(|e| !matches!(e.file_name().to_str(), Some("node_modules" | "dist" | "lib" | "production" | "target" | ".git"))) {
+            let entry = entry?;
+            if !entry.file_type().is_file() || entry.path().extension().is_none_or(|ext| ext != "ts" && ext != "tsx") { continue; }
+            let mut template = cache.get(entry.path())?.context("Missing TypeScript source")?;
+            if !template.content.contains(from) { continue; }
+            let allocator = oxc_allocator::Allocator::default();
+            let parsed = oxc_parser::Parser::new(&allocator, &template.content, SourceType::from_path(entry.path())?).parse();
+            anyhow::ensure!(parsed.errors.is_empty(), "Cannot migrate imports in invalid TypeScript source {}", entry.path().display());
+            let mut spans = Vec::new();
+            for statement in &parsed.program.body {
+                let source = match statement {
+                    Statement::ImportDeclaration(import) => Some(&import.source),
+                    Statement::ExportNamedDeclaration(export) => export.source.as_ref(),
+                    Statement::ExportAllDeclaration(export) => Some(&export.source),
+                    _ => None,
+                };
+                if let Some(source) = source.filter(|source| source.value.as_str() == from) { spans.push(source.span); }
+            }
+            drop(parsed);
+            for span in spans.iter().rev() {
+                template.content.replace_range(span.start as usize..span.end as usize, &serde_json::to_string(to)?);
+            }
+            if !spans.is_empty() { cache.insert(entry.path().to_string_lossy(), template); }
+        }
+    }
+    Ok(())
+}
+
 fn change_validator(
     base_path: &Path,
     validator: &Validator,
@@ -704,6 +743,10 @@ fn change_validator(
 ) -> Result<()> {
     let existing_validator = manifest_data.validator.clone().parse::<Validator>()?;
     manifest_data.validator = validator.to_string();
+
+    migrate_module_imports(base_path, project_jsons_to_write,
+        &format!("@forklaunch/validator/{}", existing_validator.to_string()),
+        &format!("@forklaunch/validator/{}", validator.to_string()), rendered_templates_cache)?;
 
     let validator_file_key = base_path.join("core").join("registrations.ts");
 
@@ -739,6 +782,19 @@ fn change_validator(
     Ok(())
 }
 
+fn preflight_http_framework(base_path: &Path, http_framework: &str, runtime: &str) -> Result<()> {
+    if http_framework == "hyper-express" && runtime == "node" {
+        let package: serde_json::Value = serde_json::from_str(&read_to_string(base_path.join("package.json"))?)?;
+        let pinned_pnpm11 = package["packageManager"].as_str().is_some_and(|manager| manager.starts_with("pnpm@11."));
+        if !pinned_pnpm11 { return Ok(()); }
+        let path = base_path.join("pnpm-workspace.yaml");
+        let workspace: serde_yml::Value = serde_yml::from_str(&read_to_string(&path)?)?;
+        anyhow::ensure!(!pinned_pnpm11 || workspace["blockExoticSubdeps"].as_bool() == Some(false),
+            "HyperExpress requires Git-distributed uWebSockets.js. The current pnpm policy blocks this dependency; explicitly review its dependency policy before selecting HyperExpress. Existing application files are preserved");
+    }
+    Ok(())
+}
+
 fn change_http_framework(
     base_path: &Path,
     http_framework: &HttpFramework,
@@ -751,6 +807,10 @@ fn change_http_framework(
         .clone()
         .parse::<HttpFramework>()?;
     manifest_data.http_framework = http_framework.to_string();
+
+    migrate_module_imports(base_path, project_jsons_to_write,
+        &format!("@forklaunch/{}", existing_http_framework.to_string()),
+        &format!("@forklaunch/{}", http_framework.to_string()), rendered_templates_cache)?;
 
     let http_framework_file_key = base_path.join("core").join("registrations.ts");
 
@@ -832,40 +892,32 @@ fn change_runtime(
 
     manifest_data.runtime = runtime.to_string();
 
-    let test_framework = match runtime {
-        Runtime::Bun => {
-            manifest_data.test_framework = None;
-            None
-        }
-        Runtime::Node => {
-            if manifest_data.test_framework.is_none() {
-                let test_framework = prompt_field_from_selections_with_validation(
-                    "test-framework",
-                    None,
-                    &["test-framework"],
-                    line_editor,
-                    stdout,
-                    matches,
-                    "test framework",
-                    Some(&TestFramework::VARIANTS),
-                    |input: &str| TestFramework::VARIANTS.contains(&input),
-                    |_| "Invalid test framework. Please try again".to_string(),
-                )?
-                .unwrap()
-                .parse::<TestFramework>()?;
+    // Both runtimes execute the selected existing test framework. Bun's native
+    // loader does not require discarding Jest/Vitest configuration or typings.
+    let test_framework = if let Some(existing) = &manifest_data.test_framework {
+        Some(existing.parse::<TestFramework>()?)
+    } else {
+        let selected = prompt_field_from_selections_with_validation(
+            "test-framework", None, &["test-framework"], line_editor, stdout, matches,
+            "test framework", Some(&TestFramework::VARIANTS),
+            |input: &str| TestFramework::VARIANTS.contains(&input),
+            |_| "Invalid test framework. Please try again".to_string(),
+        )?.context("Test framework required")?;
+        Some(selected.parse::<TestFramework>()?)
+    };
 
-                Some(test_framework)
-            } else {
-                Some(
-                    manifest_data
-                        .test_framework
-                        .as_ref()
-                        .unwrap()
-                        .parse::<TestFramework>()?,
-                )
+    if let Some(scripts) = application_json_to_write.scripts.as_mut() {
+        if scripts.test == application_test_script(&existing_runtime, &test_framework) {
+            scripts.test = application_test_script(runtime, &test_framework);
+        }
+    }
+    for project in project_jsons_to_write.values_mut() {
+        if let Some(scripts) = project.scripts.as_mut() {
+            if scripts.test == project_test_script(&existing_runtime, &test_framework) {
+                scripts.test = project_test_script(runtime, &test_framework);
             }
         }
-    };
+    }
 
     if let Some(test_framework) = test_framework {
         let (test_framework_removal_templates, test_framework_symlink_templates) =
@@ -880,19 +932,6 @@ fn change_runtime(
 
         removal_templates.extend(test_framework_removal_templates);
         symlink_templates.extend(test_framework_symlink_templates);
-    } else if matches!(runtime, Runtime::Bun) {
-        // Bun has no separate test framework; strip any lingering test types from tsconfig.
-        let project_names: Vec<&str> = manifest_data
-            .projects
-            .iter()
-            .map(|p| p.name.as_str())
-            .collect();
-        let tsconfig_templates =
-            update_tsconfig_test_framework_types(base_path, None, &project_names)?;
-        for template in tsconfig_templates {
-            let key = template.path.to_string_lossy().to_string();
-            rendered_templates_cache.insert(key, template);
-        }
     }
 
     let application_package_json_scripts = application_json_to_write.scripts.as_mut().unwrap();
@@ -1057,6 +1096,9 @@ fn change_runtime(
         };
 
         if let Some(project_scripts) = &mut project.scripts {
+            if project_scripts.retention_enforce == Some(project_retention_enforce_script(&existing_runtime)) {
+                project_scripts.retention_enforce = Some(project_retention_enforce_script(runtime));
+            }
             project_scripts.clean = Some(attempt_replacement(
                 &mut project_scripts.additional_scripts,
                 project_scripts.clean.clone(),
@@ -1105,6 +1147,9 @@ fn change_runtime(
                         &project_dev_local_script(runtime, database),
                         None,
                     ));
+                    if project_scripts.start_server == Some(project_start_server_script(&existing_runtime, database)) {
+                        project_scripts.start_server = Some(project_start_server_script(runtime, database));
+                    }
                     project_scripts.start = Some(attempt_replacement(
                         &mut project_scripts.additional_scripts,
                         project_scripts.start.clone(),
@@ -1168,6 +1213,12 @@ fn change_runtime(
 
     match runtime {
         Runtime::Bun => {
+            let overrides = application_json_to_write.additional_entries.entry("overrides".into()).or_insert_with(|| serde_json::json!({}));
+            let overrides = overrides.as_object_mut().context("Workspace overrides must be an object")?;
+            let defaults = serde_json::to_value(crate::core::pnpm_workspace::framework_release_overrides())?;
+            for (name, version) in defaults.as_object().context("Framework overrides must be an object")? {
+                overrides.entry(name.clone()).or_insert_with(|| version.clone());
+            }
             application_json_to_write.workspaces = Some(existing_workspaces);
             if let Some(rendered) =
                 crate::core::bunfig::generate_bunfig(&base_path.to_string_lossy())?
@@ -1190,6 +1241,11 @@ fn change_runtime(
         }
     }
 
+    let managed_image = base_path.ancestors().any(|root| {
+        crate::core::forklaunch_state::generated_section(root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)
+            .is_ok_and(|receipt| receipt.is_some())
+    });
+    if !managed_image {
     let dockerfile_template_path = TEMPLATES_DIR
         .get_file(Path::new("application").join("Dockerfile"))
         .unwrap();
@@ -1314,6 +1370,8 @@ fn change_runtime(
                 );
             }
         }
+    }
+
     }
 
     let readme = rendered_templates_cache.get(&base_path.join("README.md"))?;
@@ -1486,11 +1544,7 @@ fn change_test_framework(
     )?;
 
     // Update tsconfig types for the new test framework
-    let project_names: Vec<&str> = manifest_data
-        .projects
-        .iter()
-        .map(|p| p.name.as_str())
-        .collect();
+    let project_names: Vec<&str> = project_jsons_to_write.keys().map(String::as_str).collect();
     let tsconfig_templates =
         update_tsconfig_test_framework_types(base_path, Some(test_framework), &project_names)?;
     for template in tsconfig_templates {
@@ -1649,8 +1703,12 @@ impl CliCommand for ApplicationCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
-        if rust_project::is_rust_app_root(&app_root_path)? {
+        let current_manifest: toml::Value = toml::from_str(&read_to_string(&manifest_path)?)?;
+        let mixed_tooling = current_manifest.get("language").and_then(toml::Value::as_str) == Some("mixed")
+            && ["formatter", "linter", "test-framework", "validator", "http-framework", "runtime"].iter().any(|key| matches.get_one::<String>(key).is_some());
+        if rust_project::is_rust_app_root(&app_root_path)? && !mixed_tooling {
             if matches.get_one::<String>("formatter").is_some()
                 || matches.get_one::<String>("linter").is_some()
                 || matches.get_one::<String>("validator").is_some()
@@ -1914,6 +1972,7 @@ impl CliCommand for ApplicationCommand {
         let mut project_jsons_to_write: HashMap<String, ProjectPackageJson> = manifest_data
             .projects
             .iter()
+            .filter(|project| project.metadata.as_ref().and_then(|metadata| metadata.language.as_deref()) != Some("rust"))
             .map(|project| {
                 let project_package_json_path = app_path.join(&project.name).join("package.json");
                 let project_package_json_data = read_to_string(&project_package_json_path)
@@ -1927,13 +1986,37 @@ impl CliCommand for ApplicationCommand {
             })
             .collect();
 
+        if http_framework.is_some() || runtime.is_some() {
+        preflight_http_framework(
+            &app_path,
+            http_framework.as_deref().unwrap_or(&manifest_data.http_framework),
+            runtime.as_deref().unwrap_or(&manifest_data.runtime),
+        )?;
+        }
+
+        if runtime.is_some() {
+            rust_project::preflight_typescript_runtime_change(&app_root_path)?;
+        }
+        let mut runtime_hook_scripts = Vec::new();
+        if validator.is_some() || http_framework.is_some() || runtime.is_some() {
+            let (updates, scripts) = crate::sdk::typescript_build::application_descriptor_updates(
+                &app_root_path, validator.as_deref(), runtime.as_deref(),
+            )?;
+            runtime_hook_scripts = scripts;
+            for template in updates {
+                rendered_templates_cache.insert(template.path.to_string_lossy().to_string(), template);
+            }
+        }
+
         if let Some(name) = name {
+            if !dryrun {
             clean_application(
                 &app_path,
                 &manifest_data.runtime.parse()?,
                 confirm,
                 &mut stdout,
             )?;
+            }
 
             change_name(
                 &mut manifest_data,
@@ -1993,12 +2076,14 @@ impl CliCommand for ApplicationCommand {
         }
 
         if let Some(runtime) = runtime {
+            if !dryrun && crate::core::forklaunch_state::generated_section(&app_root_path, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?.is_none() {
             clean_application(
                 &app_path,
                 &manifest_data.runtime.parse()?,
                 confirm,
                 &mut stdout,
             )?;
+            }
 
             let (runtime_removal_templates, runtime_symlink_templates) = change_runtime(
                 &mut line_editor,
@@ -2071,6 +2156,13 @@ impl CliCommand for ApplicationCommand {
                 context: None,
             },
         );
+        for (name, script) in runtime_hook_scripts {
+            let scripts = project_jsons_to_write.get_mut(&name).context("Owned hook project missing")?
+                .scripts.as_mut().context("Owned hook scripts missing")?;
+            scripts.build = Some(script.clone());
+            scripts.additional_scripts.insert("sdk:build".into(), script.clone());
+            scripts.additional_scripts.insert("sdk:watch".into(), format!("{script} --watch"));
+        }
         project_jsons_to_write
             .iter()
             .for_each(|(project_name, project_json)| {
@@ -2094,10 +2186,55 @@ impl CliCommand for ApplicationCommand {
         write_rendered_templates(&rendered_templates, dryrun, &mut stdout)?;
         create_symlinks(&symlink_templates, dryrun, &mut stdout)?;
         if !dryrun {
+            if mixed_tooling {
+                rust_project::change_rust_application(&app_root_path, None,
+                    matches.get_one::<String>("description").map(String::as_str),
+                    matches.get_one::<String>("author").map(String::as_str),
+                    matches.get_one::<String>("license").map(String::as_str), false)?;
+            }
+            crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(stdout, "{} changed successfully!", &manifest_data.app_name);
             format_code(&app_path, &manifest_data.runtime.parse()?);
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod adapter_migration_tests {
+    use super::*;
+    #[test]
+    fn hyperexpress_admission_uses_requested_runtime_without_mutation() {
+        let root = tempfile::tempdir().unwrap();
+        let package = r#"{"packageManager":"pnpm@11.1.0"}"#;
+        std::fs::write(root.path().join("package.json"), package).unwrap();
+        std::fs::write(root.path().join("pnpm-workspace.yaml"), "packages: []\n").unwrap();
+        assert!(preflight_http_framework(root.path(), "hyper-express", "node").is_err());
+        preflight_http_framework(root.path(), "hyper-express", "bun").unwrap();
+        preflight_http_framework(root.path(), "express", "node").unwrap();
+        assert_eq!(std::fs::read_to_string(root.path().join("package.json")).unwrap(), package);
+        std::fs::remove_file(root.path().join("pnpm-workspace.yaml")).unwrap();
+        std::fs::write(root.path().join("package.json"), r#"{"packageManager":"bun@1.3.14"}"#).unwrap();
+        preflight_http_framework(root.path(), "hyper-express", "node").unwrap();
+    }
+
+    #[test]
+    fn static_adapter_imports_preserve_application_text_and_generated_outputs() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("api/dist")).unwrap();
+        let source = "// @forklaunch/validator/zod stays documented\nimport { string } from '@forklaunch/validator/zod';\nexport { number } from '@forklaunch/validator/zod';\nexport const label = '@forklaunch/validator/zod';\n";
+        let path = root.path().join("api/schema.ts");
+        std::fs::write(&path, source).unwrap();
+        std::fs::write(root.path().join("api/dist/schema.ts"), source).unwrap();
+        let projects = HashMap::from([("api".to_owned(), ProjectPackageJson::default())]);
+        let mut cache = RenderedTemplatesCache::new();
+        migrate_module_imports(root.path(), &projects, "@forklaunch/validator/zod", "@forklaunch/validator/typebox", &mut cache).unwrap();
+        let staged = cache.get(&path).unwrap().unwrap().content;
+        assert!(staged.contains("from \"@forklaunch/validator/typebox\""));
+        assert!(staged.contains("// @forklaunch/validator/zod stays documented"));
+        assert!(staged.contains("label = '@forklaunch/validator/zod'"));
+        assert_eq!(std::fs::read_to_string(path).unwrap(), source);
+        assert_eq!(cache.get(root.path().join("api/dist/schema.ts")).unwrap().unwrap().content, source);
     }
 }

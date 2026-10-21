@@ -6,6 +6,37 @@ use toml_edit::{DocumentMut, Item, Table};
 
 use crate::core::application_output::output_path;
 
+pub(super) fn include_packages(
+    package: &mut serde_json::Map<String, serde_json::Value>,
+    additions: &[String],
+    absent_generated_members: &[String],
+) -> Result<()> {
+    let workspaces = package
+        .entry("workspaces")
+        .or_insert_with(|| serde_json::json!([]))
+        .as_array_mut()
+        .context("Bun workspaces must be a list")?;
+    // Bun rejects absent literal package members. Only these known optional
+    // generated packages may be removed; authored members and globs stay.
+    workspaces.retain(|member| {
+        !member.as_str().is_some_and(|path| {
+            absent_generated_members
+                .iter()
+                .any(|missing| missing == path)
+        })
+    });
+    for addition in additions {
+        if absent_generated_members.contains(addition) {
+            continue;
+        }
+        let value = serde_json::json!(addition);
+        if !workspaces.contains(&value) {
+            workspaces.push(value);
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn install_policy(root: &Path, modules: &Path) -> Result<Option<String>> {
     let source = output_path(root, &modules.join("bunfig.toml"))?;
     if !source.is_file() {

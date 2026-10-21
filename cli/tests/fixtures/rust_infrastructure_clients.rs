@@ -80,7 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .get(&cache_key)
                 .map_err(|error| error.to_string())?
                 .unwrap();
-            assert!(bytes.starts_with(b"v2:"));
+            assert!(bytes.starts_with(b"v4:"));
             assert!(
                 !String::from_utf8(bytes)
                     .unwrap()
@@ -239,7 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .is_err()
         );
         let bytes = store.get(&key).await?.unwrap().body;
-        assert!(bytes.starts_with(b"v2:"));
+        assert!(bytes.starts_with(b"v4:"));
         assert!(
             !String::from_utf8(bytes)
                 .unwrap()

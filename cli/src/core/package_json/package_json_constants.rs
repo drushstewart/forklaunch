@@ -189,17 +189,19 @@ pub(crate) fn application_setup_script(runtime: &Runtime) -> String {
     }
 }
 
-pub(crate) fn application_test_script<'a>(
-    _runtime: &Runtime,
+pub(crate) fn application_test_script(
+    runtime: &Runtime,
     test_framework: &Option<TestFramework>,
 ) -> Option<String> {
-    match test_framework {
-        Some(test_framework_definition) => match test_framework_definition {
-            TestFramework::Jest => Some("pnpm jest --passWithNoTests".to_string()),
-            TestFramework::Vitest => Some("pnpm vitest --passWithNoTests".to_string()),
-        },
-        None => None,
-    }
+    let runner = match test_framework.as_ref()? {
+        TestFramework::Jest => "jest",
+        TestFramework::Vitest => "vitest",
+    };
+    let command = match runtime {
+        Runtime::Bun => "bun run --bun",
+        Runtime::Node => "pnpm",
+    };
+    Some(format!("{command} {runner} --passWithNoTests"))
 }
 
 pub(crate) fn application_up_packages_script(runtime: &Runtime) -> String {
@@ -289,7 +291,7 @@ pub(crate) const INTERNAL_VERSION: &str = "~1.2.33";
 // @forklaunch/testing
 pub(crate) const TESTING_VERSION: &str = "~1.2.35";
 // @forklaunch/universal-sdk
-pub(crate) const UNIVERSAL_SDK_VERSION: &str = "~1.2.29";
+pub(crate) const UNIVERSAL_SDK_VERSION: &str = "^1.3.0";
 // @forklaunch/validator
 pub(crate) const VALIDATOR_VERSION: &str = "~1.2.31";
 // @mikro-orm/core
@@ -436,16 +438,7 @@ pub(crate) fn project_test_script(
     runtime: &Runtime,
     test_framework: &Option<TestFramework>,
 ) -> Option<String> {
-    match runtime {
-        Runtime::Bun => None,
-        Runtime::Node => match test_framework {
-            Some(test_framework_definition) => match test_framework_definition {
-                TestFramework::Jest => Some("pnpm jest --passWithNoTests".to_string()),
-                TestFramework::Vitest => Some("pnpm vitest --passWithNoTests".to_string()),
-            },
-            None => None,
-        },
-    }
+    application_test_script(runtime, test_framework)
 }
 
 pub(crate) fn project_migrate_script(command: &str) -> String {
@@ -557,6 +550,26 @@ pub(crate) const BETTER_SQLITE_POSTINSTALL_SCRIPT: &str =
     "cd node_modules/better-sqlite3 && node-gyp configure && node-gyp build";
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn test_scripts_use_selected_runtime_and_runner_at_every_level() {
+        for (framework, runner) in [
+            (TestFramework::Vitest, "vitest"),
+            (TestFramework::Jest, "jest"),
+        ] {
+            for (runtime, command) in [(Runtime::Bun, "bun run --bun"), (Runtime::Node, "pnpm")] {
+                let expected = Some(format!("{command} {runner} --passWithNoTests"));
+                assert_eq!(
+                    application_test_script(&runtime, &Some(framework.clone())),
+                    expected
+                );
+                assert_eq!(
+                    project_test_script(&runtime, &Some(framework.clone())),
+                    expected
+                );
+            }
+        }
+        assert_eq!(project_test_script(&Runtime::Bun, &None), None);
+    }
     use super::*;
 
     /// The container has no `.env.local`; the defaults must not point at one,

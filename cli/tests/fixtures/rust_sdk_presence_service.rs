@@ -1,6 +1,6 @@
 use axum::{Json, extract::Path};
 use forklaunch_axum::ForkLaunchRouter;
-use forklaunch_contract::{BodyContract, FieldContract, RouteContract, SchemaRef};
+use forklaunch_core::contract::{BodyContract, FieldContract, RouteContract, SchemaRef};
 use serde_json::{Value, json};
 
 fn body() -> BodyContract {

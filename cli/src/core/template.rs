@@ -140,6 +140,16 @@ pub(crate) fn generate_with_template(
                 render_template(&file_contents, manifest_data)?,
             ),
         };
+        // Blueprint schema factories use TypeBox locally; generated contracts must
+        // use the application's selected validator, just like registrations.
+        let validator = match data {
+            ManifestData::Application(data) => &data.validator,
+            ManifestData::Service(data) => &data.validator,
+            ManifestData::Library(data) => &data.validator,
+            ManifestData::Router(data) => &data.validator,
+            ManifestData::Worker(data) => &data.validator,
+        };
+        let rendered = rendered.replace("@forklaunch/validator/typebox", &format!("@forklaunch/validator/{validator}"));
         if !output_path.exists() {
             let output_path_str = output_path.file_name().unwrap().to_str().unwrap();
             let should_ignore = ignore_files
@@ -330,7 +340,12 @@ mod tests {
                 assert!(!server.contains("PERMISSIONS, ROLES"));
                 let controller = render("router/api/controllers/{{camel_case_name}}.controller.ts");
                 assert!(!controller.contains("const openTelemetryCollector"));
-                assert!(controller.contains("allowedRoles: new Set([ROLES.ADMIN])"));
+                assert!(controller.contains("bindRuntimeAuth("));
+                assert!(controller.contains("jwksPublicKeyUrl: JWKS_PUBLIC_KEY_URL"));
+                assert!(!controller.contains("ROLES.ADMIN"));
+                let contract = render("router/api/contracts/{{camel_case_name}}.contract.ts");
+                assert!(contract.contains("auth: { scheme: 'jwt', allowedRoles: ['admin'] }"));
+                assert!(contract.contains("access: 'protected'"));
                 for kind in ["service", "worker"] {
                     let utils = render(&format!("project/{kind}/__test__/test-utils.ts"));
                     assert_eq!(utils.contains("import { getEnvVar }"), database);

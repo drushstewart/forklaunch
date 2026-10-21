@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/tests/object_constraints_macro.rs

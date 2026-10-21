@@ -44,7 +44,7 @@ for(const checks of [[{kind:'email'},{kind:'uuid'}],[{kind:'date'},{kind:'durati
 }
 function run(command,args,options={}){const result=spawnSync(command,args,{cwd:root,env:{...process.env,CARGO_BUILD_JOBS:process.env.CARGO_BUILD_JOBS??'1',CARGO_INCREMENTAL:'0'},encoding:'utf8',maxBuffer:128*1024*1024,...options});assert.equal(result.status,0,result.stdout+'\n'+result.stderr);return result.stdout;}
 if(process.env.FORKLAUNCH_RUNTIME_FORMATS_NATIVE==='1'){
- run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-validation','--example','zod_runtime_formats']);
+ run('cargo',['build','--locked','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-validator','--example','zod_runtime_formats']);
  const executable=path.join(process.env.CARGO_TARGET_DIR??path.join(root,'framework-rs/target'),'debug/examples/zod_runtime_formats');
  const actual=run(executable,[],{input:rows.map(row=>JSON.stringify(row.input)).join('\n')+'\n'}).trim().split('\n').map(JSON.parse);
  assert.equal(actual.length,rows.length);

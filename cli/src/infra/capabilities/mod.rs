@@ -97,6 +97,8 @@ pub(crate) const GATEWAY_MOCK_HOST_PORT: &str = "18088";
 /// (or printed with `--dryrun`).
 pub(crate) struct CapabilityEdit {
     pub(crate) native: bool,
+    /// Format staged Rust when adding; removal restores the user's original bytes.
+    pub(crate) format_rust: bool,
     pub(crate) app_root: PathBuf,
     pub(crate) app_name: String,
     pub(crate) service_name: String,
@@ -119,6 +121,7 @@ impl CapabilityEdit {
     ) -> Self {
         Self {
             native: false,
+            format_rust: false,
             app_root: app_root.to_path_buf(),
             app_name: app_name.to_string(),
             service_name: service_name.to_string(),
@@ -134,6 +137,10 @@ impl CapabilityEdit {
         if let Some(staged) = self.staged.get(path) {
             return Ok(staged.clone());
         }
+        // Native undo records are addressed by their legacy file paths.
+        if let Some(key) = crate::infra::local_state::key(&self.app_root, path) {
+            return crate::infra::local_state::read(&self.app_root, &key);
+        }
         if path.exists() {
             return Ok(Some(
                 fs::read_to_string(path).with_context(|| format!("reading {path:?}"))?,
@@ -142,7 +149,14 @@ impl CapabilityEdit {
         Ok(None)
     }
 
+    /// Rust sources are staged in the application's rustfmt style, so its CI
+    /// format check passes on code capabilities add.
     pub(crate) fn write(&mut self, path: PathBuf, content: String) {
+        let content = if self.format_rust && path.extension().is_some_and(|extension| extension == "rs") {
+            crate::init::rust_project::format_rust_source(&path, &content)
+        } else {
+            content
+        };
         self.staged.insert(path, Some(content));
     }
 
@@ -156,35 +170,35 @@ impl CapabilityEdit {
 
     /// Paths this edit would change, for `--dryrun`.
     pub(crate) fn changed_paths(&self) -> Vec<(PathBuf, bool)> {
-        self.staged
-            .iter()
-            .map(|(p, c)| (p.clone(), c.is_some()))
-            .collect()
+        let mut paths: Vec<(PathBuf, bool)> = Vec::new();
+        for (path, content) in &self.staged {
+            match crate::infra::local_state::key(&self.app_root, path) {
+                Some(key) if key.is_empty() => {}
+                Some(_) => {
+                    let state = self.app_root.join(crate::core::forklaunch_state::LOCAL_STATE);
+                    if !paths.iter().any(|(existing, _)| existing == &state) {
+                        paths.push((state, true));
+                    }
+                }
+                None => paths.push((path.clone(), content.is_some())),
+            }
+        }
+        paths
     }
 
     pub(crate) fn commit(self) -> Result<()> {
+        let mut local = BTreeMap::new();
         for (path, content) in self.staged {
+            if let Some(key) = crate::infra::local_state::key(&self.app_root, &path) {
+                local.insert(key, content);
+                continue;
+            }
             match content {
                 Some(content) => {
                     if let Some(parent) = path.parent() {
                         fs::create_dir_all(parent)?;
                     }
-                    if self.native && path.parent() == Some(self.app_root.join(".forklaunch/native-capabilities").as_path())
-                        && path.extension().is_some_and(|extension| extension == "json")
-                    {
-                        use std::io::Write;
-                        let mut options = fs::OpenOptions::new();
-                        options.write(true).create(true).truncate(true);
-                        #[cfg(unix)]
-                        {
-                            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-                            options.mode(0o600);
-                            if path.exists() { fs::set_permissions(&path, fs::Permissions::from_mode(0o600))?; }
-                        }
-                        options.open(&path)?.write_all(content.as_bytes())?;
-                    } else {
-                        fs::write(&path, content).with_context(|| format!("writing {path:?}"))?;
-                    }
+                    fs::write(&path, content).with_context(|| format!("writing {path:?}"))?;
                 }
                 None => {
                     if path.exists() {
@@ -193,6 +207,7 @@ impl CapabilityEdit {
                 }
             }
         }
+        crate::infra::local_state::commit(&self.app_root, local)?;
         Ok(())
     }
 

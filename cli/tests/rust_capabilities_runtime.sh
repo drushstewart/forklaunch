@@ -1,32 +1,51 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export FORKLAUNCH_FRAMEWORK_SNAPSHOT=1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/cli/target}"
+export CARGO_INCREMENTAL=0
+export FORKLAUNCH_SKIP_FORMAT=1
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
+if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-}" != 1 ]; then
+    exec python3 "$SCRIPT_DIR/fixtures/worker_runtime_lock.py" "${BASH_SOURCE[0]}" "$@"
+fi
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-$REPO_ROOT/cli/target/debug/forklaunch}"
 mkdir -p "$SCRIPT_DIR/output/rust-capabilities-runtime"
 RUN_ROOT="$(mktemp -d "$SCRIPT_DIR/output/rust-capabilities-runtime/run.XXXXXX")"
-"$FORKLAUNCH_CLI" init application capability-app --path "$RUN_ROOT/app" --language mixed -D Capabilities -A ForkLaunch -L MIT
-"$FORKLAUNCH_CLI" init service messages --path "$RUN_ROOT/app" --language rust -d postgresql -D Messages
+trap 'rm -rf "$RUN_ROOT"' EXIT
+# Native undo records live in the gitignored .forklaunch/local-state.json.
+state_has() { python3 -c 'import json,pathlib,sys;p=pathlib.Path(".forklaunch/local-state.json");sys.exit(0 if p.exists() and sys.argv[1] in json.loads(p.read_text()) else 1)' "$1"; }
+state_absent() { if state_has "$1"; then echo "unexpected local state record $1" >&2; return 1; fi; }
+state_drop() { python3 -c 'import json,pathlib,sys;p=pathlib.Path(".forklaunch/local-state.json");d=json.loads(p.read_text());d.pop(sys.argv[1]);p.write_text(json.dumps(d))' "$1"; }
+"$FORKLAUNCH_CLI" init application capability-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D Capabilities -A ForkLaunch -L MIT
+"$FORKLAUNCH_CLI" init service messages --path "$RUN_ROOT/app" --language rust -D Messages
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
-cp crates/messages/Cargo.toml "$RUN_ROOT/original-cargo.toml"
-cp crates/messages/src/main.rs "$RUN_ROOT/original-main.rs"
-cp crates/messages/src/lib.rs "$RUN_ROOT/original-lib.rs"
+cp src/messages/Cargo.toml "$RUN_ROOT/original-cargo.toml"
+cp src/messages/server.rs "$RUN_ROOT/original-main.rs"
+cp src/messages/lib.rs "$RUN_ROOT/original-lib.rs"
+cp src/messages/.forklaunch/contracts/lib.rs "$RUN_ROOT/original-registry.rs"
+cp src/messages/api/routes/mod.rs "$RUN_ROOT/original-routes.rs"
 "$FORKLAUNCH_CLI" infra add messages email --path . --dryrun
-test ! -e crates/messages/src/capabilities/mod.rs
-test ! -e .forklaunch/native-capabilities/messages.json
+test ! -e src/messages/capabilities/mod.rs
+state_absent messages/capabilities
 for feature in email sms whatsapp voice payments; do
     "$FORKLAUNCH_CLI" infra add messages "$feature" --path .
 done
 python3 - <<'PY'
 from pathlib import Path
 import os,stat
-state=Path('.forklaunch/native-capabilities/messages.json')
-assert '/*.json' in state.with_name('.gitignore').read_text().splitlines()
+import json
+state=Path('.forklaunch/local-state.json')
+assert 'messages/capabilities' in json.loads(state.read_text())
+assert '/.forklaunch/local-state.json' in Path('.gitignore').read_text().splitlines()
+assert not Path('.forklaunch/native-capabilities').exists()
 if os.name=='posix': assert stat.S_IMODE(state.stat().st_mode)==0o600
 PY
-mkdir -p crates/messages/examples
-cat > crates/messages/examples/capabilities.rs <<'RUST'
+mkdir -p src/messages/examples
+cat > src/messages/examples/capabilities.rs <<'RUST'
 use messages::capabilities::*;
 fn main() {
     if std::env::args().any(|arg|arg=="--unmanaged") {
@@ -48,95 +67,105 @@ env -u PLATFORM_GATEWAY_URL -u INSTANCE_ID -u INSTANCE_HMAC_KEY cargo run -p mes
 PLATFORM_GATEWAY_URL=http://127.0.0.1:18088 INSTANCE_ID=local-instance INSTANCE_HMAC_KEY=local-dev-instance-key cargo run -p messages --example capabilities
 "$FORKLAUNCH_CLI" openapi export --path .
 "$FORKLAUNCH_CLI" sdk generate --path . --target all --from contract
-"${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}" --strict --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --outDir sdks/typescript/dist sdks/typescript/src/index.ts
+"$FORKLAUNCH_CLI" sdk generate --path . --target all --from contract --check
 cargo check --workspace
 TARGET_DIR="$(cargo metadata --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_directory"])')"
 node "$SCRIPT_DIR/rust_capabilities_runtime.mjs" "$TARGET_DIR/debug/messages"
-rm crates/messages/examples/capabilities.rs
+rm src/messages/examples/capabilities.rs
 python3 - <<'PY'
 from pathlib import Path
-p=Path('crates/messages/src/capabilities/nonce_store.rs')
+p=Path('src/messages/capabilities/nonce_store.rs')
 p.write_text(p.read_text().replace('MemoryPlatformEventNonces::default()', 'MemoryPlatformEventNonces::new(2).expect("fixture capacity")'))
 PY
-printf '\n// Human main customization\n' >> crates/messages/src/main.rs
+printf '\n// Human main customization\n' >> src/messages/server.rs
 printf '\n// Human main customization\n' >> "$RUN_ROOT/original-main.rs"
-printf '\npub const CONFIG_MARKER: &str = "preserved";\n' >> crates/messages/src/config/mod.rs
+printf '\npub const CONFIG_MARKER: &str = "preserved";\n' >> src/messages/config.rs
 "$FORKLAUNCH_CLI" sync service messages --path .
-"$FORKLAUNCH_CLI" change service --path crates/messages -N renamed-messages --confirm
-test ! -e .forklaunch/native-capabilities/messages.json
-test -e .forklaunch/native-capabilities/renamed-messages.json
+"$FORKLAUNCH_CLI" change service --path src/messages -N renamed-messages --confirm
+state_absent messages/capabilities
+state_has renamed-messages/capabilities
 grep -q 'http://renamed-messages:8000' docker-compose.yaml
-grep -q 'Human main customization' crates/renamed-messages/src/main.rs
-grep -q CONFIG_MARKER crates/renamed-messages/src/config/mod.rs
+grep -q 'Human main customization' src/renamed-messages/server.rs
+grep -q CONFIG_MARKER src/renamed-messages/config.rs
 cargo test -p renamed-messages
 cargo build -p renamed-messages
 node "$SCRIPT_DIR/rust_capabilities_runtime.mjs" "$TARGET_DIR/debug/renamed-messages" --bounded-store
-"$FORKLAUNCH_CLI" change service --path crates/renamed-messages -N messages --confirm
+"$FORKLAUNCH_CLI" change service --path src/renamed-messages -N messages --confirm
 # Removal must preserve edits made between stacked capability commands.
-printf '\n[package.metadata.user]\nmarker = "preserved"\n' >> crates/messages/Cargo.toml
-printf '\npub const USER_MARKER: &str = "preserved";\n' >> crates/messages/src/lib.rs
-printf '\n// Human handler customization\n' >> crates/messages/src/capabilities/email.rs
-printf '\n// Human nonce store customization\n' >> crates/messages/src/capabilities/nonce_store.rs
-printf '\nCUSTOM_SETTING=preserved\n' >> crates/messages/.env.local
+printf '\n[package.metadata.user]\nmarker = "preserved"\n' >> src/messages/Cargo.toml
+printf '\npub const USER_MARKER: &str = "preserved";\n' >> src/messages/lib.rs
+printf '\n// Human handler customization\n' >> src/messages/capabilities/email.rs
+printf '\n// Human nonce store customization\n' >> src/messages/capabilities/nonce_store.rs
+printf '\nCUSTOM_SETTING=preserved\n' >> src/messages/.env.local
 "$FORKLAUNCH_CLI" infra remove messages voice --path .
 "$FORKLAUNCH_CLI" infra add messages voice --path .
 for feature in sms payments email voice whatsapp; do
     "$FORKLAUNCH_CLI" infra remove messages "$feature" --path .
 done
-test ! -e .forklaunch/native-capabilities/messages.json
-test ! -e crates/messages/src/capabilities/mod.rs
-test -e crates/messages/src/capabilities/email.rs
-grep -q 'Human handler customization' crates/messages/src/capabilities/email.rs
-grep -q 'Human nonce store customization' crates/messages/src/capabilities/nonce_store.rs
-grep -q 'CUSTOM_SETTING=preserved' crates/messages/.env.local
-grep -q USER_MARKER crates/messages/src/lib.rs
-grep -q 'marker = "preserved"' crates/messages/Cargo.toml
-cmp "$RUN_ROOT/original-main.rs" crates/messages/src/main.rs
-if grep -q 'forklaunch-blueprint-core\|forklaunch-billing-stripe' crates/messages/Cargo.toml; then
+state_absent messages/capabilities
+test ! -e src/messages/capabilities/mod.rs
+test -e src/messages/capabilities/email.rs
+grep -q 'Human handler customization' src/messages/capabilities/email.rs
+grep -q 'Human nonce store customization' src/messages/capabilities/nonce_store.rs
+grep -q 'CUSTOM_SETTING=preserved' src/messages/.env.local
+grep -q USER_MARKER src/messages/lib.rs
+grep -q 'marker = "preserved"' src/messages/Cargo.toml
+cmp "$RUN_ROOT/original-main.rs" src/messages/server.rs
+cmp "$RUN_ROOT/original-registry.rs" src/messages/.forklaunch/contracts/lib.rs
+cmp "$RUN_ROOT/original-routes.rs" src/messages/api/routes/mod.rs
+test ! -e src/messages/api/controllers/platform_events.rs
+if grep -q 'instance-gateway\|forklaunch-billing-stripe' src/messages/Cargo.toml; then
     echo 'FAIL capability-owned dependencies remained'; exit 1
 fi
 cargo check --workspace
 # Unmodified sources restore byte for byte, including the original Cargo formatting.
-"$FORKLAUNCH_CLI" init service pristine --path . --language rust -d postgresql -D Pristine
-cp crates/pristine/Cargo.toml "$RUN_ROOT/pristine-cargo.toml"
-cp crates/pristine/src/lib.rs "$RUN_ROOT/pristine-lib.rs"
-cp crates/pristine/src/main.rs "$RUN_ROOT/pristine-main.rs"
+"$FORKLAUNCH_CLI" init service pristine --path . --language rust -D Pristine
+cp src/pristine/Cargo.toml "$RUN_ROOT/pristine-cargo.toml"
+cp src/pristine/lib.rs "$RUN_ROOT/pristine-lib.rs"
+cp src/pristine/server.rs "$RUN_ROOT/pristine-main.rs"
 for feature in payments sms; do "$FORKLAUNCH_CLI" infra add pristine "$feature" --path .; done
 for feature in payments sms; do "$FORKLAUNCH_CLI" infra remove pristine "$feature" --path .; done
-cmp "$RUN_ROOT/pristine-cargo.toml" crates/pristine/Cargo.toml
-cmp "$RUN_ROOT/pristine-lib.rs" crates/pristine/src/lib.rs
-cmp "$RUN_ROOT/pristine-main.rs" crates/pristine/src/main.rs
-test ! -e crates/pristine/src/capabilities/nonce_store.rs
+cmp "$RUN_ROOT/pristine-cargo.toml" src/pristine/Cargo.toml
+cmp "$RUN_ROOT/pristine-lib.rs" src/pristine/lib.rs
+cmp "$RUN_ROOT/pristine-main.rs" src/pristine/server.rs
+test ! -e src/pristine/capabilities/nonce_store.rs
 "$FORKLAUNCH_CLI" infra add pristine email --path .
-rm .forklaunch/native-capabilities/pristine.json
+state_drop pristine/capabilities
 python3 - <<'PY'
 from pathlib import Path
-p=Path('crates/pristine/Cargo.toml')
-s=p.read_text();assert 'features = ["instance-gateway"]' in s
-p.write_text(s.replace('features = ["instance-gateway"]','features = ["instance-gateway", "stripe-webhook"]'))
+p=Path('src/pristine/Cargo.toml')
+s=p.read_text();assert s.count('"instance-gateway"')==1
+p.write_text(s.replace('"instance-gateway"','"instance-gateway", "stripe-webhook"'))
 PY
 "$FORKLAUNCH_CLI" infra add pristine sms --path .
 "$FORKLAUNCH_CLI" infra remove pristine email --path .
 "$FORKLAUNCH_CLI" infra remove pristine sms --path .
-test ! -e crates/pristine/src/capabilities/mod.rs
-test ! -e .forklaunch/native-capabilities/pristine.json
-grep -q stripe-webhook crates/pristine/Cargo.toml
+test ! -e src/pristine/capabilities/mod.rs
+state_absent pristine/capabilities
+grep -q stripe-webhook src/pristine/Cargo.toml
 cargo check -p pristine
 mkdir -p services/team
-mv crates/pristine services/team/pristine
+mv src/pristine services/team/pristine
 python3 - <<'PY'
 from pathlib import Path
 for filename in ['Cargo.toml','.forklaunch/manifest.toml']:
- p=Path(filename);p.write_text(p.read_text().replace('crates/pristine','services/team/pristine'))
-p=Path('services/team/pristine/Cargo.toml');p.write_text(p.read_text().replace('../../.forklaunch/','../../../.forklaunch/'))
+ p=Path(filename);p.write_text(p.read_text().replace('src/pristine','services/team/pristine'))
+import re, os
+for relative in ['Cargo.toml','.forklaunch/contracts/Cargo.toml','sdk/rust/Cargo.toml']:
+ p=Path('services/team/pristine')/relative
+ def relocate(match):
+  previous=Path(os.path.normpath(Path('src/pristine')/Path(relative).parent/match[1]))
+  if previous.is_relative_to('src/pristine'): return match[0]
+  return 'path = "'+os.path.relpath(previous,p.parent)+'"'
+ p.write_text(re.sub(r'path\s*=\s*"([^"]+)"', relocate, p.read_text()))
 PY
 "$FORKLAUNCH_CLI" infra add pristine sms --path .
 "$FORKLAUNCH_CLI" sync service pristine --path .
 "$FORKLAUNCH_CLI" change service --path services/team/pristine -N relocated-pristine --confirm
-test -e services/team/relocated-pristine/src/capabilities/mod.rs
-test ! -d crates/relocated-pristine
+test -e services/team/relocated-pristine/capabilities/mod.rs
+test ! -d src/relocated-pristine
 cargo test -p relocated-pristine
 "$FORKLAUNCH_CLI" delete service relocated-pristine --path . --continue
-test ! -e .forklaunch/native-capabilities/relocated-pristine.json
+state_absent relocated-pristine/capabilities
 if grep -q 'gateway-mock:' docker-compose.yaml; then echo 'FAIL deleted service retained the gateway mock'; exit 1; fi
 echo 'PASS native capability generation, relocation, HTTP/MCP startup, SDKs, dry run and source/configuration preservation'

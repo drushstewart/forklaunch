@@ -1,281 +1,220 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLI_MANIFEST="$(cd "$SCRIPT_DIR/.." && pwd)/Cargo.toml"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-TSC_BIN="${TSC_BIN:-$REPO_ROOT/framework/node_modules/.bin/tsc}"
-
-compile_typescript_sdk() {
-    local sdk_entry="$1"
-
-    if [ ! -x "$TSC_BIN" ]; then
-        echo "[ERROR] TypeScript compiler not found at $TSC_BIN"
-        echo "[ERROR] Run pnpm install before running generated TypeScript SDK tests."
-        exit 1
-    fi
-
-    case "$sdk_entry" in
-        */sdks/typescript/src/index.ts)
-            "$TSC_BIN" --project "$(dirname "$(dirname "$sdk_entry")")/tsconfig.json"
-            ;;
-        *)
-            "$TSC_BIN" --noEmit --target ES2022 --module ESNext \
-                --moduleResolution Bundler --lib ES2022,DOM "$sdk_entry"
-            ;;
-    esac
-}
-
-run_cli() {
-    if [ -n "${FORKLAUNCH_CLI:-}" ]; then
-        "$FORKLAUNCH_CLI" "$@"
-        return
-    fi
-    RUST_BACKTRACE=1 cargo run --manifest-path "$CLI_MANIFEST" --release -- "$@"
-}
-
-echo "[TEST] Rust OpenAPI and SDK commands"
-
-rm -rf output/rust-sdk-openapi-commands
-mkdir -p output/rust-sdk-openapi-commands
-cd output/rust-sdk-openapi-commands
-
-run_cli init application rust-contracts \
-    --path rust-contracts \
-    --language rust \
-    -D "Rust contracts app" \
-    -A "ForkLaunch" \
-    -L MIT
-
-run_cli init service accounts \
-    --path rust-contracts \
-    --language rust \
-    -d postgresql \
-    -D "Accounts service"
-
-run_cli init service billing \
-    --path rust-contracts \
-    --language rust \
-    -d sqlite \
-    -D "Billing service"
-
-run_cli init worker email-worker \
-    --path rust-contracts \
-    --language rust \
-    -t redis \
-    -D "Email worker"
-
-run_cli init router users \
-    --path rust-contracts/crates/accounts \
-    --language rust
-
-run_cli init router invoices \
-    --path rust-contracts/crates/billing \
-    --language rust
-
-run_cli openapi export --path rust-contracts
-test -f rust-contracts/.forklaunch/openapi/accounts/openapi.json
-test -f rust-contracts/.forklaunch/openapi/billing/openapi.json
-test -f rust-contracts/.forklaunch/openapi/email-worker/openapi.json
-test -f rust-contracts/.forklaunch/contracts/accounts/contract.json
-test -f rust-contracts/.forklaunch/contracts/billing/contract.json
-test -f rust-contracts/.forklaunch/contracts/email-worker/contract.json
-grep -q '"openapi"[[:space:]]*:[[:space:]]*"3.1.0"' rust-contracts/.forklaunch/openapi/accounts/openapi.json
-grep -q 'listUsers' rust-contracts/.forklaunch/openapi/accounts/openapi.json
-grep -q 'listInvoices' rust-contracts/.forklaunch/openapi/billing/openapi.json
-grep -q '"formatVersion"[[:space:]]*:[[:space:]]*"forklaunch.contract.v1"' rust-contracts/.forklaunch/contracts/accounts/contract.json
-grep -q '"generator"[[:space:]]*:[[:space:]]*"framework-rs"' rust-contracts/.forklaunch/contracts/accounts/contract.json
-grep -q '"routes"' rust-contracts/.forklaunch/contracts/accounts/contract.json
-grep -q 'List Users' rust-contracts/.forklaunch/contracts/accounts/contract.json
-
-run_cli openapi export --path rust-contracts --output generated/openapi
-test -f rust-contracts/generated/openapi/accounts/openapi.json
-test -f rust-contracts/generated/openapi/billing/openapi.json
-
-run_cli sdk generate all --path rust-contracts --from openapi
-test -f rust-contracts/sdks/typescript/src/index.ts
-test -f rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-test -f rust-contracts/sdks/rust/billing-sdk/src/lib.rs
-test -f rust-contracts/sdks/rust/email-worker-sdk/src/lib.rs
-grep -q 'createForkLaunchSdk' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'accountsService' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'billingService' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'emailWorkerService' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'users' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'invoices' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'AccountsUsersListUsersRequest' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'AccountsUsersListUsersResponses' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'records: Array<{ id: string; name: string } & Record<string, unknown>>' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'listUsers: (input: AccountsUsersListUsersRequest' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'ForkLaunchSdkResponse<Responses' rust-contracts/sdks/typescript/src/index.ts
-grep -q "Code extends keyof ForkLaunchErrorResponses ? 'text/plain' : 'application/json'" rust-contracts/sdks/typescript/src/index.ts
-grep -q 'AccountsClient' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'BillingClient' rust-contracts/sdks/rust/billing-sdk/src/lib.rs
-grep -q 'EmailWorkerClient' rust-contracts/sdks/rust/email-worker-sdk/src/lib.rs
-! grep -q 'pub async fn' rust-contracts/sdks/rust/email-worker-sdk/src/lib.rs
-grep -q 'reqwest = { version = "0.13.2", features = \["json", "query"\] }' rust-contracts/sdks/rust/accounts-sdk/Cargo.toml
-grep -q 'serde = { version = "1.0", features = \["derive"\] }' rust-contracts/sdks/rust/accounts-sdk/Cargo.toml
-grep -q 'AccountsUsersListUsersRequest' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'AccountsUsersListUsersResponses' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub struct AccountsUsersListUsersResponse' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub records: ::std::vec::Vec<AccountsUsersListUsersResponseRecordsItem>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q "fn encode_path_segment" rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'users_list_users_request' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub async fn users_list_users' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub enum SdkAuth' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub fn with_jwt' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub fn with_basic_auth' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub fn with_hmac_authorization' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'pub fn with_auth_hook' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'response.json::<AccountsUsersListUsersResponse>()' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q '"sdks/rust/accounts-sdk"' rust-contracts/Cargo.toml
-grep -q '"sdks/rust/billing-sdk"' rust-contracts/Cargo.toml
-grep -q '"sdks/rust/email-worker-sdk"' rust-contracts/Cargo.toml
-compile_typescript_sdk rust-contracts/sdks/typescript/src/index.ts
-"$TSC_BIN" --project rust-contracts/sdks/typescript/tsconfig.json --noEmit false --outDir "$PWD/rust-contracts/sdks/typescript/dist"
-node "$SCRIPT_DIR/fixtures/typescript_sdk_paths.mjs" "$PWD/rust-contracts/sdks/typescript/dist/index.js"
-cat > rust-contracts/generated-sdk-usage.ts << 'EOF'
-import { accountsService, createForkLaunchSdk, sdk, type ForkLaunchGeneratedSdk } from './sdks/typescript/src/index';
-
-const configured = createForkLaunchSdk({
-    baseUrl: 'http://localhost:8000',
-    headers: { 'x-test': 'true' }
-});
-const typedSdk: ForkLaunchGeneratedSdk = configured;
-const abort = new AbortController();
-
-configured.accounts.users.listUsers({ signal: abort.signal });
-configured.accounts.users.listUsers({ credentials: 'include' });
-typedSdk.billing.invoices.listInvoices({ cache: 'no-store' });
-void sdk.emailWorker; // Durable workers expose no application HTTP methods.
-accountsService.users.listUsers({ redirect: 'follow' });
-EOF
-compile_typescript_sdk rust-contracts/generated-sdk-usage.ts
-cat > rust-contracts/generated-sdk-live-compat.ts << 'EOF'
-import {
-    createForkLaunchSdk,
-    type AccountsUsersListUsersRequest,
-    type AccountsUsersListUsersResponses,
-    type ForkLaunchErrorResponses
-} from './sdks/typescript/src/index';
-
-type LiveSdkResponse<Responses extends Record<number, unknown>> = {
-    [Code in keyof Responses & number]: {
-        code: Code;
-        contentType: Code extends keyof ForkLaunchErrorResponses ? 'text/plain' : 'application/json';
-        response: Responses[Code];
-    };
-}[keyof Responses & number];
-
-type LiveSdkFunction<Request, Responses extends Record<number, unknown>> =
-    (input: Request) => Promise<LiveSdkResponse<Responses>>;
-
-type LiveAccountsSdkShape = {
-    accounts: {
-        users: {
-            listUsers: LiveSdkFunction<AccountsUsersListUsersRequest, AccountsUsersListUsersResponses>;
-        };
-    };
-};
-
-const generatedAsLiveShape: LiveAccountsSdkShape = createForkLaunchSdk();
-
-async function acceptsLiveShape(client: LiveAccountsSdkShape) {
-    const response = await client.accounts.users.listUsers({});
-    if (response.code === 400) {
-        const text: string = response.response;
-        const contentType: 'text/plain' = response.contentType;
-        return `${contentType}:${text}`;
-    }
-    return response.response;
-}
-
-acceptsLiveShape(generatedAsLiveShape);
-EOF
-compile_typescript_sdk rust-contracts/generated-sdk-live-compat.ts
-cat > rust-contracts/generated-sdk-invalid-usage.ts << 'EOF'
-import { sdk } from './sdks/typescript/src/index';
-
-sdk.emailWorker.health.get({});
-sdk.accounts.users.missing({});
-sdk.accounts.users.listUsers({ body: { unexpected: true } });
-EOF
-if compile_typescript_sdk rust-contracts/generated-sdk-invalid-usage.ts; then
-    echo "[ERROR] Generated TypeScript SDK should reject removed routes and invalid request bodies"
-    exit 1
+export FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-$REPO_ROOT/cli/target/debug/forklaunch}"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/cli/target}"
+export CARGO_INCREMENTAL=0
+export FORKLAUNCH_SKIP_FORMAT=1
+export FORKLAUNCH_FRAMEWORK_SNAPSHOT=1
+export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
+if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-0}" != 1 ]; then
+    exec python3 "$SCRIPT_DIR/fixtures/worker_runtime_lock.py" "$SCRIPT_DIR/rust_sdk_openapi_commands.sh"
 fi
-run_cli sdk generate --path rust-contracts --target all --from openapi --check
-# OpenAPI generation must read the artifact, independently of the manifest and
-# framework contract. An edited operation/schema must invalidate --check.
-cp rust-contracts/.forklaunch/openapi/accounts/openapi.json rust-contracts/accounts-openapi.backup.json
-python3 - <<'PYTHON'
-from pathlib import Path
+python3 - "$REPO_ROOT" <<'PY'
+"""Exercise real project-local SDKs, artifact imports and compiler freshness."""
+import hashlib
 import json
-p = Path('rust-contracts/.forklaunch/openapi/accounts/openapi.json')
-spec = json.loads(p.read_text())
-spec['paths']['/users']['get']['operationId'] = 'scanUsers'
-spec['components']['schemas']['UsersResponse']['properties']['displayName'] = {'type': 'string'}
-p.write_text(json.dumps(spec))
-PYTHON
-if run_cli sdk generate --path rust-contracts --target all --from openapi --check; then
-    echo '[ERROR] OpenAPI changes must invalidate generated SDKs' >&2
-    exit 1
-fi
-run_cli sdk generate --path rust-contracts --target all --from openapi
-grep -q 'scanUsers:' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'displayName?: string' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'pub display_name: ::std::option::Option<::std::string::String>' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-grep -q 'serde(rename = "displayName")' rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-mv rust-contracts/.forklaunch/openapi/accounts/openapi.json rust-contracts/accounts-openapi.missing.json
-if run_cli sdk generate --path rust-contracts --target all --from openapi; then
-    echo '[ERROR] Missing OpenAPI must fail rather than fabricate manifest routes' >&2
-    exit 1
-fi
-mv rust-contracts/accounts-openapi.backup.json rust-contracts/.forklaunch/openapi/accounts/openapi.json
-run_cli sdk generate --path rust-contracts --target all --from openapi
-if run_cli sdk generate rust --path rust-contracts --target typescript --from openapi; then
-    echo "[ERROR] SDK target shorthand should conflict with a different explicit --target"
-    exit 1
-fi
+import os
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
+import tomllib
 
-run_cli sdk generate ts --path rust-contracts --service accounts --from contract
-grep -q 'accountsService' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'users:' rust-contracts/sdks/typescript/src/index.ts
-grep -q 'listUsers: (input: AccountsUsersListUsersRequest' rust-contracts/sdks/typescript/src/index.ts
-! grep -q 'billingService' rust-contracts/sdks/typescript/src/index.ts
-! grep -q 'emailWorkerService' rust-contracts/sdks/typescript/src/index.ts
-compile_typescript_sdk rust-contracts/sdks/typescript/src/index.ts
-run_cli sdk generate --path rust-contracts --target typescript --service accounts --from contract --check
-printf '\n// stale sdk marker\n' >> rust-contracts/sdks/typescript/src/index.ts
-if run_cli sdk generate --path rust-contracts --target typescript --service accounts --from contract --check; then
-    echo "[ERROR] SDK check should fail when generated TypeScript SDK is stale"
-    exit 1
-fi
-run_cli sdk watch --path rust-contracts --target typescript --service accounts --from contract --once --interval-ms 100
-run_cli sdk generate --path rust-contracts --target typescript --service accounts --from contract --check
+repo = Path(sys.argv[1])
+source_cli = Path(os.environ['FORKLAUNCH_CLI']).resolve()
+root = Path(tempfile.mkdtemp(prefix='forklaunch-sdk-openapi-'))
+cli = root / 'forklaunch'
+shutil.copy2(source_cli, cli)
+print('CLI SHA-256:', hashlib.sha256(cli.read_bytes()).hexdigest(), flush=True)
+app = root / 'app'
+env = dict(os.environ, FORKLAUNCH_CLI=str(cli))
 
-run_cli sdk generate rust --path rust-contracts --service billing --from contract
-test -f rust-contracts/sdks/rust/billing-sdk/src/lib.rs
-grep -q 'BillingClient' rust-contracts/sdks/rust/billing-sdk/src/lib.rs
-grep -q 'invoices_list_invoices_request' rust-contracts/sdks/rust/billing-sdk/src/lib.rs
-grep -q 'pub async fn invoices_list_invoices' rust-contracts/sdks/rust/billing-sdk/src/lib.rs
-run_cli sdk generate --path rust-contracts --target rust --service billing --from contract --check
+def run(*args, cwd=None, expected=0):
+    print('Running:', shlex.join(map(str, args)), flush=True)
+    result = subprocess.run(list(map(str, args)), cwd=cwd or (app if app.exists() else repo), env=env,
+                            capture_output=expected != 0, text=True)
+    if expected == 0:
+        assert result.returncode == 0, args
+    else:
+        assert result.returncode != 0, f'Command should fail: {args}'
+        print(result.stdout + result.stderr, flush=True)
+    return result
 
-run_cli change service --path rust-contracts/crates/billing -N invoicing --confirm
-test ! -d rust-contracts/sdks/rust/billing-sdk
-test ! -d rust-contracts/.forklaunch/contracts/billing
-test -f rust-contracts/sdks/rust/invoicing-sdk/src/lib.rs
-grep -q 'InvoicingClient' rust-contracts/sdks/rust/invoicing-sdk/src/lib.rs
-grep -q 'invoicingService' rust-contracts/sdks/typescript/src/index.ts
-! grep -q 'billingService' rust-contracts/sdks/typescript/src/index.ts
-run_cli sdk generate --path rust-contracts --target rust --service invoicing --from contract --check
-run_cli sdk generate --path rust-contracts --target typescript --from contract --check
-compile_typescript_sdk rust-contracts/sdks/typescript/src/index.ts
+def command(*args, path=None, expected=0):
+    return run(cli, *args, '--path', path or app, expected=expected)
 
-cat "$SCRIPT_DIR/fixtures/rust_sdk_paths.rs" >> rust-contracts/sdks/rust/accounts-sdk/src/lib.rs
-(
-    cd rust-contracts
-    cargo test --workspace
-)
+def generated(name, target='typescript'):
+    return app / 'src' / name / 'sdk' / target
 
-echo "[SUCCESS] Rust OpenAPI and SDK command tests passed"
+def digest(directory):
+    return {str(path.relative_to(directory)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in directory.rglob('*') if path.is_file() and 'node_modules' not in path.parts}
+
+try:
+    command('init', 'application', 'rust-contracts', '--database', 'postgresql', '--validator', 'zod',
+            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--test-framework', 'vitest', '-D', 'SDK command fixture', '-A', 'ForkLaunch', '-L', 'MIT')
+    for service, router in [('accounts', 'users'), ('billing', 'invoices')]:
+        command('init', 'service', service, '--language', 'rust', '-D', service)
+        command('init', 'router', router, '--language', 'rust', path=app / 'src' / service)
+        assert (app / 'src' / service / '.forklaunch/contracts/Cargo.toml').is_file()
+        assert '#[forklaunch_core::contract::api]' in (app / 'src' / service / 'api/controllers' / (router+'.rs')).read_text()
+    # cargo check itself must emit both languages' SDKs and OpenAPI.
+    run('cargo', 'check', '--workspace', '--all-targets')
+    for service, router in [('accounts', 'users'), ('billing', 'invoices')]:
+        sdk = generated(service)
+        spec = json.loads((sdk / 'openapi.json').read_text())
+        contract = json.loads((sdk / 'contract.json').read_text())
+        assert spec['openapi'] == '3.1.0' and '/'+router in spec['paths']
+        assert contract['formatVersion'] == 'forklaunch.contract.v1'
+        assert contract['generator'] == 'framework-rs'
+        assert contract['sdkLayout'] == 'project-local-v1'
+        assert (sdk / 'index.ts').read_text().strip() == "export type * from './sdk.js';"
+        text = (sdk / 'sdk.ts').read_text()
+        assert 'import type {' in text and "from '@forklaunch/universal-sdk'" in text
+        assert '& Record<string, unknown>' not in text
+        assert 'export type '+service.title()+'SdkClient' in text
+        assert (generated(service, 'rust') / 'generated/client.rs').is_file()
+        assert 'pub struct Client' in (generated(service, 'rust') / 'generated/client.rs').read_text()
+        assert tomllib.loads((app / 'src' / service / '.forklaunch/contracts/Cargo.toml').read_text())['package']['publish'] is False
+    assert not (app / 'sdks').exists()
+    command('openapi', 'export')
+    command('openapi', 'export', '--output', 'generated/openapi')
+    for service in ['accounts', 'billing']:
+        assert (app / 'generated/openapi' / service / 'openapi.json').is_file()
+        for artifact in [generated(service) / 'openapi.json', app / 'generated/openapi' / service / 'openapi.json']:
+            exported = json.loads(artifact.read_text())
+            assert all('x-forklaunch-operation' in item['get'] for item in exported['paths'].values()), 'Export must retain checked portable SDK operation descriptors'
+    command('sdk', 'generate', 'all', '--from', 'openapi')
+    command('sdk', 'generate', '--target', 'all', '--from', 'openapi', '--check')
+    # Compile against the real bundled TypeScript runtime in an isolated install.
+    runtime = root / 'typescript-runtime'
+    shutil.copytree(repo / 'framework/universal-sdk', runtime, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    run('npm', 'install', '--prefix', runtime, '--ignore-scripts', '--package-lock=false')
+    run('npm', '--prefix', runtime, 'run', 'build')
+    run('node', repo / 'framework/universal-sdk/__test__/publicTransport.mjs', runtime)
+    dependency = app / 'node_modules/@forklaunch'
+    dependency.mkdir(parents=True)
+    (dependency / 'universal-sdk').symlink_to(runtime, target_is_directory=True)
+    tsc = Path(os.environ.get('TSC_BIN', runtime / 'node_modules/.bin/tsc'))
+    for service in ['accounts', 'billing']:
+        run(tsc, '--project', generated(service) / 'tsconfig.json')
+    usage = app / 'sdk-consumer.ts'
+    usage.write_text('''import type { AccountsSdkClient, ListUsersRequest, ListUsersResponse, UsersResponse, RecordModel as UserRecord } from './src/accounts/sdk/typescript/index.js';
+import type { BillingSdkClient } from './src/billing/sdk/typescript/index.js';
+declare const accounts: AccountsSdkClient;
+declare const billing: BillingSdkClient;
+const record: UserRecord = { id: 'one', name: 'Ada' };
+const input: ListUsersRequest = { signal: new AbortController().signal, credentials: 'include' };
+const response: Promise<ListUsersResponse> = accounts.users.listUsers(input);
+void billing.invoices.listInvoices({ cache: 'no-store' });
+async function narrow() {
+  const result = await response;
+  if (result.code === 200) {
+    const json: 'application/json' = result.contentType;
+    const body: UsersResponse = result.response;
+    const name: string = body.records[0].name;
+    return [json, name];
+  }
+}
+// @ts-expect-error Known record fields remain strongly typed.
+const invalidName: UserRecord = { id: 'one', name: 42 };
+// @ts-expect-error Unspecified properties must not be widened by Record<string, unknown>.
+const extra: UserRecord = { id: 'one', name: 'Ada', invented: true };
+// @ts-expect-error A GET endpoint has no request body.
+accounts.users.listUsers({ body: { unexpected: true } });
+// @ts-expect-error Removed or unknown routes are not callable.
+accounts.users.missing({});
+void [record, invalidName, extra, narrow];
+''')
+    consumer_config = app / 'sdk-consumer.tsconfig.json'
+    consumer_config.write_text(json.dumps({'compilerOptions': {'noEmit': True, 'strict': True,
+        'target': 'ES2022', 'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM']},
+        'files': ['./sdk-consumer.ts']}))
+    run(tsc, '--project', consumer_config)
+    # The service SDK's transport is the shared runtime. Exercise its public
+    # TypeScript entry point against a real emitted operation descriptor.
+    path_check = root / 'path-conformance.mjs'
+    path_check.write_text('''import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
+const { universalSdk } = await import(pathToFileURL(process.argv[2]));
+const document = JSON.parse(await readFile(process.argv[3], 'utf8'));
+const operation = document.paths['/users'].get;
+const path = '/users/:id/:id2/{other}/literal:id/{missing}';
+operation['x-forklaunch-operation'].path = path;
+document.paths = { [path]: { get: operation } };
+let captured;
+globalThis.fetch = async url => {
+  captured = String(url);
+  return new Response(JSON.stringify({ route: 'users', summary: { service: 'accounts', total: 0 }, records: [] }), { headers: { 'content-type': 'application/json' } });
+};
+const client = await universalSdk({ host: 'https://fixture.invalid', registryOptions: { raw: document } });
+await client.users.listUsers({ params: { id: 'a/b ?#%é🦀', id2: 'second', other: ':id2/{id}', literal: 'ignored' } });
+assert.equal(captured, 'https://fixture.invalid/users/a%2Fb%20%3F%23%25%C3%A9%F0%9F%A6%80/second/%3Aid2%2F%7Bid%7D/literal:id/{missing}');
+console.log('PASS shared TypeScript SDK runtime path parameter conformance');
+''')
+    run('node', path_check, runtime / 'lib/index.mjs', generated('accounts') / 'openapi.json')
+    rust_tests = generated('accounts', 'rust') / 'tests'
+    rust_tests.mkdir()
+    (rust_tests / 'path_conformance.rs').write_text((repo / 'cli/tests/fixtures/rust_sdk_paths.rs').read_text().replace('use super::path_with_params;', 'use forklaunch_universal_sdk::path_with_params;'))
+    run('cargo', 'test', '-p', 'accounts-sdk', '--test', 'path_conformance')
+    # Explicit OpenAPI generation reads the edited artifact, never reconstructed routes.
+    artifact = generated('accounts') / 'openapi.json'
+    original = artifact.read_bytes()
+    spec = json.loads(original)
+    spec['paths']['/users']['get']['operationId'] = 'scanUsers'
+    response_schema = spec['paths']['/users']['get']['responses']['200']['content']['application/json']['schema']
+    if '$ref' in response_schema:
+        response_schema = spec['components']['schemas'][response_schema['$ref'].rsplit('/', 1)[1]]
+    response_schema['properties']['displayName'] = {'type': 'string'}
+    artifact.write_text(json.dumps(spec))
+    command('sdk', 'generate', '--target', 'all', '--from', 'openapi', '--check', expected=1)
+    command('sdk', 'generate', '--target', 'all', '--from', 'openapi')
+    assert 'scanUsers:' in (generated('accounts') / 'sdk.ts').read_text()
+    assert 'displayName?: string' in (generated('accounts') / 'sdk.ts').read_text()
+    assert 'pub display_name:' in (generated('accounts', 'rust') / 'generated/models.rs').read_text()
+    artifact.unlink()
+    command('sdk', 'generate', '--target', 'all', '--from', 'openapi', expected=1)
+    artifact.write_bytes(original)
+    command('sdk', 'generate', '--target', 'all', '--from', 'contract')
+    command('sdk', 'generate', 'rust', '--target', 'typescript', '--from', 'contract', expected=1)
+    billing_before = digest(generated('billing'))
+    command('sdk', 'generate', 'ts', '--service', 'accounts', '--from', 'contract')
+    assert digest(generated('billing')) == billing_before, 'Filtered generation must preserve other service SDKs'
+    sdk = generated('accounts') / 'sdk.ts'
+    sdk.write_text(sdk.read_text()+'\n// deliberately stale generated SDK\n')
+    command('sdk', 'generate', '--target', 'typescript', '--service', 'accounts', '--from', 'contract', '--check', expected=1)
+    command('sdk', 'watch', '--target', 'typescript', '--service', 'accounts', '--from', 'contract', '--once', '--interval-ms', '100')
+    command('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
+    command('sdk', 'generate', 'rust', '--service', 'billing', '--from', 'contract')
+    command('change', 'service', '-N', 'invoicing', '--confirm', path=app / 'src/billing')
+    assert not (app / 'src/billing').exists()
+    assert 'InvoicingSdkClient' in (generated('invoicing') / 'sdk.ts').read_text()
+    command('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
+    run('cargo', 'check', '--workspace', '--all-targets')
+    run(tsc, '--project', generated('invoicing') / 'tsconfig.json')
+    # Editing an inline contract must refresh live SDK typing on a subsequent
+    # ordinary compile; no explicit sdk command is allowed between edit and check.
+    controller = app / 'src/accounts/api/controllers/users.rs'
+    original_controller = controller.read_text()
+    assert 'List Users' in original_controller
+    controller.write_text(original_controller.replace('List Users', 'Find Users'))
+    run('cargo', 'check', '-p', 'accounts', '-p', 'accounts-sdk')
+    refreshed = (generated('accounts') / 'sdk.ts').read_text()
+    assert 'findUsers:' in refreshed and 'listUsers:' not in refreshed
+    assert 'FindUsersResponse' in refreshed
+    controller.write_text(original_controller)
+    run('cargo', 'check', '-p', 'accounts', '-p', 'accounts-sdk')
+    command('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
+    print('PASS project-local SDKs on compilation and contract edits, discrete TS types, Rust clients, OpenAPI edits, missing-artifact rejection, service filtering, watch freshness and rename', flush=True)
+finally:
+    if os.environ.get('FORKLAUNCH_KEEP_FIXTURE'):
+        print('Fixture retained:', root, flush=True)
+    else:
+        shutil.rmtree(root)
+PY

@@ -98,7 +98,7 @@ try {
       '--manifest-path',
       path.join(frameworkRoot, 'Cargo.toml'),
       '-p',
-      'forklaunch-sdk-typescript',
+      'forklaunch-core','--features','build,asyncapi-import',
       'generated_typescript_socket_client_fixture',
     ],
     {

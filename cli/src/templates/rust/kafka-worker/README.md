@@ -57,3 +57,47 @@ not stop the control service; SIGTERM stops it cleanly.
 New release manifests advertise distinct control and consumer roles when the
 installed generated sources support this entry point. Older/custom sources keep
 their existing command. The health/control server does not expose MCP tools.
+
+
+## Encrypted event contract
+
+Processing and enqueue require a trusted non-nil UUID `TENANT_ID` and
+`ENCRYPTION_KEY_HEX` (a securely generated 32-byte key encoded as 64 hex digits).
+Use the key ID/previous-key variables in `.env.example` for rotation. No default
+key is provided. Keep credentials outside source control.
+
+`--enqueue` accepts a UUID operation ID and this typed JSON input:
+
+```sh
+cargo run -- --enqueue 22222222-2222-4222-8222-222222222222 '{"resourceId":"33333333-3333-4333-8333-333333333333","revision":1,"message":"example work"}'
+```
+
+The event boundary encrypts the input before the broker stores it. The worker
+authenticates tenant, operation, resource, revision and queue before exposing the
+typed event to the handler. Retry/dead-letter state retains the sealed event;
+inspection prints metadata only. Plaintext legacy jobs are rejected. Application
+handlers remain fail-closed until implemented; enforce idempotency and current
+resource permissions before acknowledging success. This does not establish
+wire compatibility with existing TypeScript queues; migrate their event contracts
+explicitly rather than accepting unauthenticated legacy JSON.
+
+
+Broker transport is a separate security boundary from encrypted job contents.
+Remote Redis/BullMQ requires `rediss://` with certificate verification; do not use
+an insecure fragment. Remote PostgreSQL requires `sslmode=verify-full`. Remote
+Kafka requires `security.protocol=SSL` or `SASL_SSL` with certificate and hostname
+verification enabled. The generated defaults permit loopback plaintext for local
+checks. For isolated Docker development brokers only, explicitly set
+`WORKER_ALLOW_PLAINTEXT_DEVELOPMENT=true`; never carry that override into production.
+The Redis/BullMQ adapters include Rustls roots. Kafka uses librdkafka TLS settings;
+its `KAFKA_CLIENT_PROPERTIES` configuration is also checked before connecting.
+Control-channel Redis uses the same transport policy. TLS does not replace the
+encrypted payload boundary, and encrypted payloads do not protect broker credentials.
+
+## Shared event producers
+
+`domain/schemas/event_contract.rs` defines `WorkInput` and `WorkEvent` once. Every Cargo build runs `build.rs` and updates `events/event-contract.json`, `events/typescript/events.ts`, and `events/rust/events.rs`; unchanged assets keep their timestamps. Deleting an output regenerates it. These are worker event contracts, separate from HTTP OpenAPI, and are not an AsyncAPI document.
+
+The generated TypeScript `WorkProducer` uses `createEncryptedWorkPublisher` from the bundled shared Node runtime. Supply the trusted tenant, worker namespace, active key ID/key, and a broker adapter whose `publish` receives only `SealedWorkEvent`. The runtime performs HKDF-SHA256 tenant key derivation and AES-256-GCM v3 encryption before that adapter is called. Call `close()` to wipe the derived key. JavaScript strings/objects cannot be reliably wiped; retain plaintext inputs only as needed. The Rust producer module exposes `seal_work` with the same authenticated event contract. Configure broker TLS independently. Existing historical TypeScript ciphertext formats are not implicitly compatible with this protocol.
+
+The generated `WorkConsumer(options, queue)` exposes asynchronous `consume(expectedContext, envelope)`. It authenticates the trusted tenant, expected resource/operation/revision, namespace, channel and queue, validates the complete decrypted event against the Rust-generated JSON schema, then requires a bounded, acknowledged metadata-only audit before returning `WorkEvent`. Configure `activeKey` and up to four `previousKeys` for rotation, and call `close()` when finished. `WorkProducer` validates the exact serialized input before encryption, including routing identity. Install the dependencies in `events/typescript/package.json`; errors omit plaintext and detailed schema diagnostics. The runtime file retains `createEncryptedWorkConsumer().open()` only as a low-level compatibility primitive without DTO validation or disclosure auditing; the generated typed entrypoint does not export it.

@@ -3,6 +3,11 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/cli/target}"
+export CARGO_INCREMENTAL=0
+if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-0}" != 1 ]; then
+    exec python3 "$SCRIPT_DIR/fixtures/worker_runtime_lock.py" "$SCRIPT_DIR/rust_package_sources.sh"
+fi
 PACKAGE_LIST="$(mktemp)"
 trap 'rm -f "$PACKAGE_LIST"' EXIT
 cargo package --manifest-path "$REPO_ROOT/cli/Cargo.toml" --list --allow-dirty > "$PACKAGE_LIST"
@@ -12,6 +17,14 @@ import sys
 
 root = Path(sys.argv[1])
 packaged = set(Path(sys.argv[2]).read_text().splitlines())
+def source_file(path):
+    # Match the embedded source catalog's documented exclusion policy.
+    ignored = {"target", "node_modules", ".git", "__pycache__", "dist", "artifacts", "secrets"}
+    return path.is_file() and not ignored.intersection(path.parts) and not (
+        path.name == ".DS_Store" or path.suffix in {".pyc", ".pyo", ".local"}
+        or path.name.startswith(".env") and not path.name.endswith(".example")
+    )
+
 expected = {
     "src/sdk/schema.rs",
     "src/sdk/schema_resources.rs",
@@ -24,11 +37,6 @@ expected = {
     "src/templates/rust/application/typescript-sdk-tsconfig.json",
     "src/templates/rust/project/Cargo.toml.template",
     "src/templates/rust/iam/Cargo.toml.template",
-    "src/templates/rust/iam-better-auth/Cargo.toml.template",
-    "src/templates/rust/iam-better-auth/lib.rs",
-    "src/templates/rust/iam-better-auth/main.rs",
-    "src/templates/rust/iam-better-auth/env.example",
-    "src/templates/rust/iam-better-auth/README.md",
 
     "src/templates/rust/cac/Cargo.toml.template",
     "src/templates/rust/cac/lib.rs",
@@ -40,16 +48,6 @@ expected = {
     "src/templates/rust/billing/main.rs",
     "src/templates/rust/billing/env.example",
     "src/templates/rust/billing/README.md",
-    "src/templates/rust/messaging/Cargo.toml.template",
-    "src/templates/rust/messaging/lib.rs",
-    "src/templates/rust/messaging/main.rs",
-    "src/templates/rust/messaging/env.example",
-    "src/templates/rust/messaging/README.md",
-    "src/templates/rust/bullmq-worker/main.rs",
-    "src/templates/rust/bullmq-worker/handler.rs",
-    "src/templates/rust/bullmq-worker/signals.rs",
-    "src/templates/rust/bullmq-worker/env.example",
-    "src/templates/rust/bullmq-worker/README.md",
     "src/templates/rust/leased-worker/lib.rs",
     "src/templates/rust/leased-worker/smoke.rs",
     "src/templates/rust/leased-worker/signals.rs",
@@ -76,13 +74,24 @@ expected = {
 }
 for workspace, namespace in [("framework-rs", "framework"), ("blueprint-rs", "blueprint-workspace")]:
     for source in (root / workspace / "crates").rglob("*"):
-        if source.is_file():
+        if source_file(source):
             relative = source.relative_to(root / workspace)
             if source.name in {"Cargo.toml", "Cargo.lock"}:
                 relative = relative.with_name(source.name + ".template")
             expected.add(str(Path("src/templates/rust") / namespace / relative))
 for source in (root / "cli/src/templates/sdk").rglob("*"):
-    if source.is_file():
+    if source_file(source):
+        expected.add(str(source.relative_to(root / "cli")))
+# New native controllers, private build hosts, scripts and dotfiles must be
+# included without relying on a manually maintained legacy template inventory.
+template_root = root / "cli/src/templates/rust"
+for source in template_root.rglob("*"):
+    if source_file(source):
+        # Cargo omits nested crates with real manifests. Active embedded catalogs
+        # rename manifests to Cargo.toml.template and are checked above by owner.
+        parents = list(source.relative_to(template_root).parents)[:-1]
+        if any((template_root / parent / "Cargo.toml").is_file() for parent in parents):
+            continue
         expected.add(str(source.relative_to(root / "cli")))
 missing = expected - packaged
 assert not missing, f"Rust sources missing from CLI package: {sorted(missing)}"

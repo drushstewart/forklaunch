@@ -23,7 +23,7 @@ def generate(name='realtime'):
 
 
 def snapshot():
-    roots = [Path('sdks'), Path('.forklaunch/socket-sdk-outputs')]
+    roots = [Path('src/client-sdk'), Path('.forklaunch/socket-sdk-outputs')]
     return {str(p): p.read_bytes() for root in roots for p in root.rglob('*')
             if p.is_file() and not p.is_symlink() and 'node_modules' not in p.parts}
 
@@ -44,10 +44,10 @@ if '--delete' in sys.argv:
     run(['delete', 'service', 'stream-events', '--path', '.', '--continue'])
     assert custom.read_bytes() == original
     assert not Path('.forklaunch/socket-sdk-outputs/stream-events').exists()
-    assert not Path('sdks/rust/stream-events-websocket-sdk/src/socket_chat.rs').exists()
-    assert not Path('sdks/typescript-websocket/stream-events/src/socket_chat.ts').exists()
-    assert Path('sdks/rust/realtime-websocket-sdk/src/socket_chat.rs').read_bytes().endswith(b'// preserved user edits\n')
-    assert 'sdks/rust/stream-events-websocket-sdk' not in tomllib.loads(Path('Cargo.toml').read_text())['workspace']['members']
+    assert not Path('src/client-sdk/rust/stream-events-websocket-sdk/socket_chat.rs').exists()
+    assert not Path('src/client-sdk/typescript-websocket/stream-events/socket_chat.ts').exists()
+    assert Path('src/client-sdk/rust/realtime-websocket-sdk/socket_chat.rs').read_bytes().endswith(b'// preserved user edits\n')
+    assert 'src/client-sdk/rust/stream-events-websocket-sdk' not in tomllib.loads(Path('Cargo.toml').read_text())['workspace']['members']
     print('PASS imported service deletion removes owned SDKs and preserves custom inputs and edited old files')
 elif '--rename' not in sys.argv:
     artifact = Path('.forklaunch/asyncapi/realtime/asyncapi.json')
@@ -125,10 +125,10 @@ elif '--rename' not in sys.argv:
         other.unlink()
         other.parent.rmdir()
     # A valid input placed at a generated destination must never be overwritten.
-    package = Path('sdks/typescript-websocket/realtime/package.json')
+    package = Path('src/client-sdk/typescript-websocket/realtime/package.json')
     original_package = package.read_bytes()
     package.write_bytes(original)
-    manifest.write_text(manifest.read_text().replace('[projects.metadata]\n', '[projects.metadata]\nasyncapiArtifactPath = "sdks/typescript-websocket/realtime/package.json"\n'))
+    manifest.write_text(manifest.read_text().replace('[projects.metadata]\n', '[projects.metadata]\nasyncapiArtifactPath = "src/client-sdk/typescript-websocket/realtime/package.json"\n'))
     try:
         output = run(generate(), failure=True)
         assert 'overwrite an input artifact' in output, output
@@ -177,25 +177,25 @@ elif '--rename' not in sys.argv:
 else:
     artifact = Path('.forklaunch/asyncapi/realtime/asyncapi.json')
     original = artifact.read_bytes()
-    config = Path('sdks/typescript-websocket/realtime/tsconfig.json').read_bytes()
-    edited = Path('sdks/rust/realtime-websocket-sdk/src/socket_chat.rs')
+    config = Path('src/client-sdk/typescript-websocket/realtime/tsconfig.json').read_bytes()
+    edited = Path('src/client-sdk/rust/realtime-websocket-sdk/socket_chat.rs')
     edited.write_bytes(edited.read_bytes() + b'\n// preserved user edits\n')
-    run(['change', 'service', '--path', 'crates/realtime', '-N', 'live-events', '--confirm'])
+    run(['change', 'service', '--path', 'src/realtime', '-N', 'live-events', '--confirm'])
     assert Path('.forklaunch/asyncapi/live-events/asyncapi.json').read_bytes() == original
     assert not artifact.exists()
     assert edited.read_bytes().endswith(b'// preserved user edits\n')
-    assert Path('sdks/typescript-websocket/live-events/tsconfig.json').read_bytes() == config
+    assert Path('src/client-sdk/typescript-websocket/live-events/tsconfig.json').read_bytes() == config
     run(generate('live-events') + ['--check'])
     # A custom source survives rename and explicit project deletion unchanged.
     manifest.write_text(manifest.read_text().replace('[projects.metadata]\n', '[projects.metadata]\nasyncapiArtifactPath = "custom/server-asyncapi.json"\n'))
     run(generate('live-events'))
-    run(['change', 'service', '--path', 'crates/live-events', '-N', 'stream-events', '--confirm'])
+    run(['change', 'service', '--path', 'src/live-events', '-N', 'stream-events', '--confirm'])
     run(generate('stream-events') + ['--check'])
     assert Path('custom/server-asyncapi.json').read_bytes() == original
     project = next(p for p in tomllib.loads(manifest.read_text())['projects'] if p['name'] == 'stream-events')
     assert project['metadata']['asyncapiArtifactPath'] == 'custom/server-asyncapi.json'
-    old = Path('sdks/typescript-websocket/realtime/node_modules').resolve()
-    Path('sdks/typescript-websocket/stream-events/node_modules').symlink_to(old, target_is_directory=True)
-    subprocess.run([os.environ['TSC_BIN'], '--project', 'sdks/typescript-websocket/stream-events/tsconfig.json'], check=True, timeout=120)
+    old = Path('src/client-sdk/typescript-websocket/realtime/node_modules').resolve()
+    Path('src/client-sdk/typescript-websocket/stream-events/node_modules').symlink_to(old, target_is_directory=True)
+    subprocess.run([os.environ['TSC_BIN'], '--project', 'src/client-sdk/typescript-websocket/stream-events/tsconfig.json'], check=True, timeout=120)
     subprocess.run(['cargo', 'rustc', '-p', 'stream-events-websocket-sdk', '--lib', '--', '-D', 'warnings'], check=True, timeout=300)
     print('PASS imported SDK service rename, standard/custom document ownership, preserved edits and strict consumers')

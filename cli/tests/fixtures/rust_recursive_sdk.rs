@@ -22,7 +22,7 @@ async fn verify() {
     assert_eq!(tree.children[0].label, "leaf");
     assert!(tree.parent.is_none());
     assert!(tree.optional.is_none());
-    let body = serde_json::to_string(&tree).unwrap();
+    let body = serde_json::from_value(serde_json::to_value(&tree).unwrap()).unwrap();
     let TreesTreesWriteTreeResponses::Status200(echo) = client
         .trees_write_tree(TreesTreesWriteTreeRequest {
             body: Some(body),

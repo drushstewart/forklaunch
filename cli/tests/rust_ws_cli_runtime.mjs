@@ -10,7 +10,7 @@ const [app,binary]=process.argv.slice(2);
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {statics:v,validator,load}=actualValidator(root,(spec,file,load)=>spec==='@forklaunch/core/ws'?load(path.join(root,'framework/core/src/ws/webSocketLike.ts')):undefined);
 const {ForklaunchWebSocketServer}=load(path.join(root,'framework/ws/src/webSocketServer.ts'));
-const require=createRequire(import.meta.url),{Parser}=require(process.env.ASYNCAPI_PARSER_PATH);
+const require=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES,'package.json')),{Parser}=require(process.env.ASYNCAPI_PARSER_PATH??'@asyncapi/parser');
 const document=JSON.parse(await readFile(path.join(app,'.forklaunch/asyncapi/realtime/asyncapi.json')));
 assert.equal(document.asyncapi,'3.0.0');
 const parsed=await new Parser().parse(JSON.stringify(document));
@@ -23,7 +23,7 @@ server.on('connection',socket=>{sockets.add(socket);socket.on('error',error=>err
 const timer=setTimeout(()=>{child?.kill();client?.terminate();for(const socket of sockets)socket.terminate();process.exitCode=1;},30000);
 try{
  await once(server,'listening');const url=`ws://127.0.0.1:${server.address().port}/chat`;
- const {socket_chat}=await import(pathToFileURL(path.join(app,'sdks/typescript-websocket/realtime/dist/index.js')));
+ const {socket_chat}=await import(pathToFileURL(path.join(app,'src/client-sdk/typescript-websocket/realtime/dist/index.js')));
  await assert.rejects(socket_chat.SocketClient.connect(url),/401/);
  client=await socket_chat.SocketClient.connect(url,{headers:{authorization:'Bearer fixture-token'},protocols:['chat.v1']});
  assert.equal(client.protocol,'chat.v1');assert.equal(client.response.statusCode,101);

@@ -34,7 +34,7 @@ try {
  const queries=[{}, {q:'a+b & 水'},{ids:['a,b','x+y','水']},{ids:[]},{flags:[true,false]},{prices:[0,100,1.25]},{filter:{active:false,ids:['x','y']}},{nullable:null},{q:'%2F / ? # = &',title:'"quoted"'},{empty:'',flag:false,zero:0}];
  const cases=queries.flatMap(query=>['plain','a/b + 水','%2F?x#y','!*\'()~'].map(id=>({params:{id},query})));
  await writeFile(path.join(temporary,'cases.json'),JSON.stringify(cases));
- execFileSync('cargo',['test','--quiet','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-mcp','-p','forklaunch-sdk-typescript','--all-features','native_query_transport'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_QUERY_TRANSPORT_INPUT:path.join(temporary,'cases.json'),FORKLAUNCH_TEST_QUERY_TRANSPORT_OUTPUT:temporary},encoding:'utf8',timeout:180000});
+ execFileSync('cargo',['test','--quiet','--manifest-path','framework-rs/Cargo.toml','-p','forklaunch-core','-p','forklaunch-core','--features','build,asyncapi-import','--all-features','native_query_transport'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_QUERY_TRANSPORT_INPUT:path.join(temporary,'cases.json'),FORKLAUNCH_TEST_QUERY_TRANSPORT_OUTPUT:temporary},encoding:'utf8',timeout:180000});
  const native=JSON.parse(await readFile(path.join(temporary,'mcp-targets.json'),'utf8'));
  const template=(await readFile(path.join(root,'cli/src/templates/sdk/typescript/index.ts'),'utf8')).replace('{{{transport_source}}}', await readFile(path.join(root, 'cli/src/templates/sdk/typescript/transport.ts'), 'utf8')).replace('{{{form_stringify_source}}}',await readFile(path.join(root,'framework/common/src/safeStringify.ts'),'utf8'));
  const sseSource=await readFile(path.join(root,'cli/src/templates/sdk/typescript/sse.ts'),'utf8');

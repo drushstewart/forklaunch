@@ -1125,6 +1125,7 @@ impl CliCommand for ServiceCommand {
 
         let (app_root_path, project_name) = find_app_root_path(matches, RequiredLocation::Project)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
         let rust_project_name = project_name
             .clone()
             .context("Project path is required for Rust service changes")?;
@@ -1490,6 +1491,10 @@ impl CliCommand for ServiceCommand {
         }
 
         if let Some(name) = name {
+            let old = service_base_path.file_name().and_then(|name| name.to_str()).context("Invalid project directory")?;
+            if crate::sdk::typescript_build::preflight_lifecycle(&app_root_path, old)? {
+                anyhow::ensure!(old == name || crate::core::forklaunch_state::contract_plan(&app_root_path, &name)?.is_none(), "Destination contract hook already exists");
+            }
             move_templates.push(change_name(
                 &service_base_path,
                 &name,
@@ -1553,6 +1558,9 @@ impl CliCommand for ServiceCommand {
         move_template_files(&move_templates, dryrun, &mut stdout)?;
 
         if !dryrun {
+            let old = service_base_path.file_name().and_then(|name| name.to_str()).context("Invalid project directory")?;
+            crate::sdk::typescript_build::rename_hook(&app_root_path, old, &manifest_data.service_name)?;
+            crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(
                 stdout,
                 "{} changed successfully!",

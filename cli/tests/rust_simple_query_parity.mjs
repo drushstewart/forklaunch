@@ -66,7 +66,7 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
   for(let second=0;second<256;second++)exhaustive.push('x='+a+'%'+second.toString(16).padStart(2,'0'));
  }
  for(const tail of ['%','%0','%GG','%E2%82','%F0%9F%92','%ED%A0%80'])for(const head of ['','a','%','%FF','%E2','+','%25'])exhaustive.push('x='+head+tail);
- run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','simple_query_parity']);
+ run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','simple_query_parity']);
  const binary=join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/simple_query_parity');
  const result=spawnSync(binary,[],{input:exhaustive.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});
  assert.equal(result.status,0,result.stderr);const outputs=result.stdout.trim().split('\n').map(value=>JSON.parse(value));assert.equal(outputs.length,exhaustive.length);

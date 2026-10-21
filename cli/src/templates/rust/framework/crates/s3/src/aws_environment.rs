@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/s3/src/aws_environment.rs

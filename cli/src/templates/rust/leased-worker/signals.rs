@@ -1,5 +1,5 @@
 // Optional scoped Pub/Sub control. Disconnects drain; restarts begin running.
-use std::{env, future::Future, sync::Arc};
+use std::{env, future::{self, Future}, sync::Arc, error};
 use forklaunch_core::persistence::TenantContext;
 use forklaunch_worker_database::{
     control::{WorkerControl, forward_signals},
@@ -9,8 +9,9 @@ use forklaunch_worker_database::{
 };
 use forklaunch_worker_interface::{AsyncWorkerAdmin, DistributedSignal};
 use forklaunch_worker_redis::signals::{RedisSignalBus, RedisSignalPublisher, SignalOptions};
+use crate::events;
 
-type Error = Box<dyn std::error::Error>;
+type Error = Box<dyn error::Error>;
 
 fn configuration() -> Result<Option<(String, String, TenantContext, String)>, Error> {
     let url = match env::var("WORKER_SIGNAL_REDIS_URL") {
@@ -18,6 +19,7 @@ fn configuration() -> Result<Option<(String, String, TenantContext, String)>, Er
         Err(env::VarError::NotPresent) => return Ok(None),
         Err(error) => return Err(error.into()),
     };
+    events::transport_policy()?.redis(&url)?;
     let namespace = env::var("WORKER_SIGNAL_NAMESPACE")
         .map_err(|_| "WORKER_SIGNAL_NAMESPACE is required with WORKER_SIGNAL_REDIS_URL")?;
     let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
@@ -64,7 +66,7 @@ where
     });
     let control = WorkerControl::new();
     let work = http::run_with_publisher(queue, handler, config, policy, http_config, &control, Some(publish), shutdown);
-    let forwarding = forward_signals(&mut bus, &control, std::future::pending());
+    let forwarding = forward_signals(&mut bus, &control, future::pending());
     tokio::pin!(work, forwarding);
     tokio::select! {
         result = &mut work => Ok(result?),

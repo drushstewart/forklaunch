@@ -1,0 +1,1 @@
+../../../../../../../../../framework-rs/crates/core/src/contract/schema_validation_regex.rs

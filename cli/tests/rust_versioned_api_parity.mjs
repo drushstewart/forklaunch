@@ -22,7 +22,7 @@ fixtures.push({kind:'text',versions:[{name:'z-first',schema:{type:'string',minLe
 fixtures.push({kind:'file',versions:[{name:'z-first',schema:{type:'string',format:'binary',title:'File'}},{name:'a-last',schema:{type:'string',format:'binary'}}],cases:[[],[0,255,128],[97,98],[230,176,180],[34,123,125,34]]});
 const parserFixtures=[['json','text'],['text','text'],['file','binary'],['none','json'],['none','none'],['urlEncoded','multipart']].map(parserKinds=>({parserKinds}));
 const {validateContractDetails}=load(path.join(root,'framework/core/src/http/router/routerSharedLogic.ts'));
-const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify([...fixtures,...parserFixtures]),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
+const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify([...fixtures,...parserFixtures]),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let count=0;
 for(const [i,fixture] of fixtures.entries()) {
  const requestSchema=Object.fromEntries(fixture.versions.map(version=>[version.name,z.object({body:fixture.kind==='file'?validator.file:fixture.kind==='text'?z.string().min(version.schema.minLength):z.object({value:z.string().min(version.schema.properties.value.minLength)}),params:z.object({}),query:z.object({}),headers:z.object({})})]));
@@ -54,7 +54,7 @@ const transformedFixtures=[
  {kind:'text',includeBody:true,versions:[{name:'first',schema:{type:'string',minLength:1},hook:'trim-first'},{name:'last',schema:{type:'string',minLength:2},hook:'trim-last'}],cases:['',' ',' a ',' ab ','blocked','deny',' 水 ','ß']},
  {includeBody:true,parserOptions:{json:{strict:false}},versions:[{name:'first',schema:{type:'integer',minimum:0},hook:'number-first'},{name:'last',schema:{type:'integer',minimum:10},hook:'number-last'}],cases:['42','-1','nope',42,0,13,99,null,true,' 12 ']}
 ];
-const transformedNative=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(transformedFixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
+const transformedNative=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify(transformedFixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}));
 let transformedCount=0;
 for(const [index,fixture] of transformedFixtures.entries()) {
  const requestSchema=Object.fromEntries(fixture.versions.map(version=> {
@@ -85,7 +85,7 @@ const optionalFixture={includeBody:true,includePresence:true,reviver:'missing',p
  {name:'first',schema:{type:'integer',minimum:0},hook:'optional-first'},
  {name:'last',schema:{type:'integer',minimum:10},hook:'optional-last'}
 ],cases:['missing',null,0,5,10,13,99,-1,true,'10',{},[]]};
-const optionalNative=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify([optionalFixture]),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}))[0];
+const optionalNative=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify([optionalFixture]),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'}}))[0];
 const optionalSchemas=Object.fromEntries(optionalFixture.versions.map(version=>[version.name,z.object({
  body:z.preprocess(value=>value===undefined?(version.name==='first'?5:10):value,z.number().int().min(version.schema.minimum)).transform((value,context)=>{
   if(value===13&&version.name==='last'){context.addIssue({code:z.ZodIssueCode.custom,message:'private transform detail'});return z.NEVER;}

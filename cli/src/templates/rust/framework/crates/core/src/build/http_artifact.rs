@@ -1,0 +1,1 @@
+../../../../../../../../../framework-rs/crates/core/src/build/http_artifact.rs

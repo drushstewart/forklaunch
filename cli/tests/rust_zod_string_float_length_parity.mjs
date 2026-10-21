@@ -16,7 +16,7 @@ for(const a of bounds)for(const b of [-1,0,1.5,2,Infinity,NaN])for(const value o
  add(value,checks,true);add(value,[{name:'toUpperCase'},...checks,{name:'toLowerCase'},{name:'max',argument:'1.5'}],false);
 }
 if(process.env.FORKLAUNCH_NUMBER_ORACLE_ONLY!=='1'){
- const result=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validation','--example','zod_case_parity'],{input:rows.map(row=>JSON.stringify(row)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:64*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});assert.equal(result.status,0,result.stderr);
+ const result=spawnSync('cargo',['run','--locked','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validator','--example','zod_case_parity'],{input:rows.map(row=>JSON.stringify(row)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:64*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});assert.equal(result.status,0,result.stderr);
  const actual=result.stdout.trim().split('\n').map(line=>JSON.parse(line));assert.equal(actual.length,rows.length);for(let i=0;i<rows.length;i++)assert.deepEqual(actual[i],expected[i],JSON.stringify(rows[i]));
 }
 console.log(`PASS ${rows.length} actual-source${process.env.FORKLAUNCH_NUMBER_ORACLE_ONLY==='1'?'':'/native'} general UTF16 string-length comparisons (borrowed + allocating, ordered IEEE bounds/messages)`);

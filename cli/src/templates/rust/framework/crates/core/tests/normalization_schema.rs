@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/tests/normalization_schema.rs

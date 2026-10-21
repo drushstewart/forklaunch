@@ -75,7 +75,7 @@ if (native)
     "--manifest-path",
     "framework-rs/Cargo.toml",
     "-p",
-    "forklaunch-contract",
+    "forklaunch-core",
     "--features",
     "zod-uri,zod-checks",
     "--example",

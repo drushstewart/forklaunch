@@ -35,7 +35,7 @@ console.log('PASS '+rows.length+' actual diagnostic source observations; default
 
 if (process.env.FORKLAUNCH_DIAGNOSTIC_NATIVE === '1') {
  for (const features of [[], ['--features','serde_json/arbitrary_precision']]) {
-  const result=spawnSync('cargo',['run','--quiet','--locked','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validation','--example','zod_provenance_parity',...features],{input:rows.map(({expected,...row})=>JSON.stringify(row)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:64*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+  const result=spawnSync('cargo',['run','--quiet','--locked','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validator','--example','zod_provenance_parity',...features],{input:rows.map(({expected,...row})=>JSON.stringify(row)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:64*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
   assert.equal(result.status,0,result.stderr);
   const output=result.stdout.trim().split('\n').map(line=>JSON.parse(line));
   assert.equal(output.length,rows.length);

@@ -38,7 +38,7 @@ try {
       '--manifest-path',
       path.join(frameworkRoot, 'Cargo.toml'),
       '-p',
-      'forklaunch-sdk-rust',
+      'forklaunch-core','--features','build,asyncapi-import',
       'generated_socket_client_fixture',
     ],
     {
@@ -59,7 +59,7 @@ version = "0.0.0"
 edition = "2021"
 [workspace]
 [dependencies]
-forklaunch-ws = { path = ${JSON.stringify(path.join(frameworkRoot, 'crates/forklaunch-ws'))}, features = ["transport", "json-schema"] }
+forklaunch-ws = { path = ${JSON.stringify(path.join(frameworkRoot, 'crates/ws'))}, features = ["transport", "json-schema"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["net", "macros", "rt-multi-thread"] }

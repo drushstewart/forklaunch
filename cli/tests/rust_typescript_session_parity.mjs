@@ -51,7 +51,7 @@ for(const fixture of fixtures){
  if(fixture.access!=='public')assert.deepEqual(req.session,fixture.claims);
  expected.push({status,message,calls});
 }
-const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-auth','--example','typescript_session_parity'],{cwd:root,input:JSON.stringify(fixtures),encoding:'utf8',timeout:240000,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'2'},maxBuffer:32*1024*1024}));
+const actual=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','auth','--example','typescript_session_parity'],{cwd:root,input:JSON.stringify(fixtures),encoding:'utf8',timeout:240000,env:{...process.env,CARGO_INCREMENTAL:'0',CARGO_BUILD_JOBS:'2'},maxBuffer:32*1024*1024}));
 assert.equal(actual.length,fixtures.length);
 for(const [index,result] of actual.entries())assert.deepEqual(result,expected[index],JSON.stringify(fixtures[index]));
 console.log(`PASS ${fixtures.length} actual TypeScript/native ordered session callback comparisons: validation, unchanged claims, missing callbacks, access, short-circuiting, precedence and async failures`);

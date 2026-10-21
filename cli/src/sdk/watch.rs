@@ -20,6 +20,20 @@ use crate::{
 #[derive(Debug)]
 pub(crate) struct WatchCommand;
 
+/// Internal child-process setting used only by `fl dev`'s combined watcher.
+pub(crate) const DEV_HTTP_SOURCE: &str = "FORKLAUNCH_DEV_SDK_HTTP_SOURCE";
+
+fn development_source<'a>(source: &'a str, override_source: Option<&str>) -> Result<&'a str> {
+    if source != "all" {
+        return Ok(source);
+    }
+    match override_source {
+        None => Ok(source),
+        Some("openapi") => Ok("all-openapi"),
+        Some(_) => anyhow::bail!("Invalid internal development HTTP SDK source"),
+    }
+}
+
 impl WatchCommand {
     pub(crate) fn new() -> Self {
         Self {}
@@ -81,6 +95,8 @@ impl CliCommand for WatchCommand {
 
         let target = matches.get_one::<String>("target").unwrap().as_str();
         let source = matches.get_one::<String>("from").unwrap().as_str();
+        let dev_source = std::env::var(DEV_HTTP_SOURCE).ok();
+        let source = development_source(source, dev_source.as_deref())?;
         let selected_service = matches.get_one::<String>("service").map(String::as_str);
         if let Some(service) = selected_service {
             anyhow::ensure!(
@@ -197,9 +213,18 @@ fn artifact_fingerprint(
     source: &str,
     selected_service: Option<&str>,
 ) -> Result<BTreeMap<PathBuf, [u8; 32]>> {
-    if source == "all" {
-        let mut fingerprint = artifact_fingerprint(app_root, "contract", selected_service)?;
-        fingerprint.extend(socket_artifact_fingerprint(app_root, selected_service, "socket-contract")?);
+    if matches!(source, "all" | "all-openapi") {
+        let http_source = if source == "all-openapi" {
+            "openapi"
+        } else {
+            "contract"
+        };
+        let mut fingerprint = artifact_fingerprint(app_root, http_source, selected_service)?;
+        fingerprint.extend(socket_artifact_fingerprint(
+            app_root,
+            selected_service,
+            "socket-contract",
+        )?);
         return Ok(fingerprint);
     }
     if matches!(source, "socket-contract" | "asyncapi") {
@@ -272,6 +297,9 @@ fn socket_artifact_fingerprint(
         if source == "asyncapi" {
             continue;
         }
+        paths.push(root.join(format!(
+            ".forklaunch/socket-contracts/{name}/registry-export.json"
+        )));
         let contract = project
             .get("metadata")
             .and_then(|metadata| metadata.get("contractArtifactPath"))
@@ -320,10 +348,17 @@ language = "rust"
         for (source, relative) in [
             ("contract", ".forklaunch/contracts/api/contract.json"),
             ("all", ".forklaunch/contracts/api/contract.json"),
-            ("all", ".forklaunch/socket-contracts/api/socket-contract.json"),
+            (
+                "all",
+                ".forklaunch/socket-contracts/api/socket-contract.json",
+            ),
             (
                 "socket-contract",
                 ".forklaunch/socket-contracts/api/socket-contract.json",
+            ),
+            (
+                "socket-contract",
+                ".forklaunch/socket-contracts/api/registry-export.json",
             ),
             ("asyncapi", ".forklaunch/asyncapi/api/asyncapi.json"),
         ] {
@@ -451,6 +486,97 @@ socketContractArtifactPath = "custom/other.json"
 #[cfg(test)]
 mod mixed_http_tests {
     use super::*;
+
+    #[test]
+    fn development_combined_watch_uses_live_openapi_and_preserves_contract_defaults() {
+        assert_eq!(development_source("all", None).unwrap(), "all");
+        assert_eq!(
+            development_source("all", Some("openapi")).unwrap(),
+            "all-openapi"
+        );
+        assert!(development_source("all", Some("invalid")).is_err());
+        for source in ["contract", "openapi", "socket-contract", "asyncapi"] {
+            assert_eq!(development_source(source, Some("openapi")).unwrap(), source);
+            assert_eq!(development_source(source, Some("invalid")).unwrap(), source);
+        }
+        assert!(
+            WatchCommand::new()
+                .command()
+                .version("0.0.0")
+                .try_get_matches_from(["watch", "--from", "all-openapi"])
+                .is_err()
+        );
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        fs::create_dir_all(root.join(".forklaunch")).unwrap();
+        fs::create_dir_all(root.join("src/api/sdk")).unwrap();
+        fs::write(
+            root.join(".forklaunch/manifest.toml"),
+            r#"language = "mixed"
+modules_path = "src"
+app_name = "fixture"
+[[projects]]
+name = "api"
+type = "Service"
+[projects.metadata]
+language = "typescript"
+staticPath = "src/api"
+sdkLayout = "project-local-v1"
+contractArtifactPath = "src/api/sdk/contract.json"
+openapiPath = "src/api/sdk/openapi.json"
+"#,
+        )
+        .unwrap();
+        let manifest_source = fs::read_to_string(root.join(".forklaunch/manifest.toml")).unwrap();
+        fs::write(root.join(".forklaunch/manifest.toml"), format!("{manifest_source}\n[framework]\nversion = \"0.1.2\"\nblueprint_version = \"0.1.0\"\n")).unwrap();
+        fs::write(root.join("Cargo.toml"), "[workspace]\nmembers=[]\n[workspace.package]\nversion='0.1.0'\nedition='2024'\nlicense='MIT'\n").unwrap();
+        let contract = root.join("src/api/sdk/contract.json");
+        let openapi = root.join("src/api/sdk/openapi.json");
+        fs::write(
+            &contract,
+            "stale compiled contract must not be consumed by live development",
+        )
+        .unwrap();
+        let document = |property: &str| {
+            serde_json::json!({"openapi":"3.1.0","info":{"title":"api","version":"1"},
+            "paths":{"/api":{"get":{"operationId":"getApi","responses":{"200":{"description":"ok", "content":{"application/json":{"schema":{
+                "type":"object","properties":{property:{"type":"boolean"}},"required":[property]}}}}}}}}})
+        };
+        fs::write(&openapi, document("firstMarker").to_string()).unwrap();
+        let public = artifact_fingerprint(root, "all", None).unwrap();
+        let development = artifact_fingerprint(root, "all-openapi", None).unwrap();
+        assert!(!public.contains_key(&openapi.canonicalize().unwrap()));
+        assert!(development.contains_key(&openapi.canonicalize().unwrap()));
+        let mut stdout = StandardStream::stdout(ColorChoice::Never);
+        generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, false, &mut stdout)
+            .unwrap();
+        let models = root.join("src/api/sdk/rust/models.rs");
+        assert!(
+            fs::read_to_string(&models)
+                .unwrap()
+                .contains("first_marker")
+        );
+        fs::write(&openapi, document("secondMarker").to_string()).unwrap();
+        assert_ne!(
+            artifact_fingerprint(root, "all-openapi", None).unwrap(),
+            development
+        );
+        assert_eq!(artifact_fingerprint(root, "all", None).unwrap(), public);
+        generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, false, &mut stdout)
+            .unwrap();
+        assert!(
+            fs::read_to_string(&models)
+                .unwrap()
+                .contains("second_marker")
+        );
+        assert!(
+            fs::read_to_string(&contract)
+                .unwrap()
+                .contains("stale compiled contract")
+        );
+        generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, true, &mut stdout)
+            .unwrap();
+    }
 
     #[test]
     fn contract_watch_tracks_custom_typescript_exports_and_selected_services() {

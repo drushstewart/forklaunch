@@ -146,9 +146,11 @@ pub(crate) fn change(
         vec![],
     );
     edit.native = true;
+    edit.format_rust = adding;
     let cargo_path = path.join("Cargo.toml");
-    let lib_path = path.join("src/lib.rs");
-    let source_path = path.join(format!("src/infrastructure/{id}.rs"));
+    let source_root = if path.join("lib.rs").is_file() { path.clone() } else { path.join("src") };
+    let lib_path = source_root.join("lib.rs");
+    let source_path = source_root.join(format!("infrastructure/{id}.rs"));
     let env_path = path.join(".env.local");
     let record_path = state_path(root, &project.name, &id);
     let export = format!("#[path = \"infrastructure/{id}.rs\"]\npub mod {id}_infrastructure;\n");
@@ -158,8 +160,11 @@ pub(crate) fn change(
     let mut cargo: DocumentMut = cargo_text.parse()?;
     let mut lib = edit
         .read(&lib_path)?
-        .context("Native service src/lib.rs is missing")?;
+        .context("Native service library export file is missing")?;
     let source = edit.read(&source_path)?;
+    // Sources are written formatted; earlier releases wrote the raw template.
+    let formatted = crate::init::rust_project::format_rust_source(&source_path, generated);
+    let is_generated = |text: Option<&str>| text == Some(generated) || text == Some(formatted.as_str());
     let current_env = edit.read(&env_path)?;
     let compose_path = root.join("docker-compose.yaml");
     let compose_text = edit.read(&compose_path)?;
@@ -184,7 +189,7 @@ pub(crate) fn change(
             last_lib: lib.clone(),
             original_env: current_env.clone(),
             last_env: current_env.clone(),
-            original_source: if recovered && source.as_deref() == Some(generated) {
+            original_source: if recovered && is_generated(source.as_deref()) {
                 None
             } else {
                 source.clone()
@@ -205,9 +210,10 @@ pub(crate) fn change(
         ],
     };
     if adding {
-        let target = root
-            .join(".forklaunch/framework-rs/crates")
-            .join(&dependency);
+        let framework = if root.join("vendor/framework").is_dir() || crate::core::forklaunch_state::has_framework(root) {
+            root.join("vendor/framework")
+        } else { root.join(".forklaunch/framework-rs") };
+        let target = framework.join("crates").join(&id);
         let relative = crate::core::relative_path::get_relative_path(&path, &target);
         ensure_native_dependency(
             &mut cargo,
@@ -225,16 +231,11 @@ pub(crate) fn change(
             edit.write(source_path.clone(), generated.into());
         }
         if ownership.export_added {
-            if let Some(index) = lib.find("pub mod config;\n") {
-                lib.insert_str(index + "pub mod config;\n".len(), &export);
-            } else {
-                lib.push_str(if lib.ends_with('\n') { "" } else { "\n" });
-                lib.push_str(&export);
-            }
+            insert_module_export(&mut lib, &export, &format!("{id}_infrastructure"));
         }
         edit.ensure_env_local(&env)?;
     } else {
-        let retained_source = source.is_some() && source.as_deref() != Some(generated);
+        let retained_source = source.is_some() && !is_generated(source.as_deref());
         if !retained_source && ownership.original_source.is_none() {
             edit.delete(source_path);
             if ownership.export_added {
@@ -358,11 +359,11 @@ pub(crate) fn change(
             format!("{header}{}", serde_yml::to_string(compose)?),
         );
     }
-    let updated_cargo = cargo.to_string();
+    let updated_cargo = crate::init::rust_project::dependencies::render_for_path(&cargo_path, &cargo.to_string())?;
     if updated_cargo != cargo_text {
         edit.write(cargo_path, updated_cargo.clone());
     }
-    ownership.last_lib = lib.clone();
+    ownership.last_lib = crate::init::rust_project::format_rust_source(&lib_path, &lib);
     edit.write(lib_path, lib);
     let manifest_path = root.join(".forklaunch/manifest.toml");
     let manifest_text = edit.read(&manifest_path)?.context("Manifest is missing")?;
@@ -382,15 +383,6 @@ pub(crate) fn change(
             record_path,
             serde_json::to_string_pretty(&ownership)? + "\n",
         );
-        let ignore = root.join(STATE_DIR).join(".gitignore");
-        let mut text = edit.read(&ignore)?.unwrap_or_default();
-        if !text.lines().any(|line| line == "/*.json") {
-            if !text.is_empty() && !text.ends_with('\n') {
-                text.push('\n');
-            }
-            text.push_str("/*.json\n");
-            edit.write(ignore, text);
-        }
     } else {
         edit.delete(record_path);
     }
@@ -475,13 +467,50 @@ fn restore_env(
     }
 }
 
+/// Insert where rustfmt's module ordering expects it, so `cargo fmt --check`
+/// passes on the generated library without reformatting user code.
+fn insert_module_export(lib: &mut String, export: &str, name: &str) {
+    let lines: Vec<&str> = lib.split_inclusive('\n').collect();
+    let module = |line: &str| {
+        line.trim_end()
+            .strip_prefix("pub mod ")
+            .and_then(|rest| rest.strip_suffix(';'))
+            .map(str::to_owned)
+    };
+    let declarations: Vec<(usize, String)> =
+        lines.iter().enumerate().filter_map(|(index, line)| Some((index, module(line)?))).collect();
+    let attributes_before = |mut index: usize| {
+        while index > 0 && lines[index - 1].starts_with("#[") {
+            index -= 1;
+        }
+        index
+    };
+    let at = match declarations.iter().find(|(_, existing)| existing.as_str() > name) {
+        Some((index, _)) => attributes_before(*index),
+        None => match declarations.last() {
+            Some((index, _)) => index + 1,
+            None => {
+                lib.push_str(if lib.is_empty() || lib.ends_with('\n') { "" } else { "\n" });
+                lib.push_str(export);
+                return;
+            }
+        },
+    };
+    let offset: usize = lines[..at].iter().map(|line| line.len()).sum();
+    lib.insert_str(offset, export);
+}
+
 pub(crate) fn rename_ownership(root: &Path, old: &str, new: &str) -> Result<()> {
     for id in ["redis", "s3"] {
         let source = state_path(root, old, id);
-        if !source.exists() {
+        let Some(text) = crate::infra::local_state::key(root, &source)
+            .map(|key| crate::infra::local_state::read(root, &key))
+            .transpose()?
+            .flatten()
+        else {
             continue;
-        }
-        let mut state: Ownership = serde_json::from_str(&std::fs::read_to_string(&source)?)?;
+        };
+        let mut state: Ownership = serde_json::from_str(&text)?;
         state.original_cargo =
             crate::init::rust_project::renamed_rust_package_source(&state.original_cargo, new);
         state.last_cargo =
@@ -510,10 +539,10 @@ pub(crate) fn delete_ownership(root: &Path, service: &str) -> Result<()> {
     } else {
         None
     };
+    let mut records = std::collections::BTreeMap::new();
     for id in ["redis", "s3"] {
-        let path = state_path(root, service, id);
-        if path.exists() {
-            std::fs::remove_file(path)?;
+        if let Some(key) = crate::infra::local_state::key(root, &state_path(root, service, id)) {
+            records.insert(key, None);
         }
         let resource = if id == "redis" {
             "cache"
@@ -534,9 +563,10 @@ pub(crate) fn delete_ownership(root: &Path, service: &str) -> Result<()> {
                 })
             });
         let shared_path = root.join(STATE_DIR).join(format!(".infra-{id}.json"));
-        if !remaining && shared_path.exists() {
-            let mut shared: SharedOwnership =
-                serde_json::from_str(&std::fs::read_to_string(&shared_path)?)?;
+        let shared_key = crate::infra::local_state::key(root, &shared_path).context("Shared ownership record key")?;
+        let shared_text = if remaining { None } else { crate::infra::local_state::read(root, &shared_key)? };
+        if let Some(shared_text) = shared_text {
+            let mut shared: SharedOwnership = serde_json::from_str(&shared_text)?;
             if let Some(compose) = compose.as_mut() {
                 let current = compose.services.get(backend).cloned();
                 if serde_json::to_value(&current)? != serde_json::to_value(&shared.last)? {
@@ -558,9 +588,10 @@ pub(crate) fn delete_ownership(root: &Path, service: &str) -> Result<()> {
                     compose.services.shift_remove(backend);
                 }
             }
-            std::fs::remove_file(shared_path)?;
+            records.insert(shared_key, None);
         }
     }
+    crate::infra::local_state::commit(root, records)?;
     if let Some(compose) = compose {
         std::fs::write(compose_path, serde_yml::to_string(&compose)?)?;
     }
@@ -570,6 +601,16 @@ pub(crate) fn delete_ownership(root: &Path, service: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn module_exports_follow_rustfmt_module_order() {
+        let mut lib = "pub mod application;\npub mod config;\npub mod domain;\npub mod registrations;\npub mod server;\npub use contracts as sdk;\n".to_owned();
+        for id in ["s3", "redis"] {
+            let export = format!("#[path = \"infrastructure/{id}.rs\"]\npub mod {id}_infrastructure;\n");
+            insert_module_export(&mut lib, &export, &format!("{id}_infrastructure"));
+        }
+        assert_eq!(lib, "pub mod application;\npub mod config;\npub mod domain;\n#[path = \"infrastructure/redis.rs\"]\npub mod redis_infrastructure;\npub mod registrations;\n#[path = \"infrastructure/s3.rs\"]\npub mod s3_infrastructure;\npub mod server;\npub use contracts as sdk;\n");
+    }
 
     #[test]
     fn environment_restoration_preserves_edits_and_explicit_deletion() {

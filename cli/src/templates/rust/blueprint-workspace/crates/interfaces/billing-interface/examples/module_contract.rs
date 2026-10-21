@@ -1,0 +1,1 @@
+../../../../../../../../../blueprint-rs/crates/interfaces/billing-interface/examples/module_contract.rs

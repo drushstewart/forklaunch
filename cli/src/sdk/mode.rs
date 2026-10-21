@@ -12,7 +12,7 @@ use crate::{
     },
     core::{
         command::command,
-        manifest::{ProjectEntry, application::ApplicationManifestData},
+        manifest::{ProjectEntry, ProjectType, application::ApplicationManifestData},
         package_json::project_package_json::ProjectPackageJson,
         removal_template::{RemovalTemplate, remove_template_files},
         rendered_template::{RenderedTemplate, RenderedTemplatesCache, write_rendered_templates},
@@ -58,7 +58,10 @@ pub(crate) fn apply_generated_sdk_mode_setup(
     }
     let modules_path = app_root_path.join(manifest_data.modules_path.clone());
     for project in &manifest_data.projects {
-        if project.name == "client-sdk" || !is_typescript_project(manifest_data, project) {
+        if project.name == "client-sdk"
+            || matches!(project.r#type, ProjectType::Library)
+            || !is_typescript_project(manifest_data, project)
+        {
             continue;
         }
 
@@ -120,7 +123,10 @@ fn use_live_sdk_mode(
 
     let modules_path = app_root_path.join(manifest_data.modules_path.clone());
     for project in &manifest_data.projects {
-        if project.name == "client-sdk" || !is_typescript_project(manifest_data, project) {
+        if project.name == "client-sdk"
+            || matches!(project.r#type, ProjectType::Library)
+            || !is_typescript_project(manifest_data, project)
+        {
             continue;
         }
 
@@ -275,6 +281,30 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+
+    #[test]
+    fn sdk_modes_preserve_library_compiler_entrypoints() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().to_path_buf();
+        let manifest: ApplicationManifestData = serde_json::from_value(json!({
+            "id":"fixture","cli_version":"0.0.0","app_name":"fixture",
+            "app_description":"fixture","linter":"eslint","formatter":"prettier",
+            "validator":"zod","http_framework":"express","author":"fixture","license":"MIT",
+            "project_peer_topology":{},"runtime":"node","modules_path":"modules",
+            "projects":[{"type":"Library","name":"core","description":"fixture"}]
+        }))
+        .unwrap();
+        let package = path.join("modules/core/package.json");
+        std::fs::create_dir_all(package.parent().unwrap()).unwrap();
+        let original = r#"{"name":"core","main":"lib/index.js","types":"lib/index.d.ts"}"#;
+        std::fs::write(&package, original).unwrap();
+        let mut cache = RenderedTemplatesCache::new();
+        apply_generated_sdk_mode_setup(&path, &manifest, &mut cache).unwrap();
+        assert_eq!(cache.get(&package).unwrap().unwrap().content, original);
+        use_live_sdk_mode(&path, &manifest, &mut cache).unwrap();
+        assert_eq!(cache.get(&package).unwrap().unwrap().content, original);
+        assert_eq!(std::fs::read_to_string(package).unwrap(), original);
+    }
 
     #[test]
     fn legacy_typescript_modes_keep_package_and_configuration_behavior() {

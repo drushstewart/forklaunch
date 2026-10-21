@@ -4,11 +4,12 @@ pub mod jobs;
 
 use config::WorkerConfig;
 use error::Result;
-use forklaunch_contract::{
+use forklaunch_core::contract::{
     BodyContract, BodyKind, ContractRegistry, RouteContract, SchemaRef, ServiceContract,
 };
 use jobs::JobReport;
-use std::{fs, path::Path};
+use std::{fs, path::Path, io};
+use forklaunch_core::openapi::{self, OpenApiOptions};
 
 pub const WORKER_NAME: &str = "{{{name}}}";
 pub const WORKER_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -54,7 +55,7 @@ pub fn contract_registry() -> ContractRegistry {
 pub fn write_contract_artifacts(
     contract_output: impl AsRef<Path>,
     openapi_output: impl AsRef<Path>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let registry = contract_registry();
 
     if let Some(parent) = contract_output.as_ref().parent() {
@@ -62,9 +63,9 @@ pub fn write_contract_artifacts(
     }
     fs::write(contract_output, registry.clone().into_artifact().to_json())?;
 
-    forklaunch_openapi::write_openapi_json(
+    openapi::write_openapi_json(
         &registry,
-        &forklaunch_openapi::OpenApiOptions::from_registry(&registry),
+        &OpenApiOptions::from_registry(&registry),
         openapi_output,
     )
 }

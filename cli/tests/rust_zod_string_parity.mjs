@@ -16,7 +16,7 @@ const cases=chains.flatMap(steps=>values.map(value=>({steps,...(value===undefine
 const expected=chains.flatMap(steps=>{let schema=statics.string;for(const [kind,limit] of steps)schema=schema[kind](...(kind==='trim'?[]:[limit]));return values.map(value=>JSON.parse(JSON.stringify(validator.parse(schema,value))));});
 if(process.env.FORKLAUNCH_STRING_ORACLE_ONLY==='1')console.log(`PASS ${cases.length} actual ForkLaunch Zod v3 strict string outcomes`);
 else {
- const result=spawnSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validation','--example','zod_string_parity'],{input:cases.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:64*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+ const result=spawnSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-validator','--example','zod_string_parity'],{input:cases.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',timeout:300000,maxBuffer:64*1024*1024,env:{...process.env,CARGO_INCREMENTAL:'0'}});
  assert.equal(result.status,0,result.stderr);const results=result.stdout.trim().split('\n').map(value=>JSON.parse(value));assert.equal(results.length,cases.length);
  for(let index=0;index<cases.length;index++)assert.deepEqual(results[index],expected[index],JSON.stringify(cases[index]));
  console.log(`PASS ${cases.length} actual ForkLaunch Zod v3/native strict string outcomes: UTF-16 length, ordered checks/trim, default diagnostics and unchanged JSON input domain`);

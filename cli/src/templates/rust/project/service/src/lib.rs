@@ -1,4 +1,5 @@
 pub mod config;
+pub mod contracts;
 pub mod domain;
 pub mod error;
 pub mod persistence;
@@ -7,15 +8,15 @@ pub mod routes;
 use config::ServiceConfig;
 use domain::Record;
 use error::Result;
-use forklaunch_axum::AxumApplication;
-use forklaunch_contract::{
-    BodyContract, BodyKind, ContractRegistry, RouteContract, RouteOptions, SchemaRef,
-    ServiceContract,
+use forklaunch_axum::{AxumApplication, ForkLaunchRouter, RouterConfig};
+use forklaunch_core::contract::{
+    BodyContract, BodyKind, ContractRegistry, RouteContract, RouteOptions, SchemaRef, ServiceContract,
 };
 use forklaunch_core::ServiceInfo;
-use forklaunch_http::{FrameworkResponse, HttpApplication, LocalRouter};
+use forklaunch_core::http::{FrameworkResponse, HttpApplication, LocalRouter};
 use persistence::InMemoryRepository;
-use std::{fs, path::Path};
+use std::{fs, path::Path, io};
+use forklaunch_core::openapi::{self, OpenApiOptions, OpenApiServer};
 
 pub const SERVICE_NAME: &str = "{{{name}}}";
 pub const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -66,10 +67,7 @@ pub fn service_info() -> ServiceInfo {
 
 #[must_use]
 pub fn contract_registry() -> ContractRegistry {
-    let mut registry = ContractRegistry::for_service(ServiceContract::new(
-        SERVICE_NAME,
-        SERVICE_VERSION,
-    ));
+    let mut registry = ContractRegistry::for_service(ServiceContract::new(SERVICE_NAME, SERVICE_VERSION));
     for contract in routes::contracts() {
         registry.register(contract);
     }
@@ -106,16 +104,16 @@ pub fn local_router(state: AppState) -> LocalRouter {
 
 /// Builds the network router from the same handlers and contracts used by local calls.
 #[must_use]
-pub fn router(state: AppState) -> forklaunch_axum::ForkLaunchRouter {
+pub fn router(state: AppState) -> ForkLaunchRouter {
     let config = state.config().clone();
     let servers = openapi_options(&contract_registry(), &config).servers;
-    forklaunch_axum::ForkLaunchRouter::from_local_router(
+    ForkLaunchRouter::from_local_router(
         service_info(), routes::contracts(), local_router(state),
     )
-    .with_config(forklaunch_axum::RouterConfig {
+    .with_config(RouterConfig {
         docs_path: config.docs_path,
         servers,
-        ..forklaunch_axum::RouterConfig::default()
+        ..RouterConfig::default()
     })
 }
 
@@ -127,7 +125,7 @@ pub fn openapi_json() -> String {
 #[must_use]
 pub fn openapi_json_with_config(config: &ServiceConfig) -> String {
     let registry = contract_registry();
-    forklaunch_openapi::generate_openapi_json_with_options(
+    openapi::generate_openapi_json_with_options(
         &registry,
         &openapi_options(&registry, config),
     )
@@ -136,8 +134,8 @@ pub fn openapi_json_with_config(config: &ServiceConfig) -> String {
 fn openapi_options(
     registry: &ContractRegistry,
     config: &ServiceConfig,
-) -> forklaunch_openapi::OpenApiOptions {
-    let mut options = forklaunch_openapi::OpenApiOptions::from_registry(registry);
+) -> OpenApiOptions {
+    let mut options = OpenApiOptions::from_registry(registry);
     for (index, url) in config.docs_server_urls.iter().enumerate() {
         let description = config
             .docs_server_descriptions
@@ -145,7 +143,7 @@ fn openapi_options(
             .cloned()
             .unwrap_or_else(|| "Main Server".to_string());
         options = options
-            .with_server(forklaunch_openapi::OpenApiServer::new(url).with_description(description));
+            .with_server(OpenApiServer::new(url).with_description(description));
     }
     options
 }
@@ -179,7 +177,7 @@ fn openapi_route_contract(path: &str) -> RouteContract {
 pub fn write_contract_artifacts(
     contract_output: impl AsRef<Path>,
     openapi_output: impl AsRef<Path>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     let registry = contract_registry();
     let config = ServiceConfig::from_env();
 
@@ -188,7 +186,7 @@ pub fn write_contract_artifacts(
     }
     fs::write(contract_output, registry.clone().into_artifact().to_json())?;
 
-    forklaunch_openapi::write_openapi_json(
+    openapi::write_openapi_json(
         &registry,
         &openapi_options(&registry, &config),
         openapi_output,

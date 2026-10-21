@@ -52,7 +52,7 @@ const list=[...corpus],check=ajv.compile(exported),expected=list.map(value=>vali
 for(let i=0;i<list.length;i++)assert.equal(check(list[i]),expected[i],JSON.stringify(list[i]));
 console.log(`PASS ${list.length} actual factory URI export/AJV Unicode, encoded-host and WPT admission comparisons`);
 if(process.env.FORKLAUNCH_URI_SCHEMA_TS_ONLY!=='1'){
- const result=spawnSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-contract','--features','zod-uri','--example','uri_schema_parity'],{input:JSON.stringify(exported)+'\n'+list.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',maxBuffer:64*1024*1024,timeout:300000,env:{...process.env,CARGO_INCREMENTAL:'0'}});
+ const result=spawnSync('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','zod-uri','--example','uri_schema_parity'],{input:JSON.stringify(exported)+'\n'+list.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',maxBuffer:64*1024*1024,timeout:300000,env:{...process.env,CARGO_INCREMENTAL:'0'}});
  assert.equal(result.status,0,result.stderr);
  assert.deepEqual(result.stdout.trim().split('\n').map(JSON.parse),expected);
  console.log(`PASS ${list.length} pinned Ada native schema-format comparisons`);

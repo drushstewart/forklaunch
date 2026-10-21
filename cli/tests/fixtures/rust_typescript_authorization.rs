@@ -1,5 +1,5 @@
 use axum::{Extension, Json};
-use forklaunch_auth::{
+use forklaunch_core::auth::{
     AuthError, parse_bearer,
     typescript::{
         TypeScriptRbacPolicy,
@@ -11,9 +11,9 @@ use forklaunch_auth::{
     verify_jwt_hs256,
 };
 use forklaunch_axum::{ForkLaunchRouter, RouterConfig, session::AuthenticatedSession};
-use forklaunch_contract::{AccessLevel, AuthConfig, BodyContract, JwtAuthConfig, RouteContract};
-use forklaunch_http::{ErrorKind, ErrorResponse};
-use forklaunch_validation::{ParseError, pretty_print_parse_errors};
+use forklaunch_core::contract::{AccessLevel, AuthConfig, BodyContract, JwtAuthConfig, RouteContract};
+use forklaunch_core::http::{ErrorKind, ErrorResponse};
+use forklaunch_validator::{ParseError, pretty_print_parse_errors};
 use serde_json::{Value, json};
 const SECRET: &[u8] = b"fixture-only-session-authorization-key";
 pub fn contracts() -> Vec<RouteContract> {
@@ -65,7 +65,7 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
     }
         .with_response_authenticator(|request, contract| async move {
             if contract.operation_name == "checkHmac" {
-                use forklaunch_auth::request_hmac::{HmacAuthorization, SignedBody};
+                use forklaunch_core::auth::request_hmac::{HmacAuthorization, SignedBody};
                 let keys = std::collections::BTreeMap::from([("peer".to_owned(), "fixture-hmac-secret".to_owned())]);
                 verify_hmac(request.headers.get("authorization").map(String::as_str), None, Some(&keys), |credential| async move {
                     let Some(secret) = credential.secret_key else { return Ok(false); };
@@ -74,14 +74,14 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
                     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
                         .map_err(|_| ErrorResponse::new(ErrorKind::Internal, "clock unavailable"))?;
                     let body = match &request.body {
-                        forklaunch_http::Body::Empty => SignedBody::Absent,
-                        forklaunch_http::Body::Text(text) => SignedBody::Text(text),
-                        forklaunch_http::Body::Binary(bytes) => SignedBody::Bytes(bytes),
+                        forklaunch_core::http::Body::Empty => SignedBody::Absent,
+                        forklaunch_core::http::Body::Text(text) => SignedBody::Text(text),
+                        forklaunch_core::http::Body::Binary(bytes) => SignedBody::Bytes(bytes),
                     };
                     Ok(parsed.verify_at(secret.as_bytes(), request.method.as_str(), &request.path, body,
                         i64::try_from(now.as_millis()).unwrap_or(i64::MAX), std::time::Duration::from_secs(60)))
                 }).await?;
-                return Ok(AuthenticatedSession::new(forklaunch_auth::Principal::new("trusted-peer"), Value::Null));
+                return Ok(AuthenticatedSession::new(forklaunch_core::auth::Principal::new("trusted-peer"), Value::Null));
             }
             if contract.operation_name == "checkJwtResource" {
                 let claims = verify_jwt_resource(
@@ -97,7 +97,7 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
                 ).await?;
                 let subject = claims.get("sub").and_then(Value::as_str)
                     .ok_or_else(|| ErrorResponse::new(ErrorKind::Validation, "invalid session"))?;
-                let mut principal = forklaunch_auth::Principal::new(subject);
+                let mut principal = forklaunch_core::auth::Principal::new(subject);
                 principal.roles = serde_json::from_value(claims["roles"].clone())
                     .map_err(|_| ErrorResponse::new(ErrorKind::Validation, "invalid session"))?;
                 return Ok(AuthenticatedSession::new(principal, claims));
@@ -118,7 +118,7 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
                 ).await?;
                 let subject = claims.get("sub").and_then(Value::as_str)
                     .ok_or_else(|| ErrorResponse::new(ErrorKind::Validation, "invalid session"))?;
-                let mut principal = forklaunch_auth::Principal::new(subject);
+                let mut principal = forklaunch_core::auth::Principal::new(subject);
                 principal.roles = claims.get("role").and_then(Value::as_str).map(|role| vec![role.into()]).unwrap_or_default();
                 return Ok(AuthenticatedSession::new(principal, claims));
             }
@@ -203,7 +203,7 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
 }
 
 struct SessionResolver<'a> {
-    principal: &'a forklaunch_auth::Principal,
+    principal: &'a forklaunch_core::auth::Principal,
     missing_permissions: bool,
 }
 impl TypeScriptSessionResolver for SessionResolver<'_> {

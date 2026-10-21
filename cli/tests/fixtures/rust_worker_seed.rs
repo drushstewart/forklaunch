@@ -6,7 +6,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pool = PgPoolOptions::new().max_connections(1).connect(&std::env::var("FORKLAUNCH_TEST_POSTGRES_URL")?).await?;
     if std::env::args().any(|arg| arg == "--cleanup") {
         sqlx::query("DELETE FROM fl_worker.jobs WHERE tenant_id=$1 OR tenant_id=$2")
-            .bind(format!("{role}-a")).bind(format!("{role}-b")).execute(&pool).await?;
+            .bind(std::env::var("FORKLAUNCH_TEST_TENANT_A")?).bind(std::env::var("FORKLAUNCH_TEST_TENANT_B")?).execute(&pool).await?;
         sqlx::query(&format!("DROP OWNED BY {role}")).execute(&pool).await?;
         sqlx::query(&format!("DROP ROLE {role}")).execute(&pool).await?;
     } else {

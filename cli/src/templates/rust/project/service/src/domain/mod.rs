@@ -1,10 +1,6 @@
 use forklaunch_common::{json_array, json_string};
+pub use crate::contracts::{Record, RecordSummary};
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Record {
-    pub id: String,
-    pub name: String,
-}
 
 impl Record {
     #[must_use]
@@ -27,11 +23,6 @@ impl Record {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RecordSummary {
-    pub service: String,
-    pub total: usize,
-}
 
 impl RecordSummary {
     #[must_use]

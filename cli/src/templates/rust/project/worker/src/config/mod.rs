@@ -1,4 +1,5 @@
 use crate::error::{Result, WorkerError};
+use std::env;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkerConfig {
@@ -11,10 +12,10 @@ pub struct WorkerConfig {
 impl WorkerConfig {
     #[must_use]
     pub fn from_env() -> Self {
-        let name = std::env::var("WORKER_NAME").unwrap_or_else(|_| "{{{name}}}".to_string());
-        let worker_type = std::env::var("WORKER_TYPE").unwrap_or_else(|_| "database".to_string());
-        let queue_name = std::env::var("WORKER_QUEUE").unwrap_or_else(|_| name.clone());
-        let batch_size = std::env::var("WORKER_BATCH_SIZE")
+        let name = env::var("WORKER_NAME").unwrap_or_else(|_| "{{{name}}}".to_string());
+        let worker_type = env::var("WORKER_TYPE").unwrap_or_else(|_| "database".to_string());
+        let queue_name = env::var("WORKER_QUEUE").unwrap_or_else(|_| name.clone());
+        let batch_size = env::var("WORKER_BATCH_SIZE")
             .ok()
             .and_then(|value| value.parse().ok())
             .unwrap_or(1);

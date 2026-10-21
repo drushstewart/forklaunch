@@ -71,7 +71,7 @@ try{
    versions.push({kind:'multipart',versions:[{name:'file',schema:literal}],cases:[bytes]});
   }
  }
- const selected=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-http','--example','version_selection'],{input:JSON.stringify(versions),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
+ const selected=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify(versions),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
  for(const [index,result] of selected.entries())assert.deepEqual(result.cases,index<fixtures.length?[{version:'exact',matched:['fallback','exact'],status:200}]:[{version:'file',matched:['file'],status:200}],`multipart schema ${index}`);
  console.log(`PASS ${versions.length} actual multipart parser/file-validator/native version comparisons`);
  const path=join(temporary,'cases.json');writeFileSync(path,JSON.stringify(fixtures));

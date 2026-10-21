@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/compiler-tests/generic-model-identity.py

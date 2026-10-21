@@ -13,7 +13,7 @@ use crate::{
         Database, ERROR_FAILED_TO_CREATE_PACKAGE_JSON, ERROR_FAILED_TO_GENERATE_PNPM_WORKSPACE,
         ERROR_FAILED_TO_PARSE_MANIFEST, ERROR_FAILED_TO_READ_MANIFEST,
         ERROR_FAILED_TO_WRITE_DOCKER_COMPOSE, ERROR_FAILED_TO_WRITE_MANIFEST, Module, Runtime,
-        get_service_module_cache, get_service_module_description, get_service_module_name,
+        get_service_module_cache, get_service_module_description, get_service_module_name, ensure_module_offered, module_value_parser, offered_modules,
     },
     core::{
         ast::injections::inject_into_client_sdk::ClientSdkSpecialCase,
@@ -77,7 +77,7 @@ impl CliCommand for ModuleCommand {
                 Arg::new("module")
                     .short('m')
                     .long("module")
-                    .value_parser(Module::VARIANTS)
+                    .value_parser(module_value_parser())
                     .help("The module to initialize"),
             )
             .arg(
@@ -142,7 +142,7 @@ impl CliCommand for ModuleCommand {
             "module",
             matches,
             "module",
-            Some(&Module::VARIANTS),
+            Some(&offered_modules()),
             |input| {
                 let mut modules = manifest_data.projects.iter().filter_map(|project| {
                     if let Some(variant) = &project.variant {
@@ -156,6 +156,7 @@ impl CliCommand for ModuleCommand {
             |input| format!("Conflicting module type selected. You will not be able to add this module without deleting the existing module, {}", get_service_module_name(&input.parse().unwrap())),
         )?
         .parse()?;
+        ensure_module_offered(&module)?;
 
         // The relay module is not a new service - it injects the managed-apps
         // OAuth session-ingest endpoint into the app's existing iam service, so
@@ -275,6 +276,7 @@ impl CliCommand for ModuleCommand {
             is_database_enabled: true,
             platform_application_id: manifest_data.platform_application_id.clone(),
             platform_organization_id: manifest_data.platform_organization_id.clone(),
+            framework: manifest_data.framework.clone(),
             compliance: manifest_data.compliance.clone(),
 
             is_better_auth: module.clone() == Module::BetterAuthIam,
@@ -313,9 +315,10 @@ impl CliCommand for ModuleCommand {
 
             iam_secret: None,
 
-            // These will be properly generated when initialized
-            generated_better_auth_secret: String::new(),
-            generated_hmac_secret: String::new(),
+            generated_better_auth_secret: crate::core::manifest::service::generate_random_secret(32),
+            // Share the app's HMAC secret so modules verify each other's requests.
+            generated_hmac_secret: crate::core::env_defaults::find_existing_hmac_secret(&base_path)
+                .unwrap_or_else(|| crate::core::manifest::service::generate_random_secret(32)),
             generated_encryption_key,
             otel_token: "OtelCollector".to_string(),
         };
@@ -455,6 +458,10 @@ impl CliCommand for ModuleCommand {
                 &mut service_data,
                 dryrun,
             )?;
+            if matches!(module, Module::BaseIam | Module::BetterAuthIam) {
+                crate::sdk::typescript_build::prepare_default_service(&app_root_path, "iam", &service_data.runtime, true)?;
+            }
+            rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(
                 stdout,
                 "{} initialized successfully!",

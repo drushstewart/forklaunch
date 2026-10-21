@@ -4,8 +4,8 @@ import { generateKeyPairSync, sign, createHmac, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
-const [binary, sdkPath] = process.argv.slice(2);
-assert.ok(binary && sdkPath);
+const [binary, sdkPath, rustManifest] = process.argv.slice(2);
+assert.ok(binary && sdkPath && rustManifest);
 const secret = 'generated-cac-hmac-test-secret';
 const issuer = 'https://trusted-issuer.example';
 const audience = 'cac-test';
@@ -70,20 +70,27 @@ try {
   }
   for (const overrides of [{ iss: 'https://attacker.example' }, { aud: 'other' }, { exp: 1 }, { nbf: Math.floor(Date.now()/1000)+600 }]) {
     const response = await fetch(`${base}/compliance/export/user`, { headers: { authorization: jwt(['system'], overrides) } });
-    assert.equal(response.status, 401); await response.arrayBuffer();
+    // Presented invalid JWTs use the TypeScript framework's 403 policy;
+    // absent credentials and rejected HMAC remain 401 above.
+    assert.equal(response.status, 403);
+    const rejected = await response.json();
+    assert.equal(rejected.code, 'forbidden');
+    assert.equal(rejected.message, 'invalid credentials');
+    assert.equal(typeof rejected.correlationId, 'string');
+    assert.deepEqual(Object.keys(rejected).sort(), ['code', 'correlationId', 'message']);
   }
   assert.equal(jwksFetches, 1, 'shared JWKS verifier must cache keys across requests');
-  const sdk = await import(pathToFileURL(sdkPath));
-  const client = sdk.createForkLaunchSdk({ serviceBaseUrls: { cac: base } });
-  const described = await client.cac.codeSet.describeCodeSet({ headers: { authorization: hmac('/codeSet') } });
+  const { universalSdk } = await import(pathToFileURL(sdkPath));
+  const client = await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: base });
+  const described = await client.codeSet.describeCodeSet({ headers: { authorization: hmac('/codeSet') } });
   assert.equal(described.code, 200); assert.deepEqual(described.response, { codeSetType: 'mock', licensed: false });
-  const found = await client.cac.codeSet.lookupProcedureCode({ params: { code: 'PROC-003' }, headers: { authorization: hmac('/codeSet/PROC-003') } });
+  const found = await client.codeSet.lookupProcedureCode({ params: { code: 'PROC-003' }, headers: { authorization: hmac('/codeSet/PROC-003') } });
   assert.equal(found.code, 200); assert.equal(found.response.description, 'Diagnostic Lab Panel');
-  const missing = await client.cac.codeSet.lookupProcedureCode({ params: { code: 'unknown' }, headers: { authorization: hmac('/codeSet/unknown') } });
+  const missing = await client.codeSet.lookupProcedureCode({ params: { code: 'unknown' }, headers: { authorization: hmac('/codeSet/unknown') } });
   assert.equal(missing.code, 404); assert.equal(missing.response, "Procedure code 'unknown' not found");
-  const exported = await client.cac.compliance.exportUserData({ params: { userId: 'user' }, headers: { authorization: jwt() } });
+  const exported = await client.compliance.exportUserData({ params: { userId: 'user' }, headers: { authorization: jwt() } });
   assert.equal(exported.code, 404); assert.equal(exported.response, 'User not found or no PII data to export');
-  const rust = spawn('cargo', ['test', '-p', 'cac-sdk', '--test', 'runtime', '--', '--nocapture'], {
+  const rust = spawn('cargo', ['test', '--manifest-path', rustManifest, '--test', 'runtime', '--', '--nocapture'], {
     env: { ...process.env, CAC_BASE_URL: base, CAC_DESCRIPTOR_HEADER: hmac('/codeSet'),
       CAC_LOOKUP_HEADER: hmac('/codeSet/PROC-002'), CAC_UNKNOWN_HEADER: hmac('/codeSet/unknown'), CAC_JWT_HEADER: jwt() },
     stdio: ['ignore', 'pipe', 'pipe'],

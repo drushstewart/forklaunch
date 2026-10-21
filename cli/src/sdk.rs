@@ -8,14 +8,21 @@ use crate::{
 };
 
 pub(crate) mod generate;
-pub(crate) mod mode;
-mod media;
-mod models;
-mod render;
-mod openapi;
+pub(crate) mod typescript_build;
 mod http_sources;
+mod layout;
+mod media;
+pub(crate) mod mode;
+mod models;
+mod modern;
+use forklaunch_core::build::service_package;
+mod openapi;
+mod render;
 mod workspace;
+pub(crate) use workspace::include_typescript_sdk;
+pub(crate) use layout::sdk_base;
 mod schema;
+use forklaunch_core::typescript as schema_runtime;
 mod versions;
 pub(crate) mod watch;
 pub(crate) mod websocket;
@@ -23,6 +30,7 @@ pub(crate) mod websocket;
 #[derive(Debug)]
 pub(crate) struct SdkCommand {
     generate: GenerateCommand,
+    build: typescript_build::BuildCommand,
     mode: ModeCommand,
     watch: WatchCommand,
 }
@@ -31,6 +39,7 @@ impl SdkCommand {
     pub(crate) fn new() -> Self {
         Self {
             generate: GenerateCommand::new(),
+            build: typescript_build::BuildCommand,
             mode: ModeCommand::new(),
             watch: WatchCommand::new(),
         }
@@ -42,6 +51,7 @@ impl CliCommand for SdkCommand {
         command("sdk", "Manage SDKs")
             .subcommand_required(true)
             .subcommand(self.generate.command())
+            .subcommand(self.build.command())
             .subcommand(self.mode.command())
             .subcommand(self.watch.command())
     }
@@ -49,6 +59,7 @@ impl CliCommand for SdkCommand {
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
         match matches.subcommand() {
             Some(("generate", sub_matches)) => self.generate.handler(sub_matches),
+            Some(("build", sub_matches)) => self.build.handler(sub_matches),
             Some(("mode", sub_matches)) => self.mode.handler(sub_matches),
             Some(("watch", sub_matches)) => self.watch.handler(sub_matches),
             _ => unreachable!(),
@@ -61,13 +72,5 @@ fn write_if_changed(
     path: impl AsRef<std::path::Path>,
     content: impl AsRef<[u8]>,
 ) -> std::io::Result<()> {
-    let path = path.as_ref();
-    let content = content.as_ref();
-    match std::fs::read(path) {
-        Ok(existing) if existing == content => return Ok(()),
-        Ok(_) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    std::fs::write(path, content)
+    forklaunch_core::build::write_generated_output(path, content).map_err(std::io::Error::other)
 }

@@ -9,7 +9,8 @@ import {readFileSync} from 'node:fs';
 import {generateKeyPairSync,sign,verify,createHmac,randomUUID} from 'node:crypto';
 import http from 'node:http';
 import path from 'node:path';
-import { createForkLaunchSdk } from './sdks/typescript/dist/index.js';
+import {pathToFileURL} from 'node:url';
+const {universalSdk} = await import(pathToFileURL(process.argv[3]));
 
 const directory=JSON.parse(readFileSync('iam-directory-fixture.json','utf8'));
 const secret='iam-fixture-hmac',issuer='https://iam-fixture.example',audience='iam-fixture';
@@ -110,7 +111,7 @@ try {
     assert.equal(error.code,1);assert.ok(!error.stdout.includes('listening on'));assert.ok(!error.stderr.includes('PRIVATE-SENTINEL'));return true;
   });
   await probeGeneratedOidc(start,process.argv[2]);
-  await probeDirectoryAuthorization({start,environment,call,jwt,fixture:directory.directory,binary:process.argv[2],createForkLaunchSdk});
+  await probeDirectoryAuthorization({start,environment,call,jwt,fixture:directory.directory,binary:process.argv[2],universalSdk});
   const first = await start('a');
   const second = await start('b');
   const tools=await probeMcp(first.baseUrl,['listUsers','getSessionUser','createUser','getUser','getBatchPermissions','surfaceUserRoles']);
@@ -118,8 +119,8 @@ try {
   await probeMcp(second.baseUrl,['listUsers']);
   const browserIdentity = await browserSessions(first.baseUrl);
   assert.equal((await fetch(second.baseUrl+'/auth/browser/session',{headers:{cookie:browserIdentity.cookie}})).status,401);
-  const publicSdk = createForkLaunchSdk({ baseUrl: first.baseUrl });
-  const discovery=await publicSdk.iam.discovery.getauthmethods();assert.equal(discovery.code,204);assert.equal(discovery.response,undefined);
+  const publicSdk = (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: first.baseUrl }));
+  const discovery=await publicSdk.discovery.getauthmethods();assert.equal(discovery.code,204);assert.equal(discovery.response,undefined);
   const mcpDiscovery=await mcpRpc(first.baseUrl,'tools/call',{name:'getauthmethods',arguments:{}});assert.equal(mcpDiscovery.isError,false,JSON.stringify(mcpDiscovery));
   for(const [path,method,operation]of [['export','GET','exportuserdata'],['erase','DELETE','eraseuserdata']]) {
    await call(first.baseUrl,`/compliance/${path}/fixture-user`,method,undefined,403,jwt());
@@ -128,7 +129,7 @@ try {
   }
   console.log('PASS configured IAM discovery and compliance over HTTP/MCP: public 204, system-role authorization and no classified export/erase data');
 
-  const login = await publicSdk.iam.auth.authenticate({ body: { email: 'member@example.com', password: 'first-password' } });
+  const login = await publicSdk.auth.authenticate({ body: { email: 'member@example.com', password: 'first-password' } });
   assert.equal(login.code, 200);
   const token = login.response.id;
   const parts=token.split('.');assert.equal(parts.length,3);
@@ -140,40 +141,40 @@ try {
   assert.equal(claims.exp,login.response.expires_at_unix_seconds);assert.equal(claims.exp-claims.iat,3600);
   assert.deepEqual(claims.roles,['member']);assert.deepEqual(claims.permissions,['users:read']);
   assert.ok(!JSON.stringify(claims).includes('member@example.com'));
-  const again=await publicSdk.iam.auth.authenticate({body:{email:'member@example.com',password:'first-password'}});
+  const again=await publicSdk.auth.authenticate({body:{email:'member@example.com',password:'first-password'}});
   assert.equal(again.code,200);assert.notEqual(again.response.id,token);
   assert.notEqual(JSON.parse(Buffer.from(again.response.id.split('.')[1],'base64url')).jti,claims.jti);
-  assert.equal((await createForkLaunchSdk({baseUrl:first.baseUrl,headers:{authorization:`Bearer ${again.response.id}`}}).iam.auth.logout()).code,204);
+  assert.equal((await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,host:first.baseUrl,headers:{authorization:`Bearer ${again.response.id}`}})).auth.logout()).code,204);
   // A valid signature alone is insufficient for a stored-session route.
-  assert.equal((await createForkLaunchSdk({baseUrl:first.baseUrl,headers:{authorization:jwt('user-1')}}).iam.users.listUsers({query:{}})).code,401);
-  const opaque=await createForkLaunchSdk({baseUrl:second.baseUrl}).iam.auth.authenticate({body:{email:'member@example.com',password:'second-password'}});
+  assert.equal((await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,host:first.baseUrl,headers:{authorization:jwt('user-1')}})).users.listUsers({query:{}})).code,401);
+  const opaque=await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,host:second.baseUrl})).auth.authenticate({body:{email:'member@example.com',password:'second-password'}});
   assert.equal(opaque.code,200);assert.match(opaque.response.id,/^[a-f0-9]{64}$/);
-  const opaqueSdk=createForkLaunchSdk({baseUrl:second.baseUrl,headers:{authorization:`Bearer ${opaque.response.id}`}});
-  assert.equal((await opaqueSdk.iam.users.listUsers({query:{}})).code,200);
-  assert.equal((await opaqueSdk.iam.auth.logout()).code,204);
+  const opaqueSdk=(await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,host:second.baseUrl,headers:{authorization:`Bearer ${opaque.response.id}`}}));
+  assert.equal((await opaqueSdk.users.listUsers({query:{}})).code,200);
+  assert.equal((await opaqueSdk.auth.logout()).code,204);
   console.log('PASS generated RS256 session issuance, Node signature/claim checks, unique tokens, rejected unstored JWTs, opaque defaults and fail-closed signing configuration');
 
-  const sdk = createForkLaunchSdk({ baseUrl: first.baseUrl, headers: { authorization: `Bearer ${token}` } });
-  const page = await sdk.iam.users.listUsers({ query: { limit: 1 } });
+  const sdk = (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: first.baseUrl, headers: { authorization: `Bearer ${token}` } }));
+  const page = await sdk.users.listUsers({ query: { limit: 1 } });
   assert.equal(page.code, 200);
   assert.equal(page.response.items[0].display_name, 'First');
   assert.equal(page.response.next_cursor, 'user-1');
   const mcpPage=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{limit:1}}},{authorization:`Bearer ${token}`});assert.equal(mcpPage.isError,false,JSON.stringify(mcpPage));assert.deepEqual(JSON.parse(mcpPage.content[0].text),page.response);
   const deniedMcp=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}});assert.equal(deniedMcp.isError,true);
   const wrongTenantMcp=await mcpRpc(second.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${token}`});assert.equal(wrongTenantMcp.isError,true);
-  const next = await sdk.iam.users.listUsers({ query: { limit: 1, cursor: page.response.next_cursor } });
+  const next = await sdk.users.listUsers({ query: { limit: 1, cursor: page.response.next_cursor } });
   assert.equal(next.response.items[0].id, 'user-2');
   assert.equal(next.response.next_cursor, null);
-  const wrongTenant = await createForkLaunchSdk({ baseUrl: second.baseUrl, headers: { authorization: `Bearer ${token}` } }).iam.users.listUsers({query:{}});
+  const wrongTenant = await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: second.baseUrl, headers: { authorization: `Bearer ${token}` } })).users.listUsers({query:{}});
   assert.equal(wrongTenant.code, 401);
-  assert.equal((await publicSdk.iam.users.listUsers({query:{}})).code, 401);
+  assert.equal((await publicSdk.users.listUsers({query:{}})).code, 401);
   assert.equal((await fetch(`${first.baseUrl}/health`)).status, 200);
   const fixture=directory.a,auth=jwt(),user=fixture.users[0],member=fixture.users[1],outsider=fixture.users[2];
   assert.equal((await call(first.baseUrl,`/role/${fixture.role.id}`,'GET',undefined,200,auth)).permissions[0].id,fixture.permission.id);
   await call(first.baseUrl,`/role/${fixture.role.id}`,'GET',undefined,403,jwt(user.id,[],[]));
   await call(first.baseUrl,`/role/${fixture.role.id}`,'GET',undefined,403,jwt(user.id,[],['platform:read'],{exp:1}));
-  const directoryClient=createForkLaunchSdk({baseUrl:first.baseUrl,headers:{authorization:auth}});
-  const typedUser=await directoryClient.iam.user.getUser({params:{id:member.id}});
+  const directoryClient=(await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,host:first.baseUrl,headers:{authorization:auth}}));
+  const typedUser=await directoryClient.user.getUser({params:{id:member.id}});
   assert.equal(typedUser.code,200);assert.equal(typedUser.response.roles[0].permissions[0].id,fixture.permission.id);
   await call(first.baseUrl,`/user/${outsider.id}`,'GET',undefined,404,auth);
   await call(first.baseUrl,`/user/${member.id}`,'GET',undefined,401,jwt(randomUUID()));
@@ -183,7 +184,7 @@ try {
   await call(first.baseUrl,'/user','PUT',{id:outsider.id,firstName:'Denied'},403,auth);
   await call(first.baseUrl,'/user/batch','PUT',[{id:member.id,firstName:'Must roll back'},{id:outsider.id,firstName:'Denied'}],403,auth);
   assert.equal((await call(first.baseUrl,`/user/${member.id}`,'GET',undefined,200,auth)).firstName,'Directory');
-  await promisify(execFile)('cargo',['test','-p','iam-sdk','--test','runtime'],{env:{...process.env,IAM_BASE_URL:first.baseUrl,IAM_JWT_HEADER:auth,IAM_USER_ID:member.id,IAM_OUTSIDER_ID:outsider.id,IAM_ROLE_ID:fixture.role.id},timeout:300000,maxBuffer:4*1024*1024});
+  await promisify(execFile)('cargo',['test','--manifest-path',process.argv[4],'--test','runtime'],{env:{...process.env,IAM_BASE_URL:first.baseUrl,IAM_JWT_HEADER:auth,IAM_USER_ID:member.id,IAM_OUTSIDER_ID:outsider.id,IAM_ROLE_ID:fixture.role.id},timeout:300000,maxBuffer:4*1024*1024});
   console.log('PASS generated Rust SDK: typed nested IAM models, scoped batch reads, updates and typed authentication/authorization failures');
   await call(first.baseUrl,'/user','PUT',{id:member.id,firstName:'Updated'},200,auth);
   await call(first.baseUrl,'/user/batch','PUT',[{id:member.id,lastName:'Changed'}],200,auth);
@@ -229,11 +230,11 @@ try {
   assert.equal(browserLogout.status,204);
   assert.equal((await fetch(restarted.baseUrl+'/auth/browser/session',{headers:{cookie:browserIdentity.cookie}})).status,401);
   console.log('PASS encrypted PostgreSQL browser session survives process restart, rejects other tenant and revokes on logout');
-  const restartedSdk = createForkLaunchSdk({ baseUrl: restarted.baseUrl, headers: { authorization: `Bearer ${token}` } });
-  assert.equal((await restartedSdk.iam.users.getSessionUser({ params: { id: 'user-1' } })).response.email, 'member@example.com');
+  const restartedSdk = (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: restarted.baseUrl, headers: { authorization: `Bearer ${token}` } }));
+  assert.equal((await restartedSdk.users.getSessionUser({ params: { id: 'user-1' } })).response.email, 'member@example.com');
   assert.equal((await call(restarted.baseUrl,`/organization/${fixture.organization.id}`,'GET',undefined,200,auth)).id,fixture.organization.id);
-  assert.equal((await restartedSdk.iam.auth.logout()).code, 204);
-  assert.equal((await restartedSdk.iam.users.listUsers({query:{}})).code, 401);
+  assert.equal((await restartedSdk.auth.logout()).code, 204);
+  assert.equal((await restartedSdk.users.listUsers({query:{}})).code, 401);
   const revokedMcp=await mcpRpc(restarted.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${token}`});assert.equal(revokedMcp.isError,true);
   console.log('PASS generated PostgreSQL IAM, typed TypeScript SDK, tenant isolation, restart persistence, revocation, and SIGTERM');
   const classified = await start('a', true);

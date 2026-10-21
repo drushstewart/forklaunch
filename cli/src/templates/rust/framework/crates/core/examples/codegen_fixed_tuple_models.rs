@@ -1,0 +1,1 @@
+../../../../../../../../framework-rs/crates/core/examples/codegen_fixed_tuple_models.rs
