@@ -1,8 +1,13 @@
-pub mod routes;
 
-use forklaunch_core::{contract::{ContractRegistry, ServiceContract}, ServiceInfo, openapi::{self, OpenApiOptions}};
+use super::extensions as routes;
+
+use forklaunch_core::{
+    ServiceInfo,
+    contract::{ContractRegistry, ServiceContract},
+    openapi::{self, OpenApiOptions},
+};
 use forklaunch_ecommerce_interface::contracts;
-use std::{fs, path::Path, io};
+use std::{fs, io, path::Path};
 
 pub const SERVICE_NAME: &str = "{{{name}}}";
 pub const SERVICE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -27,7 +32,7 @@ pub fn write_contract_artifacts(
     contract_output: impl AsRef<Path>,
     openapi_output: impl AsRef<Path>,
 ) -> io::Result<()> {
-    let registry = contract_registry();
+    let registry = configured_registry()?;
     if let Some(parent) = contract_output.as_ref().parent() {
         fs::create_dir_all(parent)?;
     }
@@ -37,4 +42,8 @@ pub fn write_contract_artifacts(
         &OpenApiOptions::from_registry(&registry),
         openapi_output,
     )
+}
+pub fn configured_registry() -> io::Result<ContractRegistry> {
+    let registry = contract_registry();
+    Ok(registry)
 }

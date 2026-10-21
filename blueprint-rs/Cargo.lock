@@ -1329,30 +1329,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "forklaunch-ecommerce-axum"
-version = "0.2.0"
-dependencies = [
- "axum",
- "forklaunch-axum",
- "forklaunch-core",
- "forklaunch-ecommerce-base",
- "forklaunch-ecommerce-interface",
- "forklaunch-ecommerce-paypal",
- "forklaunch-ecommerce-stripe",
- "forklaunch-worker-database",
- "forklaunch-worker-interface",
- "form_urlencoded",
- "jsonwebtoken",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "forklaunch-ecommerce-base"
 version = "0.2.0"
 dependencies = [
@@ -1404,10 +1380,16 @@ name = "forklaunch-ecommerce-stripe"
 version = "0.2.0"
 dependencies = [
  "axum",
+ "forklaunch-axum",
  "forklaunch-core",
  "forklaunch-ecommerce-base",
  "forklaunch-ecommerce-interface",
+ "forklaunch-ecommerce-paypal",
+ "forklaunch-worker-database",
+ "forklaunch-worker-interface",
+ "form_urlencoded",
  "hmac 0.13.0",
+ "jsonwebtoken",
  "reqwest",
  "serde",
  "serde_json",

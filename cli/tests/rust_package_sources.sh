@@ -73,14 +73,6 @@ expected = {
     "src/templates/rust/capabilities/handler.rs",
     "src/templates/rust/capabilities/nonce_store.rs",
 }
-# Module HTTP layers are the only blueprint sources the CLI embeds.
-for module in ["ecommerce"]:
-    layer = root / "blueprint-rs/crates/implementations" / module / f"{module}-axum"
-    embedded = Path("src/templates/rust/module-http") / module
-    expected.add(str(embedded / "Cargo.toml.template"))
-    for source in (layer / "src").rglob("*"):
-        if source_file(source):
-            expected.add(str(embedded / source.relative_to(layer)))
 unexpected = {path for path in packaged if path.startswith(("src/templates/rust/framework/", "src/templates/rust/blueprint"))}
 assert not unexpected, f"Framework or blueprint mirrors packaged: {sorted(unexpected)[:5]}"
 for source in (root / "cli/src/templates/sdk").rglob("*"):

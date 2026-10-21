@@ -18,7 +18,6 @@
 use std::path::Path;
 
 fn main() {
-    verify_rust_inventory();
     if let Ok(projects) = std::fs::read_dir("src/templates/project") {
         for project in projects.flatten() {
             let name = project.file_name();
@@ -38,100 +37,6 @@ fn main() {
     emit_rerun_for_tree(Path::new("src/templates"));
     // The blueprint is where the symlinked template directories actually live.
     emit_rerun_for_tree(Path::new("../blueprint"));
-}
-
-// Module HTTP layers are individual links so Cargo.toml can be renamed for
-// cargo package. A newly added source file otherwise goes silently unembedded.
-// Published CLI packages contain real files and have no adjacent source trees.
-fn verify_rust_inventory() {
-    let catalog = Path::new("src/templates/rust/module-http");
-    verify_source_catalog(catalog);
-    let blueprint = Path::new("../blueprint-rs/crates/implementations");
-    if blueprint.is_dir() {
-        for module in ["ecommerce"] {
-            let source = blueprint.join(module).join(format!("{module}-axum"));
-            verify_embedded_source(
-                &source.join("Cargo.toml"),
-                &catalog.join(module).join("Cargo.toml.template"),
-            );
-            verify_source_tree(&source.join("src"), &catalog.join(module).join("src"));
-        }
-    }
-}
-
-fn verify_source_catalog(directory: &Path) {
-    if !directory.is_dir() {
-        return;
-    }
-    for entry in std::fs::read_dir(directory).expect("Read embedded source catalog") {
-        let path = entry.expect("Read embedded source entry").path();
-        let name = path.file_name().unwrap().to_string_lossy();
-        assert!(
-            !ignored_rust_source(&name)
-                && !name.ends_with(".pyc")
-                && !name.ends_with(".pyo")
-                && !name.ends_with(".local")
-                && (!name.starts_with(".env") || name.ends_with(".example")),
-            "Non-source state in embedded catalog: {}",
-            path.display()
-        );
-        if path.is_dir() {
-            assert!(
-                !path.is_symlink(),
-                "Directory links may embed ignored state: {}",
-                path.display()
-            );
-            verify_source_catalog(&path);
-        }
-    }
-}
-
-fn ignored_rust_source(name: &str) -> bool {
-    matches!(
-        name,
-        "target"
-            | "node_modules"
-            | ".git"
-            | ".DS_Store"
-            | "__pycache__"
-            | "dist"
-            | "artifacts"
-            | "secrets"
-    )
-}
-
-fn embedded_name(name: &str) -> String {
-    if matches!(name, "Cargo.toml" | "Cargo.lock") {
-        format!("{name}.template")
-    } else {
-        name.to_owned()
-    }
-}
-
-fn verify_source_tree(source: &Path, destination: &Path) {
-    println!("cargo:rerun-if-changed={}", source.display());
-    assert!(
-        !destination.is_symlink(),
-        "Embedded source directory must use per-file links: {}. Run scripts/sync_rust_embedded_sources.py",
-        destination.display()
-    );
-    for entry in std::fs::read_dir(source).expect("Read Rust source inventory") {
-        let path = entry.expect("Read Rust source entry").path();
-        let name = path.file_name().unwrap().to_string_lossy();
-        if ignored_rust_source(&name)
-            || (name.starts_with(".env") && !name.ends_with(".example"))
-            || name.ends_with(".local")
-            || name.ends_with(".pyc")
-            || name.ends_with(".pyo")
-        {
-            continue;
-        }
-        if path.is_dir() {
-            verify_source_tree(&path, &destination.join(name.as_ref()));
-        } else if path.is_file() {
-            verify_embedded_source(&path, &destination.join(embedded_name(&name)));
-        }
-    }
 }
 
 fn verify_embedded_source(source: &Path, embedded: &Path) {

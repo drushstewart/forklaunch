@@ -1150,33 +1150,6 @@ mod tests {
     }
 
     #[test]
-    fn builtins_keep_adapters_but_use_flat_exports_and_api_routes() {
-        let root = tempfile::tempdir().unwrap();
-        let templates = vec![
-            RenderedTemplate { path: root.path().join("Cargo.toml"), content: "[package]\nname = \"iam\"\nversion = \"0.1.0\"\n".replace("\\\"", "\""), context: None },
-            RenderedTemplate { path: root.path().join("src/lib.rs"), content: render_rust_template("rust/ecommerce/lib.rs", &rust_crate_template_data("iam", "IAM", true)), context: None },
-            RenderedTemplate { path: root.path().join("src/main.rs"), content: "use iam::{service_info, write_contract_artifacts};\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> { let result = run().await; result }\nasync fn run() -> Result<(), Box<dyn std::error::Error>> { let _ = service_info(); Ok(()) }\n".into(), context: None },
-            RenderedTemplate { path: root.path().join("src/routes/mod.rs"), content: native_routes_mod_rs(&[]), context: None },
-        ];
-        materialize(
-            root.path(),
-            builtin_templates(root.path(), "iam", templates),
-        );
-        assert!(root.path().join("api/routes/mod.rs").exists());
-        assert!(!root.path().join("src").exists());
-        assert!(
-            !read_to_string(root.path().join("lib.rs"))
-                .unwrap()
-                .contains("fn ")
-        );
-        assert!(
-            read_to_string(root.path().join("bootstrapper.rs"))
-                .unwrap()
-                .contains("crate::server::run()")
-        );
-    }
-
-    #[test]
     fn flattened_worker_retains_backend_processing_and_thin_entrypoints() {
         let root = tempfile::tempdir().unwrap();
         let data = rust_crate_template_data("insights", "Worker", true);
@@ -1217,104 +1190,6 @@ mod tests {
                 .contains("fn ")
         );
     }
-}
-
-pub(super) fn builtin_templates(
-    dir: &Path,
-    name: &str,
-    templates: Vec<RenderedTemplate>,
-) -> Vec<RenderedTemplate> {
-    let mut output = Vec::new();
-    for mut file in templates {
-        let relative = file.path.strip_prefix(dir).unwrap().to_string_lossy();
-        match relative.as_ref() {
-            "Cargo.toml" => {
-                file.content.push_str(&format!(
-                    "\n[lib]\npath = \"lib.rs\"\n[[bin]]\nname = \"{name}\"\npath = \"main.rs\"\n"
-                ));
-            }
-            "src/lib.rs" => {
-                file.path = dir.join("sdk.rs");
-                let mut registry = file
-                    .content
-                    .replace("pub mod routes;", "use super::extensions as routes;");
-                let writer = registry
-                    .find("pub fn write_contract_artifacts(")
-                    .expect("module artifact writer");
-                let body = writer + registry[writer..].find("{\n").expect("module writer body") + 2;
-                let filesystem = body
-                    + registry[body..]
-                        .find("    if let Some(parent)")
-                        .expect("module artifact filesystem");
-                let setup = registry[body..filesystem].to_owned();
-                registry.replace_range(
-                    body..filesystem,
-                    "    let registry = configured_registry()?;\n",
-                );
-                registry.push_str(&format!("\npub fn configured_registry() -> io::Result<ContractRegistry> {{\n{setup}    Ok(registry)\n}}\n"));
-                output.push(RenderedTemplate {
-                    path: dir.join("api/contracts/registry.rs"),
-                    content: registry,
-                    context: None,
-                });
-                file.content = "pub use crate::api::contracts::registry::*;\n".into();
-            }
-            "src/main.rs" => {
-                let source = replace_namespace(&file.content, &name.to_case(Case::Snake), "crate");
-                let entry = source.find("#[tokio::main]").expect("builtin entry point");
-                let runtime = source.find("async fn run()").expect("builtin runtime");
-                let header = source[..entry]
-                    .replace(", write_contract_artifacts", "")
-                    .replace(
-                        "use forklaunch_core::telemetry::otlp::TelemetryRuntime;",
-                        "",
-                    )
-                    .replace(", telemetry::otlp::TelemetryRuntime", "")
-                    .replace(", otlp::TelemetryRuntime", "");
-                let lifecycle = source[entry..runtime]
-                    .replace("#[tokio::main]\nasync fn main()", "pub async fn run()")
-                    .replace("let result = run()", "let result = crate::server::run()");
-                let std_imports = if lifecycle.contains("dyn Error") {
-                    "use std::{env, error::Error};"
-                } else {
-                    "use std::env;"
-                };
-                output.push(RenderedTemplate {
-                    path: dir.join("bootstrapper.rs"),
-                    content: format!(
-                        "{std_imports}\nuse forklaunch_core::telemetry::otlp::TelemetryRuntime;\nuse crate::write_contract_artifacts;\n{lifecycle}"
-                    ),
-                    context: None,
-                });
-                output.push(RenderedTemplate {
-                    path: dir.join("server.rs"),
-                    content: format!(
-                        "{header}{}",
-                        source[runtime..].replacen("async fn run()", "pub async fn run()", 1)
-                    ),
-                    context: None,
-                });
-                file.path = dir.join("main.rs");
-                file.content = format!(
-                    "use std::error::Error;\n\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn Error>> {{ {}::bootstrapper::run().await }}\n",
-                    name.to_case(Case::Snake)
-                );
-            }
-            "src/routes/mod.rs" => {
-                file.path = dir.join("api/routes/mod.rs");
-            }
-            _ => {}
-        }
-        output.push(file);
-    }
-    for (path, content) in [
-        ("lib.rs", "pub mod api;\npub mod bootstrapper;\npub mod server;\npub mod sdk;\npub use api::routes;\npub use sdk::*;\n".into()),
-        ("api/mod.rs", "pub mod routes;\npub mod contracts;\n".into()),
-        ("api/contracts/mod.rs", "pub mod registry;\npub mod extensions;\n".into()),
-        ("api/contracts/extensions/mod.rs", modules::extension_contracts_mod(&[])),
-        ("Makefile", makefile(name, true)),
-    ] { output.push(RenderedTemplate { path: dir.join(path), content, context: None }); }
-    output
 }
 
 pub(super) fn convert_shape(dir: &Path, name: &str, kind: RustProjectKind) -> Result<()> {

@@ -1,3 +1,4 @@
+#![cfg(feature = "http")]
 use axum::{
     Json, Router,
     extract::Form,
@@ -15,11 +16,11 @@ use forklaunch_core::{
     ServiceInfo,
     persistence::{TenantContext, encryption::FieldEncryptor},
 };
-use forklaunch_ecommerce_axum::{EcommerceBackend, ecommerce_router};
 use forklaunch_ecommerce_base::{BaseEcommerceService, postgres::PostgresEcommerceStore};
 use forklaunch_ecommerce_interface::{InventoryService, catalog::CatalogQuery};
 use forklaunch_ecommerce_paypal::PaypalClient;
 use forklaunch_ecommerce_stripe::StripeClient;
+use forklaunch_ecommerce_stripe::http::{EcommerceBackend, EcommerceHttp};
 use forklaunch_worker_database::{postgres::PostgresWorkerQueue, runner::JobHandler};
 use forklaunch_worker_interface::{AsyncWorkerQueue, RetryPolicy};
 use jsonwebtoken::{Algorithm, Validation};
@@ -224,7 +225,7 @@ async fn postgres_ecommerce_http_mcp_provider_and_inventory_worker() {
         Validation::new(Algorithm::RS256),
     )
     .unwrap();
-    let router = ecommerce_router(backend, auth, ServiceInfo::new("ecommerce", "1.0.0"));
+    let router = EcommerceHttp::new(backend, auth, ServiceInfo::new("ecommerce", "1.0.0")).router();
     assert_eq!(router.registry().routes().len(), 32);
     let (base, stop, task) = serve(router.into_router_with_default_mcp().unwrap()).await;
     let client = Client::new();

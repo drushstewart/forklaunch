@@ -10,7 +10,6 @@ members = [
     "crates/implementations/iam/iam-base",
     "crates/implementations/cac/cac-base",
     "crates/implementations/ecommerce/ecommerce-base",
-    "crates/implementations/ecommerce/ecommerce-axum",
     "crates/implementations/ecommerce/ecommerce-stripe",
     "crates/implementations/ecommerce/ecommerce-paypal",
     "crates/implementations/billing/billing-base",

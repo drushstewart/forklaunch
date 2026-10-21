@@ -40,7 +40,7 @@ public packages.
 | [`@forklaunch/blueprint-cac-base`](../../blueprint/cac-base/package.json) | `0.1.1` | Private fixture | forklaunch-cac-interface/base/axum and Rust init module cac-base |
 | [`@forklaunch/blueprint-client-sdk`](../../blueprint/client-sdk/package.json) | `0.1.1` | Private fixture | forklaunch-blueprint-client-sdk and CLI SDK generation |
 | [`@forklaunch/blueprint-core`](../../blueprint/core/package.json) | `1.0.1` | Private fixture | forklaunch-blueprint-core and framework crates |
-| [`@forklaunch/blueprint-ecommerce-stripe`](../../blueprint/ecommerce-stripe/package.json) | `0.0.2` | Private fixture | forklaunch-ecommerce-axum; Rust CLI ecommerce-stripe module |
+| [`@forklaunch/blueprint-ecommerce-stripe`](../../blueprint/ecommerce-stripe/package.json) | `0.0.2` | Private fixture | forklaunch-ecommerce-stripe (`http`); Rust CLI ecommerce-stripe module |
 | [`@forklaunch/blueprint-iam-base`](../../blueprint/iam-base/package.json) | `0.1.6` | Private fixture | Rust init module iam-base |
 | [`@forklaunch/blueprint-iam-better-auth`](../../blueprint/iam-better-auth/package.json) | `0.0.1` | Private fixture | TypeScript only; Rust services use its generated Rust SDK |
 | [`@forklaunch/implementation-billing-base`](../../blueprint/implementations/billing/base/package.json) | `1.0.41` | Package source | forklaunch-billing-base |

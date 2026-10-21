@@ -3,11 +3,13 @@
 mod checkout;
 mod query;
 mod webhook;
+use crate::{StripeClient, StripeConnect, StripePaymentService};
 use axum::{
     Extension, Json,
     extract::{Path, RawQuery},
     http::StatusCode,
     response::{IntoResponse, Response},
+    routing::{MethodRouter, any},
 };
 use checkout::checkout;
 use forklaunch_axum::{
@@ -28,9 +30,8 @@ use forklaunch_ecommerce_interface::{
     module::{CreateProviderPayment, CreatedPayment, OrderTransition, PaymentProvider},
 };
 use forklaunch_ecommerce_paypal::{PaypalClient, PaypalPaymentService};
-use forklaunch_ecommerce_stripe::{StripeClient, StripeConnect, StripePaymentService};
 use forklaunch_worker_database::postgres::PostgresWorkerQueue;
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 use webhook::{handle_paypal_webhook, handle_stripe_webhook};
 
 pub struct EcommerceBackend {
@@ -41,7 +42,7 @@ pub struct EcommerceBackend {
     connect: Option<StripeConnect>,
     cart_cache: Option<Arc<dyn CartCache>>,
     orchestration_slots: tokio::sync::Semaphore,
-    stripe_webhook: Option<forklaunch_ecommerce_stripe::webhook::StripeWebhookVerifier>,
+    stripe_webhook: Option<crate::webhook::StripeWebhookVerifier>,
     paypal_webhook_id: Option<String>,
 }
 impl EcommerceBackend {
@@ -74,10 +75,7 @@ impl EcommerceBackend {
         self
     }
     #[must_use]
-    pub fn with_stripe_webhook(
-        mut self,
-        verifier: forklaunch_ecommerce_stripe::webhook::StripeWebhookVerifier,
-    ) -> Self {
+    pub fn with_stripe_webhook(mut self, verifier: crate::webhook::StripeWebhookVerifier) -> Self {
         self.stripe_webhook = Some(verifier);
         self
     }
@@ -208,158 +206,219 @@ macro_rules! service {
     };
 }
 
-/// Mounts all core catalog/cart/order/payment routes. Provider configuration,
-/// queue tenant and encryption keys come from trusted application configuration.
-/// # Panics
-/// Panics if package-owned operation names and handler registrations disagree.
-#[must_use]
-#[allow(clippy::too_many_lines)]
-pub fn ecommerce_router(
-    backend: EcommerceBackend,
-    auth: HmacJwksAuth,
+/// One operation's request handler. Its contract supplies the method and path.
+pub type Handler = MethodRouter;
+
+/// Operations in their mounted order.
+const OPERATIONS: [&str; 32] = [
+    "handleStripeWebhook",
+    "handlePaypalWebhook",
+    "checkout",
+    "importCatalog",
+    "createProduct",
+    "listProducts",
+    "listCatalog",
+    "getProductByHandle",
+    "getProduct",
+    "updateProduct",
+    "deleteProduct",
+    "createVariant",
+    "listVariants",
+    "listVariantsByProduct",
+    "getVariant",
+    "updateVariant",
+    "deleteVariant",
+    "getInventory",
+    "adjustStock",
+    "checkStock",
+    "createCart",
+    "getCart",
+    "addCartItem",
+    "removeCartItem",
+    "clearCart",
+    "createOrder",
+    "listOrders",
+    "getOrder",
+    "transitionOrder",
+    "createPayment",
+    "getPayment",
+    "getHealth",
+];
+
+/// Catalog, cart, order, payment, import, checkout, provider callback and
+/// health handlers. Provider configuration, queue tenant and encryption keys
+/// come from trusted application configuration.
+#[derive(Clone)]
+pub struct EcommerceHttp {
+    backend: Arc<EcommerceBackend>,
+    auth: Arc<HmacJwksAuth>,
     service: ServiceInfo,
-) -> ForkLaunchRouter {
-    let registry = contracts::module_registry();
-    let route = |operation: &str| {
-        registry
-            .routes()
-            .iter()
-            .find(|route| route.operation_name == operation)
-            .expect("registered ecommerce route")
-            .clone()
-    };
-    let auth = Arc::new(auth);
-    let config = RouterConfig::default().with_authenticator(move |request, contract| {
-        let auth = Arc::clone(&auth);
-        async move { auth.authenticate(request, contract).await }
-    });
-    let name = service.name.clone();
-    let backend = Arc::new(backend);
-    macro_rules! handler {
-        ($name:ident,$($argument:ident:$kind:ty),+) => {{
-            let backend=Arc::clone(&backend);
-            move |session:Extension<AuthenticatedSession>,$($argument:$kind),+| {
-                let backend=Arc::clone(&backend);
-                async move {$name(Extension(backend),session,$($argument),+).await}
-            }
-        }};
+}
+
+impl EcommerceHttp {
+    #[must_use]
+    pub fn new(backend: EcommerceBackend, auth: HmacJwksAuth, service: ServiceInfo) -> Self {
+        Self {
+            backend: Arc::new(backend),
+            auth: Arc::new(auth),
+            service,
+        }
     }
 
-    macro_rules! public_handler {
-        ($name:ident) => {{
-            let backend = Arc::clone(&backend);
-            move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+    /// The handler for one ecommerce operation.
+    ///
+    /// # Panics
+    /// Panics if `operation` is not an ecommerce operation.
+    #[allow(clippy::too_many_lines)]
+    pub fn handler(&self, operation: &str) -> Handler {
+        let backend = Arc::clone(&self.backend);
+        macro_rules! handler {
+            ($name:ident,$($argument:ident:$kind:ty),+) => {{
+                let backend=Arc::clone(&backend);
+                move |session:Extension<AuthenticatedSession>,$($argument:$kind),+| {
+                    let backend=Arc::clone(&backend);
+                    async move {$name(Extension(backend),session,$($argument),+).await}
+                }
+            }};
+        }
+        macro_rules! public_handler {
+            ($name:ident) => {{
                 let backend = Arc::clone(&backend);
-                async move { $name(Extension(backend), headers, body).await }
+                move |headers: axum::http::HeaderMap, body: axum::body::Bytes| {
+                    let backend = Arc::clone(&backend);
+                    async move { $name(Extension(backend), headers, body).await }
+                }
+            }};
+        }
+        match operation {
+            "handleStripeWebhook" => any(public_handler!(handle_stripe_webhook)),
+            "handlePaypalWebhook" => any(public_handler!(handle_paypal_webhook)),
+            "checkout" => any(
+                handler!(checkout,input:CheckedJson<forklaunch_ecommerce_interface::module::Checkout>),
+            ),
+            "importCatalog" => any(
+                handler!(import_catalog, input:CheckedJson<forklaunch_ecommerce_interface::import::CatalogImport>),
+            ),
+            "createProduct" => any(handler!(create_product, input:CheckedJson<CreateProductDto>)),
+            "listProducts" => any(handler!(list_products, input:RawQuery)),
+            "listCatalog" => any(handler!(list_catalog, input:RawQuery)),
+            "getProductByHandle" => any(handler!(get_product_by_handle, input:Path<String>)),
+            "getProduct" => any(handler!(get_product, input:Path<String>)),
+            "updateProduct" => any(handler!(update_product, input:CheckedJson<UpdateProductDto>)),
+            "deleteProduct" => any(handler!(delete_product, input:Path<String>)),
+            "createVariant" => any(handler!(create_variant, input:CheckedJson<CreateVariantDto>)),
+            "listVariants" => any(handler!(list_variants, input:RawQuery)),
+            "listVariantsByProduct" => any(handler!(list_variants_by_product, input:Path<String>)),
+            "getVariant" => any(handler!(get_variant, input:Path<String>)),
+            "updateVariant" => any(handler!(update_variant, input:CheckedJson<UpdateVariantDto>)),
+            "deleteVariant" => any(handler!(delete_variant, input:Path<String>)),
+            "getInventory" => any(handler!(get_inventory, input:Path<String>)),
+            "adjustStock" => any(handler!(adjust_stock, input:CheckedJson<AdjustStockDto>)),
+            "checkStock" => any(handler!(check_stock, input:CheckedJson<StockCheckDto>)),
+            "createCart" => any(handler!(create_cart, input:CheckedJson<CreateCartDto>)),
+            "getCart" => any(handler!(get_cart, input:Path<String>)),
+            "addCartItem" => any(handler!(add_cart_item, input:CheckedJson<AddCartItemDto>)),
+            "removeCartItem" => any(handler!(remove_cart_item, input:Path<(String,String)>)),
+            "clearCart" => any(handler!(clear_cart, input:Path<String>)),
+            "createOrder" => any(handler!(create_order, input:CheckedJson<CreateOrderDto>)),
+            "listOrders" => any(handler!(list_orders, input:RawQuery)),
+            "getOrder" => any(handler!(get_order, input:Path<String>)),
+            "transitionOrder" => {
+                any(handler!(transition_order, id:Path<String>, input:CheckedJson<OrderTransition>))
             }
-        }};
+            "createPayment" => {
+                any(handler!(create_payment, input:CheckedJson<CreateProviderPayment>))
+            }
+            "getPayment" => any(handler!(get_payment, input:Path<String>)),
+            "getHealth" => {
+                let name = self.service.name.clone();
+                any(move || {
+                    let service = name.clone();
+                    async move { Json(serde_json::json!({"service":service,"status":"ok"})) }
+                })
+            }
+            _ => panic!("ecommerce operation {operation} has no contract"),
+        }
     }
-    ForkLaunchRouter::new(service)
-        .post(route("handleStripeWebhook"),public_handler!(handle_stripe_webhook))
-        .post(route("handlePaypalWebhook"),public_handler!(handle_paypal_webhook))
-        .post(route("checkout"),handler!(checkout,input:CheckedJson<forklaunch_ecommerce_interface::module::Checkout>))
-        .post(
-            route("importCatalog"),
-            handler!(import_catalog, input:CheckedJson<forklaunch_ecommerce_interface::import::CatalogImport>),
-        )
-        .post(
-            route("createProduct"),
-            handler!(create_product, input:CheckedJson<CreateProductDto>),
-        )
-        .get(
-            route("listProducts"),
-            handler!(list_products, input:RawQuery),
-        )
-        .get(route("listCatalog"), handler!(list_catalog, input:RawQuery))
-        .get(
-            route("getProductByHandle"),
-            handler!(get_product_by_handle, input:Path<String>),
-        )
-        .get(
-            route("getProduct"),
-            handler!(get_product, input:Path<String>),
-        )
-        .put(
-            route("updateProduct"),
-            handler!(update_product, input:CheckedJson<UpdateProductDto>),
-        )
-        .delete(
-            route("deleteProduct"),
-            handler!(delete_product, input:Path<String>),
-        )
-        .post(
-            route("createVariant"),
-            handler!(create_variant, input:CheckedJson<CreateVariantDto>),
-        )
-        .get(
-            route("listVariants"),
-            handler!(list_variants, input:RawQuery),
-        )
-        .get(
-            route("listVariantsByProduct"),
-            handler!(list_variants_by_product, input:Path<String>),
-        )
-        .get(
-            route("getVariant"),
-            handler!(get_variant, input:Path<String>),
-        )
-        .put(
-            route("updateVariant"),
-            handler!(update_variant, input:CheckedJson<UpdateVariantDto>),
-        )
-        .delete(
-            route("deleteVariant"),
-            handler!(delete_variant, input:Path<String>),
-        )
-        .get(
-            route("getInventory"),
-            handler!(get_inventory, input:Path<String>),
-        )
-        .put(
-            route("adjustStock"),
-            handler!(adjust_stock, input:CheckedJson<AdjustStockDto>),
-        )
-        .post(
-            route("checkStock"),
-            handler!(check_stock, input:CheckedJson<StockCheckDto>),
-        )
-        .post(
-            route("createCart"),
-            handler!(create_cart, input:CheckedJson<CreateCartDto>),
-        )
-        .get(route("getCart"), handler!(get_cart, input:Path<String>))
-        .post(
-            route("addCartItem"),
-            handler!(add_cart_item, input:CheckedJson<AddCartItemDto>),
-        )
-        .delete(
-            route("removeCartItem"),
-            handler!(remove_cart_item, input:Path<(String,String)>),
-        )
-        .delete(route("clearCart"), handler!(clear_cart, input:Path<String>))
-        .post(
-            route("createOrder"),
-            handler!(create_order, input:CheckedJson<CreateOrderDto>),
-        )
-        .get(route("listOrders"), handler!(list_orders, input:RawQuery))
-        .get(route("getOrder"), handler!(get_order, input:Path<String>))
-        .put(
-            route("transitionOrder"),
-            handler!(transition_order, id:Path<String>, input:CheckedJson<OrderTransition>),
-        )
-        .post(
-            route("createPayment"),
-            handler!(create_payment, input:CheckedJson<CreateProviderPayment>),
-        )
-        .get(
-            route("getPayment"),
-            handler!(get_payment, input:Path<String>),
-        )
-        .get(health_contract(), move || {
-            let service = name.clone();
-            async move { Json(serde_json::json!({"service":service,"status":"ok"})) }
-        })
-        .with_config(config)
+
+    /// Collects handlers for the service's ecommerce routes.
+    #[must_use]
+    pub fn routes(&self) -> EcommerceRoutes {
+        EcommerceRoutes {
+            http: self.clone(),
+            handlers: HashMap::new(),
+        }
+    }
+
+    /// Every ecommerce operation with its packaged handler.
+    #[must_use]
+    pub fn router(&self) -> ForkLaunchRouter {
+        OPERATIONS
+            .iter()
+            .fold(self.routes(), |routes, operation| {
+                routes.route(operation, self.handler(operation))
+            })
+            .finish()
+    }
+}
+
+/// The service's ecommerce routes. Each operation's contract comes from the
+/// ecommerce interface, so routes, SDKs, `OpenAPI` and MCP tools share one declaration.
+pub struct EcommerceRoutes {
+    http: EcommerceHttp,
+    handlers: HashMap<String, Handler>,
+}
+
+impl EcommerceRoutes {
+    /// Serve `operation` with `handler`. Operations without a handler are not mounted.
+    ///
+    /// # Panics
+    /// Panics if `operation` is not an ecommerce operation or is already routed.
+    #[must_use]
+    pub fn route(mut self, operation: &str, handler: Handler) -> Self {
+        assert!(
+            OPERATIONS.contains(&operation),
+            "ecommerce operation {operation} has no contract"
+        );
+        assert!(
+            self.handlers
+                .insert(operation.to_owned(), handler)
+                .is_none(),
+            "ecommerce operation {operation} is already routed"
+        );
+        self
+    }
+
+    /// Mount the routed operations with request HMAC and JWKS authentication.
+    ///
+    /// # Panics
+    /// Panics if the package-owned registry lacks a routed operation.
+    #[must_use]
+    pub fn finish(mut self) -> ForkLaunchRouter {
+        let registry = contracts::module_registry();
+        let auth = Arc::clone(&self.http.auth);
+        let config = RouterConfig::default().with_authenticator(move |request, contract| {
+            let auth = Arc::clone(&auth);
+            async move { auth.authenticate(request, contract).await }
+        });
+        let mut router = ForkLaunchRouter::new(self.http.service.clone());
+        for operation in OPERATIONS {
+            if let Some(handler) = self.handlers.remove(operation) {
+                let contract = if operation == "getHealth" {
+                    health_contract()
+                } else {
+                    registry
+                        .routes()
+                        .iter()
+                        .find(|route| route.operation_name == operation)
+                        .expect("registered ecommerce route")
+                        .clone()
+                };
+                router = router.route(contract, handler);
+            }
+        }
+        router.with_config(config)
+    }
 }
 #[must_use]
 pub fn health_contract() -> forklaunch_core::contract::RouteContract {

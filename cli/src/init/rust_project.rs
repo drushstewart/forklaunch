@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Context, Result, bail};
 use clap::ArgMatches;
 use convert_case::{Case, Casing};
-use include_dir::{Dir, include_dir};
+use include_dir::Dir;
 use indexmap::IndexMap;
 use ramhorns::Content;
 use serde_json::{Value as JsonValue, json};
@@ -27,7 +27,6 @@ use crate::core::{
     template::render_embedded_template,
 };
 
-mod http_adapter;
 mod conversion;
 mod library_rename;
 mod discovery;

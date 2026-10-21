@@ -62,7 +62,8 @@ try:
     assert 'worker-bullmq' not in manifest, 'Rust BullMQ workers use the native Redis queue'
     assert not (app / '.forklaunch/blueprint-rs').exists(), 'Blueprint crates resolve from the blueprint workspace'
     for name, _ in MODULES:
-        assert (app / f'src/{name}/api/http/mod.rs').is_file(), f'{name} carries its HTTP layer as source'
+        assert (app / f'src/{name}/registrations.rs').is_file(), f'{name} uses the service layout'
+        assert not (app / f'src/{name}/api/http').exists(), f'{name} binds blueprint handlers instead of copying them'
     assert 'variant = "agent"' in manifest, 'Agents are services tagged variant = "agent"'
     for path in ('agent/mod.rs', 'agent/tools/current_time.rs', '__test__/agent.rs'):
         assert (app / 'src/assistant' / path).is_file(), f'agent {path}'
@@ -72,8 +73,8 @@ try:
     qualified = re.compile(r'(?<![\w:"])(?:forklaunch_[a-z_]+|std|tokio)::(?:[a-z_]\w*::)+[A-Z]\w*')
     findings = []
     for path in sorted((app / 'src').rglob('*.rs')):
-        # Build-owned output (.forklaunch) and the embedded HTTP layer are not edited by hand.
-        if 'target' in path.parts or '.forklaunch' in path.parts or 'api/http' in path.as_posix():
+        # Build-owned output (.forklaunch) is not edited by hand.
+        if 'target' in path.parts or '.forklaunch' in path.parts:
             continue
         for number, line in enumerate(path.read_text().splitlines(), 1):
             stripped = line.strip()

@@ -4,6 +4,8 @@
 #[cfg(feature = "postgres")]
 pub mod bound_reads;
 pub mod context;
+#[cfg(feature = "http")]
+pub mod http;
 pub mod reconciliation;
 #[cfg(feature = "postgres")]
 pub mod scoped_cancellation;

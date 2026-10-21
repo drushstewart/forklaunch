@@ -1834,7 +1834,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test bound_reads -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test scoped_cancellation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test reconciliation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-axum --all-features --test http -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test http_router -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_jwt_sessions -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features provider_ -- --include-ignored

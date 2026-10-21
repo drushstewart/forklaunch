@@ -1520,7 +1520,6 @@ mod tests {
         for main in [
             include_str!("../../templates/rust/project/service/src/main.rs"),
             include_str!("../../templates/rust/project/module/server.rs"),
-            include_str!("../../templates/rust/ecommerce/main.rs"),
             "router.into_router_with_default_mcp()?;",
         ] {
             let wired = with_capability_router(main).unwrap();

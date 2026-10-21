@@ -41,10 +41,6 @@ impl BuiltinModule {
     pub(super) fn service_name(self) -> &'static str {
         self.template()
     }
-    /// Modules generated with the ordinary service layout.
-    fn service_shaped(self) -> bool {
-        matches!(self, Self::Iam | Self::Cac | Self::BillingBase | Self::BillingStripe)
-    }
     fn description(self) -> &'static str {
         match self {
             Self::Iam => "Persistent PostgreSQL IAM",
@@ -148,11 +144,7 @@ pub(super) fn generate_module_at(
         stripe: kind == BuiltinModule::BillingStripe,
     };
     ensure_embedded_framework(&root, dryrun)?;
-    let mut templates = if kind.service_shaped() {
-        module_templates(&crate_dir, name, kind, &data, shared_contracts)
-    } else {
-        legacy_templates(&crate_dir, name, kind, &data, shared_contracts)?
-    }
+    let mut templates = module_templates(&crate_dir, name, kind, &data, shared_contracts)
     .into_iter()
     .filter(|template| !template.path.exists())
     .collect::<Vec<_>>();
@@ -212,62 +204,6 @@ pub(super) fn generate_module_at(
     ensure_module_compose(&root, &name, kind, dryrun)?;
     ensure_rust_package_scripts(&root, RustProjectKind::Service, &name, dryrun)?;
     Ok(())
-}
-
-fn legacy_templates(crate_dir: &Path, name: &str, kind: BuiltinModule, data: &RustModuleTemplate, shared_contracts: bool) -> Result<Vec<RenderedTemplate>> {
-    let templates = [
-        "Cargo.toml",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/routes/mod.rs",
-        "build.rs",
-        "persistence/compliance_schema.rs",
-        ".env.example",
-        "README.md",
-    ]
-    .into_iter()
-    .map(|output| {
-        let filename = match output {
-            "Cargo.toml" => "Cargo.toml.template",
-            "src/lib.rs" => "lib.rs",
-            "src/main.rs" => "main.rs",
-            "persistence/compliance_schema.rs" => "compliance_schema.rs",
-            ".env.example" => "env.example",
-            _ => "README.md",
-        };
-        let template = if output == "build.rs" {
-            if shared_contracts { "rust/project/module-sdk-build.rs" } else { "rust/project/module-compliance-build.rs" }.to_owned()
-        } else if output == "src/routes/mod.rs" {
-            "rust/router/native_routes_mod.rs".to_owned()
-        } else {
-            format!("rust/{}/{filename}", kind.template())
-        };
-        RenderedTemplate {
-            path: crate_dir.join(output),
-            content: if output == "src/routes/mod.rs" {
-                native_routes_mod_rs(&[])
-            } else {
-                let mut rendered = render_rust_template(&template, data);
-                if output == "Cargo.toml" {
-                    rendered.push_str("\n[build-dependencies]\nforklaunch-core = { path = \"../../.forklaunch/framework-rs/crates/core\", features = [\"compliance-artifact\"] }\n");
-                    if shared_contracts { rendered = with_contract_build_dependencies(&rendered).expect("valid generated module manifest"); }
-                }
-                rendered
-            },
-            context: None,
-        }
-    })
-    .collect::<Vec<_>>();
-    let templates = if !crate_dir.join("src/lib.rs").exists() {
-        let mut templates = native_layout::builtin_templates(&crate_dir, name, templates);
-        if !crate_dir.join("api/http").exists() {
-            http_adapter::embed(&crate_dir, kind, &mut templates)?;
-        }
-        templates
-    } else {
-        templates
-    };
-    Ok(templates)
 }
 
 /// Service-shaped module sources: files every module shares, then the
@@ -341,6 +277,11 @@ fn add_local_sdk_templates(dir: &Path, name: &str, templates: &mut Vec<RenderedT
     if !features.iter().any(|feature| feature.as_str() == Some("typed-schema")) {
         features.push("typed-schema");
     }
+    // The module serves MCP, which keeps schema members in declaration order;
+    // compiled contracts and SDKs use the same order.
+    let mut ordered = toml_edit::InlineTable::new();
+    ordered.insert("features", toml_edit::Array::from_iter(["preserve_order"]).into());
+    host_cargo["dependencies"]["serde_json"] = toml_edit::value(ordered);
     let mut contracts = toml_edit::InlineTable::new();
     contracts.insert("package", format!("{name}-contracts").into());
     contracts.insert("path", ".forklaunch/contracts".into());
@@ -791,7 +732,7 @@ mod tests {
 
     #[test]
     fn service_shaped_modules_bind_each_operation_once_through_thin_controllers() {
-        for kind in [BuiltinModule::Iam, BuiltinModule::Cac, BuiltinModule::BillingBase, BuiltinModule::BillingStripe] {
+        for kind in [BuiltinModule::Iam, BuiltinModule::Cac, BuiltinModule::EcommerceStripe, BuiltinModule::BillingBase, BuiltinModule::BillingStripe] {
             let root = tempfile::tempdir().unwrap();
             let dir = root.path().join("src/module");
             let data = RustModuleTemplate {
@@ -911,6 +852,8 @@ mod tests {
             assert_eq!(host["package"]["publish"].as_bool(), Some(false));
             assert!(host["dependencies"].get("test-module").is_none());
             assert!(host["dependencies"]["forklaunch-core"]["features"].as_array().unwrap().iter().any(|value| value.as_str() == Some("typed-schema")));
+            assert_eq!(host["dependencies"]["serde_json"]["features"].as_array().unwrap()[0].as_str(), Some("preserve_order"),
+                "Compiled contracts keep the declaration order MCP serves");
             assert_eq!(source("sdk/rust/.forklaunch-sdk-local"), "forklaunch.sdk.local.v1\n");
             let sdk: Value = toml::from_str(source("sdk/rust/Cargo.toml")).unwrap();
             assert_eq!(sdk["build-dependencies"]["contracts"]["path"].as_str(), Some("../../.forklaunch/contracts"));

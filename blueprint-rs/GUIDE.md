@@ -26,8 +26,7 @@ routes, as TypeScript modules call their implementation packages.
 | [forklaunch-iam-base](crates/implementations/iam/iam-base/src/lib.rs) | Directory/auth service implementations, optional PostgreSQL persistence and HTTP handlers. | `postgres`, `jwt-sessions`, `browser-sessions`, `oidc-sessions`, `http`; default: none |
 | [forklaunch-cac-base](crates/implementations/cac/cac-base/src/lib.rs) | Code-set service implementations and HTTP handlers. | `http`; default: none |
 | [forklaunch-ecommerce-base](crates/implementations/ecommerce/ecommerce-base/src/lib.rs) | Atomic local commerce storage/business rules, compliance and retention. | `worker`, `postgres`; default: none |
-| [forklaunch-ecommerce-axum](crates/implementations/ecommerce/ecommerce-axum/src/lib.rs) | Commerce HTTP/MCP contracts and request mapping. | —; default: none |
-| [forklaunch-ecommerce-stripe](crates/implementations/ecommerce/ecommerce-stripe/src/lib.rs) | Stripe checkout/capture/webhook integration. | —; default: none |
+| [forklaunch-ecommerce-stripe](crates/implementations/ecommerce/ecommerce-stripe/src/lib.rs) | Stripe checkout/capture/webhook integration and the commerce HTTP handlers (with PayPal). | `postgres`, `http`; default: none |
 | [forklaunch-ecommerce-paypal](crates/implementations/ecommerce/ecommerce-paypal/src/lib.rs) | PayPal checkout/capture integration. | —; default: none |
 | [forklaunch-billing-base](crates/implementations/billing/billing-base/src/lib.rs) | Billing services, store seams and optional PostgreSQL persistence. | `postgres`; default: none |
 | [forklaunch-billing-stripe](crates/implementations/billing/billing-stripe/src/lib.rs) | Stripe provider, optional remote client and the billing HTTP handlers. | `stripe-client`, `postgres-reconciliation`, `postgres-identity`, `http`, `typescript-routing`, `bound-checkout`; default: none |

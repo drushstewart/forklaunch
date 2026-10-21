@@ -1,5 +1,6 @@
 //! Checkout orchestration. Prices come from variants and provider credentials remain response-only.
 use super::{EcommerceBackend, response};
+use crate::{StripePaymentService, tax::StripeTaxService};
 use axum::{Extension, Json, response::Response};
 use forklaunch_axum::session::AuthenticatedSession;
 use forklaunch_core::domain::BlueprintError;
@@ -11,7 +12,6 @@ use forklaunch_ecommerce_interface::{
     module::{Checkout, CheckoutResult, CreateProviderPayment, CreatedPayment},
     pricing::{ShippingCalculation, ShippingService, TaxCalculation, TaxService},
 };
-use forklaunch_ecommerce_stripe::{StripePaymentService, tax::StripeTaxService};
 use std::sync::Arc;
 
 fn invalid(message: &str) -> BlueprintError {
