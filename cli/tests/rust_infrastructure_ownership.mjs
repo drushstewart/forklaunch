@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
-import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,appendFileSync,existsSync,renameSync,statSync,rmSync,readdirSync} from 'node:fs';
+import {mkdirSync,mkdtempSync,readFileSync,writeFileSync,appendFileSync,existsSync,renameSync,readdirSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const cli=process.env.FORKLAUNCH_CLI??path.join(root,'cli/target/debug/forklaunch');
 const output=path.join(root,'cli/tests/output/rust-infrastructure-runtime');mkdirSync(output,{recursive:true});
 const app=process.argv[2]??path.join(mkdtempSync(path.join(output,'run.')),'app');
-const stateHas=key=>{const file=path.join(app,'.forklaunch/local-state.json');return existsSync(file)&&Object.hasOwn(JSON.parse(readFileSync(file,'utf8')),key);};
+// Infrastructure edits are stateless: the manifest is all .forklaunch/ holds.
+const manifestOnly=()=>assert.deepEqual(readdirSync(path.join(app,'.forklaunch'),{recursive:true}),['manifest.toml']);
 const run=(...args)=>execFileSync(cli,args,{cwd:root,stdio:'inherit'});
 const edit=(operation,service,feature,...extra)=>run('infra',operation,service,feature,'--path',app,...extra);
 const read=relative=>readFileSync(path.join(app,relative),'utf8');
@@ -30,10 +31,11 @@ const pristine=Object.fromEntries(['Cargo.toml','lib.rs','server.rs'].map(file=>
 for(const id of ['redis','s3']){
  edit('add','alpha',id,'--dryrun');
  assert.equal(existsSync(path.join(app,`src/alpha/infrastructure/${id}.rs`)),false);
- assert.equal(stateHas(`alpha/infra-${id}`),false);
+ manifestOnly();
 }
 // Stacked local resources and managed capabilities can leave in any order.
 edit('add','alpha','redis');edit('add','alpha','email');edit('add','alpha','s3');
+manifestOnly();
 edit('remove','alpha','redis');edit('remove','alpha','email');edit('remove','alpha','s3');
 for(const [file,text] of Object.entries(pristine))assert.equal(read(`src/alpha/${file}`),text,file);
 assert.equal(existsSync(path.join(app,'src/alpha/.env.local')),false);
@@ -43,7 +45,7 @@ for(const id of ['redis','s3']){edit('add','alpha',id);edit('add','beta',id);edi
 assert.ok(compose().services.redis);assert.ok(compose().services.minio);
 run('delete','service','beta','--path',app,'--continue');
 assert.deepEqual(compose().services.redis,originalBackends.redis);assert.deepEqual(compose().services.minio,originalBackends.minio);
-for(const id of ['redis','s3'])assert.equal(stateHas(`_app/infra-${id}`),false);
+manifestOnly();
 // Existing backends and edited deployment values remain application-owned.
 let document=compose();
 document.services.redis={image:'human/redis:fixture',environment:{USER_SETTING:'original'},networks:{'infra-app-network':{aliases:['custom-cache']}}};
@@ -84,22 +86,20 @@ run('change','service','--path',path.join(app,'services/team/alpha'),'-N','stora
 assert.ok(read('services/team/storage/infrastructure/redis.rs').includes('HUMAN_FACTORY'));
 assert.ok(read('services/team/storage/server.rs').includes('Human main customization'));
 assert.ok(read('services/team/storage/config.rs').includes('HUMAN_CONFIG'));
-for(const id of ['redis','s3']){
- const state=path.join(app,'.forklaunch/local-state.json');
- assert.ok(stateHas(`storage/infra-${id}`));assert.equal(stateHas(`alpha/infra-${id}`),false);
- if(process.platform!=='win32')assert.equal(statSync(state).mode&0o777,0o600);
-}
+manifestOnly();
 edit('remove','storage','redis');
 assert.ok(read('services/team/storage/infrastructure/redis.rs').includes('HUMAN_FACTORY'));
 assert.ok(read('services/team/storage/Cargo.toml').includes('forklaunch-infrastructure-redis'));
 // Leave both adapters enabled for the runtime fixture.
 edit('add','storage','redis');
-// Clone recovery removes known generated hooks but keeps unknown settings/dependencies.
-rmSync(path.join(app,'.forklaunch/local-state.json'),{force:true});
-const clonedEnv=read('services/team/storage/.env.local');
+// Without stored state, a fresh clone removes exactly what add wrote and
+// keeps settings the developer changed.
+write('services/team/storage/.env.local',read('services/team/storage/.env.local').replace('S3_REGION=us-east-1','S3_REGION=eu-west-1'));
 edit('remove','storage','s3');
 assert.equal(existsSync(path.join(app,'services/team/storage/infrastructure/s3.rs')),false);
-assert.ok(read('services/team/storage/Cargo.toml').includes('forklaunch-infrastructure-s3'));
-assert.equal(read('services/team/storage/.env.local'),clonedEnv);
+assert.equal(read('services/team/storage/Cargo.toml').includes('forklaunch-infrastructure-s3'),false);
+assert.ok(read('services/team/storage/.env.local').includes('S3_REGION=eu-west-1'));
+assert.equal(read('services/team/storage/.env.local').includes('S3_URL='),false);
 edit('add','storage','s3');
+manifestOnly();
 console.log(`PASS native Redis/S3 CLI ownership, dry run, stacking, shared backends, custom settings, nested crate paths, sync and rename: ${app}`);
