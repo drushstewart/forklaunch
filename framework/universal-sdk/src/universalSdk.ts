@@ -1,3 +1,5 @@
+import portableRequest, { type ForkLaunchSdkResponse } from './portableRuntime';
+import { portableOperations, type PortableOperation } from './core/portableOperation';
 import { registerZodRegex, type ZodRegexExecution } from './core/zodRegex';
 import {
   openApiCompliantPath,
@@ -5,12 +7,12 @@ import {
   safeStringify
 } from '@forklaunch/common';
 import Ajv from 'ajv';
-import Ajv2020 from 'ajv/dist/2020';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { draft7, draft2020, ResponseAjvFactory } from './core/responseDialect';
 import addFormats from 'ajv-formats';
 import { OpenAPIObject } from 'openapi3-ts/oas31';
 import { mapContentType } from './core/mapContentType';
-import { refreshOpenApi } from './core/openApi';
+import { refreshOpenApi, getRegistryOperation } from './core/openApi';
 import { ResponseSchemas, schemaPointer } from './core/responseSchema';
 import { registerFactoryUriFormat } from './core/uriFormat';
 import { registerZodChecks } from './core/zodChecks';
@@ -20,7 +22,8 @@ import {
   RegistryOptions,
   RequestType,
   ResponseType,
-  SdkPathMap
+  SdkPathMap,
+  UniversalSdkTransportOptions
 } from './types/sdk.types';
 
 /**
@@ -44,7 +47,8 @@ export class UniversalSdk {
     private contentTypeParserMap:
       Record<string, ResponseContentParserType> | undefined,
     responseAjvFactory?: ResponseAjvFactory,
-    zodRegexExecution?: ZodRegexExecution
+    private zodRegexExecution?: ZodRegexExecution,
+    private transportOptions: UniversalSdkTransportOptions = {}
   ) {
     registerZodRegex(registerZodChecks(registerFactoryUriFormat(ajv)), zodRegexExecution);
     this.responseSchemas = new ResponseSchemas(
@@ -64,7 +68,8 @@ export class UniversalSdk {
     host: string,
     registryOptions: RegistryOptions,
     contentTypeParserMap?: Record<string, ResponseContentParserType>,
-    zodRegexExecution?: ZodRegexExecution
+    zodRegexExecution?: ZodRegexExecution,
+    transportOptions: UniversalSdkTransportOptions = {}
   ) {
     const createAjv: ResponseAjvFactory = (context) => {
       if (context.dialect !== draft7 && context.dialect !== draft2020)
@@ -79,14 +84,28 @@ export class UniversalSdk {
       addFormats(ajv);
       return ajv;
     };
-    return new UniversalSdk(
+    const sdk = new UniversalSdk(
       host,
       createAjv({ dialect: draft7, explicit: false }),
       registryOptions,
       contentTypeParserMap,
       createAjv,
-      zodRegexExecution
+      zodRegexExecution,
+      transportOptions
     );
+    const initial = await refreshOpenApi(host, registryOptions, undefined, transportOptions.fetch);
+    if (initial.updateRequired) {
+      sdk.registryOpenApiJson = initial.registryOpenApiJson;
+      sdk.registryOpenApiHash = initial.registryOpenApiHash;
+      sdk.sdkPathMap = initial.sdkPathMap;
+    }
+    return sdk;
+  }
+
+  isPortableSdkPath(path: string): boolean {
+    return Object.entries(this.sdkPathMap ?? {}).some(([key,target]) =>
+      (key === path || key.startsWith(`${path}.`)) &&
+      target.portableOperation !== undefined);
   }
 
   async executeFetchCall(
@@ -104,7 +123,7 @@ export class UniversalSdk {
     } & {
       version?: string;
     }
-  ): Promise<ResponseType> {
+  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>> {
     if (!this.host) {
       throw new Error('Host not initialized, please run .create(..) first');
     }
@@ -112,7 +131,8 @@ export class UniversalSdk {
     const refreshResult = await refreshOpenApi(
       this.host,
       this.registryOptions,
-      this.registryOpenApiHash
+      this.registryOpenApiHash,
+      this.transportOptions.fetch
     );
 
     if (refreshResult.updateRequired) {
@@ -132,7 +152,7 @@ export class UniversalSdk {
   async executeSdkCall(
     sdkPath: string,
     request?: RequestType
-  ): Promise<ResponseType> {
+  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>> {
     if (!this.host) {
       throw new Error('Host not initialized, please run .create(..) first');
     }
@@ -140,7 +160,8 @@ export class UniversalSdk {
     const refreshResult = await refreshOpenApi(
       this.host,
       this.registryOptions,
-      this.registryOpenApiHash
+      this.registryOpenApiHash,
+      this.transportOptions.fetch
     );
 
     if (refreshResult.updateRequired) {
@@ -165,10 +186,10 @@ export class UniversalSdk {
     if (fullSdkPath.length === 0) {
       throw new Error(`Sdk path not found: ${sdkPath}`);
     }
-    const { method, path, version } =
+    const { method, path, version, portableOperation } =
       this.sdkPathMap?.[fullSdkPath.join('.')] || {};
 
-    return this.execute(path, method, version, request);
+    return this.execute(path, method, version, request, portableOperation);
   }
 
   /**
@@ -177,22 +198,31 @@ export class UniversalSdk {
    * @param {string} route - The route path for the request.
    * @param {'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'} method - The HTTP method.
    * @param {RequestType} [request] - The request object.
-   * @returns {Promise<ResponseType>} - The response object.
+   * @returns {Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>>} - The response object.
    */
   private async execute(
     path: string,
-    method:
-      | 'get'
-      | 'post'
-      | 'put'
-      | 'patch'
-      | 'delete'
-      | 'options'
-      | 'head'
-      | 'trace',
+    method: string,
     version: string,
-    request?: RequestType
-  ): Promise<ResponseType> {
+    request?: RequestType,
+    selected?: PortableOperation
+  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>> {
+    const operation = getRegistryOperation(this.registryOpenApiJson?.[version], path, method);
+    const descriptors = portableOperations(operation);
+    if (!selected && operation?.['x-forklaunch-operations'] !== undefined) {
+      throw new TypeError('Versioned portable route requires a typed SDK operation');
+    }
+    const descriptor = selected ?? descriptors[0];
+    if (descriptor) {
+      const normalize = (value: string) => value.replace(/:([^/]+)/g, '{$1}');
+      if (descriptor.method.toLowerCase() !== method || normalize(descriptor.path) !== normalize(path)) {
+        throw new TypeError('Portable operation does not match registry route');
+      }
+      return portableRequest<Record<number, unknown>>(
+        { ...this.transportOptions, baseUrl: this.host, zodRegexExecution: this.zodRegexExecution },
+        { ...descriptor, input: request || {} }
+      );
+    }
     const { params, body, query, headers } = request || {};
     let url = getSdkPath(this.host + path).replace(/([^:]\/)\/+/g, '$1');
 
@@ -265,7 +295,7 @@ export class UniversalSdk {
       url += queryString ? `?${queryString}` : '';
     }
 
-    const response = await fetch(url, {
+    const response = await (this.transportOptions.fetch ?? fetch)(url, {
       method: method?.toUpperCase(),
       headers: {
         ...headers,
@@ -279,9 +309,7 @@ export class UniversalSdk {
     const responseDocument = this.registryOpenApiJson?.[version];
     const responseOpenApi =
       path != null && method != null
-        ? responseDocument?.paths?.[openApiCompliantPath(path)]?.[
-            method?.toLowerCase() as typeof method
-          ]?.responses?.[response.status]
+        ? getRegistryOperation(responseDocument, openApiCompliantPath(path), method)?.responses?.[response.status]
         : null;
 
     if (responseOpenApi == null) {

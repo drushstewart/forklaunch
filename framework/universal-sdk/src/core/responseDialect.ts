@@ -18,7 +18,7 @@ export function engineDialect(engine: Ajv): string {
 }
 export function responseContext(document: OpenAPIObject, schema: AnySchema, engine: Ajv): ResponseSchemaContext {
   const local = typeof schema === 'object' && typeof schema.$schema === 'string' ? canonicalDialect(schema.$schema) : undefined;
-  const declared = typeof document.jsonSchemaDialect === 'string' ? canonicalDialect(document.jsonSchemaDialect) : undefined;
+  const declared = 'jsonSchemaDialect' in document && typeof document.jsonSchemaDialect === 'string' ? canonicalDialect(document.jsonSchemaDialect) : undefined;
   if (local && declared && local !== declared) throw new Error('Response schema dialect conflicts with its OpenAPI document');
   return {dialect:local ?? declared ?? engineDialect(engine), explicit:local !== undefined || declared !== undefined};
 }

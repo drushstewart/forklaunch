@@ -1,4 +1,9 @@
-import { forklaunchExpress, schemaValidator } from '@forklaunch/blueprint-core';
+import { betterAuthSurface } from './api/contracts/auth.surface';
+import {
+  forklaunchExpress,
+  registerDelegatedSurface,
+  schemaValidator
+} from '@forklaunch/blueprint-core';
 import { setupRls, setupTenantFilter } from '@forklaunch/core/persistence';
 import {
   betterAuthTelemetryHookMiddleware,
@@ -34,95 +39,116 @@ const resolvedAuthContext = await resolvedAuth.$context;
 const authBaseURL = resolvedAuthContext.baseURL.replace(/\/+$/, '');
 const authBasePath = new URL(authBaseURL).pathname.replace(/\/+$/, '');
 
-//! Cookie-less test-auth callback: extracts tokens from the session cookie set by
-//! better-auth during OAuth/magic-link, clears the cookie, and passes tokens via
-//! URL hash to the final callback page. This prevents the test flow from overwriting
-//! the main app's session cookie.
-app.internal.get(`${authBasePath}/test-callback`, async (req, res) => {
-  const callbackUrl = String(req.query.callbackUrl || '');
-  if (!callbackUrl) {
-    res.status(400).send('Missing callbackUrl');
-    return;
-  }
+registerDelegatedSurface(
+  betterAuthSurface,
+  {
+    basePath: authBasePath,
+    paths: authBasePath
+      ? `${authBasePath}/{*any}`
+      : [
+          ...new Set(
+            Object.values(resolvedAuth.api)
+              .map((endpoint) => (endpoint as { path?: string }).path)
+              .filter((path): path is string => Boolean(path))
+              .map((path) => `/${path.split('/')[1]}{/{*any}}`)
+          )
+        ]
+  },
+  (mount) => {
+    //! Cookie-less test-auth callback: extracts tokens from the session cookie set by
+    //! better-auth during OAuth/magic-link, clears the cookie, and passes tokens via
+    //! URL hash to the final callback page. This prevents the test flow from overwriting
+    //! the main app's session cookie.
+    app.internal.get(`${mount.basePath}/test-callback`, async (req, res) => {
+      const callbackUrl = String(req.query.callbackUrl || '');
+      if (!callbackUrl) {
+        res.status(400).send('Missing callbackUrl');
+        return;
+      }
 
-  const auth = ci.resolve(tokens.BetterAuth) as BetterAuth;
-  const authContext = await auth.$context;
-  const callback = trustedCallbackUrl(callbackUrl, authContext);
-  if (!callback) {
-    res.status(400).send('Invalid callbackUrl');
-    return;
-  }
-  const cookie = req.headers.cookie || '';
+      const auth = ci.resolve(tokens.BetterAuth) as BetterAuth;
+      const authContext = await auth.$context;
+      const callback = trustedCallbackUrl(callbackUrl, authContext);
+      if (!callback) {
+        res.status(400).send('Invalid callbackUrl');
+        return;
+      }
+      const cookie = req.headers.cookie || '';
 
-  try {
-    const [tokenRes, sessionRes] = await Promise.all([
-      fetch(`${authBaseURL}/token`, { headers: { cookie } }),
-      fetch(`${authBaseURL}/get-session`, { headers: { cookie } })
-    ]);
+      try {
+        const [tokenRes, sessionRes] = await Promise.all([
+          fetch(`${authBaseURL}/token`, { headers: { cookie } }),
+          fetch(`${authBaseURL}/get-session`, { headers: { cookie } })
+        ]);
 
-    let token = '',
-      sessionToken = '',
-      email = 'unknown';
-    if (tokenRes.ok) {
-      const data = (await tokenRes.json()) as { token?: string };
-      token = data.token || '';
-    }
-    if (sessionRes.ok) {
-      const data = (await sessionRes.json()) as {
-        user?: { email?: string };
-        session?: { token?: string };
-      };
-      email = data?.user?.email || 'unknown';
-      sessionToken = data?.session?.token || '';
-    }
+        let token = '',
+          sessionToken = '',
+          email = 'unknown';
+        if (tokenRes.ok) {
+          const data = (await tokenRes.json()) as { token?: string };
+          token = data.token || '';
+        }
+        if (sessionRes.ok) {
+          const data = (await sessionRes.json()) as {
+            user?: { email?: string };
+            session?: { token?: string };
+          };
+          email = data?.user?.email || 'unknown';
+          sessionToken = data?.session?.token || '';
+        }
 
-    const sessionCookie = authContext.authCookies.sessionToken;
-    const cookiePath = sessionCookie.attributes.path ?? '/';
-    const cookieDomain = sessionCookie.attributes.domain;
-    res.setHeader(
-      'Set-Cookie',
-      `${sessionCookie.name}=; Path=${cookiePath}; Max-Age=0; HttpOnly; SameSite=Lax` +
-        (sessionCookie.attributes.secure ? '; Secure' : '') +
-        (cookieDomain ? `; Domain=${cookieDomain}` : '')
-    );
+        const sessionCookie = authContext.authCookies.sessionToken;
+        const cookiePath = sessionCookie.attributes.path ?? '/';
+        const cookieDomain = sessionCookie.attributes.domain;
+        res.setHeader(
+          'Set-Cookie',
+          `${sessionCookie.name}=; Path=${cookiePath}; Max-Age=0; HttpOnly; SameSite=Lax` +
+            (sessionCookie.attributes.secure ? '; Secure' : '') +
+            (cookieDomain ? `; Domain=${cookieDomain}` : '')
+        );
 
-    const hash = new URLSearchParams({ token, sessionToken, email }).toString();
-    callback.hash = hash;
-    res.redirect(callback.href);
-  } catch (err) {
-    res
-      .status(500)
-      .send(
-        'Failed to exchange session: ' +
-          (err instanceof Error ? err.message : String(err))
-      );
-  }
-});
+        const hash = new URLSearchParams({
+          token,
+          sessionToken,
+          email
+        }).toString();
+        callback.hash = hash;
+        res.redirect(callback.href);
+      } catch (err) {
+        res
+          .status(500)
+          .send(
+            'Failed to exchange session: ' +
+              (err instanceof Error ? err.message : String(err))
+          );
+      }
+    });
 
-//! serves a redirect page for OAuth popup flows (must be before the catch-all)
-app.internal.get(`${authBasePath}/oauth-redirect`, async (req, res) => {
-  const provider = String(req.query.provider || '');
-  const callbackURL = String(req.query.callbackURL || '');
-  const authContext = await (ci.resolve(tokens.BetterAuth) as BetterAuth)
-    .$context;
-  const callback = trustedCallbackUrl(callbackURL, authContext);
-  if (!callbackURL || !callback) {
-    res.status(400).send('Invalid callbackURL');
-    return;
-  }
-  const organizationId = String(req.query.organizationId || '');
-  const endpoint =
-    req.query.endpoint === 'sso'
-      ? `${authBasePath}/sign-in/sso`
-      : `${authBasePath}/sign-in/social`;
+    //! serves a redirect page for OAuth popup flows (must be before the catch-all)
+    app.internal.get(`${mount.basePath}/oauth-redirect`, async (req, res) => {
+      const provider = String(req.query.provider || '');
+      const callbackURL = String(req.query.callbackURL || '');
+      const authContext = await (ci.resolve(tokens.BetterAuth) as BetterAuth)
+        .$context;
+      const callback = trustedCallbackUrl(callbackURL, authContext);
+      if (!callbackURL || !callback) {
+        res.status(400).send('Invalid callbackURL');
+        return;
+      }
+      const organizationId = String(req.query.organizationId || '');
+      const endpoint =
+        req.query.endpoint === 'sso'
+          ? `${authBasePath}/sign-in/sso`
+          : `${authBasePath}/sign-in/social`;
 
-  const intermediateCallbackURL = `${authBaseURL}/test-callback?callbackUrl=${encodeURIComponent(callback.href)}`;
+      const intermediateCallbackURL = `${authBaseURL}/test-callback?callbackUrl=${encodeURIComponent(callback.href)}`;
 
-  const body =
-    req.query.endpoint === 'sso'
-      ? { organizationId, callbackURL: intermediateCallbackURL }
-      : { provider, callbackURL: intermediateCallbackURL };
-  res.type('html').send(`<!DOCTYPE html><html><body><p>Redirecting…</p><script>
+      const body =
+        req.query.endpoint === 'sso'
+          ? { organizationId, callbackURL: intermediateCallbackURL }
+          : { provider, callbackURL: intermediateCallbackURL };
+      res.type('html')
+        .send(`<!DOCTYPE html><html><body><p>Redirecting…</p><script>
     fetch(${scriptJson(endpoint)}, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -136,22 +162,15 @@ app.internal.get(`${authBasePath}/oauth-redirect`, async (req, res) => {
     })
     .catch(function(e) { document.body.innerText = 'Error: ' + e.message; });
   </script></body></html>`);
-});
+    });
 
-//! registers the betterAuth middleware
-app.internal.all(
-  authBasePath
-    ? `${authBasePath}/{*any}`
-    : [
-        ...new Set(
-          Object.values(resolvedAuth.api)
-            .map((endpoint) => (endpoint as { path?: string }).path)
-            .filter((path): path is string => Boolean(path))
-            .map((path) => `/${path.split('/')[1]}{/{*any}}`)
-        )
-      ],
-  betterAuthTelemetryHookMiddleware,
-  enrichBetterAuthApi(ci.resolve(tokens.BetterAuth) as BetterAuth)
+    //! registers the betterAuth middleware
+    app.internal.all(
+      mount.paths,
+      betterAuthTelemetryHookMiddleware,
+      enrichBetterAuthApi(ci.resolve(tokens.BetterAuth) as BetterAuth)
+    );
+  }
 );
 
 //! resolves the host, port, and version from the configuration

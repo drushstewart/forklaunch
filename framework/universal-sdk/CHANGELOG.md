@@ -1,5 +1,12 @@
 # @forklaunch/universal-sdk
 
+## 1.3.0
+
+### Minor Changes
+
+- Shared Rust and TypeScript SDK runtime: portable operations (`x-forklaunch-operation`), response dialects, SSE and multipart transports, registry refresh and query/mutation helpers, used by SDKs generated for Rust services.
+- Dependency refresh (from 1.2.30): `@types/node`, `prettier`, `tsup` 9.
+
 ## 1.2.29
 
 ### Patch Changes
