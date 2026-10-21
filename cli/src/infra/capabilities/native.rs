@@ -933,7 +933,9 @@ pub(super) fn apply(
             None => generated,
         };
         edit.write(module_path, module.clone());
-        let updated = cargo.to_string();
+        // Blueprint dependencies resolve through the application's
+        // `[framework]` selection, like every generated manifest.
+        let updated = crate::init::rust_project::dependencies::render_for_path(&cargo_path, &cargo.to_string())?;
         edit.write(cargo_path, updated.clone());
         state.last_cargo = updated;
         state.last_module = Some(module);
@@ -1631,6 +1633,46 @@ mod tests {
             assert!(!service.join("api/contracts/platform_events.rs").exists());
             assert!(!service.join("capabilities/mod.rs").exists());
         }
+    }
+
+    #[test]
+    fn payments_dependency_follows_the_framework_selection() {
+        let root = tempfile::tempdir().unwrap();
+        let service = root.path().join("src/billing");
+        std::fs::create_dir_all(service.join("api/contracts")).unwrap();
+        std::fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+        let cargo = "[package]\nname = 'billing'\nversion = '0.1.0'\n[dependencies]\nforklaunch-core = { version = '=0.1.0', features = ['openapi'] }\n[build-dependencies]\nforklaunch-core = { version = '=0.1.0', features = ['build'] }\n";
+        for (path, text) in [
+            ("Cargo.toml", cargo.to_owned()),
+            ("lib.rs", "pub mod api;\n".to_owned()),
+            ("server.rs", "pub fn server() { router.serve_with_default_mcp(listener, registry); }\n".to_owned()),
+            ("api/contracts/registry.rs", billing_registry_fixture()),
+        ] {
+            std::fs::write(service.join(path), text).unwrap();
+        }
+        std::fs::write(
+            root.path().join(".forklaunch/manifest.toml"),
+            "app_name = 'test'\nprojects = []\n\n[framework]\nversion = '0.1.3'\nblueprint_version = '0.1.1'\n",
+        )
+        .unwrap();
+        std::fs::write(root.path().join("docker-compose.yaml"), "services:\n  billing:\n    image: test-rust\n    environment:\n      PORT: '8000'\nvolumes: {}\nnetworks: {}\n").unwrap();
+        let change = |caps: &[&str], adding: bool| {
+            let caps = caps.iter().map(|value| (*value).to_owned()).collect::<Vec<_>>();
+            let mut edit = CapabilityEdit::new(root.path(), "test", "billing", &service, caps.clone(), caps);
+            edit.native = true;
+            apply(&mut edit, super::super::find("payments").unwrap(), adding).unwrap();
+            edit.commit().unwrap();
+        };
+        change(&["payments"], true);
+        // Published blueprint crates, never a `.forklaunch/blueprint-rs` copy
+        // that a relocated or containerized application cannot see.
+        let manifest: toml::Value =
+            toml::from_str(&std::fs::read_to_string(service.join("Cargo.toml")).unwrap()).unwrap();
+        let stripe = &manifest["dependencies"]["forklaunch-billing-stripe"];
+        assert_eq!(stripe["version"].as_str(), Some("=0.1.1"));
+        assert!(stripe.get("path").is_none());
+        change(&[], false);
+        assert_eq!(std::fs::read_to_string(service.join("Cargo.toml")).unwrap(), cargo);
     }
 
     #[test]
