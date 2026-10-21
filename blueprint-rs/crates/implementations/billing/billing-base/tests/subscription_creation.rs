@@ -60,11 +60,13 @@ impl Fixture {
         let owner_role = format!("fl_sub_owner_{suffix}");
         let runtime_role = format!("fl_sub_runtime_{suffix}");
         let publisher_role = format!("fl_sub_publisher_{suffix}");
-        sqlx::raw_sql(&format!("CREATE ROLE {owner_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {runtime_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {publisher_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'")).execute(&admin).await.unwrap();
-        sqlx::query(&format!("CREATE DATABASE {database} OWNER {owner_role}"))
-            .execute(&admin)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {owner_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {runtime_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {publisher_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'"))).execute(&admin).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE DATABASE {database} OWNER {owner_role}"
+        )))
+        .execute(&admin)
+        .await
+        .unwrap();
         let options = (*admin.connect_options())
             .clone()
             .database(&database)
@@ -95,9 +97,12 @@ impl Fixture {
             .execute(&mut *initial)
             .await
             .unwrap();
-        migrations.run_direct(&mut *initial).await.unwrap();
+        migrations
+            .run_direct(None, &mut *initial, true)
+            .await
+            .unwrap();
         initial.commit().await.unwrap();
-        sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {runtime_role}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {runtime_role}")).execute(&owner).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {runtime_role}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {runtime_role}"))).execute(&owner).await.unwrap();
         let pool = PgPoolOptions::new()
             .max_connections(6)
             .connect_with(options.username(&runtime_role))
@@ -175,9 +180,9 @@ impl Fixture {
             guards, 4,
             "FORCE RLS migration owner failed to backfill other tenant"
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {runtime_role}"
-        ))
+        )))
         .execute(&owner)
         .await
         .unwrap();
@@ -214,10 +219,12 @@ impl Fixture {
             .execute(&mut *tx)
             .await
             .unwrap();
-        sqlx::query_scalar(&format!("SELECT count(*) FROM fl_billing.{table}"))
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap()
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT count(*) FROM fl_billing.{table}"
+        )))
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap()
     }
     async fn denied(&self, sql: &str, tenant: &str) {
         let mut tx = self.pool.begin().await.unwrap();
@@ -227,7 +234,10 @@ impl Fixture {
             .await
             .unwrap();
         assert!(
-            sqlx::raw_sql(sql).execute(&mut *tx).await.is_err(),
+            sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_owned()))
+                .execute(&mut *tx)
+                .await
+                .is_err(),
             "unexpected success: {sql}"
         );
         tx.rollback().await.unwrap();
@@ -235,14 +245,17 @@ impl Fixture {
     async fn cleanup(self) {
         self.pool.close().await;
         self.owner.close().await;
-        sqlx::query(&format!("DROP DATABASE {} WITH (FORCE)", self.database))
-            .execute(&self.admin)
-            .await
-            .unwrap();
-        sqlx::raw_sql(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE {} WITH (FORCE)",
+            self.database
+        )))
+        .execute(&self.admin)
+        .await
+        .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "DROP ROLE {}; DROP ROLE {}; DROP ROLE {}",
             self.runtime_role, self.owner_role, self.publisher_role
-        ))
+        )))
         .execute(&self.admin)
         .await
         .unwrap();
@@ -319,10 +332,10 @@ async fn run(f: &Fixture) {
     assert_eq!(snapshot.provider_plan_id(), "custom-plan");
     assert_eq!(snapshot.plan_receipt()["id"], f.plan.to_string());
     // Audit failure rolls back both journal and all four claim counters.
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.subscription_creation_audit FROM {}",
         f.runtime_role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -336,10 +349,10 @@ async fn run(f: &Fixture) {
     );
     assert_eq!(f.count("subscription_creation_intents").await, 0);
     assert_eq!(f.count("subscription_dependency_claims").await, 0);
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.subscription_creation_audit TO {}",
         f.runtime_role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -461,7 +474,7 @@ async fn run(f: &Fixture) {
     .await;
     // Even if an unrelated permissive record policy allows foreign-tenant writes,
     // the trigger uses OLD.tenant_id, not the caller's GUC, and still sees claims.
-    sqlx::query(&format!("CREATE POLICY fixture_cross_tenant ON fl_billing.records TO {} USING(true) WITH CHECK(true)",f.runtime_role)).execute(&f.owner).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE POLICY fixture_cross_tenant ON fl_billing.records TO {} USING(true) WITH CHECK(true)",f.runtime_role))).execute(&f.owner).await.unwrap();
     f.denied(
         "UPDATE fl_billing.records SET data=data WHERE kind='customer'",
         "",
@@ -800,7 +813,7 @@ const PUBLISH_FUNCTION: &str =
 #[ignore = "owned isolated PostgreSQL; separate trusted publication role, no provider requests"]
 async fn subscription_publication_transaction_matrix() {
     let f = Arc::new(Fixture::new().await);
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION {} TO {}",f.publisher_role,f.publisher_role,PUBLISH_FUNCTION,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION {} TO {}",f.publisher_role,f.publisher_role,PUBLISH_FUNCTION,f.publisher_role))).execute(&f.owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -1165,7 +1178,7 @@ async fn recovery_budget_and_rollback(
             "UPDATE",
         ),
     ] {
-        sqlx::query(&format!("CREATE TRIGGER {trigger} BEFORE {when} ON fl_billing.{table} FOR EACH ROW EXECUTE FUNCTION fl_billing.{trigger}()")).execute(&f.owner).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE TRIGGER {trigger} BEFORE {when} ON fl_billing.{table} FOR EACH ROW EXECUTE FUNCTION fl_billing.{trigger}()"))).execute(&f.owner).await.unwrap();
         let recovery = f
             .store
             .snapshot_subscription_recovery(operation)
@@ -1180,10 +1193,12 @@ async fn recovery_budget_and_rollback(
                 .is_err()
         );
         assert_eq!(f.count("subscription_dependency_claims").await, pending);
-        sqlx::query(&format!("DROP TRIGGER {trigger} ON fl_billing.{table}"))
-            .execute(&f.owner)
-            .await
-            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP TRIGGER {trigger} ON fl_billing.{table}"
+        )))
+        .execute(&f.owner)
+        .await
+        .unwrap();
     }
     let recovery = f
         .store

@@ -189,7 +189,7 @@ async fn exercise(managed: bool) {
         .unwrap();
     PostgresBillingStore::migrate(&owner).await.unwrap();
     let role = format!("fl_bound_link_{}", Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.provider_bindings TO {role}; GRANT INSERT ON fl_billing.provider_binding_audit,fl_billing.sensitive_read_audit TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.provider_bindings TO {role}; GRANT INSERT ON fl_billing.provider_binding_audit,fl_billing.sensitive_read_audit TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(2)
         .connect_with(
@@ -351,9 +351,9 @@ async fn exercise(managed: bool) {
         "billing_provider_context_mismatch"
     );
     fixture.pause.store(false, Ordering::SeqCst);
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.sensitive_read_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -363,9 +363,9 @@ async fn exercise(managed: bool) {
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -405,17 +405,19 @@ async fn exercise(managed: bool) {
         "records",
         "sensitive_read_audit",
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_billing.{table} WHERE tenant_id=$1"
-        ))
+        )))
         .bind(tenant.id())
         .execute(&owner)
         .await
         .unwrap();
     }
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
 }

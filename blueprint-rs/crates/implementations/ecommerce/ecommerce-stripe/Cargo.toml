@@ -16,17 +16,17 @@ forklaunch-core = { version = "=0.1.3", path = "../../../../../framework-rs/crat
 uuid = { version = "1", features = ["v4"] }
 forklaunch-ecommerce-interface = { version = "=0.1.1", path = "../../../interfaces/ecommerce-interface" }
 forklaunch-ecommerce-base = { version = "=0.1.1", path = "../ecommerce-base" }
-reqwest = { version = "0.12", default-features = false }
+reqwest = { version = "0.13", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 zeroize = "1"
 tracing = "0.1"
-hmac = "0.12"
-sha2 = "0.10"
+hmac = "0.13"
+sha2 = "0.11"
 
 [dev-dependencies]
 forklaunch-core = { version = "=0.1.3", path = "../../../../../framework-rs/crates/core", features = ["postgres", "encryption"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "net", "time"] }
 axum = "0.8"
 

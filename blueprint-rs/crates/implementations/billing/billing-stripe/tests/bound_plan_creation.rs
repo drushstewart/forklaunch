@@ -231,10 +231,10 @@ async fn invalid_evidence(f: &Fixture) {
 }
 async fn atomic_and_stale(f: &Fixture) {
     let before = f.counts().await;
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.provider_binding_audit FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -246,15 +246,15 @@ async fn atomic_and_stale(f: &Fixture) {
         Outcome::Unresolved { .. }
     ));
     assert_eq!(f.counts().await, before);
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.provider_binding_audit TO {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
     let function = format!("plan_wait_{}", Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END $$; CREATE TRIGGER {function} BEFORE INSERT ON fl_billing.records FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id())).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END $$; CREATE TRIGGER {function} BEFORE INSERT ON fl_billing.records FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id()))).execute(&f.owner).await.unwrap();
     assert!(matches!(
         f.service
             .create_bound_plan(&f.profile, Uuid::new_v4(), request())
@@ -263,9 +263,9 @@ async fn atomic_and_stale(f: &Fixture) {
         Outcome::Unresolved { .. }
     ));
     assert_eq!(f.counts().await, before);
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "DROP TRIGGER {function} ON fl_billing.records; DROP FUNCTION fl_billing.{function}()"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();

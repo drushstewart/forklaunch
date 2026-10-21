@@ -276,7 +276,7 @@ async fn seed_pending(f: &Fixture) -> (Uuid, Uuid, Value) {
 }
 #[allow(clippy::too_many_lines)]
 async fn matrix(f: &Fixture) {
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role))).execute(&f.owner).await.unwrap();
     let pp = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -294,7 +294,7 @@ async fn matrix(f: &Fixture) {
         .fetch_one(&f.pool)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!("REVOKE INSERT ON fl_billing.payment_link_expiration_intents,fl_billing.payment_link_expiration_dependency_claims FROM {role}")).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT ON fl_billing.payment_link_expiration_intents,fl_billing.payment_link_expiration_dependency_claims FROM {role}"))).execute(&f.owner).await.unwrap();
     for (table, privilege) in [
         ("records", "SELECT"),
         ("records", "UPDATE"),
@@ -308,9 +308,9 @@ async fn matrix(f: &Fixture) {
         ("subscription_publication_identity", "SELECT"),
     ] {
         let selected_profile = selected(f, pp.clone()).await;
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -321,19 +321,19 @@ async fn matrix(f: &Fixture) {
                 .is_err(),
             "{table} {privilege}"
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
     }
     for privilege in ["UPDATE", "SELECT"] {
         let selected_profile = selected(f, pp.clone()).await;
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.records FROM {}",
             f.publisher_role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -343,23 +343,23 @@ async fn matrix(f: &Fixture) {
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.records TO {}",
             f.publisher_role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
     }
     let selected_profile = selected(f, pp.clone()).await;
-    sqlx::raw_sql(&format!("REVOKE EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) FROM {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) FROM {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     assert!(
         BillingBackend::stripe((*f.store).clone(), provider.clone())
             .with_bound_billing(selected_profile)
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     for backend in [
         BillingBackend::base((*f.store).clone()),
         BillingBackend::stripe((*f.store).clone(), provider.clone()).with_database_backup(true),

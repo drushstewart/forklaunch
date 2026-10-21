@@ -64,7 +64,10 @@ impl Fixture {
             format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}"),
             format!("GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role}"),
         ] {
-            sqlx::query(&statement).execute(&owner).await.unwrap();
+            sqlx::query(sqlx::AssertSqlSafe(statement))
+                .execute(&owner)
+                .await
+                .unwrap();
         }
         let set_role = format!("SET ROLE {role}");
         let pool = PgPoolOptions::new()
@@ -72,7 +75,9 @@ impl Fixture {
             .after_connect(move |connection, _| {
                 let statement = set_role.clone();
                 Box::pin(async move {
-                    sqlx::query(&statement).execute(connection).await?;
+                    sqlx::query(sqlx::AssertSqlSafe(statement))
+                        .execute(connection)
+                        .await?;
                     Ok(())
                 })
             })
@@ -101,11 +106,11 @@ impl Fixture {
             .execute(&self.owner)
             .await
             .unwrap();
-        sqlx::query(&format!("DROP OWNED BY {}", self.role))
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {}", self.role)))
             .execute(&self.owner)
             .await
             .unwrap();
-        sqlx::query(&format!("DROP ROLE {}", self.role))
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {}", self.role)))
             .execute(&self.owner)
             .await
             .unwrap();

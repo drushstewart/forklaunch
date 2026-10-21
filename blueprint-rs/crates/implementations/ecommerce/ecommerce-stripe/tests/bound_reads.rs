@@ -85,7 +85,7 @@ async fn run_profile(connected_profile: bool) {
         .unwrap();
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
     let role = format!("ecom_inspect_{}", uuid::Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(4)
         .connect_with(
@@ -263,7 +263,7 @@ async fn run_profile(connected_profile: bool) {
     );
     state.change.store(0, Ordering::SeqCst);
     // Successful inspection needs only SELECT; no audit or payment mutation is attempted.
-    sqlx::raw_sql(&format!("REVOKE INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit FROM {role}"))
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit FROM {role}")))
         .execute(&owner).await.unwrap();
     assert!(
         service
@@ -320,10 +320,12 @@ async fn run_profile(connected_profile: bool) {
         .execute(&owner)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
 }
 
 struct Profile {

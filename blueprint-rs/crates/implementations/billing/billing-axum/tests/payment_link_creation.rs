@@ -63,7 +63,9 @@ async fn bound_payment_link_creation_http_mcp_sdk() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -92,7 +94,7 @@ async fn call(
 async fn matrix(f: &Fixture) {
     startup(f).await;
     // Creation authority does not require records/binding reads or sensitive-read audits.
-    sqlx::raw_sql(&format!("REVOKE SELECT ON fl_billing.records,fl_billing.provider_bindings FROM {}; REVOKE INSERT ON fl_billing.sensitive_read_audit FROM {}",f.role,f.role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE SELECT ON fl_billing.records,fl_billing.provider_bindings FROM {}; REVOKE INSERT ON fl_billing.sensitive_read_audit FROM {}",f.role,f.role))).execute(&f.owner).await.unwrap();
     let backend = BillingBackend::stripe((*f.store).clone(), f.client.clone())
         .with_bound_billing(BoundBillingV1::trusted(config(), None, None).unwrap())
         .await
@@ -336,10 +338,10 @@ async fn startup(f: &Fixture) {
         ("payment_link_creation_audit", "INSERT"),
         ("provider_binding_audit", "INSERT"),
     ] {
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -349,10 +351,10 @@ async fn startup(f: &Fixture) {
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();

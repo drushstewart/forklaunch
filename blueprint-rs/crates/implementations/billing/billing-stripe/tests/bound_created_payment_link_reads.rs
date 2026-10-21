@@ -25,7 +25,9 @@ async fn created_payment_link_read_matrix() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -72,7 +74,7 @@ async fn matrix(f: &Fixture) {
         assert_eq!(f.posts(), 1);
     }
     *f.provider.readback.lock().unwrap() = None;
-    sqlx::raw_sql(&format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.payment_link_creation_intents,fl_billing.payment_link_creation_audit FROM {}",f.role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.payment_link_creation_intents,fl_billing.payment_link_creation_audit FROM {}",f.role))).execute(&f.owner).await.unwrap();
     assert!(
         f.service
             .get_bound_created_payment_link(&f.profile, id)
@@ -330,17 +332,17 @@ async fn denied_profiles(f: &Fixture, id: Uuid) {
     assert_eq!(before, f.provider.requests.load(Ordering::SeqCst));
 }
 async fn update(f: &Fixture, sql: &str) {
-    sqlx::query(sql)
+    sqlx::query(sqlx::AssertSqlSafe(sql.to_owned()))
         .bind(f.tenant.id())
         .execute(&f.owner)
         .await
         .unwrap();
 }
 async fn denied_audit(f: &Fixture, id: Uuid) {
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.sensitive_read_audit FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -352,10 +354,10 @@ async fn denied_audit(f: &Fixture, id: Uuid) {
             .is_err()
     );
     assert_eq!(before, f.provider.requests.load(Ordering::SeqCst));
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.sensitive_read_audit TO {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -423,7 +425,7 @@ async fn seed_historical_intent(f: &Fixture, operation: Uuid, public_id: Uuid, p
     hash.update(public_id.to_string().as_bytes());
     hash.update(b"\0");
     hash.update(canonical.as_bytes());
-    let hash = format!("{:x}", hash.finalize());
+    let hash = base16ct::lower::encode_string(&hash.finalize());
     let encryptor = forklaunch_core::persistence::encryption::FieldEncryptor::new(
         "owned-bound-create-encryption-key",
     )

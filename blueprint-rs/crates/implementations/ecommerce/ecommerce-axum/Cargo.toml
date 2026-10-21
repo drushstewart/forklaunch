@@ -26,9 +26,9 @@ uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 forklaunch-worker-interface = { version = "=0.1.1", path = "../../../interfaces/worker-interface" }
-jsonwebtoken = "9"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json"] }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "sync", "time"] }
 
 [lints]

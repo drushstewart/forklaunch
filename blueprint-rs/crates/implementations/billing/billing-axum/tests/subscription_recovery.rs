@@ -25,7 +25,7 @@ impl Deref for Harness {
 impl Harness {
     async fn new() -> Self {
         let db = fixture::Fixture::new().await;
-        sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",db.publisher_role,db.publisher_role,db.publisher_role)).execute(&db.owner).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",db.publisher_role,db.publisher_role,db.publisher_role))).execute(&db.owner).await.unwrap();
         let publisher_pool = PgPoolOptions::new()
             .max_connections(4)
             .connect_with(
@@ -123,7 +123,9 @@ async fn bound_subscription_recovery_http_mcp_sdk() {
     let f = Arc::new(Harness::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -208,7 +210,7 @@ async fn matrix(f: &Harness) {
     let before = f.provider.requests.load(Ordering::SeqCst);
     startup(f).await;
     assert_eq!(f.provider.requests.load(Ordering::SeqCst), before);
-    sqlx::raw_sql(&format!("REVOKE INSERT ON fl_billing.subscription_creation_intents,fl_billing.subscription_dependency_claims FROM {}",f.role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT ON fl_billing.subscription_creation_intents,fl_billing.subscription_dependency_claims FROM {}",f.role))).execute(&f.owner).await.unwrap();
     let backend = BillingBackend::stripe((*f.store).clone(), f.client.clone())
         .with_bound_billing(
             BoundBillingV1::trusted_with_subscription(
@@ -419,10 +421,10 @@ async fn startup(f: &Harness) {
         ("records", "UPDATE"),
     ] {
         let publisher = f.publisher().await;
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -440,10 +442,10 @@ async fn startup(f: &Harness) {
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();

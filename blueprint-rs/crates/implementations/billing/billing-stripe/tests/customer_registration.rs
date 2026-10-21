@@ -97,7 +97,7 @@ async fn counts(f: &Fixture) -> (i64, i64) {
 #[ignore = "requires isolated FORKLAUNCH_TEST_POSTGRES_URL"]
 async fn direct_customer_registration_matrix() {
     let f = Fixture::new().await;
-    sqlx::raw_sql(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.stripe_customer_bindings,fl_billing.stripe_customer_binding_audit TO {}",f.role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.stripe_customer_bindings,fl_billing.stripe_customer_binding_audit TO {}",f.role))).execute(&f.owner).await.unwrap();
     let provider = Provider {
         response: Arc::new(Mutex::new(good())),
         calls: Arc::new(Mutex::new(vec![])),
@@ -129,9 +129,9 @@ async fn direct_customer_registration_matrix() {
     expired_local_lock(&f, &service, &provider).await;
     lost_commit(&f, &client, &service, &provider).await;
     for table in ["stripe_customer_binding_audit", "stripe_customer_bindings"] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_billing.{table} WHERE tenant_id=$1"
-        ))
+        )))
         .bind(f.tenant.id())
         .execute(&f.owner)
         .await
@@ -435,10 +435,10 @@ async fn denied_actor_and_audit(
     }
     assert_eq!(provider.calls.lock().unwrap().len(), calls);
     assert_eq!(counts(f).await, before);
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.stripe_customer_binding_audit FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -449,10 +449,10 @@ async fn denied_actor_and_audit(
             .is_err()
     );
     assert_eq!(counts(f).await, before);
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.stripe_customer_binding_audit TO {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -469,7 +469,7 @@ async fn expired_audit_write(f: &Fixture, service: &StripeBillingService<Postgre
     let customer = local_customer(f).await;
     let before = counts(f).await;
     let name = format!("customer_wait_{}", Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE FUNCTION fl_billing.{name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END $$; CREATE TRIGGER {name} BEFORE INSERT ON fl_billing.stripe_customer_binding_audit FOR EACH ROW EXECUTE FUNCTION fl_billing.{name}()",f.tenant.id())).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE FUNCTION fl_billing.{name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END $$; CREATE TRIGGER {name} BEFORE INSERT ON fl_billing.stripe_customer_binding_audit FOR EACH ROW EXECUTE FUNCTION fl_billing.{name}()",f.tenant.id()))).execute(&f.owner).await.unwrap();
     assert!(
         service
             .register_verified_stripe_customer(&f.scope, &party(customer), "cus_owned")
@@ -477,5 +477,5 @@ async fn expired_audit_write(f: &Fixture, service: &StripeBillingService<Postgre
             .is_err()
     );
     assert_eq!(counts(f).await, before);
-    sqlx::raw_sql(&format!("DROP TRIGGER {name} ON fl_billing.stripe_customer_binding_audit; DROP FUNCTION fl_billing.{name}()" )).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("DROP TRIGGER {name} ON fl_billing.stripe_customer_binding_audit; DROP FUNCTION fl_billing.{name}()" ))).execute(&f.owner).await.unwrap();
 }

@@ -82,7 +82,9 @@ async fn stored_portal_provenance_ttl_and_mutation_barriers() {
     let fixture = Arc::new(Fixture::new().await);
     let run = fixture.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(fixture).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -111,7 +113,7 @@ async fn matrix(f: &Fixture) {
     .unwrap();
     let service =
         StripeBillingService::new(BaseBillingService::new(f.store.clone()), client.clone());
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher_pool = PgPoolOptions::new()
         .max_connections(2)
         .connect_with(
@@ -296,7 +298,10 @@ async fn matrix(f: &Fixture) {
             .execute(&mut *mutation)
             .await
             .unwrap();
-        sqlx::raw_sql(&sql).execute(&mut *mutation).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(sql.clone()))
+            .execute(&mut *mutation)
+            .await
+            .unwrap();
         mutation.commit().await.unwrap();
         blocker.rollback().await.unwrap();
         assert!(call.await.is_err());

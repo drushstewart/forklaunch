@@ -257,10 +257,10 @@ async fn rollback(
 ) {
     let op = Uuid::new_v4();
     let before = f.counts().await;
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.provider_binding_audit FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -273,10 +273,10 @@ async fn rollback(
     ));
     assert_eq!(f.counts().await, before);
     let calls = control(base, json!({})).await;
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.provider_binding_audit TO {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -436,7 +436,7 @@ async fn ownership_and_expiry(
         "managed_wait_{}",
         &Uuid::new_v4().simple().to_string()[..16]
     );
-    sqlx::raw_sql(&format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END; $$; CREATE TRIGGER {function} BEFORE INSERT ON fl_billing.records FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id())).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END; $$; CREATE TRIGGER {function} BEFORE INSERT ON fl_billing.records FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id()))).execute(&f.owner).await.unwrap();
     assert!(matches!(
         service
             .reconcile_managed_bound_payment_link_creation(profile, op)
@@ -444,9 +444,9 @@ async fn ownership_and_expiry(
             .unwrap(),
         Outcome::Unresolved { .. }
     ));
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "DROP TRIGGER {function} ON fl_billing.records; DROP FUNCTION fl_billing.{function}()"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();

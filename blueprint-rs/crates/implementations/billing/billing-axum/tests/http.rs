@@ -114,7 +114,7 @@ async fn persistent_billing_http_mcp_and_provider_startup() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("billing_http_{suffix}");
     let password = uuid::Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}';GRANT USAGE ON SCHEMA fl_billing TO {role};GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role};GRANT INSERT ON fl_billing.sensitive_read_audit TO {role};GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.webhook_attempts TO {role};GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role};")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN PASSWORD '{password}';GRANT USAGE ON SCHEMA fl_billing TO {role};GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role};GRANT INSERT ON fl_billing.sensitive_read_audit TO {role};GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.webhook_attempts TO {role};GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role};"))).execute(&owner).await.unwrap();
     let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(8)
@@ -275,9 +275,11 @@ async fn persistent_billing_http_mcp_and_provider_startup() {
     provider_stop.send(()).unwrap();
     provider_task.await.unwrap();
     pool.close().await;
-    sqlx::raw_sql(&format!("DROP OWNED BY {role};DROP ROLE {role};"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role};DROP ROLE {role};"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
 }

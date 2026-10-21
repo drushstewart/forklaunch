@@ -13,7 +13,7 @@ use forklaunch_core::contract::{
 use schemars::JsonSchema;
 fn json<T: JsonSchema>(name: &str) -> BodyContract {
     let mut body = BodyContract::json(name);
-    let mut settings = schemars::r#gen::SchemaSettings::draft07();
+    let mut settings = schemars::generate::SchemaSettings::draft07();
     settings.inline_subschemas = true;
     body.schema.json_schema = Some(
         serde_json::to_string(&settings.into_generator().into_root_schema_for::<T>())
@@ -39,12 +39,17 @@ fn param(route: RouteContract, name: &str) -> RouteContract {
     route.with_param(FieldContract::required(name, "String"))
 }
 fn query<T: JsonSchema>(mut route: RouteContract) -> RouteContract {
-    let schema = schemars::schema_for!(T);
-    if let Some(object) = schema.schema.object {
-        for (name, schema) in object.properties {
-            let mut field = FieldContract::optional(&name, &name);
+    let schema = schemars::generate::SchemaSettings::draft07()
+        .into_generator()
+        .into_root_schema_for::<T>();
+    if let Some(properties) = schema
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+    {
+        for (name, schema) in properties {
+            let mut field = FieldContract::optional(name, name);
             field.schema.json_schema =
-                Some(serde_json::to_string(&schema).expect("query schema serializes"));
+                Some(serde_json::to_string(schema).expect("query schema serializes"));
             route = route.with_query(field);
         }
     }

@@ -339,10 +339,10 @@ async fn malformed_and_timeout(f: &Fixture) {
 async fn atomic_failure_and_late_context(f: &Fixture) {
     let before = f.counts().await;
     let op = Uuid::new_v4();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.provider_binding_audit FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -353,10 +353,10 @@ async fn atomic_failure_and_late_context(f: &Fixture) {
             .unwrap(),
         Outcome::Unresolved { .. }
     ));
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.provider_binding_audit TO {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -367,7 +367,7 @@ async fn atomic_failure_and_late_context(f: &Fixture) {
     ));
     // Delay a write after the finalization row lock; the last freshness check rolls back all writes.
     let function = format!("{}_delay", f.role);
-    sqlx::raw_sql(&format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END; $$; CREATE TRIGGER {function} BEFORE INSERT ON fl_billing.records FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id())).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END; $$; CREATE TRIGGER {function} BEFORE INSERT ON fl_billing.records FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id()))).execute(&f.owner).await.unwrap();
     let op = Uuid::new_v4();
     assert!(matches!(
         f.service
@@ -376,15 +376,15 @@ async fn atomic_failure_and_late_context(f: &Fixture) {
             .unwrap(),
         Outcome::Unresolved { .. }
     ));
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "DROP TRIGGER {function} ON fl_billing.records; DROP FUNCTION fl_billing.{function}()"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
     assert_eq!(f.counts().await, before);
     // Deferred trigger runs during COMMIT after the final precommit check.
-    sqlx::raw_sql(&format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' AND NEW.operation='complete' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END; $$; CREATE CONSTRAINT TRIGGER {function} AFTER INSERT ON fl_billing.payment_link_creation_audit DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id())).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE FUNCTION fl_billing.{function}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tenant_id='{}' AND NEW.operation='complete' THEN PERFORM pg_sleep(5.1); END IF; RETURN NEW; END; $$; CREATE CONSTRAINT TRIGGER {function} AFTER INSERT ON fl_billing.payment_link_creation_audit DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION fl_billing.{function}()",f.tenant.id()))).execute(&f.owner).await.unwrap();
     let op = Uuid::new_v4();
     assert!(matches!(
         f.service
@@ -393,7 +393,7 @@ async fn atomic_failure_and_late_context(f: &Fixture) {
             .unwrap(),
         Outcome::RecordedEvidenceNoLongerCurrent { .. }
     ));
-    sqlx::raw_sql(&format!("DROP TRIGGER {function} ON fl_billing.payment_link_creation_audit; DROP FUNCTION fl_billing.{function}()")).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("DROP TRIGGER {function} ON fl_billing.payment_link_creation_audit; DROP FUNCTION fl_billing.{function}()"))).execute(&f.owner).await.unwrap();
     assert!(matches!(
         f.service
             .inspect_bound_payment_link_creation(op)

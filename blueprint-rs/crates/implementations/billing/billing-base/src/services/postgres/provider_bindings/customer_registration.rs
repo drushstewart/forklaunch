@@ -213,7 +213,7 @@ impl PostgresBillingStore {
         lock: bool,
     ) -> BlueprintResult<Option<CustomerBindingRow>> {
         let suffix = if lock { " FOR UPDATE OF b" } else { "" };
-        sqlx::query_as(&format!("SELECT b.binding_id::text,b.provider_customer_id,b.party_type,b.party_id FROM fl_billing.stripe_customer_bindings b JOIN fl_billing.records r ON r.tenant_id=b.tenant_id AND r.scope=b.scope AND r.kind=b.kind AND r.id=b.storage_id WHERE b.tenant_id=$1 AND b.deployment_label=$2 AND b.account_id=$3 AND b.livemode=$4 AND b.local_customer_id=$5::uuid AND r.data->>'id'=b.storage_id{suffix}"))
+        sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT b.binding_id::text,b.provider_customer_id,b.party_type,b.party_id FROM fl_billing.stripe_customer_bindings b JOIN fl_billing.records r ON r.tenant_id=b.tenant_id AND r.scope=b.scope AND r.kind=b.kind AND r.id=b.storage_id WHERE b.tenant_id=$1 AND b.deployment_label=$2 AND b.account_id=$3 AND b.livemode=$4 AND b.local_customer_id=$5::uuid AND r.data->>'id'=b.storage_id{suffix}")))
             .bind(self.tenant.id()).bind(&scope.deployment_label).bind(&scope.account_id).bind(scope.livemode).bind(customer.to_string()).fetch_optional(&mut **tx).await.map_err(db_error)
     }
     /// Historical tenant-scoped association lookup; never current provider proof.

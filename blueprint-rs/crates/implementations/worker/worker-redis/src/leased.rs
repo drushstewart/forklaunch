@@ -142,8 +142,8 @@ impl RedisLeasedQueue {
         }
         let client = redis::Client::open(url).map_err(redis_error)?;
         let config = ConnectionManagerConfig::new()
-            .set_connection_timeout(TIMEOUT)
-            .set_response_timeout(TIMEOUT)
+            .set_connection_timeout(Some(TIMEOUT))
+            .set_response_timeout(Some(TIMEOUT))
             .set_number_of_retries(2);
         let connection =
             tokio::time::timeout(TIMEOUT, ConnectionManager::new_with_config(client, config))

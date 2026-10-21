@@ -10,8 +10,8 @@ repository.workspace = true
 [dependencies]
 forklaunch-ws = { version = "=0.1.3", path = "../../../../framework-rs/crates/ws" }
 forklaunch-core = { path = "../../../../framework-rs/crates/core", version = "=0.1.3",  features = ["asyncapi", "http", "domain"]}
-opentelemetry = { version = "0.31", features = ["metrics", "trace"], optional = true }
-schemars = { version = "0.8", features = ["uuid1"], optional = true }
+opentelemetry = { version = "0.33", features = ["metrics", "trace"], optional = true }
+schemars = { version = "1.2", features = ["uuid1"], optional = true }
 serde = { version = "1", features = ["derive"], optional = true}
 serde_json = {version = "1", optional = true}
 uuid = { version = "1", features = ["serde", "v4"], optional = true}
@@ -33,7 +33,7 @@ apalis = ["encrypted", "dep:apalis", "dep:apalis-core"]
 encrypted = ["forklaunch-core/encryption", "dep:serde", "dep:serde_json", "dep:uuid", "dep:zeroize", "dep:url", "dep:tokio"]
 
 [dev-dependencies]
-opentelemetry_sdk = { version = "0.31", features = ["testing"] }
+opentelemetry_sdk = { version = "0.33", features = ["testing"] }
 tokio = { version = "1", features = ["macros", "rt", "test-util"] }
 
 [dev-dependencies.forklaunch-core]

@@ -218,7 +218,9 @@ async fn bound_checkout_http_mcp_operation_lifecycle() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -298,7 +300,7 @@ async fn matrix(f: &Fixture) {
         ProviderHttpClient::new(&provider_url, Duration::from_secs(7), 1_048_576).unwrap(),
     )
     .unwrap();
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_checkout(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_checkout(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher_pool = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(

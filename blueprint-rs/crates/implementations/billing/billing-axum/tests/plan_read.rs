@@ -79,7 +79,7 @@ async fn bound_plan_read_http_mcp_sdk() {
     };
     let id = record.id.clone();
     // From now on runtime can only read these tables and append sensitive-read audits.
-    sqlx::raw_sql(&format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.plan_creation_intents,fl_billing.plan_creation_audit FROM {}",f.role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.plan_creation_intents,fl_billing.plan_creation_audit FROM {}",f.role))).execute(&f.owner).await.unwrap();
     startup(&f).await;
     let mut fresh = plan(&record.external_id);
     fresh["product"]["name"] = json!("Fresh product");
@@ -194,10 +194,10 @@ async fn startup(f: &Fixture) {
         ("plan_creation_intents", "SELECT"),
         ("sensitive_read_audit", "INSERT"),
     ] {
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -207,10 +207,10 @@ async fn startup(f: &Fixture) {
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();

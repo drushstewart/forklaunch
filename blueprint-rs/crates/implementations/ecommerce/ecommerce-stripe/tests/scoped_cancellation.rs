@@ -127,7 +127,7 @@ async fn run_profile(connected: bool) {
         .unwrap();
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
     let role = format!("ecom_cancel_{}", Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit,fl_ecommerce.payment_cancellation_audit,fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.scoped_payment_cancellation_receipts TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit,fl_ecommerce.payment_cancellation_audit,fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.scoped_payment_cancellation_receipts TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(4)
         .connect_with(
@@ -341,9 +341,9 @@ async fn run_profile(connected: bool) {
         .await
         .unwrap();
     // Receipt INSERT denial occurs after terminal audit INSERT; both must roll back immediately.
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_ecommerce.scoped_payment_cancellation_receipts FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -366,9 +366,9 @@ async fn run_profile(connected: bool) {
         service.base().get_payment("payment").await.unwrap().status,
         PaymentStatus::Pending
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_ecommerce.scoped_payment_cancellation_receipts TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -519,18 +519,20 @@ async fn run_profile(connected: bool) {
         "payment_provider_binding_audit",
         "records",
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=$1"
-        ))
+        )))
         .bind(&role)
         .execute(&owner)
         .await
         .unwrap();
     }
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
 }
 
 struct Profile {

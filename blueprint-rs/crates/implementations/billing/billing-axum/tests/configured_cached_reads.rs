@@ -270,10 +270,12 @@ async fn matrix(f: &Fixture) {
             .fetch_one(&f.pool)
             .await
             .unwrap();
-        sqlx::query(&format!("REVOKE SELECT ON fl_billing.records FROM {role}"))
-            .execute(&f.owner)
-            .await
-            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "REVOKE SELECT ON fl_billing.records FROM {role}"
+        )))
+        .execute(&f.owner)
+        .await
+        .unwrap();
         state.calls.lock().await.clear();
         let response = http
             .get(format!("{url}{path}"))
@@ -288,10 +290,12 @@ async fn matrix(f: &Fixture) {
             "Internal server error:\n\nCorrelation id: storage"
         );
         assert!(state.calls.lock().await.is_empty());
-        sqlx::query(&format!("GRANT SELECT ON fl_billing.records TO {role}"))
-            .execute(&f.owner)
-            .await
-            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "GRANT SELECT ON fl_billing.records TO {role}"
+        )))
+        .execute(&f.owner)
+        .await
+        .unwrap();
         *state.response.lock().await = json!({"id":"wrong"});
         let response = http
             .get(format!("{url}{path}"))
@@ -510,9 +514,9 @@ async fn configured_list_matrix(
         .fetch_one(&f.pool)
         .await
         .unwrap();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.sensitive_read_audit FROM {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -534,9 +538,9 @@ async fn configured_list_matrix(
             .code,
         "billing_storage"
     );
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();

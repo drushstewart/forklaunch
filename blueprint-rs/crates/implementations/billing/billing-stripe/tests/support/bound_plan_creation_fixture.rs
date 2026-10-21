@@ -112,7 +112,7 @@ impl Fixture {
             .unwrap();
         PostgresBillingStore::migrate(&owner).await.unwrap();
         let role = format!("fl_bound_plan_{}", Uuid::new_v4().simple());
-        sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.sensitive_read_audit,fl_billing.plan_creation_intents,fl_billing.plan_creation_audit TO {role}")).execute(&owner).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.sensitive_read_audit,fl_billing.plan_creation_intents,fl_billing.plan_creation_audit TO {role}"))).execute(&owner).await.unwrap();
         let pool = PgPoolOptions::new()
             .max_connections(4)
             .connect_with(
@@ -254,19 +254,19 @@ impl Fixture {
             "provider_bindings",
             "records",
         ] {
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "DELETE FROM fl_billing.{table} WHERE tenant_id LIKE $1"
-            ))
+            )))
             .bind(format!("{}%", self.role))
             .execute(&self.owner)
             .await
             .unwrap();
         }
         self.pool.close().await;
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "DROP OWNED BY {}; DROP ROLE {}",
             self.role, self.role
-        ))
+        )))
         .execute(&self.owner)
         .await
         .unwrap();

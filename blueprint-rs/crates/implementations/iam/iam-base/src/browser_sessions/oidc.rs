@@ -20,7 +20,7 @@ fn failed() -> BlueprintError {
     )
 }
 fn hash(value: &str) -> String {
-    format!("{:x}", Sha256::digest(value.as_bytes()))
+    base16ct::lower::encode_string(&Sha256::digest(value.as_bytes()))
 }
 fn bounded(value: &str) -> bool {
     !value.is_empty() && value.len() <= 1024 && !value.chars().any(char::is_control)

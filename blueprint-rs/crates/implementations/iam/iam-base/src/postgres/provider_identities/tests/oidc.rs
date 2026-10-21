@@ -156,11 +156,11 @@ async fn postgres_oidc_exchange_issues_only_explicitly_bound_verified_sessions()
     }
     store.delete_user("one").await.unwrap();
     pool.close().await;
-    sqlx::query(&format!("DROP OWNED BY {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {role}")))
         .execute(&owner)
         .await
         .unwrap();
-    sqlx::query(&format!("DROP ROLE {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}")))
         .execute(&owner)
         .await
         .unwrap();
@@ -248,7 +248,9 @@ async fn postgres_oidc_pending_is_encrypted_browser_bound_and_consumed_once() {
         .after_connect(move |connection, _| {
             let set_role = set_role.clone();
             Box::pin(async move {
-                sqlx::query(&set_role).execute(connection).await?;
+                sqlx::query(sqlx::AssertSqlSafe(set_role))
+                    .execute(connection)
+                    .await?;
                 Ok(())
             })
         })
@@ -290,11 +292,11 @@ async fn postgres_oidc_pending_is_encrypted_browser_bound_and_consumed_once() {
     assert_eq!(count, 0);
     other_pool.close().await;
     pool.close().await;
-    sqlx::query(&format!("DROP OWNED BY {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {role}")))
         .execute(&owner)
         .await
         .unwrap();
-    sqlx::query(&format!("DROP ROLE {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}")))
         .execute(&owner)
         .await
         .unwrap();

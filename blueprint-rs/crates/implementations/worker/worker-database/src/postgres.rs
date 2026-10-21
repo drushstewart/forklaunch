@@ -117,7 +117,11 @@ impl PostgresWorkerQueue {
             .map_err(storage_error)?;
         let mut migrator = sqlx::migrate!("./migrations");
         migrator.set_locking(false);
-        migrator.run_direct(&mut *tx).await.map_err(storage_error)?;
+        // Same arguments `Migrator::run` passes: every pending migration.
+        migrator
+            .run_direct(None, &mut *tx, true)
+            .await
+            .map_err(storage_error)?;
         tx.commit().await.map_err(storage_error)
     }
 

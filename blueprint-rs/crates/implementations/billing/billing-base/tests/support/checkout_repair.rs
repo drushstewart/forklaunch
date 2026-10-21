@@ -146,9 +146,9 @@ pub async fn exercise(
         .snapshot_verified_checkout_repair(&pending, "repair-owned", "customer", true)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.webhook_reconciliation_audit FROM {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -158,9 +158,9 @@ pub async fn exercise(
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -193,9 +193,9 @@ pub async fn exercise(
         .snapshot_verified_checkout_repair(&pending, "repair-owned", "customer", true)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE DELETE ON fl_billing.webhook_attempts FROM {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -205,9 +205,9 @@ pub async fn exercise(
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT DELETE ON fl_billing.webhook_attempts TO {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();

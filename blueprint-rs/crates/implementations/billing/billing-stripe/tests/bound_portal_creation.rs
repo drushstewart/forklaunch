@@ -95,7 +95,9 @@ async fn bound_portal_uuid_dispatch_barriers_and_publication() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -119,7 +121,7 @@ async fn matrix(f: &Fixture) {
     )
     .unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role))).execute(&f.owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -147,7 +149,7 @@ async fn matrix(f: &Fixture) {
         "https://example.test/account".into(),
     )
     .unwrap();
-    cases(f, &p, &service, &profile, &publisher).await;
+    Box::pin(cases(f, &p, &service, &profile, &publisher)).await;
     cross_journal(f, &pool).await;
     lost_ack(f, &pool).await;
     drop(publisher);
@@ -541,7 +543,7 @@ async fn cross_journal(f: &Fixture, pool: &PgPool) {
         )
         .await
         .unwrap();
-    sqlx::query(&format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher = f
         .store
         .trusted_subscription_publisher(pool.clone())

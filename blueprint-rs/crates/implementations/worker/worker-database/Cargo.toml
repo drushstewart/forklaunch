@@ -19,7 +19,7 @@ subtle = { version = "2", optional = true }
 forklaunch-worker-interface = { version = "=0.1.1", path = "../../../interfaces/worker-interface" }
 
 forklaunch-core = { version = "=0.1.3", path = "../../../../../framework-rs/crates/core", features = ["domain"] }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "uuid", "migrate", "macros"], optional = true }
+sqlx = { version = "0.9", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "json", "uuid", "migrate", "macros"], optional = true }
 serde_json = { version = "1", optional = true }
 uuid = { version = "1", features = ["v4"], optional = true }
 

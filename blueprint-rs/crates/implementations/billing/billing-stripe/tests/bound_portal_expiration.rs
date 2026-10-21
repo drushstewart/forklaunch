@@ -73,7 +73,9 @@ async fn local_portal_expiration_is_permanent_actor_bound_and_atomic() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -103,7 +105,7 @@ async fn matrix(f: &Fixture) {
     .unwrap();
     let service =
         StripeBillingService::new(BaseBillingService::new(f.store.clone()), client.clone());
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher_pool = PgPoolOptions::new()
         .max_connections(2)
         .connect_with(
@@ -129,9 +131,9 @@ async fn matrix(f: &Fixture) {
     PostgresBillingStore::migrate(&f.owner).await.unwrap();
     PostgresBillingStore::migrate(&f.owner).await.unwrap();
     let role = f.pool.connect_options().get_username().to_owned();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT ALL ON fl_billing.portal_local_expirations TO {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -293,9 +295,9 @@ async fn faults(
     use forklaunch_billing_base::services::BillingKind;
     let (_, id, _) = seed(f, publisher, Utc::now(), chrono::Duration::minutes(5)).await;
     let role = f.pool.connect_options().get_username().to_owned();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.portal_local_expirations FROM {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -314,9 +316,9 @@ async fn faults(
             .await
             .unwrap()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.portal_local_expirations TO {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();

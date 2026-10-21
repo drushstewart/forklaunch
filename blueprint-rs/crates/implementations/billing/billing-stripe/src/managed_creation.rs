@@ -80,7 +80,7 @@ fn execution(fields: &Value) -> BlueprintResult<(String, String)> {
     if payload.len() > 4096 {
         return Err(invalid());
     }
-    let hash = format!("{:x}", Sha256::digest(payload.as_bytes()));
+    let hash = base16ct::lower::encode_string(&Sha256::digest(payload.as_bytes()));
     Ok((payload, hash))
 }
 fn validate_publication_profile(

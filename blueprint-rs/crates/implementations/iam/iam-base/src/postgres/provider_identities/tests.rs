@@ -90,11 +90,11 @@ async fn postgres_provider_bindings_are_explicit_tenant_bound_and_revocable() {
         store.delete_user("two").await.unwrap();
     }
     pool.close().await;
-    sqlx::query(&format!("DROP OWNED BY {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {role}")))
         .execute(&owner)
         .await
         .unwrap();
-    sqlx::query(&format!("DROP ROLE {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}")))
         .execute(&owner)
         .await
         .unwrap();

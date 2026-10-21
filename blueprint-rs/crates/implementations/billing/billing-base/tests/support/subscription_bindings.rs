@@ -131,9 +131,9 @@ pub async fn exercise(
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.provider_binding_audit FROM {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -149,9 +149,9 @@ pub async fn exercise(
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.provider_binding_audit TO {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -259,16 +259,16 @@ pub async fn exercise(
         0
     );
     tx.rollback().await.unwrap();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.provider_binding_audit FROM {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
     assert!(store.revoke_stripe_binding(&binding).await.is_err());
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.provider_binding_audit TO {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -304,7 +304,7 @@ async fn migration_compatibility(owner: &sqlx::PgPool) {
     // prior migrations and upgrade without touching the shared billing schema.
     let schema = format!("fl_binding_upgrade_{}", Uuid::new_v4().simple());
     let mut tx = owner.begin().await.unwrap();
-    sqlx::raw_sql(&format!("CREATE SCHEMA {schema}"))
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {schema}")))
         .execute(&mut *tx)
         .await
         .unwrap();
@@ -312,38 +312,40 @@ async fn migration_compatibility(owner: &sqlx::PgPool) {
         include_str!("../../migrations/1_billing.sql"),
         include_str!("../../migrations/5_provider_bindings.sql"),
     ] {
-        sqlx::raw_sql(&migration.replace("fl_billing", &schema))
-            .execute(&mut *tx)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(
+            migration.replace("fl_billing", &schema),
+        ))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     }
     let public = Uuid::new_v4();
     let generation = Uuid::new_v4();
-    sqlx::query(&format!("INSERT INTO {schema}.records(tenant_id,scope,kind,id,data) VALUES('old','durable','checkout_session','cs_old','{{\"ciphertext\":\"unchanged\"}}')")).execute(&mut *tx).await.unwrap();
-    sqlx::query(&format!("INSERT INTO {schema}.provider_bindings(tenant_id,kind,public_id,binding_id,storage_id,deployment_label,account_id,livemode,provider_id) VALUES('old','checkout_session',$1::uuid,$2::uuid,'cs_old','old','acct_old',false,'cs_old')")).bind(public.to_string()).bind(generation.to_string()).execute(&mut *tx).await.unwrap();
-    sqlx::query(&format!("INSERT INTO {schema}.provider_binding_audit(id,tenant_id,binding_id,public_id,kind,storage_id,deployment_label,account_id,livemode,provider_id,operation,actor_id,correlation_id) VALUES($1::uuid,'old',$2::uuid,$3::uuid,'checkout_session','cs_old','old','acct_old',false,'cs_old','provision','old-actor','old-correlation')"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("INSERT INTO {schema}.records(tenant_id,scope,kind,id,data) VALUES('old','durable','checkout_session','cs_old','{{\"ciphertext\":\"unchanged\"}}')"))).execute(&mut *tx).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("INSERT INTO {schema}.provider_bindings(tenant_id,kind,public_id,binding_id,storage_id,deployment_label,account_id,livemode,provider_id) VALUES('old','checkout_session',$1::uuid,$2::uuid,'cs_old','old','acct_old',false,'cs_old')"))).bind(public.to_string()).bind(generation.to_string()).execute(&mut *tx).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("INSERT INTO {schema}.provider_binding_audit(id,tenant_id,binding_id,public_id,kind,storage_id,deployment_label,account_id,livemode,provider_id,operation,actor_id,correlation_id) VALUES($1::uuid,'old',$2::uuid,$3::uuid,'checkout_session','cs_old','old','acct_old',false,'cs_old','provision','old-actor','old-correlation')")))
         .bind(Uuid::new_v4().to_string()).bind(generation.to_string()).bind(public.to_string()).execute(&mut *tx).await.unwrap();
-    sqlx::raw_sql(
-        &include_str!("../../migrations/6_subscription_bindings.sql")
-            .replace("fl_billing", &schema),
-    )
+    sqlx::raw_sql(sqlx::AssertSqlSafe(
+        include_str!("../../migrations/6_subscription_bindings.sql").replace("fl_billing", &schema),
+    ))
     .execute(&mut *tx)
     .await
     .unwrap();
-    let (got_public,got_generation,customer):(String,String,Option<String>)=sqlx::query_as(&format!("SELECT public_id::text,binding_id::text,subscription_provider_customer_id FROM {schema}.provider_bindings")).fetch_one(&mut *tx).await.unwrap();
+    let (got_public,got_generation,customer):(String,String,Option<String>)=sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT public_id::text,binding_id::text,subscription_provider_customer_id FROM {schema}.provider_bindings"))).fetch_one(&mut *tx).await.unwrap();
     assert_eq!(
         (got_public, got_generation, customer),
         (public.to_string(), generation.to_string(), None)
     );
-    let row: sqlx::types::Json<Value> =
-        sqlx::query_scalar(&format!("SELECT data FROM {schema}.records"))
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap();
+    let row: sqlx::types::Json<Value> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "SELECT data FROM {schema}.records"
+    )))
+    .fetch_one(&mut *tx)
+    .await
+    .unwrap();
     assert_eq!(row.0, json!({"ciphertext":"unchanged"}));
-    let history: (String, Option<String>) = sqlx::query_as(&format!(
+    let history: (String, Option<String>) = sqlx::query_as(sqlx::AssertSqlSafe(format!(
         "SELECT actor_id,subscription_provider_customer_id FROM {schema}.provider_binding_audit"
-    ))
+    )))
     .fetch_one(&mut *tx)
     .await
     .unwrap();
@@ -358,10 +360,12 @@ async fn migration_compatibility(owner: &sqlx::PgPool) {
             .await
             .unwrap();
         assert!(
-            sqlx::query(&format!("UPDATE {schema}.provider_bindings SET {change}"))
-                .execute(&mut *tx)
-                .await
-                .is_err()
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "UPDATE {schema}.provider_bindings SET {change}"
+            )))
+            .execute(&mut *tx)
+            .await
+            .is_err()
         );
         sqlx::raw_sql("ROLLBACK TO SAVEPOINT invalid_relation")
             .execute(&mut *tx)

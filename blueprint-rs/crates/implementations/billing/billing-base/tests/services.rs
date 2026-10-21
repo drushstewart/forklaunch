@@ -321,7 +321,7 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
     PostgresBillingStore::migrate(&owner).await.unwrap();
     let role = format!("fl_bill_{}", uuid::Uuid::new_v4().simple());
     let password = "billing-fixture-only";
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}; GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.webhook_attempts TO {role};GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records TO {role}; GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}; GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role};GRANT SELECT,INSERT,DELETE ON fl_billing.webhook_attempts TO {role};GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.platform_event_nonces TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(10)
         .connect_with(
@@ -601,9 +601,9 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
             .is_err()
     );
     // Failed audit insertion must neither erase the attempt nor create a receipt.
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.webhook_reconciliation_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -617,9 +617,9 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
         store.pending_webhooks(100).await.unwrap(),
         vec![current.clone()]
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.webhook_reconciliation_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -752,9 +752,9 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
         count_before, count_after,
         "Provider-ID lookup must not decrypt provider data"
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.sensitive_read_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -774,9 +774,9 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.sensitive_read_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -932,17 +932,19 @@ async fn postgres_billing_rls_encryption_audit_concurrency_and_reopening() {
         "webhook_reconciliation_audit",
         "platform_event_nonces",
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_billing.{table} WHERE tenant_id=ANY($1)"
-        ))
+        )))
         .bind(vec![tenant.id(), other_tenant.id()])
         .execute(&owner)
         .await
         .unwrap();
     }
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
 }

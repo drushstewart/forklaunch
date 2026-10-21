@@ -244,7 +244,7 @@ async fn matrix(f: &Fixture) {
         ProviderHttpClient::new(&provider_url, Duration::from_secs(7), 1_048_576).unwrap(),
     )
     .unwrap();
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher_pool = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -254,16 +254,16 @@ async fn matrix(f: &Fixture) {
         )
         .await
         .unwrap();
-    sqlx::raw_sql(&format!("REVOKE EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) FROM {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) FROM {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     assert!(
         f.store
             .trusted_portal_publisher(publisher_pool.clone())
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     // Combined selection validates each independent publication grant; no provider I/O.
-    sqlx::raw_sql(&format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_checkout(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_checkout(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     let combined=BoundBillingConfig::from_json(&json!({"deploymentLabel":"owned","accountId":"acct_owned","livemode":false,"portal":{"configurationId":"bpc_owned","returnUrl":"https://example.test/return"},"checkout":{"plans":[{"localPlanId":Uuid::new_v4(),"creationOperationId":Uuid::new_v4()}],"successUrl":"https://example.test/success","cancelUrl":"https://example.test/cancel"}}).to_string()).unwrap();
     let selected = combined.contracts();
     let combined = BoundBillingV1::trusted(
@@ -727,9 +727,9 @@ async fn expiration_startup(
         ("records", "UPDATE"),
         ("sensitive_read_audit", "INSERT"),
     ] {
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -755,9 +755,9 @@ async fn expiration_startup(
                     .is_err()
             );
         }
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();

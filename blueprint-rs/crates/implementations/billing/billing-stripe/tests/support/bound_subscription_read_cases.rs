@@ -37,7 +37,7 @@ pub async fn matrix(
         .fetch_one(&f.pool)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.stripe_customer_bindings,fl_billing.subscription_creation_intents,fl_billing.subscription_creation_audit,fl_billing.subscription_dependency_claims,fl_billing.plan_creation_intents FROM {role}")).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.stripe_customer_bindings,fl_billing.subscription_creation_intents,fl_billing.subscription_creation_audit,fl_billing.subscription_dependency_claims,fl_billing.plan_creation_intents FROM {role}"))).execute(&f.owner).await.unwrap();
     // Ordinary SELECT + sensitive-read audit INSERT only, no dependency locks/publication.
     assert!(
         service
@@ -239,7 +239,10 @@ async fn update(f: &Fixture, sql: &str) {
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::raw_sql(sql).execute(&mut *tx).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_owned()))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     tx.commit().await.unwrap();
 }
 async fn waiting(f: &Fixture) {

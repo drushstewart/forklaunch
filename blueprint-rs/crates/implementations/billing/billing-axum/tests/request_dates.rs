@@ -113,13 +113,13 @@ async fn configured_date_http_mcp_sdk() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let database = format!("fl_dates_{suffix}");
     let role = format!("fl_dates_runtime_{suffix}");
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "CREATE ROLE {role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-date-fixture'"
-    ))
+    )))
     .execute(&admin)
     .await
     .unwrap();
-    sqlx::query(&format!("CREATE DATABASE {database}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("CREATE DATABASE {database}")))
         .execute(&admin)
         .await
         .unwrap();
@@ -128,7 +128,7 @@ async fn configured_date_http_mcp_sdk() {
         .await
         .unwrap();
     PostgresBillingStore::migrate(&owner).await.unwrap();
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {role};GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {role};GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .connect_with(
             (*owner.connect_options())
@@ -140,15 +140,19 @@ async fn configured_date_http_mcp_sdk() {
         .unwrap();
     let run = pool.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     pool.close().await;
     owner.close().await;
-    sqlx::query(&format!("DROP DATABASE {database} WITH (FORCE)"))
-        .execute(&admin)
-        .await
-        .unwrap();
-    sqlx::query(&format!("DROP ROLE {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP DATABASE {database} WITH (FORCE)"
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}")))
         .execute(&admin)
         .await
         .unwrap();

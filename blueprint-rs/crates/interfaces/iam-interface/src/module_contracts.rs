@@ -11,7 +11,7 @@ use forklaunch_core::contract::{
 use schemars::JsonSchema;
 use serde_json::{Value, json};
 fn body<T: JsonSchema>(name: &str, create: bool) -> BodyContract {
-    let mut settings = schemars::r#gen::SchemaSettings::draft07();
+    let mut settings = schemars::generate::SchemaSettings::draft07();
     settings.inline_subschemas = true;
     let mut schema = serde_json::to_value(settings.into_generator().into_root_schema_for::<T>())
         .expect("package schema serializes");

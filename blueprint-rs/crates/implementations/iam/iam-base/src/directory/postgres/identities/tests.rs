@@ -29,20 +29,22 @@ impl Fixture {
             .unwrap();
         PostgresDirectoryStore::migrate(&owner).await.unwrap();
         let role = format!("fl_identity_{}", uuid::Uuid::new_v4().simple());
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS"
-        ))
+        )))
         .execute(&owner)
         .await
         .unwrap();
-        sqlx::query(&format!("GRANT USAGE ON SCHEMA public TO {role}"))
-            .execute(&owner)
-            .await
-            .unwrap();
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_roles,fl_iam_sessions,fl_iam_provider_identities,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_directory_identities TO {role}")).execute(&owner).await.unwrap();
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "GRANT USAGE ON SCHEMA public TO {role}"
+        )))
+        .execute(&owner)
+        .await
+        .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_roles,fl_iam_sessions,fl_iam_provider_identities,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_directory_identities TO {role}"))).execute(&owner).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "GRANT USAGE ON SEQUENCE fl_iam_directory_sequence_seq TO {role}"
-        ))
+        )))
         .execute(&owner)
         .await
         .unwrap();
@@ -52,7 +54,9 @@ impl Fixture {
             .after_connect(move |connection, _| {
                 let query = set_role.clone();
                 Box::pin(async move {
-                    sqlx::query(&query).execute(connection).await?;
+                    sqlx::query(sqlx::AssertSqlSafe(query))
+                        .execute(connection)
+                        .await?;
                     Ok(())
                 })
             })
@@ -88,20 +92,20 @@ impl Fixture {
     async fn cleanup(self) {
         self.pool.close().await;
         for table in ["fl_iam_users", "fl_iam_directory", "fl_iam_directory_audit"] {
-            sqlx::query(&format!(
+            sqlx::query(sqlx::AssertSqlSafe(format!(
                 "DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2"
-            ))
+            )))
             .bind(&self.tenant)
             .bind(format!("{}-other", self.tenant))
             .execute(&self.owner)
             .await
             .unwrap();
         }
-        sqlx::query(&format!("DROP OWNED BY {}", self.role))
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {}", self.role)))
             .execute(&self.owner)
             .await
             .unwrap();
-        sqlx::query(&format!("DROP ROLE {}", self.role))
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {}", self.role)))
             .execute(&self.owner)
             .await
             .unwrap();
@@ -192,10 +196,10 @@ async fn directory_identity_binding_is_explicit_session_verified_and_atomic() {
             .unwrap(),
         None
     );
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_iam_directory_audit FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -212,10 +216,10 @@ async fn directory_identity_binding_is_explicit_session_verified_and_atomic() {
             .unwrap(),
         None
     );
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_iam_directory_audit TO {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -603,10 +607,10 @@ async fn directory_identity_binding_is_explicit_session_verified_and_atomic() {
         .bind_provider_identity("https://provider.fixture.test", "owned-subject", "auth-one")
         .await
         .unwrap();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_iam_directory_audit FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -652,10 +656,10 @@ async fn directory_identity_binding_is_explicit_session_verified_and_atomic() {
             .await
             .unwrap();
     assert_eq!(provider_count, 1);
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_iam_directory_audit TO {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();

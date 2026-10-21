@@ -127,7 +127,9 @@ async fn bound_checkout_uuid_dispatch_and_publication() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -224,7 +226,7 @@ async fn matrix(f: &Fixture) {
     )
     .unwrap();
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_checkout(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_checkout(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher_pool = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -513,7 +515,7 @@ async fn cross_journal(f: &Fixture, publisher_pool: &PgPool) {
     use forklaunch_billing_base::services::postgres::PortalCreationClaim;
     let before = f.count("checkout_dependency_claims").await;
     assert!(before > 0);
-    sqlx::query(&format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_portal(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher = f
         .store
         .trusted_portal_publisher(publisher_pool.clone())

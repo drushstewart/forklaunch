@@ -20,7 +20,7 @@ async fn administrative_scope_tenants_audit_and_generation() {
         .unwrap();
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
     let role = format!("ecom_binding_{}", uuid::Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records,fl_ecommerce.payment_provider_bindings,fl_ecommerce.payment_provider_binding_audit TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(4)
         .connect_with(
@@ -285,9 +285,9 @@ async fn administrative_scope_tenants_audit_and_generation() {
     .unwrap();
     // Audit failure must roll back revocation, and RLS forbids audit alteration
     // even though this test role intentionally has broad table privileges.
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_ecommerce.payment_provider_binding_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -300,9 +300,9 @@ async fn administrative_scope_tenants_audit_and_generation() {
             .generation(),
         first.generation()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_ecommerce.payment_provider_binding_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -334,9 +334,9 @@ async fn administrative_scope_tenants_audit_and_generation() {
             .is_err()
     );
     // Failed provision leaves no binding or audit; replacement gets a new generation.
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_ecommerce.payment_provider_binding_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -352,9 +352,9 @@ async fn administrative_scope_tenants_audit_and_generation() {
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_ecommerce.payment_provider_binding_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -451,18 +451,20 @@ async fn administrative_scope_tenants_audit_and_generation() {
         "payment_provider_binding_audit",
         "records",
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=$1"
-        ))
+        )))
         .bind(tenant.id())
         .execute(&owner)
         .await
         .unwrap();
     }
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     old_schema_upgrade(&owner).await;
     owner.close().await;
 }
@@ -472,7 +474,7 @@ async fn administrative_scope_tenants_audit_and_generation() {
 async fn old_schema_upgrade(owner: &sqlx::PgPool) {
     let schema = format!("ecom_binding_upgrade_{}", uuid::Uuid::new_v4().simple());
     let mut tx = owner.begin().await.unwrap();
-    sqlx::raw_sql(&format!("CREATE SCHEMA {schema}"))
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {schema}")))
         .execute(&mut *tx)
         .await
         .unwrap();
@@ -486,53 +488,55 @@ async fn old_schema_upgrade(owner: &sqlx::PgPool) {
         include_str!("../migrations/7_payment_cancellation.sql"),
         include_str!("../migrations/8_optional_cancellation_time.sql"),
     ] {
-        sqlx::raw_sql(&sql.replace("fl_ecommerce.", &format!("{schema}.")))
-            .execute(&mut *tx)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(
+            sql.replace("fl_ecommerce.", &format!("{schema}.")),
+        ))
+        .execute(&mut *tx)
+        .await
+        .unwrap();
     }
     let data = serde_json::json!({"id":"legacy","status":"cancelled","shippingAddress":{"ciphertext":"owned-opaque-sentinel"}});
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "INSERT INTO {schema}.records(tenant_id,kind,id,data) VALUES('legacy','order','legacy',$1)"
-    ))
+    )))
     .bind(&data)
     .execute(&mut *tx)
     .await
     .unwrap();
-    sqlx::raw_sql(&format!("INSERT INTO {schema}.payment_cancellation_audit(id,tenant_id,payment_id,previous_status,provider,provider_ref,canceled_at,amount_cents,currency,actor_id,correlation_id) VALUES('00000000-0000-4000-8000-000000000009','legacy','payment','pending','paypal','legacy-order',NULL,105,'USD','operator','legacy')")).execute(&mut *tx).await.unwrap();
-    sqlx::raw_sql(
-        &include_str!("../migrations/9_payment_provider_bindings.sql")
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("INSERT INTO {schema}.payment_cancellation_audit(id,tenant_id,payment_id,previous_status,provider,provider_ref,canceled_at,amount_cents,currency,actor_id,correlation_id) VALUES('00000000-0000-4000-8000-000000000009','legacy','payment','pending','paypal','legacy-order',NULL,105,'USD','operator','legacy')"))).execute(&mut *tx).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(
+        include_str!("../migrations/9_payment_provider_bindings.sql")
             .replace("fl_ecommerce.", &format!("{schema}.")),
-    )
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    sqlx::raw_sql(
-        &include_str!("../migrations/10_scoped_cancellation_receipts.sql")
-            .replace("fl_ecommerce.", &format!("{schema}.")),
-    )
-    .execute(&mut *tx)
-    .await
-    .unwrap();
-    let receipt_count: i64 = sqlx::query_scalar(&format!(
-        "SELECT count(*) FROM {schema}.scoped_payment_cancellation_receipts"
     ))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(
+        include_str!("../migrations/10_scoped_cancellation_receipts.sql")
+            .replace("fl_ecommerce.", &format!("{schema}.")),
+    ))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
+    let receipt_count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+        "SELECT count(*) FROM {schema}.scoped_payment_cancellation_receipts"
+    )))
     .fetch_one(&mut *tx)
     .await
     .unwrap();
     assert_eq!(receipt_count, 0);
-    let after: serde_json::Value = sqlx::query_scalar(&format!(
+    let after: serde_json::Value = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "SELECT data FROM {schema}.records WHERE id='legacy'"
-    ))
+    )))
     .fetch_one(&mut *tx)
     .await
     .unwrap();
     assert_eq!(after, data);
-    let old_count:i64=sqlx::query_scalar(&format!("SELECT count(*) FROM {schema}.payment_cancellation_audit WHERE provider_ref='legacy-order' AND canceled_at IS NULL")).fetch_one(&mut *tx).await.unwrap();
+    let old_count:i64=sqlx::query_scalar(sqlx::AssertSqlSafe(format!("SELECT count(*) FROM {schema}.payment_cancellation_audit WHERE provider_ref='legacy-order' AND canceled_at IS NULL"))).fetch_one(&mut *tx).await.unwrap();
     assert_eq!(old_count, 1);
-    let new_count: i64 = sqlx::query_scalar(&format!(
+    let new_count: i64 = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "SELECT count(*) FROM {schema}.payment_provider_bindings"
-    ))
+    )))
     .fetch_one(&mut *tx)
     .await
     .unwrap();

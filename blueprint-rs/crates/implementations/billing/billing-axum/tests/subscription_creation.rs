@@ -25,7 +25,7 @@ impl Deref for Harness {
 impl Harness {
     async fn new() -> Self {
         let db = fixture::Fixture::new().await;
-        sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",db.publisher_role,db.publisher_role,db.publisher_role)).execute(&db.owner).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",db.publisher_role,db.publisher_role,db.publisher_role))).execute(&db.owner).await.unwrap();
         let publisher_pool = PgPoolOptions::new()
             .max_connections(4)
             .connect_with(
@@ -123,7 +123,9 @@ async fn bound_subscription_creation_http_mcp_sdk() {
     let f = Arc::new(Harness::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -411,10 +413,10 @@ async fn startup(f: &Harness) {
         ("subscription_dependency_claims", "INSERT"),
         ("subscription_creation_audit", "INSERT"),
     ] {
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -432,10 +434,10 @@ async fn startup(f: &Harness) {
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -478,10 +480,10 @@ async fn publisher_denials(f: &Harness) {
         ("sensitive_read_audit", "INSERT"),
     ] {
         let publisher = f.publisher().await;
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {}",
             f.publisher_role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -499,16 +501,16 @@ async fn publisher_denials(f: &Harness) {
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {}",
             f.publisher_role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
     }
     let publisher = f.publisher().await;
-    sqlx::raw_sql(&format!("REVOKE EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) FROM {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) FROM {}",f.publisher_role))).execute(&f.owner).await.unwrap();
     assert!(
         BillingBackend::stripe((*f.store).clone(), f.client.clone())
             .with_bound_billing(
@@ -518,7 +520,7 @@ async fn publisher_denials(f: &Harness) {
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role))).execute(&f.owner).await.unwrap();
 }
 async fn sdks(f: &Harness, base: &str) {
     let mut registry = forklaunch_core::contract::ContractRegistry::new();

@@ -49,7 +49,7 @@ fn failed() -> session_store::Error {
 }
 
 fn id_hash(id: &Id) -> String {
-    format!("{:x}", Sha256::digest(id.to_string().as_bytes()))
+    base16ct::lower::encode_string(&Sha256::digest(id.to_string().as_bytes()))
 }
 
 impl PostgresCookieStore {

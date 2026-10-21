@@ -19,7 +19,7 @@ async fn resume_guard_selects_no_order_pii_and_scopes_tenant() {
         .unwrap();
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
     let role = format!("ecom_resume_{}", uuid::Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT ON fl_ecommerce.records TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT ON fl_ecommerce.records TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(2)
         .connect_with(
@@ -132,9 +132,11 @@ async fn resume_guard_selects_no_order_pii_and_scopes_tenant() {
         .execute(&owner)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
 }

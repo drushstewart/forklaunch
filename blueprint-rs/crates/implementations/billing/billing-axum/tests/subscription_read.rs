@@ -72,7 +72,9 @@ async fn bound_subscription_read_http_mcp_sdk() {
     let fixture = Arc::new(Fixture::new().await);
     let run = fixture.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(fixture).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -185,7 +187,7 @@ async fn create_fixture(
         BaseBillingService::new(Arc::new(store.clone())),
         provider_client.clone(),
     );
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {}; GRANT EXECUTE ON FUNCTION fl_billing.publish_bound_subscription(text,uuid,uuid,text,jsonb,jsonb,text,text,text) TO {}",f.publisher_role,f.publisher_role,f.publisher_role))).execute(&f.owner).await.unwrap();
     let publisher_pool = sqlx::postgres::PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -217,7 +219,7 @@ async fn create_fixture(
         .await
         .unwrap();
     // From now on runtime can only read these tables and append sensitive-read audits.
-    sqlx::raw_sql(&format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.plan_creation_intents,fl_billing.plan_creation_audit,fl_billing.stripe_customer_bindings,fl_billing.subscription_creation_intents,fl_billing.subscription_creation_audit,fl_billing.subscription_dependency_claims FROM {role}")).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.plan_creation_intents,fl_billing.plan_creation_audit,fl_billing.stripe_customer_bindings,fl_billing.subscription_creation_intents,fl_billing.subscription_creation_audit,fl_billing.subscription_dependency_claims FROM {role}"))).execute(&f.owner).await.unwrap();
     (store, *record, publisher_pool, role)
 }
 async fn get(client: &reqwest::Client, base: &str, path: &str, actor: &str) -> reqwest::Response {
@@ -256,20 +258,24 @@ async fn startup(
                 .is_err()
         );
     }
-    sqlx::raw_sql(&format!("REVOKE USAGE ON SCHEMA fl_billing FROM {role}"))
-        .execute(&f.owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "REVOKE USAGE ON SCHEMA fl_billing FROM {role}"
+    )))
+    .execute(&f.owner)
+    .await
+    .unwrap();
     assert!(
         BillingBackend::stripe((*f.store).clone(), provider_client.clone())
             .with_bound_billing(BoundBillingV1::trusted(config(f), None, None).unwrap())
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {role}"))
-        .execute(&f.owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "GRANT USAGE ON SCHEMA fl_billing TO {role}"
+    )))
+    .execute(&f.owner)
+    .await
+    .unwrap();
     for (table, privilege) in [
         ("records", "SELECT"),
         ("provider_bindings", "SELECT"),
@@ -278,9 +284,9 @@ async fn startup(
         ("stripe_customer_bindings", "SELECT"),
         ("sensitive_read_audit", "INSERT"),
     ] {
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -290,9 +296,9 @@ async fn startup(
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();

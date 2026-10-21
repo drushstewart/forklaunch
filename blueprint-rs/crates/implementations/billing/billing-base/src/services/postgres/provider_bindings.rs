@@ -401,7 +401,7 @@ impl PostgresBillingStore {
             "public_id::text"
         };
         let mut tx = self.transaction().await?;
-        let row:Option<BindingRow> = sqlx::query_as(&format!("SELECT binding_id::text,public_id::text,storage_id,provider_id,subscription_provider_customer_id,local_party_id,local_party_type FROM fl_billing.provider_bindings WHERE tenant_id=$1 AND deployment_label=$2 AND account_id=$3 AND livemode=$4 AND kind=$5 AND {column}=$6"))
+        let row:Option<BindingRow> = sqlx::query_as(sqlx::AssertSqlSafe(format!("SELECT binding_id::text,public_id::text,storage_id,provider_id,subscription_provider_customer_id,local_party_id,local_party_type FROM fl_billing.provider_bindings WHERE tenant_id=$1 AND deployment_label=$2 AND account_id=$3 AND livemode=$4 AND kind=$5 AND {column}=$6")))
             .bind(self.tenant.id()).bind(&scope.deployment_label).bind(&scope.account_id).bind(scope.livemode).bind(kind.as_str()).bind(id)
             .fetch_optional(&mut *tx).await.map_err(db_error)?;
         tx.commit().await.map_err(db_error)?;

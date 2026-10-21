@@ -50,11 +50,13 @@ impl Fixture {
         let owner_role = format!("fl_sub_wire_owner_{suffix}");
         let runtime_role = format!("fl_sub_wire_runtime_{suffix}");
         let publisher_role = format!("fl_sub_wire_publisher_{suffix}");
-        sqlx::raw_sql(&format!("CREATE ROLE {owner_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {runtime_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {publisher_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'")).execute(&admin).await.unwrap();
-        sqlx::query(&format!("CREATE DATABASE {database} OWNER {owner_role}"))
-            .execute(&admin)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {owner_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {runtime_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; CREATE ROLE {publisher_role} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'"))).execute(&admin).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "CREATE DATABASE {database} OWNER {owner_role}"
+        )))
+        .execute(&admin)
+        .await
+        .unwrap();
         let options = (*admin.connect_options())
             .clone()
             .database(&database)
@@ -65,7 +67,7 @@ impl Fixture {
             .await
             .unwrap();
         PostgresBillingStore::migrate(&owner).await.unwrap();
-        sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {runtime_role}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {runtime_role}")).execute(&owner).await.unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {runtime_role}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {runtime_role}"))).execute(&owner).await.unwrap();
         let pool = PgPoolOptions::new()
             .max_connections(6)
             .connect_with(options.username(&runtime_role))
@@ -155,10 +157,12 @@ impl Fixture {
             .execute(&mut *tx)
             .await
             .unwrap();
-        sqlx::query_scalar(&format!("SELECT count(*) FROM fl_billing.{table}"))
-            .fetch_one(&mut *tx)
-            .await
-            .unwrap()
+        sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
+            "SELECT count(*) FROM fl_billing.{table}"
+        )))
+        .fetch_one(&mut *tx)
+        .await
+        .unwrap()
     }
     pub async fn denied(&self, sql: &str, tenant: &str) {
         let mut tx = self.pool.begin().await.unwrap();
@@ -167,7 +171,10 @@ impl Fixture {
             .execute(&mut *tx)
             .await
             .unwrap();
-        let error = sqlx::raw_sql(sql).execute(&mut *tx).await.unwrap_err();
+        let error = sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_owned()))
+            .execute(&mut *tx)
+            .await
+            .unwrap_err();
         assert_eq!(
             error
                 .as_database_error()
@@ -181,14 +188,17 @@ impl Fixture {
     pub async fn cleanup(self) {
         self.pool.close().await;
         self.owner.close().await;
-        sqlx::query(&format!("DROP DATABASE {} WITH (FORCE)", self.database))
-            .execute(&self.admin)
-            .await
-            .unwrap();
-        sqlx::raw_sql(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "DROP DATABASE {} WITH (FORCE)",
+            self.database
+        )))
+        .execute(&self.admin)
+        .await
+        .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "DROP ROLE {}; DROP ROLE {}; DROP ROLE {}",
             self.runtime_role, self.owner_role, self.publisher_role
-        ))
+        )))
         .execute(&self.admin)
         .await
         .unwrap();

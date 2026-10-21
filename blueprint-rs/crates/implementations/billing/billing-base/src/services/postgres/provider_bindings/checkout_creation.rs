@@ -147,7 +147,7 @@ fn hash(public_id: &str, value: &str) -> String {
     hash.update(public_id.as_bytes());
     hash.update(b"\0");
     hash.update(value.as_bytes());
-    format!("{:x}", hash.finalize())
+    base16ct::lower::encode_string(&hash.finalize())
 }
 fn commit_unknown() -> BlueprintError {
     BlueprintError::new(

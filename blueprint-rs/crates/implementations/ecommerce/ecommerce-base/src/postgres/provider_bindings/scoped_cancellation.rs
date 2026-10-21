@@ -255,7 +255,7 @@ pub(super) async fn locked_binding_matches(
         "SELECT generation::text,provider,deployment_label,merchant_id,livemode,provider_ref,order_id,amount_cents,currency FROM fl_ecommerce.payment_provider_bindings WHERE tenant_id=$1 AND payment_id=$2{}",
         if lock { " FOR UPDATE" } else { "" }
     );
-    let row: Option<BindingRow> = sqlx::query_as(&query)
+    let row: Option<BindingRow> = sqlx::query_as(sqlx::AssertSqlSafe(query))
         .bind(&binding.tenant_id)
         .bind(&binding.payment_id)
         .fetch_optional(&mut **tx)

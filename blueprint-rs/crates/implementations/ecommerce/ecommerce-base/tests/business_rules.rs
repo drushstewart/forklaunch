@@ -408,7 +408,7 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("ecom_{suffix}");
     let password = uuid::Uuid::new_v4().to_string();
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.order_retention,fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.payment_cancellation_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT USAGE ON SCHEMA fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN PASSWORD '{password}'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.order_retention,fl_ecommerce.records TO {role}; GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.payment_cancellation_audit TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.inventory_event_receipts TO {role}; GRANT SELECT,INSERT,UPDATE ON fl_ecommerce.webhook_events TO {role}; GRANT USAGE ON SCHEMA fl_worker TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_worker.jobs TO {role}; GRANT USAGE ON ALL SEQUENCES IN SCHEMA fl_worker TO {role};"))).execute(&owner).await.unwrap();
     let options: sqlx::postgres::PgConnectOptions = url.parse().unwrap();
     let runtime = PgPoolOptions::new()
         .max_connections(8)
@@ -587,9 +587,9 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         service.get_order("order3").await.is_err(),
         "same-tenant encrypted address swaps fail closed"
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_ecommerce.pii_read_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -634,9 +634,9 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_ecommerce.pii_read_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -712,19 +712,21 @@ async fn postgres_business_rules_tenants_encryption_and_audit() {
         "inventory_event_receipts",
         "webhook_events",
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=ANY($1)"
-        ))
+        )))
         .bind(vec![tenant_a.id(), tenant_b.id()])
         .execute(&owner)
         .await
         .unwrap();
     }
     runtime.close().await;
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
 }
 

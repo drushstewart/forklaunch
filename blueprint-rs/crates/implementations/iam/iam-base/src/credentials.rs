@@ -1,8 +1,7 @@
 //! Shared password storage primitives for IAM implementations.
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::SaltString};
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use forklaunch_core::domain::BlueprintError;
 use forklaunch_core::domain::BlueprintResult;
-use rand_core::{OsRng, RngCore};
 
 /// Produces a PHC-encoded Argon2id hash using independent random salts.
 ///
@@ -10,12 +9,9 @@ use rand_core::{OsRng, RngCore};
 /// Returns a safe error on random source or hash failure.
 pub fn hash_password(password: &str) -> BlueprintResult<String> {
     let mut salt = [0_u8; 16];
-    OsRng
-        .try_fill_bytes(&mut salt)
-        .map_err(|_| credential_error())?;
-    let salt = SaltString::encode_b64(&salt).map_err(|_| credential_error())?;
+    getrandom::fill(&mut salt).map_err(|_| credential_error())?;
     Argon2::default()
-        .hash_password(password.as_bytes(), &salt)
+        .hash_password_with_salt(password.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|_| credential_error())
 }

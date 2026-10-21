@@ -22,20 +22,22 @@ async fn encrypted_directory_transactions_tenant_rls_rotation_and_relationships(
     PostgresDirectoryStore::migrate(&owner).await.unwrap();
     PostgresDirectoryStore::migrate(&owner).await.unwrap();
     let role = format!("fl_directory_{}", uuid::Uuid::new_v4().simple());
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
-    sqlx::query(&format!("GRANT USAGE ON SCHEMA public TO {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
-    sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit TO {role}")).execute(&owner).await.unwrap();
-    sqlx::query(&format!(
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "GRANT USAGE ON SCHEMA public TO {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit TO {role}"))).execute(&owner).await.unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
         "GRANT USAGE ON SEQUENCE fl_iam_directory_sequence_seq TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -45,7 +47,9 @@ async fn encrypted_directory_transactions_tenant_rls_rotation_and_relationships(
         .after_connect(move |connection, _| {
             let set_role = set_role.clone();
             Box::pin(async move {
-                sqlx::query(&set_role).execute(connection).await?;
+                sqlx::query(sqlx::AssertSqlSafe(set_role))
+                    .execute(connection)
+                    .await?;
                 Ok(())
             })
         })
@@ -280,9 +284,9 @@ async fn encrypted_directory_transactions_tenant_rls_rotation_and_relationships(
     .unwrap();
     assert!(audit > 0);
     for table in ["fl_iam_directory", "fl_iam_directory_audit"] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2"
-        ))
+        )))
         .bind(tenant.id())
         .bind(other.id())
         .execute(&owner)
@@ -290,11 +294,11 @@ async fn encrypted_directory_transactions_tenant_rls_rotation_and_relationships(
         .unwrap();
     }
     pool.close().await;
-    sqlx::query(&format!("DROP OWNED BY {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {role}")))
         .execute(&owner)
         .await
         .unwrap();
-    sqlx::query(&format!("DROP ROLE {role}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}")))
         .execute(&owner)
         .await
         .unwrap();

@@ -29,7 +29,7 @@ fn invalid_input() -> BlueprintError {
     BlueprintError::new("iam_invalid_input", "Invalid IAM input")
 }
 pub(crate) fn token_hash(token: &str) -> String {
-    format!("{:x}", Sha256::digest(token.as_bytes()))
+    base16ct::lower::encode_string(&Sha256::digest(token.as_bytes()))
 }
 
 /// Bound to one tenant; every query also includes a tenant predicate in addition
@@ -554,24 +554,28 @@ mod tests {
         PostgresIamService::migrate(&owner).await.unwrap();
         PostgresIamService::migrate(&owner).await.unwrap();
         let role = format!("fl_parity_{}", uuid::Uuid::new_v4().simple());
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "CREATE ROLE {role} NOLOGIN NOSUPERUSER NOBYPASSRLS"
-        ))
+        )))
         .execute(&owner)
         .await
         .unwrap();
-        sqlx::query(&format!("GRANT USAGE ON SCHEMA public TO {role}"))
-            .execute(&owner)
-            .await
-            .unwrap();
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_provider_identities,fl_iam_browser_sessions,fl_iam_oidc_pending TO {role}")).execute(&owner).await.unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!(
+            "GRANT USAGE ON SCHEMA public TO {role}"
+        )))
+        .execute(&owner)
+        .await
+        .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_provider_identities,fl_iam_browser_sessions,fl_iam_oidc_pending TO {role}"))).execute(&owner).await.unwrap();
         let set_role = format!("SET ROLE {role}");
         let app = PgPoolOptions::new()
             .max_connections(1)
             .after_connect(move |connection, _| {
                 let set_role = set_role.clone();
                 Box::pin(async move {
-                    sqlx::query(&set_role).execute(connection).await?;
+                    sqlx::query(sqlx::AssertSqlSafe(set_role))
+                        .execute(connection)
+                        .await?;
                     Ok(())
                 })
             })
@@ -601,11 +605,11 @@ mod tests {
         assert!(!first.delete_user("user-1").await.unwrap());
         assert!(second.get_user("user-1").await.unwrap().is_some());
         pool.close().await;
-        sqlx::query(&format!("DROP OWNED BY {role}"))
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {role}")))
             .execute(&owner)
             .await
             .unwrap();
-        sqlx::query(&format!("DROP ROLE {role}"))
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}")))
             .execute(&owner)
             .await
             .unwrap();
@@ -673,18 +677,20 @@ mod tests {
             "fl_iam_roles",
             "fl_iam_organizations",
         ] {
-            sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=ANY($1)"))
-                .bind(&tenants)
-                .execute(&owner)
-                .await
-                .unwrap();
-        }
-        pool.close().await;
-        sqlx::query(&format!("DROP OWNED BY {role}"))
+            sqlx::query(sqlx::AssertSqlSafe(format!(
+                "DELETE FROM {table} WHERE tenant_id=ANY($1)"
+            )))
+            .bind(&tenants)
             .execute(&owner)
             .await
             .unwrap();
-        sqlx::query(&format!("DROP ROLE {role}"))
+        }
+        pool.close().await;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {role}")))
+            .execute(&owner)
+            .await
+            .unwrap();
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}")))
             .execute(&owner)
             .await
             .unwrap();

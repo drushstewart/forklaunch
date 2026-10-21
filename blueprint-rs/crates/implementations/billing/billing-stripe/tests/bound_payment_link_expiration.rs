@@ -180,7 +180,9 @@ async fn owner_sql(f: &Fixture, sql: &str) -> Result<sqlx::postgres::PgQueryResu
         .execute(&mut *tx)
         .await
         .unwrap();
-    let result = sqlx::raw_sql(sql).execute(&mut *tx).await;
+    let result = sqlx::raw_sql(sqlx::AssertSqlSafe(sql.to_owned()))
+        .execute(&mut *tx)
+        .await;
     if result.is_ok() {
         tx.commit().await.unwrap();
     }
@@ -192,14 +194,16 @@ async fn expiration_single_dispatch_and_claims_matrix() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
 }
 #[allow(clippy::too_many_lines)]
 async fn matrix(f: &Fixture) {
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role))).execute(&f.owner).await.unwrap();
     let pp = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -679,7 +683,7 @@ async fn old_tenant_and_statement_race(f: &Fixture) {
     // Make the actual non-bypass migration owner able to address OLD rows with a
     // wrong tenant GUC. The SECURITY DEFINER barrier must still use OLD identity.
     let owner = f.owner.connect_options().get_username().to_owned();
-    sqlx::raw_sql(&format!("CREATE POLICY owned_expiration_probe ON fl_billing.records TO {owner} USING(true) WITH CHECK(true)")).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE POLICY owned_expiration_probe ON fl_billing.records TO {owner} USING(true) WITH CHECK(true)"))).execute(&f.owner).await.unwrap();
     let mut tx = f.owner.begin().await.unwrap();
     sqlx::query("SELECT set_config('forklaunch.tenant_id','wrong',true)")
         .execute(&mut *tx)
@@ -766,16 +770,18 @@ async fn expiration_migration_backfills_existing_rows() {
         .await
         .unwrap();
     let name = format!("fl_plink_exp_upgrade_{}", Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "CREATE ROLE {name} LOGIN NOINHERIT NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'"
-    ))
+    )))
     .execute(&admin)
     .await
     .unwrap();
-    sqlx::query(&format!("CREATE DATABASE {name} OWNER {name}"))
-        .execute(&admin)
-        .await
-        .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "CREATE DATABASE {name} OWNER {name}"
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(2)
         .connect_with(
@@ -794,11 +800,13 @@ async fn expiration_migration_backfills_existing_rows() {
         })
         .await;
     pool.close().await;
-    sqlx::query(&format!("DROP DATABASE {name} WITH (FORCE)"))
-        .execute(&admin)
-        .await
-        .unwrap();
-    sqlx::query(&format!("DROP ROLE {name}"))
+    sqlx::query(sqlx::AssertSqlSafe(format!(
+        "DROP DATABASE {name} WITH (FORCE)"
+    )))
+    .execute(&admin)
+    .await
+    .unwrap();
+    sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {name}")))
         .execute(&admin)
         .await
         .unwrap();
@@ -841,7 +849,7 @@ async fn migration_backfill(pool: &PgPool) {
         {
             continue;
         }
-        sqlx::raw_sql(&std::fs::read_to_string(file).unwrap())
+        sqlx::raw_sql(sqlx::AssertSqlSafe(std::fs::read_to_string(file).unwrap()))
             .execute(&mut *tx)
             .await
             .unwrap();
@@ -854,10 +862,12 @@ async fn migration_backfill(pool: &PgPool) {
         .iter()
         .find(|p| p.file_name().unwrap().to_str().unwrap().starts_with("17_"))
         .unwrap();
-    sqlx::raw_sql(&std::fs::read_to_string(migration).unwrap())
-        .execute(&mut *tx)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(
+        std::fs::read_to_string(migration).unwrap(),
+    ))
+    .execute(&mut *tx)
+    .await
+    .unwrap();
     let guards:i64=sqlx::query_scalar("SELECT count(*) FROM fl_billing.payment_link_expiration_dependency_guards WHERE tenant_id='owned-upgrade' AND claims=0").fetch_one(&mut *tx).await.unwrap();
     assert_eq!(guards, 2);
     assert_eq!(
@@ -921,9 +931,9 @@ async fn denied_scope_and_grants(
             .is_err()
     );
     let role = f.pool.connect_options().get_username().to_owned();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE SELECT ON fl_billing.payment_link_expiration_intents FROM {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -933,9 +943,9 @@ async fn denied_scope_and_grants(
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT SELECT ON fl_billing.payment_link_expiration_intents TO {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();

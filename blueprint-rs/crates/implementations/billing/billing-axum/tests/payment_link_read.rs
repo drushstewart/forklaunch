@@ -65,7 +65,9 @@ async fn bound_payment_link_read_http_mcp_sdk() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -88,7 +90,7 @@ async fn matrix(f: &Fixture) {
     };
     let id = record.id.clone();
     // From now on runtime can only read these tables and append sensitive-read audits.
-    sqlx::raw_sql(&format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.payment_link_creation_intents,fl_billing.payment_link_creation_audit FROM {}",f.role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("REVOKE INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings,fl_billing.provider_binding_audit,fl_billing.payment_link_creation_intents,fl_billing.payment_link_creation_audit FROM {}",f.role))).execute(&f.owner).await.unwrap();
     startup(f).await;
     let mut fresh = record.provider_fields.clone().unwrap();
     fresh["active"] = json!(false);
@@ -176,10 +178,10 @@ async fn startup(f: &Fixture) {
                 .is_err()
         );
     }
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE USAGE ON SCHEMA fl_billing FROM {}",
         f.role
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -189,20 +191,23 @@ async fn startup(f: &Fixture) {
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {}", f.role))
-        .execute(&f.owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "GRANT USAGE ON SCHEMA fl_billing TO {}",
+        f.role
+    )))
+    .execute(&f.owner)
+    .await
+    .unwrap();
     for (table, privilege) in [
         ("records", "SELECT"),
         ("provider_bindings", "SELECT"),
         ("payment_link_creation_intents", "SELECT"),
         ("sensitive_read_audit", "INSERT"),
     ] {
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -212,10 +217,10 @@ async fn startup(f: &Fixture) {
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {}",
             f.role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();

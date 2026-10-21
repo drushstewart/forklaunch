@@ -268,7 +268,7 @@ async fn snapshot_changes(f: &Fixture, id: Uuid) {
             )
             .await
             .unwrap();
-        sqlx::query(sql)
+        sqlx::query(sqlx::AssertSqlSafe(sql.to_owned()))
             .bind(f.tenant.id())
             .execute(&f.owner)
             .await

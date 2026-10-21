@@ -10,10 +10,10 @@ use zeroize::Zeroize;
 pub struct TraceCarrier(String);
 #[cfg(feature = "schema")]
 impl schemars::JsonSchema for TraceCarrier {
-    fn schema_name() -> String {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
         "TraceCarrier".into()
     }
-    fn json_schema(_: &mut schemars::r#gen::SchemaGenerator) -> schemars::schema::Schema {
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
         serde_json::from_value(serde_json::json!({
             "type":"string", "minLength":55, "maxLength":55,
             "pattern":"^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$",

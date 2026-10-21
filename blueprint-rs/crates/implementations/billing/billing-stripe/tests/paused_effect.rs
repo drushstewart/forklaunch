@@ -71,7 +71,7 @@ async fn exercise(managed: bool) {
         .unwrap();
     PostgresBillingStore::migrate(&owner).await.unwrap();
     let role = format!("fl_paused_ack_{}", Uuid::new_v4().simple());
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings TO {role}; GRANT INSERT ON fl_billing.provider_binding_audit,fl_billing.sensitive_read_audit,fl_billing.webhook_reconciliation_audit TO {role}; GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.webhook_attempts TO {role}")).execute(&owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'owned-fixture'; GRANT USAGE ON SCHEMA fl_billing TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.records,fl_billing.provider_bindings TO {role}; GRANT INSERT ON fl_billing.provider_binding_audit,fl_billing.sensitive_read_audit,fl_billing.webhook_reconciliation_audit TO {role}; GRANT SELECT,INSERT ON fl_billing.webhook_receipts TO {role}; GRANT SELECT,INSERT,DELETE ON fl_billing.webhook_attempts TO {role}"))).execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(6)
         .connect_with(
@@ -355,9 +355,9 @@ async fn exercise(managed: bool) {
         } else {
             "records"
         };
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "UPDATE fl_billing.{table} SET tenant_id=tenant_id WHERE tenant_id=$1"
-        ))
+        )))
         .bind(tenant.id())
         .execute(&owner)
         .await
@@ -426,17 +426,19 @@ async fn exercise(managed: bool) {
         "INSERT ON fl_billing.webhook_receipts",
         "DELETE ON fl_billing.webhook_attempts",
     ] {
-        sqlx::raw_sql(&format!("REVOKE {permission} FROM {role}"))
-            .execute(&owner)
-            .await
-            .unwrap();
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+            "REVOKE {permission} FROM {role}"
+        )))
+        .execute(&owner)
+        .await
+        .unwrap();
         assert!(
             service
                 .acknowledge_already_paused_effect(&pending, &scope, public)
                 .await
                 .is_err()
         );
-        sqlx::raw_sql(&format!("GRANT {permission} TO {role}"))
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT {permission} TO {role}")))
             .execute(&owner)
             .await
             .unwrap();
@@ -552,17 +554,19 @@ async fn exercise(managed: bool) {
         "webhook_attempts",
         "webhook_reconciliation_audit",
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_billing.{table} WHERE tenant_id=$1"
-        ))
+        )))
         .bind(tenant.id())
         .execute(&owner)
         .await
         .unwrap();
     }
-    sqlx::raw_sql(&format!("DROP OWNED BY {role}; DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role}; DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
 }

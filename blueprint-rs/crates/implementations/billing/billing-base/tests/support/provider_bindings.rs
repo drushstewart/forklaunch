@@ -17,7 +17,7 @@ pub async fn exercise(
     role: &str,
     tenant: &str,
 ) {
-    sqlx::raw_sql(&format!("GRANT SELECT,INSERT,DELETE ON fl_billing.provider_bindings TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.provider_binding_audit TO {role}"))
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT SELECT,INSERT,DELETE ON fl_billing.provider_bindings TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_billing.provider_binding_audit TO {role}")))
         .execute(owner).await.unwrap();
     let kind = BillingKind::CheckoutSession;
     let scope =
@@ -98,9 +98,9 @@ pub async fn exercise(
             .is_err()
     );
     // No binding may survive a failed audit write.
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.provider_binding_audit FROM {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -116,9 +116,9 @@ pub async fn exercise(
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.provider_binding_audit TO {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
@@ -262,16 +262,16 @@ pub async fn exercise(
             .is_err()
     );
     assert!(blank.revoke_stripe_binding(&binding).await.is_err());
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_billing.provider_binding_audit FROM {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();
     assert!(store.revoke_stripe_binding(&binding).await.is_err());
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_billing.provider_binding_audit TO {role}"
-    ))
+    )))
     .execute(owner)
     .await
     .unwrap();

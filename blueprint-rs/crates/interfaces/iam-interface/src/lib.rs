@@ -219,7 +219,7 @@ pub mod contracts {
 
     fn json_body<T: schemars::JsonSchema>(name: &str) -> BodyContract {
         let mut body = BodyContract::json(name);
-        let mut settings = schemars::r#gen::SchemaSettings::draft07();
+        let mut settings = schemars::generate::SchemaSettings::draft07();
         settings.inline_subschemas = true;
         let schema = settings.into_generator().into_root_schema_for::<T>();
         body.schema.json_schema =

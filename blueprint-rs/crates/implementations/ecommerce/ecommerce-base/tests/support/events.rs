@@ -280,20 +280,24 @@ pub async fn atomic_transitions(
         role.bytes()
             .all(|value| value.is_ascii_alphanumeric() || value == b'_')
     );
-    sqlx::raw_sql(&format!("REVOKE INSERT ON fl_worker.jobs FROM {role}"))
-        .execute(owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "REVOKE INSERT ON fl_worker.jobs FROM {role}"
+    )))
+    .execute(owner)
+    .await
+    .unwrap();
     assert!(
         store
             .transition_order_with_event(paid.clone(), &queue, "order-events")
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!("GRANT INSERT ON fl_worker.jobs TO {role}"))
-        .execute(owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "GRANT INSERT ON fl_worker.jobs TO {role}"
+    )))
+    .execute(owner)
+    .await
+    .unwrap();
     let (audit_after,): (i64,) =
         sqlx::query_as("SELECT COUNT(*) FROM fl_ecommerce.pii_read_audit WHERE tenant_id=$1")
             .bind(tenant.id())

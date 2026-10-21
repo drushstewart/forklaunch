@@ -113,7 +113,7 @@ mod tests {
         assert!(!error.to_string().contains("credential-and-private"));
         assert!(
             isolation_error(&redis::RedisError::from((
-                redis::ErrorKind::IoError,
+                redis::ErrorKind::Io,
                 "ordinary failure"
             )))
             .is_none()

@@ -170,7 +170,9 @@ async fn event_linked_expiration_recovery() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -199,7 +201,7 @@ async fn pending(
 }
 #[allow(clippy::too_many_lines)]
 async fn matrix(f: &Fixture) {
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role))).execute(&f.owner).await.unwrap();
     let pp = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -233,9 +235,9 @@ async fn matrix(f: &Fixture) {
         .fetch_one(&f.pool)
         .await
         .unwrap();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE SELECT ON fl_billing.payment_link_expiration_dependency_claims FROM {role}"
-    ))
+    )))
     .execute(&f.owner)
     .await
     .unwrap();
@@ -252,7 +254,7 @@ async fn matrix(f: &Fixture) {
             .is_err()
     );
     assert_eq!(w.calls.load(Ordering::SeqCst), calls);
-    sqlx::raw_sql(&format!("GRANT SELECT ON fl_billing.payment_link_expiration_dependency_claims TO {role}; REVOKE INSERT ON fl_billing.payment_link_expiration_dependency_claims,fl_billing.payment_link_expiration_intents FROM {role}")).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT SELECT ON fl_billing.payment_link_expiration_dependency_claims TO {role}; REVOKE INSERT ON fl_billing.payment_link_expiration_dependency_claims,fl_billing.payment_link_expiration_intents FROM {role}"))).execute(&f.owner).await.unwrap();
     let baseline = w.event.lock().unwrap().clone();
     let posts = w.posts.load(Ordering::SeqCst);
     for (pointer, value) in [
@@ -464,7 +466,7 @@ async fn matrix(f: &Fixture) {
         receipt["value"]["recovery"]["evidence"]["event"]["request"]["idempotency_key"],
         *w.key.lock().unwrap()
     );
-    sqlx::raw_sql(&format!("GRANT INSERT ON fl_billing.payment_link_expiration_dependency_claims,fl_billing.payment_link_expiration_intents TO {role}")).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT INSERT ON fl_billing.payment_link_expiration_dependency_claims,fl_billing.payment_link_expiration_intents TO {role}"))).execute(&f.owner).await.unwrap();
     *w.current.lock().unwrap() = None;
     // Drop a real final COMMIT acknowledgement: receipt inspection acknowledges the winner.
     let (id, operation) = pending(f, &service, &publisher, &w).await;

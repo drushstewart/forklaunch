@@ -21,7 +21,7 @@ pub(super) fn profile_hash(
         redirect
     ])
     .to_string();
-    format!("{:x}", Sha256::digest(encoded.as_bytes()))
+    base16ct::lower::encode_string(&Sha256::digest(encoded.as_bytes()))
 }
 impl PostgresBillingStore {
     /// Validates the migration-16 read grant required by every stored Portal GET.

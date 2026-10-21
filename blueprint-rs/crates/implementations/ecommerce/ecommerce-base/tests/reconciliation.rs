@@ -276,7 +276,7 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
     PostgresEcommerceStore::migrate(&owner).await.unwrap();
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     let role = format!("ecom_reconcile_{suffix}");
-    sqlx::raw_sql(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.payment_cancellation_audit TO {role};"))
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'fixture-only'; GRANT USAGE ON SCHEMA fl_ecommerce TO {role}; GRANT SELECT,INSERT,UPDATE,DELETE ON fl_ecommerce.records TO {role}; GRANT SELECT,INSERT ON fl_ecommerce.payment_reconciliation_audit,fl_ecommerce.payment_cancellation_audit TO {role};")))
         .execute(&owner).await.unwrap();
     let pool = PgPoolOptions::new()
         .max_connections(4)
@@ -328,9 +328,9 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
         .unwrap();
     let mut proof = evidence();
     proof.provider_ref = "rollback-ref".into();
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_ecommerce.payment_reconciliation_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -348,9 +348,9 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
         amount_cents: 105,
         currency: "USD".into(),
     };
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "REVOKE INSERT ON fl_ecommerce.payment_cancellation_audit FROM {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -361,9 +361,9 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
             .is_err()
     );
     assert_eq!(service.get_payment("rollback").await.unwrap(), pending);
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_ecommerce.payment_cancellation_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -373,9 +373,9 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
             .await
             .is_err()
     );
-    sqlx::raw_sql(&format!(
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
         "GRANT INSERT ON fl_ecommerce.payment_reconciliation_audit TO {role}"
-    ))
+    )))
     .execute(&owner)
     .await
     .unwrap();
@@ -464,18 +464,20 @@ async fn postgres_repair_audit_rollback_tenants_and_restart() {
         "payment_reconciliation_audit",
         "payment_cancellation_audit",
     ] {
-        sqlx::query(&format!(
+        sqlx::query(sqlx::AssertSqlSafe(format!(
             "DELETE FROM fl_ecommerce.{table} WHERE tenant_id=$1"
-        ))
+        )))
         .bind(tenant.id())
         .execute(&owner)
         .await
         .unwrap();
     }
-    sqlx::raw_sql(&format!("DROP OWNED BY {role};DROP ROLE {role}"))
-        .execute(&owner)
-        .await
-        .unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
+        "DROP OWNED BY {role};DROP ROLE {role}"
+    )))
+    .execute(&owner)
+    .await
+    .unwrap();
     owner.close().await;
 }
 
@@ -492,46 +494,46 @@ async fn cancellation_timestamp_migration_preserves_existing_provider_times() {
     // removes all fixtures, including when the expected CHECK violation aborts it.
     let schema = format!("void_migration_{}", uuid::Uuid::new_v4().simple());
     let mut tx = owner.begin().await.unwrap();
-    sqlx::raw_sql(&format!("CREATE SCHEMA {schema}"))
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("CREATE SCHEMA {schema}")))
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::raw_sql(
-        &include_str!("../migrations/7_payment_cancellation.sql").replace("fl_ecommerce", &schema),
-    )
+    sqlx::raw_sql(sqlx::AssertSqlSafe(
+        include_str!("../migrations/7_payment_cancellation.sql").replace("fl_ecommerce", &schema),
+    ))
     .execute(&mut *tx)
     .await
     .unwrap();
     let insert = format!(
         "INSERT INTO {schema}.payment_cancellation_audit(id,tenant_id,payment_id,previous_status,provider,provider_ref,canceled_at,amount_cents,currency,actor_id,correlation_id) VALUES($1,'migration','payment','pending','stripe','reference',$2,105,'USD','operator','migration')"
     );
-    sqlx::query(&insert)
+    sqlx::query(sqlx::AssertSqlSafe(insert.clone()))
         .bind(uuid::Uuid::new_v4())
         .bind(1_700_000_000_i64)
         .execute(&mut *tx)
         .await
         .unwrap();
-    sqlx::raw_sql(
-        &include_str!("../migrations/8_optional_cancellation_time.sql")
+    sqlx::raw_sql(sqlx::AssertSqlSafe(
+        include_str!("../migrations/8_optional_cancellation_time.sql")
             .replace("fl_ecommerce", &schema),
-    )
+    ))
     .execute(&mut *tx)
     .await
     .unwrap();
-    let prior: Option<i64> = sqlx::query_scalar(&format!(
+    let prior: Option<i64> = sqlx::query_scalar(sqlx::AssertSqlSafe(format!(
         "SELECT canceled_at FROM {schema}.payment_cancellation_audit"
-    ))
+    )))
     .fetch_one(&mut *tx)
     .await
     .unwrap();
     assert_eq!(prior, Some(1_700_000_000));
-    sqlx::query(&insert)
+    sqlx::query(sqlx::AssertSqlSafe(insert.clone()))
         .bind(uuid::Uuid::new_v4())
         .bind(Option::<i64>::None)
         .execute(&mut *tx)
         .await
         .unwrap();
-    let invalid = sqlx::query(&insert)
+    let invalid = sqlx::query(sqlx::AssertSqlSafe(insert.clone()))
         .bind(uuid::Uuid::new_v4())
         .bind(0_i64)
         .execute(&mut *tx)

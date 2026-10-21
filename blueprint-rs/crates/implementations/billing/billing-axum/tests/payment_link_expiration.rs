@@ -210,7 +210,9 @@ async fn payment_link_expiration_http_mcp_sdk() {
     let f = Arc::new(Fixture::new().await);
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
-        .run_until(async move { tokio::task::spawn_local(async move { matrix(&run).await }).await })
+        .run_until(async move {
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run)).await }).await
+        })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
     result.unwrap();
@@ -233,7 +235,7 @@ async fn selected(f: &Fixture, pool: PgPool) -> BoundBillingV1 {
 // One isolated database lifetime keeps failure cleanup and privilege restoration together.
 #[allow(clippy::too_many_lines)]
 async fn matrix(f: &Fixture) {
-    sqlx::raw_sql(&format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role)).execute(&f.owner).await.unwrap();
+    sqlx::raw_sql(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA fl_billing TO {0}; GRANT ALL ON ALL TABLES IN SCHEMA fl_billing TO {0}; GRANT EXECUTE ON FUNCTION fl_billing.publish_payment_link_expiration(text,uuid,uuid,text,jsonb,text,text) TO {0}",f.publisher_role))).execute(&f.owner).await.unwrap();
     let pp = PgPoolOptions::new()
         .max_connections(3)
         .connect_with(
@@ -263,9 +265,9 @@ async fn matrix(f: &Fixture) {
         ("subscription_publication_identity", "SELECT"),
     ] {
         let selected_profile = selected(f, pp.clone()).await;
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -276,9 +278,9 @@ async fn matrix(f: &Fixture) {
                 .is_err(),
             "{table} {privilege}"
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {role}"
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -293,10 +295,10 @@ async fn matrix(f: &Fixture) {
         ("subscription_publication_identity", "SELECT"),
     ] {
         let selected_profile = selected(f, pp.clone()).await;
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "REVOKE {privilege} ON fl_billing.{table} FROM {}",
             f.publisher_role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();
@@ -307,10 +309,10 @@ async fn matrix(f: &Fixture) {
                 .is_err(),
             "publisher {table} {privilege}"
         );
-        sqlx::raw_sql(&format!(
+        sqlx::raw_sql(sqlx::AssertSqlSafe(format!(
             "GRANT {privilege} ON fl_billing.{table} TO {}",
             f.publisher_role
-        ))
+        )))
         .execute(&f.owner)
         .await
         .unwrap();

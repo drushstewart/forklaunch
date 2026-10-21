@@ -80,8 +80,8 @@ impl RedisSignalPublisher {
         let client = redis::Client::open(url).map_err(|_| storage_error())?;
         let timeout = options.operation_timeout;
         let config = ConnectionManagerConfig::new()
-            .set_connection_timeout(timeout)
-            .set_response_timeout(timeout)
+            .set_connection_timeout(Some(timeout))
+            .set_response_timeout(Some(timeout))
             .set_number_of_retries(2);
         let connection =
             tokio::time::timeout(timeout, ConnectionManager::new_with_config(client, config))
@@ -173,8 +173,8 @@ impl RedisSignalBus {
         let timeout = options.operation_timeout;
         let setup = async {
             let config = ConnectionManagerConfig::new()
-                .set_connection_timeout(timeout)
-                .set_response_timeout(timeout)
+                .set_connection_timeout(Some(timeout))
+                .set_response_timeout(Some(timeout))
                 .set_number_of_retries(2);
             let connection = ConnectionManager::new_with_config(client.clone(), config)
                 .await
@@ -654,7 +654,7 @@ mod tests {
     }
     async fn assert_network_disconnect(url: &str, namespace: &str) {
         let client = redis::Client::open(url).unwrap();
-        let redis::ConnectionAddr::Tcp(host, port) = &client.get_connection_info().addr else {
+        let redis::ConnectionAddr::Tcp(host, port) = client.get_connection_info().addr() else {
             panic!("isolated fixture requires a TCP Redis endpoint");
         };
         let upstream = format!("{host}:{port}");

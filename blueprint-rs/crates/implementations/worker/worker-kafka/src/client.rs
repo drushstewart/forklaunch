@@ -154,7 +154,10 @@ fn scoped(prefix: &str, parts: &[&str]) -> String {
         digest.update((part.len() as u64).to_be_bytes());
         digest.update(part.as_bytes());
     }
-    format!("{prefix}.{:x}", digest.finalize())
+    format!(
+        "{prefix}.{}",
+        base16ct::lower::encode_string(&digest.finalize())
+    )
 }
 fn valid_name(value: &str) -> bool {
     !value.trim().is_empty() && value.len() <= 256 && !value.chars().any(char::is_control)

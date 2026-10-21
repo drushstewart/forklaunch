@@ -113,7 +113,7 @@ fn async_service_required() -> BlueprintError {
 
 /// Stripe webhook signature verification (the `t=...,v1=<hex>` HMAC-SHA256 scheme).
 pub mod webhook {
-    use hmac::{Hmac, Mac};
+    use hmac::{Hmac, KeyInit, Mac};
     use sha2::Sha256;
 
     type HmacSha256 = Hmac<Sha256>;
