@@ -30,7 +30,7 @@ def command(*args):
 try:
     command('init', 'application', 'notes-app', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Bootstrap proof', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'probe', '--language', 'rust', '-D', 'Startup probe')
-    command('init', 'service', 'notes', '--language', 'rust', '--database', 'postgresql', '--postgres-driver', 'sqlx-09', '--mappers', '-D', 'Notes service')
+    command('init', 'service', 'notes', '--language', 'rust', '--database', 'postgresql', '--mappers', '-D', 'Notes service')
     command('init', 'worker', 'insights', '--language', 'rust', '--type', 'database', '--database', 'postgresql', '--runtime', 'apalis', '-D', 'Note insights producer and consumer')
     for name in ['probe', 'notes', 'insights']:
         source = app / 'src' / name

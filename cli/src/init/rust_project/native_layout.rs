@@ -1087,12 +1087,12 @@ mod tests {
 
     #[test]
     fn postgres_router_uses_tenant_summary_without_projecting_protected_records() {
-        for sqlx09 in [false, true] {
+        {
             let root = tempfile::tempdir().unwrap();
             let templates = service_templates(root.path(), "notes", "Notes");
             materialize(
                 root.path(),
-                service_database::templates(root.path(), "notes", templates, sqlx09).unwrap(),
+                service_database::templates(root.path(), "notes", templates).unwrap(),
             );
             let mut stdout = StandardStream::stdout(ColorChoice::Never);
             generate_router(root.path(), "users", false, &mut stdout).unwrap();
@@ -1133,7 +1133,7 @@ mod tests {
         let templates = service_templates(root.path(), "notes", "Notes");
         materialize(
             root.path(),
-            service_database::templates(root.path(), "notes", templates, false).unwrap(),
+            service_database::templates(root.path(), "notes", templates).unwrap(),
         );
         let files = [
             "api/controllers/users.rs", "domain/schemas/users.rs", "api/routes/users.rs",

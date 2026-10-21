@@ -21,9 +21,7 @@ pub(super) fn preflight(root: &Path, name: &str, kind: RustProjectKind) -> Resul
         RustProjectKind::Service => {
             let templates = native_layout::service_templates(&directory, name, &description);
             if project.get("metadata").and_then(|m| m.get("persistence")).and_then(Value::as_str) == Some("postgresql") {
-                let cargo: Value = toml::from_str(&read_to_string(directory.join("Cargo.toml"))?)?;
-                let sqlx09 = cargo.get("dependencies").and_then(|d| d.get("sqlx")).and_then(|d| d.get("version")).and_then(Value::as_str).is_some_and(|v| v.starts_with("0.9"));
-                service_database::templates(&directory, name, templates, sqlx09)?
+                service_database::templates(&directory, name, templates)?
             } else { templates }
         }
         RustProjectKind::Worker if directory.join("worker_hooks.rs").exists() || directory.join("consumer/worker_hooks.rs").exists() => {

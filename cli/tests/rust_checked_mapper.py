@@ -19,7 +19,7 @@ try:
     command('init', 'application', 'mapper-proof', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Mapper proof', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'mapped', '--language', 'rust', '--mappers', '-D', 'Mapped')
     command('init', 'service', 'direct', '--language', 'rust', '-D', 'Direct')
-    command('init', 'service', 'stored', '--language', 'rust', '--database', 'postgresql', '--postgres-driver', 'sqlx-09', '--mappers', '-D', 'Stored')
+    command('init', 'service', 'stored', '--language', 'rust', '--database', 'postgresql', '--mappers', '-D', 'Stored')
     assert (app/'src/mapped/domain/mappers/health.rs').is_file()
     assert not (app/'src/direct/domain/mappers').exists()
     assert 'mod mappers' not in (app/'src/direct/domain/mod.rs').read_text()

@@ -33,7 +33,7 @@ if "$CLI" init service unsupported --path "$RUN_ROOT/app" --language rust -d sql
   echo 'Expected unsupported database rejection'; exit 1
 fi
 test ! -e "$RUN_ROOT/app/src/unsupported"
-"$CLI" init service records-api --path "$RUN_ROOT/app" --language rust -d postgresql --postgres-driver "${FORKLAUNCH_POSTGRES_DRIVER:-sqlx-08}" -D Records
+"$CLI" init service records-api --path "$RUN_ROOT/app" --language rust -d postgresql -D Records
 "$CLI" init service memory-api --path "$RUN_ROOT/app" --language rust -D Memory
 "$CLI" init router users --path "$RUN_ROOT/app/src/records-api" --language rust
 "$CLI" init router users --path "$RUN_ROOT/app/src/memory-api" --language rust

@@ -47,7 +47,7 @@ reqwest = {{ default-features = false, features = ["json", "query", "stream", "m
 futures-util = {{}}
 multer = {{}}
 forklaunch-core = {{ path = "{framework}/crates/core", features = ["schema-validation"] }}
-forklaunch-universal-sdk = {{ path = "{framework}/crates/universal-sdk", version = "0.1.0" }}
+forklaunch-universal-sdk = {{ path = "{framework}/crates/universal-sdk" }}
 [build-dependencies]
 contracts = {{ package = "{name}-contracts", path = "{host}" }}
 forklaunch-core = {{ path = "{framework}/crates/core", features = ["build"] }}
@@ -168,12 +168,11 @@ pub(super) fn generate(matches: &ArgMatches, services: Vec<String>) -> Result<()
     cargo["package"]["version"] = toml_edit::value("0.1.0");
     cargo["package"]["edition"] = toml_edit::value("2024");
     cargo["lib"]["path"] = toml_edit::value("lib.rs");
-    let base:toml_edit::DocumentMut="[dependencies]\nserde={version='1',features=['derive']}\nserde_json='1'\nreqwest={version='0.13',default-features=false,features=['json','query','stream','multipart','rustls']}\nfutures-util='0.3'\ntokio={version='1',features=['net']}\ntokio-tungstenite='0.30'\n".parse()?;
+    let base:toml_edit::DocumentMut="[dependencies]\nserde={features=['derive']}\nserde_json={}\nreqwest={default-features=false,features=['json','query','stream','multipart','rustls']}\nfutures-util={}\ntokio={features=['net']}\ntokio-tungstenite={}\n".parse()?;
     cargo["dependencies"] = base["dependencies"].clone();
     let framework = "../../../.forklaunch/framework-rs";
     cargo["dependencies"]["forklaunch-universal-sdk"]["path"] =
         toml_edit::value(format!("{framework}/crates/universal-sdk"));
-    cargo["dependencies"]["forklaunch-universal-sdk"]["version"] = toml_edit::value("0.1.0");
     cargo["dependencies"]["forklaunch-core"]["path"] =
         toml_edit::value(format!("{framework}/crates/core"));
     cargo["dependencies"]["forklaunch-core"]["features"] =

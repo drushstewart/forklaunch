@@ -2214,7 +2214,6 @@ fn rust_sdk_cargo_for_layout(
         .context("SDK runtime dependency path")?;
     document["dependencies"]["forklaunch-universal-sdk"]["path"] =
         toml_edit::value(runtime.to_string_lossy().as_ref());
-    document["dependencies"]["forklaunch-universal-sdk"]["version"] = toml_edit::value("0.1.0");
     crate::init::rust_project::dependencies::render_for_path(
         &directory.join("Cargo.toml"),
         &document.to_string(),

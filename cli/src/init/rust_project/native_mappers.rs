@@ -64,7 +64,7 @@ mod tests {
         for postgres in [false, true] {
             let base = native_layout::service_templates(&dir, "notes", "Notes");
             let base = if postgres {
-                service_database::templates(&dir, "notes", base, true).unwrap()
+                service_database::templates(&dir, "notes", base).unwrap()
             } else {
                 base
             };

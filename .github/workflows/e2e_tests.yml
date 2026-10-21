@@ -259,7 +259,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [scaffolding, projects, changes, mixed, infrastructure, postgres-service, postgres-service-09, capabilities, observability, containers, registry, published-registry, release-guard, sdk-http, sdk-socket, sdk-combined, socket-compilers, docs, dev-node, dev-bun, http, sse]
+        suite: [scaffolding, projects, changes, mixed, infrastructure, postgres-service, capabilities, observability, containers, registry, published-registry, release-guard, sdk-http, sdk-socket, sdk-combined, socket-compilers, docs, dev-node, dev-bun, http, sse]
     env:
       CARGO_INCREMENTAL: '0'
       CARGO_BUILD_JOBS: '2'
@@ -350,7 +350,6 @@ jobs:
       - name: PostgreSQL routers, restricted-role tenant isolation and audited protected fields
         if: startsWith(matrix.suite, 'postgres-service')
         env:
-          FORKLAUNCH_POSTGRES_DRIVER: ${{ matrix.suite == 'postgres-service-09' && 'sqlx-09' || 'sqlx-08' }}
         run: bash cli/tests/rust_postgres_service_runtime.sh
       - name: Generated optimized builds and unsupported shared-image release guard
         if: matrix.suite == 'release-guard'

@@ -5,7 +5,6 @@ pub(super) fn templates(
     dir: &Path,
     name: &str,
     mut templates: Vec<RenderedTemplate>,
-    sqlx09: bool,
 ) -> Result<Vec<RenderedTemplate>> {
     let data = rust_crate_template_data(name, "PostgreSQL service", true);
     for template in &mut templates {
@@ -63,36 +62,6 @@ pub(super) fn templates(
         });
     }
     templates.push(RenderedTemplate { path: dir.join(".env.database.example"), content: "# Separate database per service. Runtime role must not bypass row-level security.\nDATABASE_URL=postgresql://app@localhost:5432/service\nMIGRATION_DATABASE_URL=postgresql://owner@localhost:5432/service\nTENANT_ID=\nSTORAGE_ENCRYPTION_NAMESPACE=service-records\nENCRYPTION_KEY_HEX=\nENCRYPTION_KEY_ID=primary\nENCRYPTION_PREVIOUS_KEYS_JSON=\nENCRYPTION_LEGACY_KEY_HEX=disabled\nDATABASE_ALLOW_PLAINTEXT_DEVELOPMENT=false\n".into(), context: None });
-    if sqlx09 {
-        for template in &mut templates {
-            let Ok(relative) = template.path.strip_prefix(dir) else { continue };
-        let relative = relative.to_string_lossy();
-            if relative == "Cargo.toml" {
-                let mut cargo: toml_edit::DocumentMut = template.content.parse()?;
-                cargo["dependencies"]["sqlx"]["version"] = toml_edit::value(crate::core::cargo_toml::version("sqlx09").unwrap_or_default());
-                let features = cargo["dependencies"]["forklaunch-core"]["features"]
-                    .as_array_mut()
-                    .context("Core features")?;
-                features.retain(|feature| feature.as_str() != Some("postgres"));
-                features.push("postgres09");
-                template.content = cargo.to_string();
-            } else if relative == "persistence/database.rs" {
-                template.content = template.content.replace(
-                    "persistence::{PostgresConnectionPolicy",
-                    "persistence::postgres09::{PostgresConnectionPolicy",
-                );
-            } else if matches!(
-                relative.as_ref(),
-                "persistence/repository.rs" | "__test__/persistence.rs"
-            ) {
-                template.content = template.content.replace(
-                    "TenantContext, begin_tenant_transaction, connect_runtime_postgres,",
-                    "TenantContext,",
-                );
-                template.content.push_str("\nuse forklaunch_core::persistence::postgres09::{begin_tenant_transaction, connect_runtime_postgres};\n");
-            }
-        }
-    }
     Ok(templates)
 }
 

@@ -729,13 +729,6 @@ impl CliCommand for ServiceCommand {
                     .value_parser(Database::VARIANTS),
             )
             .arg(
-                Arg::new("postgres-driver")
-                    .long("postgres-driver")
-                    .help("Rust PostgreSQL adapter version; select sqlx-09 for Apalis interoperability")
-                    .value_parser(["sqlx-08", "sqlx-09"])
-                    .requires("database"),
-            )
-            .arg(
                 Arg::new("infrastructure")
                     .short('i')
                     .long("infrastructure")
@@ -766,7 +759,6 @@ impl CliCommand for ServiceCommand {
     }
 
     fn handler(&self, matches: &ArgMatches) -> Result<()> {
-        if matches.contains_id("postgres-driver") && !rust_project::uses_rust_generation(matches) { anyhow::bail!("--postgres-driver is available for Rust generation only"); }
         if rust_project::uses_rust_generation(matches) {
             return rust_project::generate_rust_service(matches);
         }

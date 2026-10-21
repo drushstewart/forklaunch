@@ -534,11 +534,11 @@ name = {name:?}
 path = "main.rs"
 [dependencies]
 forklaunch-worker-interface = {{ package = "forklaunch-worker-interface", path = "{worker_path}", features = ["native", "apalis", "telemetry", "schema"] }}
-forklaunch-core = {{ package = "forklaunch-core", path = "{relative}/crates/core", features = ["postgres09", "otlp", "encryption"] }}
+forklaunch-core = {{ package = "forklaunch-core", path = "{relative}/crates/core", features = ["postgres", "otlp", "encryption"] }}
 apalis = {{}}
 apalis-core = {{}}
 apalis-postgres = {{}}
-sqlx = {{ version = "{sqlx09}", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }}
+sqlx = {{ default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "uuid"] }}
 tokio = {{ features = ["macros", "rt-multi-thread", "signal", "time"] }}
 serde = {{ features = ["derive"] }}
 serde_json = {{}}
@@ -553,7 +553,7 @@ serde_json = {{}}
 uuid = {{ features = ["serde"] }}
 schemars = {{ features = ["uuid1"] }}
 zeroize = {{}}
-"#, sqlx09 = crate::core::cargo_toml::version("sqlx09").unwrap_or_default());
+"#);
     let cargo = crate::core::cargo_toml::fill(&cargo)?;
     let event=render_rust_template("rust/leased-worker/event_contract.rs",&data);
     for (path,content) in [

@@ -35,7 +35,7 @@ def forklaunch(*arguments):
 
 # Every generator, including the worker type that maps onto another backend.
 PROJECTS = [
-    ('service', 'notes', ['--database', 'postgresql', '--postgres-driver', 'sqlx-09', '--infrastructure', 'redis', 's3', '--mappers']),
+    ('service', 'notes', ['--database', 'postgresql', '--infrastructure', 'redis', 's3', '--mappers']),
     ('service', 'plain', []),
     # An agent over the plain service and one external MCP server.
     ('agent', 'assistant', ['--service', 'plain', '--mcp', 'linear=https://mcp.linear.app/mcp']),

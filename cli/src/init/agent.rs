@@ -63,7 +63,6 @@ impl CliCommand for AgentCommand {
                     .value_parser(Database::VARIANTS),
             )
             // Read by the shared service generator; agents never set them.
-            .arg(Arg::new("postgres-driver").long("postgres-driver").hide(true).requires("database"))
             .arg(Arg::new("infrastructure").long("infrastructure").hide(true).action(ArgAction::Append))
             .arg(Arg::new("mappers").long("mappers").hide(true).action(ArgAction::SetTrue))
             .arg(

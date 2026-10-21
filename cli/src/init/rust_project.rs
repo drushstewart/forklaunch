@@ -1715,8 +1715,7 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
     let templates = if kind == RustProjectKind::Service && native_layout {
         let templates = native_layout::service_templates(&crate_dir, &name, &description);
         if postgres {
-            let sqlx09 = option(matches, "postgres-driver").as_deref()==Some("sqlx-09") || (option(matches,"postgres-driver").is_none() && read_to_string(crate_dir.join("Cargo.toml")).ok().and_then(|text|toml::from_str::<Value>(&text).ok()).and_then(|cargo|cargo.get("dependencies")?.get("sqlx")?.get("version")?.as_str().map(str::to_owned)).is_some_and(|version|version.starts_with("0.9")));
-            service_database::templates(&crate_dir, &name, templates, sqlx09)?
+            service_database::templates(&crate_dir, &name, templates)?
         } else { templates }
     } else if apalis {
         worker::apalis_templates(&app_root,&crate_dir,&name,&description)?
