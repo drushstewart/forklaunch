@@ -14,7 +14,7 @@ use termcolor::{ColorChoice, StandardStream, WriteColor};
 
 use crate::{
     CliCommand, core::command::command, init::rust_project,
-    sdk::generate::generate_or_check_sdk_outputs,
+    sdk::generate::generate_sdk_outputs_while_watching,
 };
 
 #[derive(Debug)]
@@ -137,7 +137,7 @@ fn run_sdk_watch(
     stdout: &mut StandardStream,
 ) -> Result<()> {
     if once {
-        generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)?;
+        generate_sdk_outputs_while_watching(app_root, target, source, selected_service, stdout)?;
         log_ok!(stdout, "SDK watch pass completed");
         return Ok(());
     }
@@ -145,7 +145,7 @@ fn run_sdk_watch(
     // Capture before generation so an export arriving during it is processed next.
     let mut last_fingerprint = artifact_fingerprint(app_root, source, selected_service)?;
     if let Err(error) =
-        generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)
+        generate_sdk_outputs_while_watching(app_root, target, source, selected_service, stdout)
     {
         log_error!(
             stdout,
@@ -185,7 +185,7 @@ fn run_sdk_watch(
         last_fingerprint = fingerprint;
         log_info!(stdout, "{source} artifacts changed; regenerating SDKs");
         if let Err(error) =
-            generate_or_check_sdk_outputs(app_root, target, source, selected_service, false, stdout)
+            generate_sdk_outputs_while_watching(app_root, target, source, selected_service, stdout)
         {
             log_error!(
                 stdout,
@@ -548,7 +548,7 @@ openapiPath = "src/api/sdk/openapi.json"
         assert!(!public.contains_key(&openapi.canonicalize().unwrap()));
         assert!(development.contains_key(&openapi.canonicalize().unwrap()));
         let mut stdout = StandardStream::stdout(ColorChoice::Never);
-        generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, false, &mut stdout)
+        crate::sdk::generate::generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, false, &mut stdout)
             .unwrap();
         let models = root.join("src/api/sdk/rust/models.rs");
         assert!(
@@ -562,7 +562,7 @@ openapiPath = "src/api/sdk/openapi.json"
             development
         );
         assert_eq!(artifact_fingerprint(root, "all", None).unwrap(), public);
-        generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, false, &mut stdout)
+        crate::sdk::generate::generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, false, &mut stdout)
             .unwrap();
         assert!(
             fs::read_to_string(&models)
@@ -574,7 +574,7 @@ openapiPath = "src/api/sdk/openapi.json"
                 .unwrap()
                 .contains("stale compiled contract")
         );
-        generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, true, &mut stdout)
+        crate::sdk::generate::generate_or_check_sdk_outputs(root, "rust", "all-openapi", None, true, &mut stdout)
             .unwrap();
     }
 
