@@ -7,6 +7,14 @@
 - Shared Rust and TypeScript SDK runtime: portable operations (`x-forklaunch-operation`), response dialects, SSE and multipart transports, registry refresh and query/mutation helpers, used by SDKs generated for Rust services.
 - Dependency refresh (from 1.2.30): `@types/node`, `prettier`, `tsup` 9.
 
+## 1.2.31
+
+### Patch Changes
+
+- Dependency refresh: every third-party dependency moved to its latest version at least a day old.
+- Updated dependencies
+  - @forklaunch/common@1.2.32
+
 ## 1.2.30
 
 ### Patch Changes
