@@ -41,7 +41,7 @@ forklaunch-core = { version = "0.1.3", path = "../core", features = ["openapi", 
 serde = { version = "1", features = ["derive"] }
 serde_json = "=1.0.151"
 tracing = "0.1"
-opentelemetry = "0.31"
+opentelemetry = "0.33"
 
 axum = { version = "0.8", optional = true }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros"], optional = true }
@@ -52,7 +52,7 @@ bytes = { version = "1", optional = true }
 http-body = { version = "1", optional = true }
 http-body-util = { version = "0.1", optional = true }
 
-jsonwebtoken = { version = "9", optional = true }
+jsonwebtoken = { version = "11", features = ["aws_lc_rs"], optional = true }
 
 schemars = { version = "0.8", optional = true }
 
@@ -62,9 +62,9 @@ http-body = "1"
 forklaunch-validator = { version = "0.1.3", path = "../validator" }
 garde = { version = "0.23", features = ["derive"] }
 schemars = "0.8"
-reqwest = { version = "0.12", default-features = false, features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
 chrono = { version = "0.4", default-features = false, features = ["std"] }
-opentelemetry_sdk = { version = "0.31", features = ["testing"] }
+opentelemetry_sdk = { version = "0.33", features = ["testing"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "sync"] }
 tower = { version = "0.5", features = ["util"] }
 
