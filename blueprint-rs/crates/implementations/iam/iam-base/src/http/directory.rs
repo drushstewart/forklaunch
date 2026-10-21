@@ -1,15 +1,19 @@
 //! IAM directory routes share HTTP/MCP validation, authentication and audited storage.
+use crate::directory::{
+    compliance::{DirectoryCompliance, DirectoryComplianceService},
+    postgres::PostgresDirectoryStore,
+    service::BaseIamDirectory,
+};
 use axum::{
     Extension, Json,
     extract::{Path, RawQuery},
     http::StatusCode,
     response::{IntoResponse, Response},
+    routing::any,
 };
 use forklaunch_axum::{
-    AuthErrorFormat, ForkLaunchRouter, RequestContext, RouterConfig, module_auth::HmacJwksAuth,
-    session::AuthenticatedSession,
+    AuthErrorFormat, RequestContext, RouterConfig, session::AuthenticatedSession,
 };
-use forklaunch_core::ServiceInfo;
 use forklaunch_core::auth::{AuthError, Principal, parse_bearer};
 use forklaunch_core::contract::AuthConfig;
 use forklaunch_core::contract::HttpMethod;
@@ -17,11 +21,6 @@ use forklaunch_core::contract::RouteContract;
 use forklaunch_core::domain::AuditContext;
 use forklaunch_core::domain::BlueprintError;
 use forklaunch_core::domain::BlueprintResult;
-use forklaunch_iam_base::directory::{
-    compliance::{DirectoryCompliance, DirectoryComplianceService},
-    postgres::PostgresDirectoryStore,
-    service::BaseIamDirectory,
-};
 use forklaunch_iam_interface::{
     AsyncIamSessions, module_contracts,
     services::{OrganizationService, PermissionService, RoleService, UserService},
@@ -40,66 +39,18 @@ pub enum DirectoryAuthorizationMode {
     StoredSessions,
 }
 
-/// Combines stored bearer session authentication with configured IAM directory CRUD.
-/// Directory reads use JWKS JWTs; internal operations use request HMAC signatures.
-/// # Panics
-/// Only inconsistent package-owned route metadata can panic.
-#[must_use]
-pub fn iam_router<S: AsyncIamSessions + 'static>(
-    sessions: Arc<S>,
-    store: PostgresDirectoryStore,
-    auth: HmacJwksAuth,
-    info: ServiceInfo,
-) -> ForkLaunchRouter {
-    iam_router_with_compliance(sessions, store, auth, info, DirectoryCompliance::default())
-}
-
-/// Compose directory routes with application-owned compliance classifications.
-/// The supplied store fixes tenant scope; route parameters never select a tenant.
-/// Incomplete storage operations return an error rather than a successful erasure.
-/// # Panics
-/// Only inconsistent package-owned route metadata can panic.
-#[must_use]
-pub fn iam_router_with_compliance<S: AsyncIamSessions + 'static>(
-    sessions: Arc<S>,
-    store: PostgresDirectoryStore,
-    auth: HmacJwksAuth,
-    info: ServiceInfo,
-    compliance: DirectoryCompliance,
-) -> ForkLaunchRouter {
-    iam_router_with_options(
-        sessions,
-        store,
-        auth,
-        info,
-        compliance,
-        DirectoryAuthorizationMode::default(),
-    )
-}
-
-/// Compose directory routes with explicit grant source and compliance policy.
-/// Stored-session mode verifies JWTs before replacing identity and grants, and
-/// framework RBAC runs only after that replacement. It does not cache grants.
-/// # Panics
-/// Only inconsistent package-owned metadata can panic.
-#[must_use]
-pub fn iam_router_with_options<S: AsyncIamSessions + 'static>(
-    sessions: Arc<S>,
-    store: PostgresDirectoryStore,
-    auth: HmacJwksAuth,
-    info: ServiceInfo,
-    compliance: DirectoryCompliance,
-    mode: DirectoryAuthorizationMode,
-) -> ForkLaunchRouter {
-    let opaque = super::session_config(&sessions)
+/// Bearer session, directory JWT and internal HMAC authentication for IAM
+/// routes. Framework RBAC runs only after stored-session grant replacement;
+/// grants are not cached.
+pub(super) fn router_config<S: AsyncIamSessions + 'static>(
+    http: &super::IamHttp<S>,
+) -> RouterConfig {
+    let opaque = super::session_config(&http.sessions)
         .authenticator
         .expect("session verifier exists");
-    let auth = Arc::new(if mode == DirectoryAuthorizationMode::StoredSessions {
-        auth.with_role_resolver(|_| async { Ok(Vec::new()) })
-    } else {
-        auth
-    });
-    let authorization_store = store.clone();
+    let auth = Arc::clone(&http.auth);
+    let mode = http.mode;
+    let authorization_store = Arc::clone(&http.directory);
     let config = RouterConfig::default().with_authenticator(move |request, contract| {
         let opaque = opaque.clone();
         let auth = auth.clone();
@@ -130,13 +81,7 @@ pub fn iam_router_with_options<S: AsyncIamSessions + 'static>(
             }
         }
     });
-    add_routes(
-        super::build_session_router(sessions, info, true),
-        store,
-        compliance,
-        mode,
-    )
-    .with_config(directory_auth_error_formats(config))
+    directory_auth_error_formats(config)
 }
 
 fn directory_auth_error_formats(mut config: RouterConfig) -> RouterConfig {
@@ -148,30 +93,23 @@ fn directory_auth_error_formats(mut config: RouterConfig) -> RouterConfig {
     config
 }
 
-#[allow(clippy::too_many_lines)]
-fn add_routes(
-    mut router: ForkLaunchRouter,
-    store: PostgresDirectoryStore,
-    compliance: DirectoryCompliance,
-    mode: DirectoryAuthorizationMode,
-) -> ForkLaunchRouter {
-    let store = Arc::new(store);
-    let compliance = Arc::new(compliance);
-    for contract in module_contracts::registry().routes() {
-        if contract.operation_name == "getauthmethods" {
-            router = router.get(contract.clone(), || async { StatusCode::NO_CONTENT });
-            continue;
-        }
-        if matches!(
-            contract.operation_name.as_str(),
-            "exportuserdata" | "eraseuserdata"
-        ) {
-            let erase = contract.operation_name == "eraseuserdata";
-            let store = store.clone();
-            let compliance = compliance.clone();
-            let handler = move |Extension(session): Extension<AuthenticatedSession>,
-                                Extension(context): Extension<RequestContext>,
-                                Path(subject): Path<String>| {
+/// The handler for one directory or compliance operation.
+pub(super) fn handler<S>(http: &super::IamHttp<S>, contract: &RouteContract) -> super::Handler {
+    let store = Arc::clone(&http.directory);
+    let mode = http.mode;
+    if contract.operation_name == "getauthmethods" {
+        return any(|| async { StatusCode::NO_CONTENT });
+    }
+    if matches!(
+        contract.operation_name.as_str(),
+        "exportuserdata" | "eraseuserdata"
+    ) {
+        let erase = contract.operation_name == "eraseuserdata";
+        let compliance = Arc::clone(&http.compliance);
+        return any(
+            move |Extension(session): Extension<AuthenticatedSession>,
+                  Extension(context): Extension<RequestContext>,
+                  Path(subject): Path<String>| {
                 let store = store.clone();
                 let compliance = compliance.clone();
                 async move {
@@ -179,115 +117,55 @@ fn add_routes(
                         .await
                         .unwrap_or_else(|error| failure(&error))
                 }
-            };
-            router = if erase {
-                router.delete(contract.clone(), handler)
-            } else {
-                router.get(contract.clone(), handler)
-            };
-            continue;
-        }
-        let handler_contract = contract.clone();
-        let store = store.clone();
-        router = match contract.method {
-            HttpMethod::Post => router.post(
-                contract.clone(),
-                move |Extension(session): Extension<AuthenticatedSession>,
-                      Extension(context): Extension<RequestContext>,
-                      Json(input): Json<Value>| {
-                    dispatch(
-                        store.clone(),
-                        session,
-                        context,
-                        handler_contract.clone(),
-                        input,
-                        mode,
-                    )
-                },
-            ),
-            HttpMethod::Put => router.put(
-                contract.clone(),
-                move |Extension(session): Extension<AuthenticatedSession>,
-                      Extension(context): Extension<RequestContext>,
-                      Json(input): Json<Value>| {
-                    dispatch(
-                        store.clone(),
-                        session,
-                        context,
-                        handler_contract.clone(),
-                        input,
-                        mode,
-                    )
-                },
-            ),
-            HttpMethod::Get if contract.request.params.is_empty() => router.get(
-                contract.clone(),
-                move |Extension(session): Extension<AuthenticatedSession>,
-                      Extension(context): Extension<RequestContext>,
-                      RawQuery(query): RawQuery| {
-                    let store = store.clone();
-                    let contract = handler_contract.clone();
-                    async move {
-                        match query_input(query.as_deref()) {
-                            Ok(input) => {
-                                dispatch(store, session, context, contract, input, mode).await
-                            }
-                            Err(error) => failure(&error),
-                        }
-                    }
-                },
-            ),
-            HttpMethod::Get => router.get(
-                contract.clone(),
-                move |Extension(session): Extension<AuthenticatedSession>,
-                      Extension(context): Extension<RequestContext>,
-                      Path(id): Path<String>| {
-                    dispatch(
-                        store.clone(),
-                        session,
-                        context,
-                        handler_contract.clone(),
-                        json!({"id":id}),
-                        mode,
-                    )
-                },
-            ),
-            HttpMethod::Delete if contract.request.params.is_empty() => router.delete(
-                contract.clone(),
-                move |Extension(session): Extension<AuthenticatedSession>,
-                      Extension(context): Extension<RequestContext>,
-                      RawQuery(query): RawQuery| {
-                    let store = store.clone();
-                    let contract = handler_contract.clone();
-                    async move {
-                        match query_input(query.as_deref()) {
-                            Ok(input) => {
-                                dispatch(store, session, context, contract, input, mode).await
-                            }
-                            Err(error) => failure(&error),
-                        }
-                    }
-                },
-            ),
-            HttpMethod::Delete => router.delete(
-                contract.clone(),
-                move |Extension(session): Extension<AuthenticatedSession>,
-                      Extension(context): Extension<RequestContext>,
-                      Path(id): Path<String>| {
-                    dispatch(
-                        store.clone(),
-                        session,
-                        context,
-                        handler_contract.clone(),
-                        json!({"id":id}),
-                        mode,
-                    )
-                },
-            ),
-            _ => panic!("Unsupported package-owned IAM method"),
-        };
+            },
+        );
     }
-    router
+    let handler_contract = contract.clone();
+    match contract.method {
+        HttpMethod::Post | HttpMethod::Put => any(
+            move |Extension(session): Extension<AuthenticatedSession>,
+                  Extension(context): Extension<RequestContext>,
+                  Json(input): Json<Value>| {
+                dispatch(
+                    store.clone(),
+                    session,
+                    context,
+                    handler_contract.clone(),
+                    input,
+                    mode,
+                )
+            },
+        ),
+        HttpMethod::Get | HttpMethod::Delete if contract.request.params.is_empty() => any(
+            move |Extension(session): Extension<AuthenticatedSession>,
+                  Extension(context): Extension<RequestContext>,
+                  RawQuery(query): RawQuery| {
+                let store = store.clone();
+                let contract = handler_contract.clone();
+                async move {
+                    match query_input(query.as_deref()) {
+                        Ok(input) => dispatch(store, session, context, contract, input, mode).await,
+                        Err(error) => failure(&error),
+                    }
+                }
+            },
+        ),
+        HttpMethod::Get | HttpMethod::Delete => any(
+            move |Extension(session): Extension<AuthenticatedSession>,
+                  Extension(context): Extension<RequestContext>,
+                  Path(id): Path<String>| {
+                dispatch(
+                    store.clone(),
+                    session,
+                    context,
+                    handler_contract.clone(),
+                    json!({"id":id}),
+                    mode,
+                )
+            },
+        ),
+        _ => panic!("Unsupported package-owned IAM method"),
+    }
 }
 async fn compliance_response(
     store: &PostgresDirectoryStore,
@@ -538,6 +416,8 @@ mod tests {
         body::{Body, to_bytes},
         http::Request,
     };
+    use forklaunch_axum::ForkLaunchRouter;
+    use forklaunch_core::ServiceInfo;
     use forklaunch_iam_interface::contracts;
     use tower::ServiceExt;
 

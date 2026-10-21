@@ -464,11 +464,15 @@ pub(crate) fn generate_rust_router(matches: &ArgMatches) -> Result<()> {
     let builtin = modules::module_kind(&app_root, &service_name)?.is_some();
     if builtin {
         let flat = service_path.join("lib.rs").exists();
+        let shared = shared_module_contracts(&service_path);
         let registry = service_path.join("api/contracts/registry.rs");
-        let lib = read_to_string(if shared_module_contracts(&service_path) { registry } else { service_path.join(if flat { "sdk.rs" } else { "src/lib.rs" }) })?;
-        let main =
-            read_to_string(service_path.join(if flat { "server.rs" } else { "src/main.rs" }))?;
-        if !lib.contains("routes::contracts()") || !main.contains("routes::register_router(") {
+        let lib = read_to_string(if shared { registry } else { service_path.join(if flat { "sdk.rs" } else { "src/lib.rs" }) })?;
+        let (main, hook) = if shared {
+            (read_to_string(service_path.join("api/routes/mod.rs"))?, "extensions::register_router(")
+        } else {
+            (read_to_string(service_path.join(if flat { "server.rs" } else { "src/main.rs" }))?, "routes::register_router(")
+        };
+        if !lib.contains("routes::contracts()") || !main.contains(hook) {
             bail!(
                 "This existing module does not expose custom router hooks. Add routes::contracts() to its registry and routes::register_router(...) around its runtime router before generating extensions"
             );
@@ -2015,7 +2019,10 @@ pub(crate) fn ensure_embedded_framework(app_root: &Path, dryrun: bool) -> Result
 }
 
 fn service_routes_directory(directory: &Path) -> PathBuf {
-    if directory.join("lib.rs").exists() {
+    if shared_module_contracts(directory) {
+        // Module routes bind the module's own contracts; added routers sit beside them.
+        directory.join("api/routes/extensions")
+    } else if directory.join("lib.rs").exists() {
         directory.join("api/routes")
     } else {
         directory.join("src/routes")
@@ -3604,7 +3611,7 @@ fn rewrite_routes_mod(routes_dir: &Path, dryrun: bool, stdout: &mut StandardStre
     } else {
         routes_mod_rs(&modules)
     };
-    if let Some(project) = routes_dir.parent().and_then(Path::parent) {
+    if let Some(project) = routes_dir.ancestors().find(|directory| directory.join("Cargo.toml").is_file()) {
         if shared_module_contracts(project) {
             rewrite_module_extensions(&project.join("api/contracts/extensions"), dryrun, stdout)?;
         }

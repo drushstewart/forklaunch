@@ -14,7 +14,6 @@ members = [
     "crates/implementations/ecommerce/ecommerce-stripe",
     "crates/implementations/ecommerce/ecommerce-paypal",
     "crates/implementations/cac/cac-axum",
-    "crates/implementations/iam/iam-axum",
     "crates/implementations/billing/billing-base",
     "crates/implementations/billing/billing-stripe",
     "crates/implementations/billing/billing-axum",

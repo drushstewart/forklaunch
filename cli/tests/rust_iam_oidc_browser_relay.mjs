@@ -10,7 +10,7 @@ import {pathToFileURL} from 'node:url';
 
 assert.ok(process.env.PLAYWRIGHT_CORE_PATH,'Set PLAYWRIGHT_CORE_PATH to an installed playwright-core directory');
 const {chromium}=await import(pathToFileURL(join(resolve(process.env.PLAYWRIGHT_CORE_PATH),'index.mjs')));
-const source=new URL('../../blueprint-rs/crates/implementations/iam/iam-axum/src/browser/',import.meta.url);
+const source=new URL('../../blueprint-rs/crates/implementations/iam/iam-base/src/http/browser/',import.meta.url);
 const relay=readFileSync(new URL('oidc_relay.html',source),'utf8');
 const csp=readFileSync(new URL('oidc_relay.csp',source),'utf8');
 const temporary=mkdtempSync(join(tmpdir(),'fl-oidc-browser-'));

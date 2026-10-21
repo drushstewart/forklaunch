@@ -81,11 +81,11 @@ try:
         assert 'BETTER_AUTH_TWO_FACTOR_ENABLED=false' in (service / '.env.example').read_text()
         assert '${IAM_BETTER_AUTH_TWO_FACTOR_ENABLED:-false}' in (app / 'docker-compose.yaml').read_text()
     else:
-        server = service / 'server.rs'
-        source = server.read_text()
-        # The generated server is formatted, so match the call by its tokens.
-        old = re.search(r'let router = directory::iam_router_with_options\(\s*store,\s*directory,\s*auth,\s*service_info\(\),\s*Default::default\(\),\s*directory_mode,?\s*\);', source)
-        assert old, 'generated IAM router call'
+        registrations = service / 'registrations.rs'
+        source = registrations.read_text()
+        # The generated registrations are formatted, so match the call by its tokens.
+        old = re.search(r'let iam = IamHttp::new\(\s*sessions,\s*directory,\s*config\.module_auth\(\)\?,\s*config\.directory_mode,?\s*\);', source)
+        assert old, 'generated IAM handler registration'
         old = old.group(0)
         replacement = '''#[allow(dead_code)]
     #[derive(forklaunch_core::persistence::compliance::ComplianceMetadata)]
@@ -99,11 +99,11 @@ try:
         first_name: String,
     }
     let mut compliance = forklaunch_iam_base::directory::compliance::DirectoryCompliance::default();
-    if env::var("FORKLAUNCH_FIXTURE_CLASSIFIED_IAM").as_deref() == Ok("1") {
+    if std::env::var("FORKLAUNCH_FIXTURE_CLASSIFIED_IAM").as_deref() == Ok("1") {
         compliance = compliance.with_entity::<ClassifiedUser>(forklaunch_iam_base::directory::DirectoryKind::User, "id")?;
     }
-    let router = directory::iam_router_with_options(store, directory, auth, service_info(), compliance, directory_mode);'''
-        server.write_text(source.replace(old, replacement, 1))
+    let iam = IamHttp::new(sessions, directory, config.module_auth()?, config.directory_mode).with_compliance(compliance);'''
+        registrations.write_text(source.replace(old, replacement, 1))
     library = service / 'lib.rs'
     library.write_text(library.read_text() + '\npub const USER_OWNED_MARKER: &str = "preserved";\n')
     command('sync', 'service', 'iam')
@@ -118,7 +118,7 @@ try:
         assert '${IAM_BETTER_AUTH_TWO_FACTOR_ENABLED:-false}' in (app / 'docker-compose.yaml').read_text()
         assert 'BETTER_AUTH_TWO_FACTOR_ENABLED=false' in (service / '.env.example').read_text()
     else:
-        assert 'PostgresIamService' in (service / 'server.rs').read_text()
+        assert 'PostgresIamService' in (service / 'registrations.rs').read_text()
     run('cargo', 'build', '--workspace')
     command('openapi', 'export')
     command('sdk', 'generate', '--target', 'all', '--from', 'contract')

@@ -1154,7 +1154,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let templates = vec![
             RenderedTemplate { path: root.path().join("Cargo.toml"), content: "[package]\nname = \"iam\"\nversion = \"0.1.0\"\n".replace("\\\"", "\""), context: None },
-            RenderedTemplate { path: root.path().join("src/lib.rs"), content: render_rust_template("rust/iam/lib.rs", &rust_crate_template_data("iam", "IAM", true)), context: None },
+            RenderedTemplate { path: root.path().join("src/lib.rs"), content: render_rust_template("rust/cac/lib.rs", &rust_crate_template_data("iam", "IAM", true)), context: None },
             RenderedTemplate { path: root.path().join("src/main.rs"), content: "use iam::{service_info, write_contract_artifacts};\n#[tokio::main]\nasync fn main() -> Result<(), Box<dyn std::error::Error>> { let result = run().await; result }\nasync fn run() -> Result<(), Box<dyn std::error::Error>> { let _ = service_info(); Ok(()) }\n".into(), context: None },
             RenderedTemplate { path: root.path().join("src/routes/mod.rs"), content: native_routes_mod_rs(&[]), context: None },
         ];

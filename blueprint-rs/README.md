@@ -124,9 +124,8 @@ struct UserCompliance {
 
 let compliance = DirectoryCompliance::default()
     .with_entity::<UserCompliance>(DirectoryKind::User, "id")?;
-let router = forklaunch_iam_axum::directory::iam_router_with_compliance(
-    sessions, directory, auth, service_info, compliance,
-);
+let iam = forklaunch_iam_base::http::IamHttp::new(sessions, directory, auth, mode)
+    .with_compliance(compliance);
 ```
 
 The authenticated HTTP and MCP export/erase routes require the system role and
@@ -332,9 +331,9 @@ key rotation and callback deadlines remain the external signer's responsibility.
 
 ### Base IAM browser sessions
 
-Enable `forklaunch-iam-axum/browser-sessions` and construct
+Enable `forklaunch-iam-base/http` with `browser-sessions` and construct
 `BrowserIam::new(service, store, "__Host-iam", "https://your-app.example")` from
-`forklaunch_iam_axum::browser`. Supply a durable shared `tower_sessions::SessionStore`
+`forklaunch_iam_base::http::browser`. Supply a durable shared `tower_sessions::SessionStore`
 with a dedicated namespace for the tenant/application. MemoryStore is suitable
 only for tests/development. Generated modules enable encrypted PostgreSQL storage
 only when `SESSION_COOKIE_ORIGIN` is explicitly configured.

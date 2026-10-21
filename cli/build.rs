@@ -48,7 +48,7 @@ fn verify_rust_inventory() {
     verify_source_catalog(catalog);
     let blueprint = Path::new("../blueprint-rs/crates/implementations");
     if blueprint.is_dir() {
-        for module in ["iam", "billing", "cac", "ecommerce"] {
+        for module in ["billing", "cac", "ecommerce"] {
             let source = blueprint.join(module).join(format!("{module}-axum"));
             verify_embedded_source(
                 &source.join("Cargo.toml"),

@@ -1225,7 +1225,7 @@ mod tests {
     fn builtin_capability_registry_handles_profile_builders_without_runtime_imports() {
         for source in [
             billing_registry_fixture(),
-            include_str!("../../templates/rust/iam/lib.rs").replace("{{{name}}}", "identity"),
+            include_str!("../../templates/rust/iam/api/contracts/registry.rs").replace("{{{name}}}", "identity"),
             include_str!("../../templates/rust/cac/lib.rs").replace("{{{name}}}", "codes"),
         ] {
             let source = format!(
@@ -1518,7 +1518,7 @@ mod tests {
     fn capabilities_bind_every_generated_listener_entrypoint_and_legacy_mount() {
         for main in [
             include_str!("../../templates/rust/project/service/src/main.rs"),
-            include_str!("../../templates/rust/iam/main.rs"),
+            include_str!("../../templates/rust/project/module/server.rs"),
             include_str!("../../templates/rust/cac/main.rs"),
             include_str!("../../templates/rust/billing/main.rs"),
             include_str!("../../templates/rust/ecommerce/main.rs"),

@@ -12,7 +12,9 @@ default = []
 postgres = ["dep:sqlx", "forklaunch-core/postgres", "forklaunch-core/encryption", "dep:sha2", "tokio/rt-multi-thread", "tokio/macros"]
 oidc-sessions = ["postgres", "forklaunch-core/auth"]
 jwt-sessions = ["postgres", "dep:jsonwebtoken"]
-browser-sessions = ["postgres", "dep:tower-sessions", "dep:async-trait"]
+browser-sessions = ["postgres", "dep:tower-sessions", "dep:async-trait", "forklaunch-axum?/cookie-session"]
+# Contract-bound HTTP handlers for generated IAM services.
+http = ["postgres", "dep:axum", "dep:forklaunch-axum", "dep:form_urlencoded", "dep:tracing"]
 
 [dependencies]
 tower-sessions = { version = "0.15", optional = true }
@@ -33,9 +35,14 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "serd
 sha2 = { version = "0.11", optional = true }
 jsonwebtoken = { version = "11", features = ["aws_lc_rs"], optional = true }
 base16ct = { version = "1", features = ["alloc"] }
+axum = { version = "0.8", optional = true }
+forklaunch-axum = { version = "=0.2.0", path = "../../../../../framework-rs/crates/axum", features = ["remote-jwks"], optional = true }
+form_urlencoded = { version = "1", optional = true }
+tracing = { version = "0.1", optional = true }
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+tower = { version = "0.5", features = ["util"] }

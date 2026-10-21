@@ -558,7 +558,7 @@ Enable the `postgres` feature on `forklaunch-iam-base` to use `postgres::Postgre
 
 The asynchronous service persists users, organizations, roles, and sessions. Passwords use salted Argon2id; hashing runs on blocking tasks. Session tokens are random and stored as SHA-256 digests, expire after one hour, and are checked against current user status. Password changes revoke existing sessions atomically. Every query includes its tenant and uses transaction-local context; migrations enable and force row-level security for reads and writes. The container test exercises a restricted role and connection-pool reuse.
 
-`AsyncIamService`, `AsyncIamSessions`, and `AsyncIamRepository` expose asynchronous operations independently of the synchronous reference interface. `forklaunch-iam-axum` serves these traits with opaque bearer authentication and typed contract schemas. Runtime construction rejects PostgreSQL SUPERUSER and BYPASSRLS roles.
+`AsyncIamService`, `AsyncIamSessions`, and `AsyncIamRepository` expose asynchronous operations independently of the synchronous reference interface. `forklaunch-iam-base`'s `http` feature serves these traits with opaque bearer authentication and typed contract schemas. Runtime construction rejects PostgreSQL SUPERUSER and BYPASSRLS roles.
 
 Generate a persistent IAM module in an existing Rust or mixed application:
 

@@ -1,4 +1,5 @@
 use super::BrowserIam;
+use crate::{browser_sessions::PostgresCookieStore, postgres::PostgresIamService};
 use axum::{
     Json, Router,
     extract::rejection::JsonRejection,
@@ -9,7 +10,6 @@ use axum::{
 };
 use forklaunch_axum::cookie_session::CookieSession;
 use forklaunch_core::auth::oidc::OidcProvider;
-use forklaunch_iam_base::{browser_sessions::PostgresCookieStore, postgres::PostgresIamService};
 use serde::Deserialize;
 use std::sync::Arc;
 

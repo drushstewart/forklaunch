@@ -1450,34 +1450,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "forklaunch-iam-axum"
-version = "0.2.0"
-dependencies = [
- "axum",
- "forklaunch-axum",
- "forklaunch-core",
- "forklaunch-iam-base",
- "forklaunch-iam-interface",
- "form_urlencoded",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tower-sessions",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "forklaunch-iam-base"
 version = "0.2.0"
 dependencies = [
  "argon2",
  "async-trait",
+ "axum",
  "base16ct 1.0.0",
  "chrono",
+ "forklaunch-axum",
  "forklaunch-core",
  "forklaunch-iam-interface",
+ "form_urlencoded",
  "getrandom 0.4.2",
  "jsonwebtoken",
  "regex",
@@ -1486,7 +1470,9 @@ dependencies = [
  "sha2 0.11.1",
  "sqlx",
  "tokio",
+ "tower",
  "tower-sessions",
+ "tracing",
  "uuid",
 ]
 

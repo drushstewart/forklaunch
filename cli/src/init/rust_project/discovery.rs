@@ -98,7 +98,7 @@ pub(super) fn register(
 
 pub(super) fn routers(root: &Path, name: &str, directory: &Path) -> Result<()> {
     let routes = if directory.join("api/routes").is_dir() {
-        directory.join("api/routes")
+        service_routes_directory(directory)
     } else {
         directory.join("src/routes")
     };

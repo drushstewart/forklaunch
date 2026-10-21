@@ -1,4 +1,5 @@
 use super::*;
+use crate::core::rendered_template::TEMPLATES_DIR;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum BuiltinModule {
@@ -39,6 +40,10 @@ impl BuiltinModule {
     }
     pub(super) fn service_name(self) -> &'static str {
         self.template()
+    }
+    /// Modules generated with the ordinary service layout.
+    fn service_shaped(self) -> bool {
+        self == Self::Iam
     }
     fn description(self) -> &'static str {
         match self {
@@ -142,60 +147,15 @@ pub(super) fn generate_module_at(
         crate_module: name.to_case(Case::Snake),
         stripe: kind == BuiltinModule::BillingStripe,
     };
-    let templates = [
-        "Cargo.toml",
-        "src/lib.rs",
-        "src/main.rs",
-        "src/routes/mod.rs",
-        "build.rs",
-        "persistence/compliance_schema.rs",
-        ".env.example",
-        "README.md",
-    ]
+    ensure_embedded_framework(&root, dryrun)?;
+    let mut templates = if kind.service_shaped() {
+        module_templates(&crate_dir, name, kind, &data, shared_contracts)
+    } else {
+        legacy_templates(&crate_dir, name, kind, &data, shared_contracts)?
+    }
     .into_iter()
-    .map(|output| {
-        let filename = match output {
-            "Cargo.toml" => "Cargo.toml.template",
-            "src/lib.rs" => "lib.rs",
-            "src/main.rs" => "main.rs",
-            "persistence/compliance_schema.rs" => "compliance_schema.rs",
-            ".env.example" => "env.example",
-            _ => "README.md",
-        };
-        let template = if output == "build.rs" {
-            if shared_contracts { "rust/project/module-sdk-build.rs" } else { "rust/project/module-compliance-build.rs" }.to_owned()
-        } else if output == "src/routes/mod.rs" {
-            "rust/router/native_routes_mod.rs".to_owned()
-        } else {
-            format!("rust/{}/{filename}", kind.template())
-        };
-        RenderedTemplate {
-            path: crate_dir.join(output),
-            content: if output == "src/routes/mod.rs" {
-                native_routes_mod_rs(&[])
-            } else {
-                let mut rendered = render_rust_template(&template, &data);
-                if output == "Cargo.toml" {
-                    rendered.push_str("\n[build-dependencies]\nforklaunch-core = { path = \"../../.forklaunch/framework-rs/crates/core\", features = [\"compliance-artifact\"] }\n");
-                    if shared_contracts { rendered = with_contract_build_dependencies(&rendered).expect("valid generated module manifest"); }
-                }
-                rendered
-            },
-            context: None,
-        }
-    })
     .filter(|template| !template.path.exists())
     .collect::<Vec<_>>();
-    ensure_embedded_framework(&root, dryrun)?;
-    let mut templates = if !crate_dir.join("src/lib.rs").exists() {
-        let mut templates = native_layout::builtin_templates(&crate_dir, name, templates);
-        if !crate_dir.join("api/http").exists() {
-            http_adapter::embed(&crate_dir, kind, &mut templates)?;
-        }
-        templates
-    } else {
-        templates
-    };
     if shared_contracts {
         add_local_sdk_templates(&crate_dir, name, &mut templates)?;
     }
@@ -252,6 +212,107 @@ pub(super) fn generate_module_at(
     ensure_module_compose(&root, &name, kind, dryrun)?;
     ensure_rust_package_scripts(&root, RustProjectKind::Service, &name, dryrun)?;
     Ok(())
+}
+
+fn legacy_templates(crate_dir: &Path, name: &str, kind: BuiltinModule, data: &RustModuleTemplate, shared_contracts: bool) -> Result<Vec<RenderedTemplate>> {
+    let templates = [
+        "Cargo.toml",
+        "src/lib.rs",
+        "src/main.rs",
+        "src/routes/mod.rs",
+        "build.rs",
+        "persistence/compliance_schema.rs",
+        ".env.example",
+        "README.md",
+    ]
+    .into_iter()
+    .map(|output| {
+        let filename = match output {
+            "Cargo.toml" => "Cargo.toml.template",
+            "src/lib.rs" => "lib.rs",
+            "src/main.rs" => "main.rs",
+            "persistence/compliance_schema.rs" => "compliance_schema.rs",
+            ".env.example" => "env.example",
+            _ => "README.md",
+        };
+        let template = if output == "build.rs" {
+            if shared_contracts { "rust/project/module-sdk-build.rs" } else { "rust/project/module-compliance-build.rs" }.to_owned()
+        } else if output == "src/routes/mod.rs" {
+            "rust/router/native_routes_mod.rs".to_owned()
+        } else {
+            format!("rust/{}/{filename}", kind.template())
+        };
+        RenderedTemplate {
+            path: crate_dir.join(output),
+            content: if output == "src/routes/mod.rs" {
+                native_routes_mod_rs(&[])
+            } else {
+                let mut rendered = render_rust_template(&template, data);
+                if output == "Cargo.toml" {
+                    rendered.push_str("\n[build-dependencies]\nforklaunch-core = { path = \"../../.forklaunch/framework-rs/crates/core\", features = [\"compliance-artifact\"] }\n");
+                    if shared_contracts { rendered = with_contract_build_dependencies(&rendered).expect("valid generated module manifest"); }
+                }
+                rendered
+            },
+            context: None,
+        }
+    })
+    .collect::<Vec<_>>();
+    let templates = if !crate_dir.join("src/lib.rs").exists() {
+        let mut templates = native_layout::builtin_templates(&crate_dir, name, templates);
+        if !crate_dir.join("api/http").exists() {
+            http_adapter::embed(&crate_dir, kind, &mut templates)?;
+        }
+        templates
+    } else {
+        templates
+    };
+    Ok(templates)
+}
+
+/// Service-shaped module sources: files every module shares, then the
+/// module's own configuration, registrations, domain, persistence and API.
+fn module_templates(dir: &Path, name: &str, kind: BuiltinModule, data: &RustModuleTemplate, shared_contracts: bool) -> Vec<RenderedTemplate> {
+    fn collect(directory: &Dir<'_>, root: &Path, files: &mut Vec<PathBuf>) {
+        for file in directory.files() {
+            files.push(file.path().strip_prefix(root).expect("module template path").to_path_buf());
+        }
+        for child in directory.dirs() {
+            collect(child, root, files);
+        }
+    }
+    let mut output = Vec::new();
+    for root in ["rust/project/module".to_owned(), format!("rust/{}", kind.template())] {
+        let mut files = Vec::new();
+        collect(TEMPLATES_DIR.get_dir(&root).expect("embedded module templates"), Path::new(&root), &mut files);
+        for relative in files {
+            let source = format!("{root}/{}", relative.to_string_lossy().replace('\\', "/"));
+            let relative = match relative.to_str() {
+                Some("Cargo.toml.template") => PathBuf::from("Cargo.toml"),
+                Some("env.example") => PathBuf::from(".env.example"),
+                _ => relative,
+            };
+            output.push(RenderedTemplate { path: dir.join(relative), content: render_rust_template(&source, data), context: None });
+        }
+    }
+    let build = if shared_contracts { "rust/project/module-sdk-build.rs" } else { "rust/project/module-compliance-build.rs" };
+    for (path, content) in [
+        ("build.rs", render_rust_template(build, data)),
+        ("api/contracts/mod.rs", "pub mod registry;\npub mod extensions;\n".to_owned()),
+        ("api/contracts/extensions/mod.rs", extension_contracts_mod(&[])),
+        ("api/routes/extensions/mod.rs", native_routes_mod_rs(&[])),
+        ("Makefile", native_layout::makefile(name, true)),
+    ] {
+        output.push(RenderedTemplate { path: dir.join(path), content, context: None });
+    }
+    let cargo = output.iter_mut().find(|file| file.path == dir.join("Cargo.toml")).expect("module manifest");
+    cargo.content.push_str(&format!(
+        "\n[lib]\npath = \"lib.rs\"\n[[bin]]\nname = \"{name}\"\npath = \"main.rs\"\n\n[build-dependencies]\nforklaunch-core = {{ path = \"../../.forklaunch/framework-rs/crates/core\", features = [\"compliance-artifact\"] }}\n"
+    ));
+    if shared_contracts {
+        cargo.content = with_contract_build_dependencies(&cargo.content).expect("valid generated module manifest");
+    }
+    output
 }
 
 const REGISTRY_ENVIRONMENT: &[&str] = &[
@@ -753,6 +814,53 @@ mod tests {
             assert_eq!(ecommerce_worker_owner(worker), Some("store"));
             assert_eq!(worker.additional_properties["x-user-marker"].as_str(), Some("preserved"));
             assert_eq!(worker.environment.as_ref().unwrap()["WORKER_BATCH_SIZE"], "2");
+        }
+    }
+
+    #[test]
+    fn service_shaped_modules_bind_each_operation_once_through_thin_controllers() {
+        for kind in [BuiltinModule::Iam] {
+            let root = tempfile::tempdir().unwrap();
+            let dir = root.path().join("src/module");
+            let data = RustModuleTemplate {
+                name: "module".into(),
+                description: escape_toml_string(kind.description()),
+                crate_module: "module".into(),
+                stripe: false,
+            };
+            let files = module_templates(&dir, "module", kind, &data, true);
+            let source = |relative: &str| files.iter().find(|file| file.path == dir.join(relative))
+                .unwrap_or_else(|| panic!("{} lacks {relative}", kind.variant())).content.as_str();
+            for file in ["main.rs", "lib.rs", "bootstrapper.rs", "application.rs", "registrations.rs", "server.rs",
+                "config.rs", "error.rs", "domain/mod.rs", "persistence/mod.rs", "api/contracts/registry.rs",
+                "api/routes/extensions/mod.rs", "Makefile", "build.rs", ".env.example", "README.md"] {
+                let _ = source(file);
+            }
+            assert!(!files.iter().any(|file| file.path.starts_with(dir.join("api/http"))));
+            assert_eq!(source("server.rs").matches(".serve_with_default_mcp(").count(), 1);
+            assert!(source("api/routes/mod.rs").contains("extensions::register_router("));
+            for file in files.iter().filter(|file| file.path.extension().is_some_and(|extension| extension == "rs")) {
+                syn::parse_file(&file.content).unwrap_or_else(|error| panic!("{}: {error}", file.path.display()));
+            }
+            let route = regex::Regex::new(r#"\.route\("(\w+)", (\w+)::(\w+)\(state\)\)"#).unwrap();
+            let mut operations = Vec::new();
+            for file in files.iter().filter(|file| file.path.parent() == Some(&dir.join("api/routes"))) {
+                let resource = file.path.file_stem().unwrap().to_str().unwrap();
+                if resource == "mod" {
+                    continue;
+                }
+                assert!(source("api/routes/mod.rs").contains(&format!("{resource}::mount(")), "{resource} is mounted");
+                for capture in route.captures_iter(&file.content) {
+                    let controller = source(&format!("api/controllers/{}.rs", &capture[2]));
+                    assert!(controller.contains(&format!("pub fn {}(state: &AppState)", &capture[3])));
+                    assert!(controller.contains(&format!("handler(\"{}\")", &capture[1])));
+                    operations.push(capture[1].to_owned());
+                }
+            }
+            let count = operations.len();
+            operations.sort();
+            operations.dedup();
+            assert_eq!(operations.len(), count, "{} routes an operation twice", kind.variant());
         }
     }
 

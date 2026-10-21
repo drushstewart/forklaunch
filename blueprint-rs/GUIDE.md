@@ -12,8 +12,9 @@ Shared module types (errors, paging, audit and session context) and managed
 platform clients live in the framework, as they do for TypeScript in
 `@forklaunch/core/http`: `forklaunch_core::domain` and `forklaunch_core::http`
 behind the `domain`, `provider-http`, `stripe-webhook` and `instance-gateway`
-features. Module HTTP layers (`*-axum`) are not published; generation copies
-them into each application, as TypeScript modules copy their routes.
+features. Each implementation crate's `http` feature provides the module's
+contract-bound handlers; generated modules bind them in thin controllers and
+routes, as TypeScript modules call their implementation packages.
 
 | Crate | Responsibility | Optional features and defaults |
 | --- | --- | --- |
@@ -22,14 +23,13 @@ them into each application, as TypeScript modules copy their routes.
 | [forklaunch-ecommerce-interface](crates/interfaces/ecommerce-interface/src/lib.rs) | Product, variant, inventory, cart, order and payment contracts/types. | —; default: none |
 | [forklaunch-billing-interface](crates/interfaces/billing-interface/src/lib.rs) | Customer, plan, subscription, checkout and billing contracts/types. | —; default: none |
 | [forklaunch-worker-interface](crates/interfaces/worker-interface/src/lib.rs) | Queue/job, lease, administration and handler types. | —; default: none |
-| [forklaunch-iam-base](crates/implementations/iam/iam-base/src/lib.rs) | Directory/auth service implementations and optional PostgreSQL persistence. | `postgres`; default: none |
+| [forklaunch-iam-base](crates/implementations/iam/iam-base/src/lib.rs) | Directory/auth service implementations, optional PostgreSQL persistence and HTTP handlers. | `postgres`, `jwt-sessions`, `browser-sessions`, `oidc-sessions`, `http`; default: none |
 | [forklaunch-cac-base](crates/implementations/cac/cac-base/src/lib.rs) | Code-set service implementations. | —; default: none |
 | [forklaunch-ecommerce-base](crates/implementations/ecommerce/ecommerce-base/src/lib.rs) | Atomic local commerce storage/business rules, compliance and retention. | `worker`, `postgres`; default: none |
 | [forklaunch-ecommerce-axum](crates/implementations/ecommerce/ecommerce-axum/src/lib.rs) | Commerce HTTP/MCP contracts and request mapping. | —; default: none |
 | [forklaunch-ecommerce-stripe](crates/implementations/ecommerce/ecommerce-stripe/src/lib.rs) | Stripe checkout/capture/webhook integration. | —; default: none |
 | [forklaunch-ecommerce-paypal](crates/implementations/ecommerce/ecommerce-paypal/src/lib.rs) | PayPal checkout/capture integration. | —; default: none |
 | [forklaunch-cac-axum](crates/implementations/cac/cac-axum/src/lib.rs) | CAC HTTP/MCP contracts and request mapping. | —; default: none |
-| [forklaunch-iam-axum](crates/implementations/iam/iam-axum/src/lib.rs) | Directory IAM HTTP/MCP contracts and request mapping. | —; default: none |
 | [forklaunch-billing-base](crates/implementations/billing/billing-base/src/lib.rs) | Billing services, store seams and optional PostgreSQL persistence. | `postgres`; default: none |
 | [forklaunch-billing-stripe](crates/implementations/billing/billing-stripe/src/lib.rs) | Stripe provider and optional remote client. | `stripe-client`; default: none |
 | [forklaunch-billing-axum](crates/implementations/billing/billing-axum/src/lib.rs) | Billing HTTP/MCP contracts and request mapping. | —; default: none |

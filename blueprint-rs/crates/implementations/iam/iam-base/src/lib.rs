@@ -9,6 +9,8 @@ use std::{
 pub mod browser_sessions;
 pub mod credentials;
 pub mod directory;
+#[cfg(feature = "http")]
+pub mod http;
 #[cfg(feature = "jwt-sessions")]
 pub mod jwt_sessions;
 #[cfg(feature = "postgres")]

@@ -2,6 +2,8 @@
 
 PostgreSQL IAM with tenant isolation, encrypted directory CRUD, Argon2id credentials, and persistent opaque or explicitly configured RS256 bearer sessions.
 
+The crate follows the generated service layout. `config.rs` reads trusted settings, `registrations.rs` builds the stores and `AppState`, and `api/routes/<resource>.rs` binds each IAM contract to the controller in `api/controllers/<resource>.rs`. Controllers return handlers from `forklaunch-iam-base`, which owns storage, sessions, audit and authorization; replace a controller to customize one operation. Routers added with `forklaunch init router` live in `api/routes/extensions`.
+
 Apply migrations using a schema-owner connection:
 
 ```sh
