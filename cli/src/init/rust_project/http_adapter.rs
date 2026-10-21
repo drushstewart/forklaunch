@@ -12,8 +12,7 @@ static MODULE_HTTP: Dir = include_dir!("$CARGO_MANIFEST_DIR/src/templates/rust/m
 fn adapter(kind: modules::BuiltinModule) -> (&'static str, &'static str, &'static str) {
     match kind.template() {
         "cac" => ("cac", "implementations/cac/cac-axum", "forklaunch-cac-axum"),
-        "ecommerce" => ("ecommerce", "implementations/ecommerce/ecommerce-axum", "forklaunch-ecommerce-axum"),
-        _ => ("billing", "implementations/billing/billing-axum", "forklaunch-billing-axum"),
+        _ => ("ecommerce", "implementations/ecommerce/ecommerce-axum", "forklaunch-ecommerce-axum"),
     }
 }
 

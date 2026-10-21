@@ -43,7 +43,7 @@ impl BuiltinModule {
     }
     /// Modules generated with the ordinary service layout.
     fn service_shaped(self) -> bool {
-        self == Self::Iam
+        matches!(self, Self::Iam | Self::BillingBase | Self::BillingStripe)
     }
     fn description(self) -> &'static str {
         match self {
@@ -292,7 +292,11 @@ fn module_templates(dir: &Path, name: &str, kind: BuiltinModule, data: &RustModu
                 Some("env.example") => PathBuf::from(".env.example"),
                 _ => relative,
             };
-            output.push(RenderedTemplate { path: dir.join(relative), content: render_rust_template(&source, data), context: None });
+            let content = render_rust_template(&source, data);
+            // Variant-only sources (Stripe callbacks) render empty elsewhere.
+            if !content.trim().is_empty() {
+                output.push(RenderedTemplate { path: dir.join(relative), content, context: None });
+            }
         }
     }
     let build = if shared_contracts { "rust/project/module-sdk-build.rs" } else { "rust/project/module-compliance-build.rs" };
@@ -325,9 +329,6 @@ const REGISTRY_ENVIRONMENT: &[&str] = &[
 /// retain their generated output layout until the application explicitly migrates.
 fn add_local_sdk_templates(dir: &Path, name: &str, templates: &mut Vec<RenderedTemplate>) -> Result<()> {
     let host = contracts_layout::new_host_directory(dir);
-    let registry_uses_http = templates
-        .iter()
-        .any(|file| file.path == dir.join("api/contracts/registry.rs") && file.content.contains("crate::api::http"));
     let service = templates.iter_mut().find(|file| file.path == dir.join("Cargo.toml"))
         .context("Missing fresh module manifest")?;
     let mut cargo: toml_edit::DocumentMut = service.content.parse()?;
@@ -335,22 +336,6 @@ fn add_local_sdk_templates(dir: &Path, name: &str, templates: &mut Vec<RenderedT
         "[package]\nname = \"{name}-contracts\"\nversion.workspace = true\nedition.workspace = true\nlicense.workspace = true\npublish = false\n[lib]\npath = \"lib.rs\"\n"
     ).parse()?;
     host_cargo["dependencies"] = cargo["build-dependencies"].clone();
-    // Registries that project contracts through the module's HTTP layer compile
-    // that layer in the host too, with the dependencies it needs.
-    if registry_uses_http {
-        let host_dependencies = host_cargo["dependencies"].as_table_mut().context("Expected host dependencies")?;
-        for (dependency, spec) in cargo["dependencies"].as_table().context("Expected module dependencies")?.iter() {
-            if dependency != "contracts" && !host_dependencies.contains_key(dependency) {
-                host_dependencies.insert(dependency, spec.clone());
-            }
-        }
-        if let Some(features) = cargo.get("features") {
-            host_cargo["features"] = features.clone();
-        }
-        if let Some(development) = cargo.get("dev-dependencies") {
-            host_cargo["dev-dependencies"] = development.clone();
-        }
-    }
     let features = host_cargo["dependencies"]["forklaunch-core"]["features"].as_array_mut()
         .context("Missing registry core features")?;
     if !features.iter().any(|feature| feature.as_str() == Some("typed-schema")) {
@@ -369,21 +354,8 @@ fn add_local_sdk_templates(dir: &Path, name: &str, templates: &mut Vec<RenderedT
     ).replace("contracts::registry::configured_registry()?", "contracts::configured_registry()?");
     templates.extend([
         RenderedTemplate { path: host.join("Cargo.toml"), content: host_cargo.to_string(), context: None },
-        RenderedTemplate { path: host.join("lib.rs"), content: format!("//! Private registry compiler host; declarations remain owned by the service.\n#[path = \"../../api/contracts/registry.rs\"]\npub mod registry;\n#[path = \"../../api/contracts/extensions/mod.rs\"]\npub mod extensions;\npub use registry::configured_registry;\n{}",
-            if registry_uses_http { "pub mod api;\n" } else { "" }), context: None },
+        RenderedTemplate { path: host.join("lib.rs"), content: "//! Private registry compiler host; declarations remain owned by the service.\n#[path = \"../../api/contracts/registry.rs\"]\npub mod registry;\n#[path = \"../../api/contracts/extensions/mod.rs\"]\npub mod extensions;\npub use registry::configured_registry;\n".into(), context: None },
     ]);
-    if registry_uses_http {
-        // One copy only: the service uses the host's layer, so registry and
-        // runtime share the same configuration types.
-        let api = templates.iter_mut().find(|file| file.path == dir.join("api/mod.rs"))
-            .context("Missing module api exports")?;
-        api.content = api.content.replace("pub mod http;\n", "pub use ::contracts::api::http;\n");
-        templates.push(RenderedTemplate {
-            path: host.join("api.rs"),
-            content: "//! The module's HTTP layer, which its registry uses to project contracts.\n#[path = \"../../api/http/mod.rs\"]\npub mod http;\n".into(),
-            context: None,
-        });
-    }
     let exports = templates.iter_mut().find(|file| file.path == dir.join("api/contracts/mod.rs"))
         .context("Missing fresh module contract exports")?;
     exports.content = "//! Shared declarations used by both runtime and contract compilation.\npub use contracts::{extensions, registry};\n".into();
@@ -774,7 +746,7 @@ pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
 /// Registry compilation shares the runtime descriptors; no server or database starts at build time.
 fn with_contract_build_dependencies(source: &str) -> Result<String> {
     let mut cargo: toml_edit::DocumentMut = source.parse()?;
-    for name in ["forklaunch-core", "forklaunch-iam-interface", "forklaunch-cac-interface", "forklaunch-ecommerce-interface", "forklaunch-billing-interface", "forklaunch-billing-axum"] {
+    for name in ["forklaunch-core", "forklaunch-iam-interface", "forklaunch-cac-interface", "forklaunch-ecommerce-interface", "forklaunch-billing-interface", "forklaunch-billing-stripe"] {
         if let Some(dependency) = cargo["dependencies"].get(name).cloned() {
             cargo["build-dependencies"][name] = dependency;
         }
@@ -819,14 +791,14 @@ mod tests {
 
     #[test]
     fn service_shaped_modules_bind_each_operation_once_through_thin_controllers() {
-        for kind in [BuiltinModule::Iam] {
+        for kind in [BuiltinModule::Iam, BuiltinModule::BillingBase, BuiltinModule::BillingStripe] {
             let root = tempfile::tempdir().unwrap();
             let dir = root.path().join("src/module");
             let data = RustModuleTemplate {
                 name: "module".into(),
                 description: escape_toml_string(kind.description()),
                 crate_module: "module".into(),
-                stripe: false,
+                stripe: kind == BuiltinModule::BillingStripe,
             };
             let files = module_templates(&dir, "module", kind, &data, true);
             let source = |relative: &str| files.iter().find(|file| file.path == dir.join(relative))

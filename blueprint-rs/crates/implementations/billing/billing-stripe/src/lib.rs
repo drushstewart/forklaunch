@@ -14,6 +14,8 @@ pub mod bound_reads;
 pub mod checkout_repair;
 pub mod client;
 mod configured_cached_reads;
+#[cfg(feature = "http")]
+pub mod http;
 #[cfg(feature = "postgres-identity")]
 pub mod managed_creation;
 #[cfg(feature = "postgres-reconciliation")]

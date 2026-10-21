@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[2]
-MODULES = ("billing", "cac", "ecommerce")
+MODULES = ("cac", "ecommerce")
 with tempfile.TemporaryDirectory(prefix="forklaunch-inventory-") as temporary:
     root = Path(temporary)
     binary = root / "inventory-check"
@@ -30,11 +30,11 @@ with tempfile.TemporaryDirectory(prefix="forklaunch-inventory-") as temporary:
         (target / "Cargo.toml.template").symlink_to(source / "Cargo.toml")
         (target / "src/lib.rs").symlink_to(source / "src/lib.rs")
     subprocess.run([str(binary)], cwd=cli, capture_output=True, check=True)
-    billing = implementations / "billing/billing-axum/src"
-    (billing / ".env").write_text("private fixture")
+    ecommerce = implementations / "ecommerce/ecommerce-axum/src"
+    (ecommerce / ".env").write_text("private fixture")
     ignored = subprocess.run([str(binary)], cwd=cli, capture_output=True, text=True, check=True)
     assert ".env" not in ignored.stdout
-    (billing / "webhook.rs").write_text("")
+    (ecommerce / "pricing.rs").write_text("")
     added = subprocess.run([str(binary)], cwd=cli, capture_output=True, text=True)
     assert added.returncode and "inventory is stale" in added.stderr
 print("PASS packaged source, missing module HTTP file rejection, synchronized inventory and private environment exclusion")

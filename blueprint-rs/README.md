@@ -407,7 +407,7 @@ legacy. Application-defined custom routes are unaffected by package date project
 Generated Stripe billing can explicitly select `BILLING_IDENTITY_PROFILE=bound-checkout-v1`
 with bounded `BILLING_BOUND_CHECKOUT_CONFIG` and a separate
 `BILLING_PUBLISHER_DATABASE_URL`. See the
-[Axum profile guide](crates/implementations/billing/billing-axum/README.md).
+[HTTP profile guide](crates/implementations/billing/billing-stripe/HTTP.md).
 The profile adds create/get/inspect Checkout operations over HTTP/MCP and both
 SDKs, preserving local UUIDs and durable creation evidence. Unknown outcomes return
 202 without redispatch; historical inspection returns IDs without reviving URLs.

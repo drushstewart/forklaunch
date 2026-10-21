@@ -1562,17 +1562,17 @@ jobs:
       - name: Configured Checkout and PaymentLink cached reads
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_cached_reads
-          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --features bound-checkout --test configured_cached_reads -- --ignored --nocapture
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_cached_reads -- --ignored --nocapture
       - name: Configured PaymentLink update preflight, coercion, HTTP and MCP
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_payment_link_update
-          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --features bound-checkout --test configured_payment_link_update -- --ignored --nocapture
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_payment_link_update -- --ignored --nocapture
       - name: Configured Subscription update preflight and HTTP dispatch
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_subscription_update
-          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --features bound-checkout --test configured_subscription_update -- --ignored --nocapture
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_subscription_update -- --ignored --nocapture
       - name: Bound PaymentLink expiration recovery HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_payment_link_expiration_recovery_runtime.mjs
       - name: Bound PaymentLink expiration HTTP, MCP and both SDKs
@@ -1596,7 +1596,7 @@ jobs:
       - name: Bound Subscription read provenance and provider PostgreSQL checks
         run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_subscription_creation bound_subscription_created_read_matrix -- --ignored --nocapture
       - name: Billing date HTTP, MCP and generated SDK profile
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test request_dates -- --ignored
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features http --test http_request_dates -- --ignored
       - run: node cli/tests/rust_billing_dto_types.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1824,7 +1824,7 @@ jobs:
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_portal_creation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_checkout_creation -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test paused_effect -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-axum --test http -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features http --test http_router -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test business_rules -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test provider_bindings -- --ignored
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test payment_resume -- --ignored

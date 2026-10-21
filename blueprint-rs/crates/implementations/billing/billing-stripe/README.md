@@ -1,5 +1,7 @@
 # Stripe billing
 
+The optional `http` feature serves billing over HTTP and MCP; see [HTTP.md](HTTP.md).
+
 `StripeBillingClient::verify_context(expected_account, expected_livemode)` verifies a direct account using authenticated `GET /v1/account` and `GET /v1/balance`. Expectations must come from trusted server configuration. The account response must match the expected account ID and the balance must explicitly report the expected boolean mode. No account or mode is inferred from API key prefixes. Restricted keys without both read permissions fail closed. Requests use the client's existing bounded HTTPS/trusted-proxy transport and pinned API version; no Connect account header or provider mutation is added.
 
 The returned `VerifiedStripeContext` has no public constructor, clone or serializer. `ensure_current` requires the same immutable client generation and less than five seconds elapsed since verification started. A cloned client retains the generation; a newly constructed client or version reconfiguration requires verification again. Future binding lookups/provider mutations must obtain fresh verification for each operation and recheck immediately before use. This observed context is not a financial-operation capability, proof of local ownership, or guarantee that a remote credential/proxy has not changed after the reads. Existing legacy billing trait methods are not gated by this API.

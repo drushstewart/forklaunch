@@ -8,7 +8,7 @@ import {spawnSync} from 'node:child_process';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const temporary=mkdtempSync(path.join(tmpdir(),'fl-billing-date-artifacts-'));
 const target=process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target');
-const template=readFileSync(path.join(root,'cli/src/templates/rust/billing/lib.rs'),'utf8');
+const template=readFileSync(path.join(root,'cli/src/templates/rust/billing/api/contracts/registry.rs'),'utf8');
 function run(command,args,env={}) {
  const result=spawnSync(command,args,{cwd:temporary,env:{...process.env,CARGO_TARGET_DIR:target,CARGO_INCREMENTAL:'0',...env},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
  assert.equal(result.status,0,result.stderr);return result.stdout;
@@ -19,11 +19,12 @@ try {
   'forklaunch-core':'framework-rs/crates/core',
   'forklaunch-core':'framework-rs/crates/core',
   'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/billing-interface',
-  'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/billing-axum'
+  'forklaunch-billing-stripe':'blueprint-rs/crates/implementations/billing/billing-stripe'
  };
- const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-core'?', features = ["openapi"]':name==='forklaunch-billing-axum'?', features = ["bound-checkout"]':''} }`).join('\n');
+ const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-core'?', features = ["openapi"]':name==='forklaunch-billing-stripe'?', features = ["bound-checkout"]':''} }`).join('\n');
  writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-date-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}`);
- writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] }');
+ writeFileSync(path.join(temporary,'src/lib.rs'),'mod extensions;\nmod registry;\npub use registry::*;\n');
+ writeFileSync(path.join(temporary,'src/extensions.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] }');
  writeFileSync(path.join(temporary,'src/main.rs'),`fn main() {
   let contract=std::path::PathBuf::from(std::env::var("ARTIFACT_DIR").unwrap()).join("contract.json");
   let openapi=contract.with_file_name("openapi.json");
@@ -34,7 +35,7 @@ try {
  }`);
  for(const stripe of [false,true]) {
   const rendered=template.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-date-artifacts');
-  assert.ok(!rendered.includes('{{'));writeFileSync(path.join(temporary,'src/lib.rs'),rendered);
+  assert.ok(!rendered.includes('{{'));writeFileSync(path.join(temporary,'src/registry.rs'),rendered);
   run('cargo',['build','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
   const results=[];
   for(const profile of ['legacy','utc-iso-and-epoch','invalid']) {

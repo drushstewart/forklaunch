@@ -2,6 +2,8 @@
 
 Tenant-bound persistent billing with thirty plan, subscription, checkout session, payment link and billing portal operations, compliance and health. Internal routes use request HMAC; billing portal routes require an asymmetric JWT with the `admin` role. HTTP and Streamable HTTP MCP share the listener and authentication rules. MCP defaults to `/mcp`; configure `MCP_ENABLED`, `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` as needed.
 
+The crate follows the generated service layout. `config.rs` reads trusted settings, `registrations.rs` builds the store, provider client and `AppState`, and `api/routes/<resource>.rs` binds each billing contract to the controller in `api/controllers/<resource>.rs`. Controllers return handlers from `forklaunch-billing-stripe`, which owns provider flows, bound capabilities, audit and authorization; replace a controller to customize one operation. Routers added with `forklaunch init router` live in `api/routes/extensions`.
+
 Apply `cargo run -p {{{name}}} -- --migrate` with a schema owner. Run the service with a separate role without SUPERUSER/BYPASSRLS: schema USAGE and SELECT/INSERT/UPDATE/DELETE on `fl_billing.records`, plus INSERT on `fl_billing.sensitive_read_audit`. Every read uses the configured tenant and audits the verified actor. Provider data and opaque session URIs use tenant-derived encryption. Retain previous keys with `LEGACY_ENCRYPTION_KEYS` during rotation.
 
 Checkout/payment-link/portal records use a ten-minute PostgreSQL TTL cache. Set `BILLING_DATABASE_BACKUP=true` for durable backups. Provider session expiry remains separate from cache expiry. Plans and subscriptions are durable.

@@ -1213,7 +1213,7 @@ mod tests {
             name: &'static str,
             stripe: bool,
         }
-        ramhorns::Template::new(include_str!("../../templates/rust/billing/lib.rs"))
+        ramhorns::Template::new(include_str!("../../templates/rust/billing/api/contracts/registry.rs"))
             .unwrap()
             .render(&Context {
                 name: "billing",
@@ -1453,7 +1453,8 @@ mod tests {
             ("Cargo.toml", cargo.to_owned()),
             ("lib.rs", "pub mod api;\n".to_owned()),
             ("server.rs", "pub fn server() { router.serve_with_default_mcp(listener, registry); }\n".to_owned()),
-            ("api/contracts/registry.rs", billing_registry_fixture()),
+            // A module that does not already depend on Stripe billing.
+            ("api/contracts/registry.rs", include_str!("../../templates/rust/iam/api/contracts/registry.rs").to_owned()),
         ] {
             std::fs::write(service.join(path), text).unwrap();
         }
@@ -1520,7 +1521,6 @@ mod tests {
             include_str!("../../templates/rust/project/service/src/main.rs"),
             include_str!("../../templates/rust/project/module/server.rs"),
             include_str!("../../templates/rust/cac/main.rs"),
-            include_str!("../../templates/rust/billing/main.rs"),
             include_str!("../../templates/rust/ecommerce/main.rs"),
             "router.into_router_with_default_mcp()?;",
         ] {

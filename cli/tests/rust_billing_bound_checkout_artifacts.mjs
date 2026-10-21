@@ -8,7 +8,7 @@ import {spawnSync} from 'node:child_process';
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const temporary=mkdtempSync(path.join(tmpdir(),'fl-billing-bound-checkout-artifacts-'));
 const target=process.env.CARGO_TARGET_DIR??path.join(root,'blueprint-rs/target');
-const template=readFileSync(path.join(root,'cli/src/templates/rust/billing/lib.rs'),'utf8');
+const template=readFileSync(path.join(root,'cli/src/templates/rust/billing/api/contracts/registry.rs'),'utf8');
 function run(command,args,env={}) {
  const result=spawnSync(command,args,{cwd:temporary,env:{...Object.fromEntries(Object.entries(process.env).filter(([key])=>!['BILLING_BOUND_CHECKOUT_CONFIG','BILLING_BOUND_BILLING_CONFIG','BILLING_PUBLISHER_DATABASE_URL'].includes(key))),CARGO_TARGET_DIR:target,CARGO_INCREMENTAL:'0',...env},encoding:'utf8',timeout:300000,maxBuffer:16*1024*1024});
  assert.equal(result.status,0,result.stderr);return result.stdout;
@@ -20,11 +20,12 @@ try {
   'forklaunch-core':'framework-rs/crates/core',
   'forklaunch-core':'framework-rs/crates/core',
   'forklaunch-billing-interface':'blueprint-rs/crates/interfaces/billing-interface',
-  'forklaunch-billing-axum':'blueprint-rs/crates/implementations/billing/billing-axum'
+  'forklaunch-billing-stripe':'blueprint-rs/crates/implementations/billing/billing-stripe'
  };
- const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-core'?', features = ["openapi"]':name==='forklaunch-billing-axum'?', features = ["bound-checkout", "typescript-routing"]':''} }`).join('\n');
+ const dependencies=Object.entries(crates).map(([name,relative])=>`${name} = { path = ${JSON.stringify(path.join(root,relative))}${name==='forklaunch-core'?', features = ["openapi"]':name==='forklaunch-billing-stripe'?', features = ["bound-checkout", "typescript-routing"]':''} }`).join('\n');
  writeFileSync(path.join(temporary,'Cargo.toml'),`[package]\nname="fl-billing-bound-checkout-artifacts"\nversion="0.1.0"\nedition="2024"\n[dependencies]\nserde_json="1"\n${dependencies}`);
- writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] }');
+ writeFileSync(path.join(temporary,'src/lib.rs'),'mod extensions;\nmod registry;\npub use registry::*;\n');
+ writeFileSync(path.join(temporary,'src/extensions.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] }');
  writeFileSync(path.join(temporary,'src/main.rs'),`fn main() {
   let contract=std::path::PathBuf::from(std::env::var("ARTIFACT_DIR").unwrap()).join("contract.json");
   let openapi=contract.with_file_name("openapi.json");
@@ -35,7 +36,7 @@ try {
  }`);
  for(const stripe of [false,true]) {
   const rendered=template.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-date-artifacts');
-  assert.ok(!rendered.includes('{{'));writeFileSync(path.join(temporary,'src/lib.rs'),rendered);
+  assert.ok(!rendered.includes('{{'));writeFileSync(path.join(temporary,'src/registry.rs'),rendered);
   run('cargo',['build','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
   const configured={deploymentLabel:'owned',accountId:'acct_private',livemode:false,plans:[{localPlanId:'11111111-1111-4111-8111-111111111111',creationOperationId:'22222222-2222-4222-8222-222222222222'}],successUrl:'https://private.example/success',cancelUrl:'https://private.example/cancel'};
   const aggregate={deploymentLabel:'owned',accountId:'acct_private',livemode:false,portal:{configurationId:'bpc_private',returnUrl:'https://private.example/return'}};
@@ -149,27 +150,16 @@ try {
   }
 
  }
- // Compile the real binary template too: library-only metadata cannot prove startup wiring.
- const mainTemplate=readFileSync(path.join(root,'cli/src/templates/rust/billing/main.rs'),'utf8');
+ // Startup wiring lives in the module's registrations; generated module builds compile it.
+ const registrationsTemplate=readFileSync(path.join(root,'cli/src/templates/rust/billing/registrations.rs'),'utf8');
  const manifestTemplate=readFileSync(path.join(root,'cli/src/templates/rust/billing/Cargo.toml.template'),'utf8');
- const manifest=manifestTemplate.replaceAll('{{{name}}}','fl-billing-bound-checkout-artifacts').replaceAll('{{{description}}}','Owned template compilation proof')
-  .replace('version.workspace = true','version = "0.1.0"').replace('edition.workspace = true','edition = "2024"')
-  .replace('license.workspace = true','license = "MIT"').replace('authors.workspace = true','authors = []')
-  .replaceAll('../../.forklaunch/',`${root}/`);
- writeFileSync(path.join(temporary,'Cargo.toml'),`${manifest}`);
- writeFileSync(path.join(temporary,'src/routes.rs'),'pub fn contracts() -> Vec<forklaunch_core::contract::RouteContract> { vec![] } pub fn register_router(router: forklaunch_axum::router::ForkLaunchRouter) -> forklaunch_axum::router::ForkLaunchRouter { router }');
  for(const stripe of [false,true]) {
-  const render=text=>text.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body).replaceAll('{{{name}}}','billing-checkout-artifacts').replaceAll('{{crate_module}}','fl_billing_bound_checkout_artifacts');
-  const renderedManifest=render(manifest);
-  assert.equal(renderedManifest.includes('"typescript-routing"'),stripe,'only generated Stripe opts into pinned case routing');
-  writeFileSync(path.join(temporary,'Cargo.toml'),`${renderedManifest}`);
-  writeFileSync(path.join(temporary,'src/lib.rs'),render(template));
-  const renderedMain=render(mainTemplate);
-  assert.equal(renderedMain.includes('BillingBackend::stripe(store,client).with_configured_hmac(true).with_configured_subscription_updates(true)'),stripe,'generated Stripe backend selects configured owner preflight; base template does not');
-  assert.equal(renderedMain.includes('.with_configured_cached_reads(true)'),stripe,'generated Stripe backend selects configured cached GET mapping; generic base stays unchanged');
-  assert.equal(renderedMain.includes('.with_configured_payment_link_updates(true)'),stripe,'generated Stripe backend selects configured PaymentLink update preflight independently from reads');
-  writeFileSync(path.join(temporary,'src/main.rs'),renderedMain);
-  run('cargo',['check','--quiet','--manifest-path',path.join(temporary,'Cargo.toml')]);
+  const render=text=>text.replace(/{{#stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?body:'').replace(/{{\^stripe}}([\s\S]*?){{\/stripe}}/g,(_,body)=>stripe?'':body);
+  assert.equal(render(manifestTemplate).includes('"typescript-routing"'),stripe,'only generated Stripe opts into pinned case routing');
+  const wiring=render(registrationsTemplate).replace(/\s+/g,'');
+  assert.equal(wiring.includes('BillingBackend::stripe(store,client).with_configured_hmac(true).with_configured_subscription_updates(true)'),stripe,'generated Stripe backend selects configured owner preflight; base template does not');
+  assert.equal(wiring.includes('.with_configured_cached_reads(true)'),stripe,'generated Stripe backend selects configured cached GET mapping; generic base stays unchanged');
+  assert.equal(wiring.includes('.with_configured_payment_link_updates(true)'),stripe,'generated Stripe backend selects configured PaymentLink update preflight independently from reads');
  }
- console.log(`PASS actual rendered generated library: ${testedCases} base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; actual base/Stripe binary templates compile`);
+ console.log(`PASS actual rendered generated library: ${testedCases} base/Stripe identity startup/export cases, shared selected-family registry, unchanged default routes, Date composition, no private config in metadata; base/Stripe startup wiring selections`);
 } finally {rmSync(temporary,{recursive:true,force:true});}

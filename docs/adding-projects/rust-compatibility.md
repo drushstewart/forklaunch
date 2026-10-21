@@ -35,8 +35,8 @@ public packages.
 | [`@forklaunch/universal-sdk`](../../framework/universal-sdk/package.json) | `1.2.29` | Package source | forklaunch-sdk-rust, forklaunch-sdk-typescript, forklaunch-sdk-codegen and CLI SDKs |
 | [`@forklaunch/validator`](../../framework/validator/package.json) | `1.2.31` | Package source | forklaunch-validation and schema contracts |
 | [`@forklaunch/ws`](../../framework/ws/package.json) | `1.2.45` | Package source | forklaunch-ws, forklaunch-asyncapi |
-| [`@forklaunch/blueprint-billing-base`](../../blueprint/billing-base/package.json) | `0.1.6` | Private fixture | forklaunch-billing-axum + Rust CLI |
-| [`@forklaunch/blueprint-billing-stripe`](../../blueprint/billing-stripe/package.json) | `0.0.2` | Private fixture | forklaunch-billing-axum + Rust CLI |
+| [`@forklaunch/blueprint-billing-base`](../../blueprint/billing-base/package.json) | `0.1.6` | Private fixture | forklaunch-billing-stripe (`http`) + Rust CLI |
+| [`@forklaunch/blueprint-billing-stripe`](../../blueprint/billing-stripe/package.json) | `0.0.2` | Private fixture | forklaunch-billing-stripe (`http`) + Rust CLI |
 | [`@forklaunch/blueprint-cac-base`](../../blueprint/cac-base/package.json) | `0.1.1` | Private fixture | forklaunch-cac-interface/base/axum and Rust init module cac-base |
 | [`@forklaunch/blueprint-client-sdk`](../../blueprint/client-sdk/package.json) | `0.1.1` | Private fixture | forklaunch-blueprint-client-sdk and CLI SDK generation |
 | [`@forklaunch/blueprint-core`](../../blueprint/core/package.json) | `1.0.1` | Private fixture | forklaunch-blueprint-core and framework crates |

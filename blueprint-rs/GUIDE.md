@@ -31,8 +31,7 @@ routes, as TypeScript modules call their implementation packages.
 | [forklaunch-ecommerce-paypal](crates/implementations/ecommerce/ecommerce-paypal/src/lib.rs) | PayPal checkout/capture integration. | —; default: none |
 | [forklaunch-cac-axum](crates/implementations/cac/cac-axum/src/lib.rs) | CAC HTTP/MCP contracts and request mapping. | —; default: none |
 | [forklaunch-billing-base](crates/implementations/billing/billing-base/src/lib.rs) | Billing services, store seams and optional PostgreSQL persistence. | `postgres`; default: none |
-| [forklaunch-billing-stripe](crates/implementations/billing/billing-stripe/src/lib.rs) | Stripe provider and optional remote client. | `stripe-client`; default: none |
-| [forklaunch-billing-axum](crates/implementations/billing/billing-axum/src/lib.rs) | Billing HTTP/MCP contracts and request mapping. | —; default: none |
+| [forklaunch-billing-stripe](crates/implementations/billing/billing-stripe/src/lib.rs) | Stripe provider, optional remote client and the billing HTTP handlers. | `stripe-client`, `postgres-reconciliation`, `postgres-identity`, `http`, `typescript-routing`, `bound-checkout`; default: none |
 | [forklaunch-worker-database](crates/implementations/worker/worker-database/src/lib.rs) | Database queue, shared runtime/control/retention and PostgreSQL adapter. | `http-control`, `runtime`, `postgres`; default: none |
 | [forklaunch-worker-redis](crates/implementations/worker/worker-redis/src/lib.rs) | Native leased Redis queue and optional official BullMQ protocol adapter. | `bullmq`, `redis-client`; default: none |
 | [forklaunch-worker-kafka](crates/implementations/worker/worker-kafka/src/lib.rs) | Kafka worker interfaces and optional broker adapter. | `kafka-client`; default: none |

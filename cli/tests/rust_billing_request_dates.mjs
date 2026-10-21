@@ -17,7 +17,7 @@ const requests=[],expected=[];
 for(const {name,field,validator}of fields)for(const value of cases){const result=actual.validator.parse(validator,value),optional=actual.validator.parse(validator,undefined).ok;
  const body={providerFields:{expiresAt:value},stripeFields:{startDate:value}};if(value!==undefined)body[field]=value;
  requests.push({schema:{type:'object',properties:{[field]:{type:'string',format:'date-time'},providerFields:{},stripeFields:{}},required:optional?[]:[field]},body});expected.push({name,field,value,result,optional});}
-execFileSync('cargo',['build','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-billing-axum','--example','request_dates'],{cwd:root,stdio:'inherit'});
+execFileSync('cargo',['build','--quiet','--manifest-path','blueprint-rs/Cargo.toml','-p','forklaunch-billing-stripe','--features','http','--example','request_dates'],{cwd:root,stdio:'inherit'});
 const metadata=JSON.parse(execFileSync('cargo',['metadata','--no-deps','--format-version','1','--manifest-path','blueprint-rs/Cargo.toml'],{cwd:root,encoding:'utf8'}));
 const run=spawnSync(path.join(metadata.target_directory,'debug/examples/request_dates'),[],{input:requests.map(v=>JSON.stringify(v)).join('\n')+'\n',encoding:'utf8',maxBuffer:20*1024*1024});assert.equal(run.status,0,run.stderr);
 const rows=run.stdout.trim().split('\n').map(JSON.parse);assert.equal(rows.length,expected.length);let accepted=0,invalid=0,unsupported=0;

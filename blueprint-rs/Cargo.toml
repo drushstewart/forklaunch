@@ -16,7 +16,6 @@ members = [
     "crates/implementations/cac/cac-axum",
     "crates/implementations/billing/billing-base",
     "crates/implementations/billing/billing-stripe",
-    "crates/implementations/billing/billing-axum",
     "crates/implementations/worker/worker-database",
     "crates/implementations/worker/worker-redis",
     "crates/implementations/worker/worker-kafka",

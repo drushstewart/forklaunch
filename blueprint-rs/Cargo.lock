@@ -1173,30 +1173,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "forklaunch-billing-axum"
-version = "0.2.0"
-dependencies = [
- "axum",
- "chrono",
- "forklaunch-axum",
- "forklaunch-billing-base",
- "forklaunch-billing-interface",
- "forklaunch-billing-stripe",
- "forklaunch-common",
- "forklaunch-core",
- "forklaunch-validator",
- "form_urlencoded",
- "jsonwebtoken",
- "reqwest",
- "serde",
- "serde_json",
- "sqlx",
- "tokio",
- "uuid",
- "zeroize",
-]
-
-[[package]]
 name = "forklaunch-billing-base"
 version = "0.2.0"
 dependencies = [
@@ -1231,10 +1207,15 @@ dependencies = [
  "axum",
  "base16ct 1.0.0",
  "chrono",
+ "forklaunch-axum",
  "forklaunch-billing-base",
  "forklaunch-billing-interface",
+ "forklaunch-common",
  "forklaunch-core",
+ "forklaunch-validator",
+ "form_urlencoded",
  "hmac 0.13.0",
+ "jsonwebtoken",
  "reqwest",
  "serde",
  "serde_json",

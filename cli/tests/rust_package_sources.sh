@@ -37,6 +37,9 @@ expected = {
     "src/templates/rust/application/typescript-sdk-tsconfig.json",
     "src/templates/rust/project/Cargo.toml.template",
     "src/templates/rust/iam/Cargo.toml.template",
+    "src/templates/rust/iam/api/contracts/registry.rs",
+    "src/templates/rust/iam/registrations.rs",
+    "src/templates/rust/project/module/server.rs",
 
     "src/templates/rust/cac/Cargo.toml.template",
     "src/templates/rust/cac/lib.rs",
@@ -44,8 +47,8 @@ expected = {
     "src/templates/rust/cac/env.example",
     "src/templates/rust/cac/README.md",
     "src/templates/rust/billing/Cargo.toml.template",
-    "src/templates/rust/billing/lib.rs",
-    "src/templates/rust/billing/main.rs",
+    "src/templates/rust/billing/api/contracts/registry.rs",
+    "src/templates/rust/billing/registrations.rs",
     "src/templates/rust/billing/env.example",
     "src/templates/rust/billing/README.md",
     "src/templates/rust/leased-worker/lib.rs",
@@ -71,7 +74,7 @@ expected = {
     "src/templates/rust/capabilities/nonce_store.rs",
 }
 # Module HTTP layers are the only blueprint sources the CLI embeds.
-for module in ["iam", "billing", "cac", "ecommerce"]:
+for module in ["cac", "ecommerce"]:
     layer = root / "blueprint-rs/crates/implementations" / module / f"{module}-axum"
     embedded = Path("src/templates/rust/module-http") / module
     expected.add(str(embedded / "Cargo.toml.template"))
