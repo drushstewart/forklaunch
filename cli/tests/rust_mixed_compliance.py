@@ -14,7 +14,7 @@ import tomllib
 repo = Path(__file__).resolve().parents[2]
 binary = Path(os.environ.get('FORKLAUNCH_CLI', repo / 'cli/target/debug/forklaunch')).resolve()
 env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_ACCOUNT': 'parity-offline-compliance',
-       'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable'}
+       'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable'}
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
     sys.exit(subprocess.run([sys.executable, str(repo / 'cli/tests/fixtures/worker_runtime_lock.py'),

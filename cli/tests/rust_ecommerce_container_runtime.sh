@@ -6,8 +6,6 @@ export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/cli/target}"
 export CARGO_INCREMENTAL=0
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
 export FORKLAUNCH_SKIP_FORMAT=1
-# Images build from crates.io: a framework checkout outside the app is not in the build context.
-unset FORKLAUNCH_FRAMEWORK_PATH
 if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-0}" != 1 ]; then
     exec python3 "$SCRIPT_DIR/fixtures/worker_runtime_lock.py" "$SCRIPT_DIR/rust_ecommerce_container_runtime.sh"
 fi

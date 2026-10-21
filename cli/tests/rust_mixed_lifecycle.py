@@ -32,7 +32,7 @@ account = 'parity-offline-lifecycle-' + root.name.removeprefix('run.').replace('
 account_path = Path.home() / '.forklaunch/accounts' / (account + '.toml')
 assert not account_path.exists()
 env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'CARGO_INCREMENTAL': '0',
-       'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'FORKLAUNCH_ACCOUNT': account}
+       'FORKLAUNCH_ACCOUNT': account}
 shutil.copy2(binary, root / 'forklaunch')
 binary = root / 'forklaunch'
 cli_hash = hashlib.sha256(binary.read_bytes()).hexdigest()

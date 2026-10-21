@@ -13,17 +13,13 @@ pub(crate) fn configuration(matches: &ArgMatches) -> Result<toml::Table> {
         .try_get_one::<String>("framework-version")
         .ok()
         .flatten();
-    // FORKLAUNCH_FRAMEWORK_PATH defaults --framework-path, so test suites build
-    // generated apps against the framework checkout they are testing.
-    let environment_path = std::env::var("FORKLAUNCH_FRAMEWORK_PATH").ok().filter(|path| !path.is_empty());
     let path = matches
         .try_get_one::<String>("framework-path")
         .ok()
-        .flatten()
-        .or(environment_path.as_ref().filter(|_| selected_version.is_none()));
+        .flatten();
     if std::env::var("FORKLAUNCH_FRAMEWORK_SNAPSHOT").is_ok_and(|value| value == "1") {
         eprintln!(
-            "warning: FORKLAUNCH_FRAMEWORK_SNAPSHOT is no longer supported; framework crates come from the registry (use --framework-path or FORKLAUNCH_FRAMEWORK_PATH for a local checkout)."
+            "warning: FORKLAUNCH_FRAMEWORK_SNAPSHOT is no longer supported; framework crates come from the registry (use --framework-path for a local checkout)."
         );
     }
     let version = selected_version.map(String::as_str)

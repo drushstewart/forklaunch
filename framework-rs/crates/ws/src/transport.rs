@@ -617,17 +617,18 @@ impl<I, O, P, Q, C> TypedWebSocketServer<I, O, P, Q, C> {
 mod transport_admission_tests {
     use super::*;
     #[test]
-    fn socket_credentials_cannot_silently_downgrade() {
+    fn socket_endpoints_reject_credentials_and_other_schemes() {
+        // Internal service networks use plain ws; credentials never ride in the URI.
         for endpoint in [
-            "ws://example.test/socket",
-            "ws://localhost.evil.test/socket",
-            "ws://0.0.0.0/socket",
             "wss://user:secret@example.test/socket",
+            "ws://user@example.test/socket",
+            "http://example.test/socket",
         ] {
             assert!(require_secure_endpoint(&endpoint.parse().unwrap()).is_err());
         }
         for endpoint in [
             "wss://example.test/socket",
+            "ws://example.test/socket",
             "ws://localhost:8000/socket",
             "ws://127.0.0.1:8000/socket",
             "ws://[::1]:8000/socket",

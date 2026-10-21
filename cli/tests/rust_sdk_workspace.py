@@ -19,7 +19,7 @@ output = repo / 'cli/tests/output' / ('rust-socket-workspace' if socket else 'ru
 output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
 env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_ACCOUNT': 'parity-offline-sdk-workspace',
-       'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable'}
+       'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable'}
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
     shutil.rmtree(root)

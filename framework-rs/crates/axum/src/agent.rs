@@ -2,7 +2,7 @@
 //! appear in `OpenAPI`, SDKs and (for the finite routes) the service's MCP tools.
 //!
 //! Register [`forklaunch_core::agent::contract::routes`] in the service's
-//! contract registry, then bind them with [`mount_agent`] and the app's normal
+//! contract registry, then bind them with [`mount_agent`](crate::agent::mount_agent) and the app's normal
 //! authentication policy:
 //!
 //! ```ignore
