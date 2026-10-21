@@ -1481,6 +1481,53 @@ fn package_service_names(
     Ok(names.into_iter().collect())
 }
 
+/// The generated application SDK package re-exports each service-local SDK's
+/// client type when every service owns its SDK. Applications that maintain their
+/// own TypeScript client SDK are left alone.
+fn local_typescript_aggregate(app_root: &Path, services: &[SdkService]) -> Result<()> {
+    let sdk_root = app_root.join(super::layout::typescript(app_root)?);
+    let manifest_path = sdk_root.join("package.json");
+    let Ok(source) = read_to_string(&manifest_path) else { return Ok(()) };
+    let mut package: serde_json::Value = serde_json::from_str(&source)?;
+    if package.get("name").and_then(serde_json::Value::as_str) != Some("@forklaunch-generated/sdk") {
+        return Ok(());
+    }
+    let mut packages = std::collections::BTreeMap::new();
+    for service in services {
+        let Some(local) = super::layout::local_sdk(app_root, &service.name, "typescript")? else { continue };
+        let local: serde_json::Value = serde_json::from_str(&read_to_string(local.join("package.json"))?)?;
+        let name = local.get("name").and_then(serde_json::Value::as_str).context("Service SDK package name")?;
+        packages.insert(service.name.clone(), name.to_owned());
+    }
+    let mut index = String::new();
+    let mut fields = String::new();
+    for (service, package_name) in &packages {
+        let client = format!("{}SdkClient", service.to_case(Case::Pascal));
+        index.push_str(&format!("export type {{ {client} }} from '{package_name}';\n"));
+        fields.push_str(&format!("  {}: import('{package_name}').{client};\n", service.to_case(Case::Camel)));
+    }
+    index.push_str(&if fields.is_empty() {
+        "\nexport type ForkLaunchSdk = Record<string, never>;\n".to_owned()
+    } else {
+        format!("\nexport type ForkLaunchSdk = {{\n{fields}}};\n")
+    });
+    let source_dir = super::layout::source(app_root, &sdk_root)?;
+    super::write_if_changed(source_dir.join("index.ts"), index)?;
+    let dependencies = package
+        .as_object_mut()
+        .context("SDK package manifest")?
+        .entry("dependencies")
+        .or_insert_with(|| json!({}));
+    for package_name in packages.values() {
+        dependencies[package_name] = json!("workspace:*");
+    }
+    let updated = serde_json::to_string_pretty(&package)? + "\n";
+    if updated.trim_end() != source.trim_end() {
+        super::write_if_changed(&manifest_path, updated)?;
+    }
+    Ok(())
+}
+
 fn generate_typescript_sdk_scoped(
     app_root: &Path,
     services: &[SdkService],
@@ -1508,7 +1555,7 @@ fn generate_typescript_sdk_scoped(
         // workspace. Repair that membership before returning from the local path.
         super::workspace::include_typescript_sdk(app_root)?;
         if shared.is_empty() {
-            return Ok(());
+            return local_typescript_aggregate(app_root, services);
         }
         return generate_typescript_sdk_scoped(app_root, &shared, partial);
     }
