@@ -244,6 +244,7 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
             "Dockerfile.rust.dockerignore",
             "rust/application/dockerignore",
         ),
+        ("rust-toolchain.toml", "rust/application/rust-toolchain.toml"),
         ("rustfmt.toml", "rust/application/rustfmt.toml"),
         ("clippy.toml", "rust/application/clippy.toml"),
     ] {
