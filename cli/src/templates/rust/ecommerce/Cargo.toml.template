@@ -7,6 +7,8 @@ authors.workspace = true
 description = "{{{description}}}"
 
 [dependencies]
+serde_json = {}
+axum = {}
 tokio = { features = ["macros", "rt-multi-thread", "net", "signal"] }
 forklaunch-core = {path = "../../.forklaunch/framework-rs/crates/core", features = ["openapi", "auth", "encryption", "otlp", "postgres", "remote-jwks", "domain", "provider-http"] }
 forklaunch-axum = { path = "../../.forklaunch/framework-rs/crates/axum", features = ["remote-jwks", "mcp"] }

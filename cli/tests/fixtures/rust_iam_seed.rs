@@ -24,29 +24,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         let set_role = format!("SET ROLE {role}");
         let app = PgPoolOptions::new().max_connections(2).after_connect(move |connection, _| {
             let set_role = set_role.clone();
-            Box::pin(async move { sqlx::query(&set_role).execute(connection).await?; Ok(()) })
+            Box::pin(async move { sqlx::query(sqlx::AssertSqlSafe(set_role.clone())).execute(connection).await?; Ok(()) })
         }).connect(&owner_url).await?;
         let service = PostgresIamService::new(app.clone(), TenantContext::new(format!("{role}-a"))?).await?;
         service.bind_provider_identity(&issuer, "provider-user", "user-1").await?;
         app.close().await;
     } else if std::env::args().any(|arg| arg == "--cleanup") {
         for table in ["fl_iam_browser_sessions", "fl_iam_sessions", "fl_iam_users", "fl_iam_organizations", "fl_iam_roles", "fl_iam_directory", "fl_iam_directory_audit"] {
-            sqlx::query(&format!("DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2 OR tenant_id=$3"))
+            sqlx::query(sqlx::AssertSqlSafe(format!("DELETE FROM {table} WHERE tenant_id=$1 OR tenant_id=$2 OR tenant_id=$3")))
                 .bind(format!("{role}-a")).bind(format!("{role}-b")).bind(format!("{role}-directory")).execute(&owner).await?;
         }
-        sqlx::query(&format!("DROP OWNED BY {role}")).execute(&owner).await?;
-        sqlx::query(&format!("DROP ROLE {role}")).execute(&owner).await?;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP OWNED BY {role}"))).execute(&owner).await?;
+        sqlx::query(sqlx::AssertSqlSafe(format!("DROP ROLE {role}"))).execute(&owner).await?;
     } else {
-        sqlx::query(&format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'parity-test-only'"))
+        sqlx::query(sqlx::AssertSqlSafe(format!("CREATE ROLE {role} LOGIN NOSUPERUSER NOBYPASSRLS PASSWORD 'parity-test-only'")))
             .execute(&owner).await?;
-        sqlx::query(&format!("GRANT USAGE ON SCHEMA public TO {role}")).execute(&owner).await?;
-        sqlx::query(&format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_browser_sessions,fl_iam_provider_identities,fl_iam_oidc_pending,fl_iam_directory_identities TO {role}"))
+        sqlx::query(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SCHEMA public TO {role}"))).execute(&owner).await?;
+        sqlx::query(sqlx::AssertSqlSafe(format!("GRANT SELECT,INSERT,UPDATE,DELETE ON fl_iam_users,fl_iam_organizations,fl_iam_roles,fl_iam_sessions,fl_iam_directory,fl_iam_directory_unique_claims,fl_iam_directory_audit,fl_iam_browser_sessions,fl_iam_provider_identities,fl_iam_oidc_pending,fl_iam_directory_identities TO {role}")))
             .execute(&owner).await?;
-        sqlx::query(&format!("GRANT USAGE ON SEQUENCE fl_iam_directory_sequence_seq TO {role}")).execute(&owner).await?;
+        sqlx::query(sqlx::AssertSqlSafe(format!("GRANT USAGE ON SEQUENCE fl_iam_directory_sequence_seq TO {role}"))).execute(&owner).await?;
         let set_role = format!("SET ROLE {role}");
         let app = PgPoolOptions::new().max_connections(2).after_connect(move |connection, _| {
             let set_role = set_role.clone();
-            Box::pin(async move { sqlx::query(&set_role).execute(connection).await?; Ok(()) })
+            Box::pin(async move { sqlx::query(sqlx::AssertSqlSafe(set_role.clone())).execute(connection).await?; Ok(()) })
         }).connect(&owner_url).await?;
         let first = PostgresIamService::new(app.clone(), TenantContext::new(format!("{role}-a"))?).await?;
         let second = first.for_tenant(TenantContext::new(format!("{role}-b"))?);
@@ -91,7 +91,7 @@ async fn seed_directory(service:BaseIamDirectory<PostgresDirectoryStore>) -> Res
 async fn directory_auth_action(url: &str, role: &str, action: &str) -> Result<(), Box<dyn std::error::Error>> {
     let set_role=format!("SET ROLE {role}");
     let pool=PgPoolOptions::new().max_connections(2).after_connect(move |connection,_| {
-        let query=set_role.clone(); Box::pin(async move {sqlx::query(&query).execute(connection).await?;Ok(())})
+        let query=set_role.clone(); Box::pin(async move {sqlx::query(sqlx::AssertSqlSafe(query.clone())).execute(connection).await?;Ok(())})
     }).connect(url).await?;
     let tenant=TenantContext::new(format!("{role}-directory"))?;
     let store=PostgresDirectoryStore::new(pool.clone(),tenant.clone(),Arc::new(FieldEncryptor::new("iam-fixture-encryption-only")?),AuditContext::actor("fixture-operator","directory-auth-fixture")).await?;
@@ -128,7 +128,7 @@ async fn directory_auth_action(url: &str, role: &str, action: &str) -> Result<()
 async fn verify_audits(url:&str,role:&str,input:&str)->Result<(),Box<dyn std::error::Error>> {
     let set_role=format!("SET ROLE {role}");
     let pool=PgPoolOptions::new().max_connections(2).after_connect(move |connection,_| {
-        let query=set_role.clone();Box::pin(async move {sqlx::query(&query).execute(connection).await?;Ok(())})
+        let query=set_role.clone();Box::pin(async move {sqlx::query(sqlx::AssertSqlSafe(query.clone())).execute(connection).await?;Ok(())})
     }).connect(url).await?;
     let cases:Vec<Value>=serde_json::from_str(input)?;
     let mut matched_records=Vec::new();

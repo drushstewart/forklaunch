@@ -360,7 +360,7 @@ pub(super) fn apply(
             lib = format!("{LIB_EXPORT}{lib}");
         }
         if !main.contains(&import) {
-            main = format!("{import}{main}");
+            main = after_inner_docs(&main, &import);
         }
         if registry_path == lib_path {
             registry_source = lib.clone();
@@ -1183,6 +1183,23 @@ fn with_native_capability_router(source: &str) -> Result<String> {
     Ok(source.replacen(".finish()", ".with_managed_capabilities()?.finish()", 1))
 }
 
+/// Insert `text` after the file's generated header and inner doc comments,
+/// which must stay first.
+fn after_inner_docs(source: &str, text: &str) -> String {
+    let mut end = 0;
+    let mut header = source.starts_with("/*");
+    for line in source.split_inclusive('\n') {
+        let trimmed = line.trim();
+        if header {
+            header = !trimmed.ends_with("*/");
+        } else if !(trimmed.is_empty() || trimmed.starts_with("//!")) {
+            break;
+        }
+        end += line.len();
+    }
+    format!("{}{text}{}", &source[..end], &source[end..])
+}
+
 fn with_capability_router(main: &str) -> Result<String> {
     let markers = [
         ".into_router_with_default_mcp()",
@@ -1513,6 +1530,18 @@ mod tests {
         assert!(module.contains("nonce_store::store()"));
         assert!(CONTRACT.contains("AccessLevel::Internal"));
         assert!(!CONTRACT.contains("forklaunch_blueprint_core"));
+    }
+
+    #[test]
+    fn capability_imports_follow_module_docs() {
+        let server = include_str!("../../templates/rust/project/module/server.rs");
+        let wired = after_inner_docs(server, "use crate::capabilities::ManagedCapabilitiesRouterExt;\n");
+        syn::parse_file(&wired).unwrap();
+        assert!(wired.starts_with("//! "));
+        assert_eq!(wired.replace("use crate::capabilities::ManagedCapabilitiesRouterExt;\n", ""), server);
+        assert_eq!(after_inner_docs("fn main() {}\n", "use a;\n"), "use a;\nfn main() {}\n");
+        assert_eq!(after_inner_docs("/*\n * Generated\n */\n\n//! Doc.\nuse b;\n", "use a;\n"),
+            "/*\n * Generated\n */\n\n//! Doc.\nuse a;\nuse b;\n");
     }
 
     #[test]
