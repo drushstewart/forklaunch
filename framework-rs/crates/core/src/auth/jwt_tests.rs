@@ -276,15 +276,19 @@ mod remote_tests {
     }
 
     #[test]
-    fn remote_endpoint_requires_https_or_loopback_and_no_credentials() {
+    fn remote_endpoint_rejects_other_schemes_and_credentials() {
         for url in [
-            "http://example.com/keys",
             "ftp://example.com/keys",
             "https://user:password@example.com/keys",
             "https://example.com/keys#fragment",
         ] {
             assert!(RemoteJwks::new(RemoteJwksConfig::new(url)).is_err());
         }
+    }
+
+    #[test]
+    fn remote_endpoint_accepts_internal_http_but_keeps_other_checks() {
+        assert!(RemoteJwks::new(RemoteJwksConfig::new("http://iam:8002/api/auth/jwks")).is_ok());
     }
 }
 

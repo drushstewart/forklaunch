@@ -41,6 +41,10 @@ pub enum EndpointError {
     Unavailable,
     InvalidResponse,
     PayloadTooLarge,
+    /// An upstream allowance was reached (for example, the model gateway's 429).
+    TooManyRequests,
+    /// An upstream call failed or was interrupted.
+    BadGateway,
 }
 impl IntoResponse for EndpointError {
     fn into_response(self) -> Response {
@@ -59,6 +63,8 @@ impl IntoResponse for EndpointError {
             Self::Unavailable => (StatusCode::SERVICE_UNAVAILABLE, "service unavailable"),
             Self::InvalidResponse => (StatusCode::INTERNAL_SERVER_ERROR, "invalid response"),
             Self::PayloadTooLarge => (StatusCode::PAYLOAD_TOO_LARGE, "request body too large"),
+            Self::TooManyRequests => (StatusCode::TOO_MANY_REQUESTS, "too many requests"),
+            Self::BadGateway => (StatusCode::BAD_GATEWAY, "upstream request failed"),
         };
         (status, axum::Json(serde_json::json!({"error": message}))).into_response()
     }

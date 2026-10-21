@@ -83,6 +83,11 @@ fn validate_path(path: &str) -> Result<(), &'static str> {
 /// Private operations remain excluded by the contract exporter. The alias must
 /// be a fixed absolute path; this helper never mounts application handlers.
 ///
+/// The document is also served at `/api/<VERSION>/openapi` (`VERSION` setting,
+/// default `v1`) as `{ "latest": <doc>, "<VERSION>": <doc> }`, the shape
+/// TypeScript services answer, so agents and other services read either
+/// language the same way. A declared operation at that path keeps it.
+///
 /// # Errors
 /// Rejects invalid aliases and collisions with declared GET/HEAD operations.
 /// Existing unmanaged route collisions retain Axum's startup panic behavior.
@@ -112,6 +117,12 @@ where
     }
     let document = forklaunch_core::openapi::generate_portable_openapi_json(registry)
         .map_err(|_| "contract cannot produce checked SDK documentation")?;
+    let (versioned_path, version) = versioned_openapi_path();
+    let versioned_body = if version == "latest" {
+        format!("{{\"latest\":{document}}}")
+    } else {
+        format!("{{\"latest\":{document},\"{version}\":{document}}}")
+    };
     let fingerprint = crate::docs::document_hash(&document);
     let hash = get(move || {
         let fingerprint = fingerprint.clone();
@@ -121,9 +132,21 @@ where
         let document = document.clone();
         async move { ([(header::CONTENT_TYPE, "application/json")], document) }
     });
-    let router = router
+    let mut router = router
         .route("/openapi.json", docs.clone())
         .route("/openapi.json-hash", hash.clone());
+    let versioned_declared = registry.routes().iter().any(|route| {
+        matches!(route.method, HttpMethod::Get | HttpMethod::Head) && route.path == versioned_path
+    });
+    if !versioned_declared && docs_path != versioned_path {
+        router = router.route(
+            &versioned_path,
+            get(move || {
+                let body = versioned_body.clone();
+                async move { ([(header::CONTENT_TYPE, "application/json")], body) }
+            }),
+        );
+    }
     Ok(if docs_path == "/openapi.json" {
         router
     } else {
@@ -131,6 +154,20 @@ where
             .route(docs_path, docs)
             .route(&format!("{docs_path}-hash"), hash)
     })
+}
+
+/// `/api/<VERSION>/openapi` and the version key; invalid `VERSION` values use `v1`.
+fn versioned_openapi_path() -> (String, String) {
+    let version = std::env::var("VERSION")
+        .ok()
+        .filter(|value| {
+            (1..=32).contains(&value.len())
+                && value
+                    .bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'_' | b'-'))
+        })
+        .unwrap_or_else(|| "v1".into());
+    (format!("/api/{version}/openapi"), version)
 }
 
 #[cfg(test)]
@@ -218,6 +255,24 @@ mod tests {
             assert_eq!(response.status(), StatusCode::OK);
             assert!(!to_bytes(response.into_body(), 64).await.unwrap().is_empty());
         }
+        let (path, version) = versioned_openapi_path();
+        let response = with_openapi(Router::new(), &registry, "/reference")
+            .unwrap()
+            .oneshot(Request::builder().uri(&path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.headers()[header::CONTENT_TYPE], "application/json");
+        let versioned: serde_json::Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 64 * 1024).await.unwrap())
+                .unwrap();
+        let expected: serde_json::Value = serde_json::from_str(&expected).unwrap();
+        assert_eq!(versioned["latest"], expected);
+        assert_eq!(versioned[version.as_str()], expected);
+        // A service that declares the path keeps it.
+        let mut owned = registry.clone();
+        owned.register(RouteContract::new("own", "Own", HttpMethod::Get, &path));
+        assert!(with_openapi(Router::<()>::new(), &owned, "/reference").is_ok());
         assert!(with_docs(Router::<()>::new(), &registry, "/reference").is_ok());
         for html in [
             crate::docs::scalar_html("</title><script>unsafe()</script>", "/openapi.json", &[]),

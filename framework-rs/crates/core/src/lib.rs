@@ -1,6 +1,9 @@
 #![forbid(unsafe_code)]
 extern crate self as forklaunch_core;
 
+/// Agents: MCP-shaped tools, approvals and the model run loop.
+#[cfg(feature = "agent-contract")]
+pub mod agent;
 #[cfg(feature = "auth")]
 pub mod auth;
 #[cfg(feature = "domain")]

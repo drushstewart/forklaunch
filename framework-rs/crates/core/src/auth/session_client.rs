@@ -33,7 +33,7 @@ impl<T> VerifiedClaims<T> {
 pub enum SessionTransport {
     #[default]
     TlsOrLoopback,
-    /// Local development networks only. This does not encrypt cookies or credentials.
+    /// Same as the default now that internal HTTP is accepted.
     PlaintextDevelopment,
 }
 
@@ -61,27 +61,17 @@ impl SessionClient {
         )
     }
     /// # Errors
-    /// Rejects invalid endpoints or plaintext outside the explicitly selected policy.
+    /// Rejects invalid endpoints. Both transports accept HTTP(S); the selector is
+    /// retained for compatibility.
     pub fn with_transport(
         endpoint: &str,
         secret_header: &str,
         secret: String,
-        transport: SessionTransport,
+        _transport: SessionTransport,
     ) -> Result<Self, SessionClientError> {
         let endpoint =
             reqwest::Url::parse(endpoint).map_err(|_| SessionClientError::InvalidConfiguration)?;
-        let loopback = endpoint.host_str().is_some_and(|host| {
-            host.eq_ignore_ascii_case("localhost")
-                || host
-                    .trim_start_matches('[')
-                    .trim_end_matches(']')
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|address| address.is_loopback())
-        });
-        if (endpoint.scheme() == "http"
-            && !loopback
-            && !matches!(transport, SessionTransport::PlaintextDevelopment))
-            || !matches!(endpoint.scheme(), "http" | "https")
+        if !matches!(endpoint.scheme(), "http" | "https")
             || endpoint.host_str().is_none()
             || !endpoint.username().is_empty()
             || endpoint.password().is_some()

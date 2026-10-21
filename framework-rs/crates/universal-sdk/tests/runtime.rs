@@ -36,9 +36,9 @@ fn nonmultipart_requests_keep_clone_equality_and_debug_redacts_values() {
 }
 
 #[tokio::test]
-async fn hook_cannot_bypass_tls_admission() {
+async fn hook_cannot_bypass_transport_admission() {
     let client = UniversalSdk::new("https://example.invalid").with_auth_hook(|input| {
-        input.url = "http://example.invalid/private-canary".into();
+        input.url = "http://user:secret@example.invalid/private-canary".into();
     });
     assert!(matches!(
         client

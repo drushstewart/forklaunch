@@ -44,7 +44,6 @@ impl NativeHttpPolicy {
     ///
     /// # Errors
     /// Rejects malformed origins, credentials, paths, query strings and fragments.
-    /// Plain HTTP is accepted only for explicit loopback development origins.
     pub fn new(public_origin: &str) -> Result<Self, NativeHttpPolicyError> {
         let uri: Uri = public_origin.parse().map_err(|_| NativeHttpPolicyError)?;
         let scheme = uri.scheme_str().ok_or(NativeHttpPolicyError)?;

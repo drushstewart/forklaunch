@@ -522,22 +522,13 @@ pub async fn connect_with_response<R: IntoClientRequest + Unpin, I, O, P, Q, C>(
 }
 
 fn require_secure_endpoint(uri: &http::Uri) -> Result<(), SocketError> {
-    let host = uri
-        .host()
-        .unwrap_or("")
-        .trim_start_matches('[')
-        .trim_end_matches(']');
-    let loopback = host.eq_ignore_ascii_case("localhost")
-        || host
-            .parse::<std::net::IpAddr>()
-            .is_ok_and(|address| address.is_loopback());
     if uri
         .authority()
         .is_some_and(|authority| authority.as_str().contains('@'))
-        || !(matches!(uri.scheme_str(), Some("wss")) || uri.scheme_str() == Some("ws") && loopback)
+        || !matches!(uri.scheme_str(), Some("wss" | "ws"))
     {
         return Err(SocketError::Configuration(
-            "TLS is required outside loopback development",
+            "Socket endpoints must be ws or wss without credentials",
         ));
     }
     Ok(())

@@ -9,6 +9,9 @@
 //! authentication callback gates access. Enable `rmcp-server` for the streaming
 //! HTTP runtime, dispatching tools through the same authenticated HTTP router.
 
+/// Streamable HTTP client for external MCP servers.
+#[cfg(feature = "mcp-client")]
+pub mod client;
 #[cfg(feature = "rmcp-server")]
 pub mod server;
 

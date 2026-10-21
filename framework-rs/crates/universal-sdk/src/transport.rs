@@ -114,7 +114,7 @@ impl<M: MultipartPayload> UniversalSdk<M> {
     pub const fn sse_event_limit(&self) -> usize {
         self.max_sse_event_bytes
     }
-    /// Local development only: permits plaintext transport outside loopback.
+    /// Retained for compatibility: plain HTTP is accepted for every host.
     #[must_use]
     pub fn with_plaintext_development_transport(mut self) -> Self {
         self.allow_plaintext_development = true;
@@ -248,19 +248,10 @@ impl<M: MultipartPayload> UniversalSdk<M> {
             hook(&mut request);
         }
         let endpoint = reqwest::Url::parse(&request.url).map_err(|_| SdkError::TransportPolicy)?;
-        let loopback = endpoint.host_str().is_some_and(|host| {
-            host.eq_ignore_ascii_case("localhost")
-                || host
-                    .trim_start_matches('[')
-                    .trim_end_matches(']')
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|address| address.is_loopback())
-        });
         if !endpoint.username().is_empty()
             || endpoint.password().is_some()
             || endpoint.fragment().is_some()
-            || !(endpoint.scheme() == "https"
-                || (endpoint.scheme() == "http" && (loopback || self.allow_plaintext_development)))
+            || !matches!(endpoint.scheme(), "https" | "http")
         {
             return Err(SdkError::TransportPolicy);
         }

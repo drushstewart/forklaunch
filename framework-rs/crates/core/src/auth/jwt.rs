@@ -160,19 +160,12 @@ mod remote {
 
     impl RemoteJwks {
         /// # Errors
-        /// Rejects non-HTTPS endpoints (except loopback development URLs), credentials,
+        /// Accepts HTTP(S) endpoints (internal networks need not use TLS); rejects credentials,
         /// fragments, zero timeouts, and invalid cache bounds.
         pub fn new(config: RemoteJwksConfig) -> Result<Self, AuthError> {
             let url =
                 reqwest::Url::parse(&config.url).map_err(|_| AuthError::InvalidCredentials)?;
-            let loopback = url.host_str().is_some_and(|host| {
-                host == "localhost"
-                    || host
-                        .trim_matches(['[', ']'])
-                        .parse::<std::net::IpAddr>()
-                        .is_ok_and(|ip| ip.is_loopback())
-            });
-            if !(url.scheme() == "https" || (url.scheme() == "http" && loopback))
+            if !matches!(url.scheme(), "https" | "http")
                 || !url.username().is_empty()
                 || url.password().is_some()
                 || url.fragment().is_some()

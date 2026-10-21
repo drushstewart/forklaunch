@@ -3,6 +3,10 @@
 #[cfg(feature = "native")]
 pub mod native;
 
+/// Agent routes served from the native contract router.
+#[cfg(feature = "agent")]
+pub mod agent;
+
 #[cfg(any(feature = "adapter", feature = "native"))]
 mod body_telemetry;
 #[cfg(feature = "adapter")]
