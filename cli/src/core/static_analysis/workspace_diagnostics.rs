@@ -463,16 +463,14 @@ pub(crate) fn inspect(
                 );
             }
         }
-        let artifact = p
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.contract_artifact_path.as_deref())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                Path::new(".forklaunch/contracts")
-                    .join(&p.name)
-                    .join("contract.json")
-            });
+        let artifact = PathBuf::from(crate::core::artifact_paths::path(
+            &p.name,
+            p.metadata
+                .as_ref()
+                .and_then(|metadata| toml::Table::try_from(metadata).ok())
+                .as_ref(),
+            crate::core::artifact_paths::Artifact::Contract,
+        ));
         let artifact_file = root.join(&artifact);
         if !artifact.is_absolute()
             && !artifact

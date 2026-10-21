@@ -38,9 +38,9 @@ fn export_contract_artifacts() -> io::Result<bool> {
     }
 
     let contract_output = env::var("FORKLAUNCH_CONTRACT_OUTPUT")
-        .unwrap_or_else(|_| ".forklaunch/contracts/contract.json".to_string());
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/contract.json").to_string());
     let openapi_output = env::var("FORKLAUNCH_OPENAPI_OUTPUT")
-        .unwrap_or_else(|_| ".forklaunch/openapi/openapi.json".to_string());
+        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/openapi.json").to_string());
 
     if let Some(parent) = Path::new(&openapi_output).parent() {
         fs::create_dir_all(parent)?;

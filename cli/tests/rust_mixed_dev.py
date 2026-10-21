@@ -267,7 +267,7 @@ try:
         raise AssertionError(f'SDK did not refresh: {path}')
     def wait_socket(expected, timeout=180):
         path = app / 'src/client-sdk/typescript-websocket/native-api/socket_development.ts'
-        artifact = app / '.forklaunch/socket-contracts/native-api/socket-contract.json'
+        artifact = app / 'src/native-api/sdk/typescript/socket-contract.json'
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             assert process.poll() is None, log_path.read_text()[-20000:]

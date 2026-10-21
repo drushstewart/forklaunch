@@ -1106,7 +1106,8 @@ forklaunch openapi export
 
 # Options:
 -p, --path <base_path>  # Path to application root (optional)
--o, --output <output>   # Output directory (default: .forklaunch/openapi)
+-o, --output <output>   # Also write <output>/<service>/openapi.json (default: each service's
+                        # registered artifact, e.g. src/<service>/sdk/typescript/openapi.json)
 
 # Examples:
 forklaunch openapi export
@@ -1822,8 +1823,11 @@ Forklaunch auto-generates:
 
 Specs are available at:
 
-- `.forklaunch/openapi/<module>/openapi.json`
-- `.forklaunch/openapi/<module>/asyncapi.json`
+- each service's SDK folder (`<service>/sdk/typescript/` for Rust services, `<service>/sdk/` for
+  TypeScript services with a service-owned SDK): `contract.json`, `openapi.json`, `asyncapi.json`
+- `.forklaunch/openapi/<module>/openapi.json` for TypeScript services without a service-owned SDK
+
+`.forklaunch/` itself holds only `manifest.toml`.
 
 ## Handler Contract Details & Typed req/res
 

@@ -8,10 +8,27 @@ import time
 
 cli = sys.argv[1]
 name = sys.argv[3] if '--delete' in sys.argv and len(sys.argv) > 3 else 'realtime'
-artifact = Path(f'.forklaunch/socket-contracts/{name}/socket-contract.json')
+
+
+def sdk_folder(service):
+    import tomllib
+    for project in tomllib.loads(Path('.forklaunch/manifest.toml').read_text())['projects']:
+        if project['name'] == service:
+            return Path(project['metadata']['cratePath']) / 'sdk/typescript'
+    raise AssertionError(f'{service} missing from manifest')
+
+
+# Socket artifacts live in the service's SDK folder; package ownership records
+# sit beside the generated packages. Nothing is written under .forklaunch/.
+sdk = sdk_folder(name)
+artifact = sdk / 'socket-contract.json'
 rust = Path(f'src/client-sdk/rust/{name}-websocket-sdk')
 typescript = Path(f'src/client-sdk/typescript-websocket/{name}')
-ownership = Path(f'.forklaunch/socket-sdk-outputs/{name}')
+ownership = {
+    'typescript': typescript.with_name(f'.{name}.forklaunch.json'),
+    'rust': rust.with_name(f'.{name}-websocket-sdk.forklaunch.json'),
+    'asyncapi': sdk / 'socket-sdk-asyncapi.json',
+}
 generate = [cli, 'sdk', 'generate', '--path', '.', '--from', 'socket-contract', '--target', 'all', '--service', 'realtime']
 
 
@@ -40,9 +57,10 @@ if '--delete' in sys.argv:
     assert manual.read_text() == '// user-owned file\n'
     assert not (typescript / 'package.json').exists()
     assert not (typescript / 'socket_chat.ts').exists()
-    assert not Path(f'.forklaunch/asyncapi/{name}').exists()
+    assert not (sdk / 'asyncapi.json').exists()
     assert not artifact.parent.exists()
-    assert not list(ownership.glob('*.json'))
+    assert not any(record.exists() for record in ownership.values())
+    assert sorted(str(p) for p in Path('.forklaunch').rglob('*')) == ['.forklaunch/manifest.toml']
     if name == 'stream-events':
         assert not Path('custom/renamed-sockets.json').exists()
     print('PASS explicit service deletion prunes owned socket SDK files/workspace entries and preserves user edits/files')
@@ -89,12 +107,12 @@ try:
                 assert time.monotonic() < deadline and watch.poll() is None, os.pread(log.fileno(), 1024 * 1024, 0)
                 time.sleep(0.1)
             assert not (typescript / 'package.json').exists()
-            assert not Path('.forklaunch/asyncapi/realtime/asyncapi.json').exists()
+            assert not (sdk / 'asyncapi.json').exists()
             assert edited.read_bytes().endswith(b'// user-owned obsolete module\n')
             assert manual.read_text() == '// user-owned file\n'
             assert json.loads(config.read_text()) == settings
             for target in ['typescript', 'rust', 'asyncapi']:
-                record = json.loads((ownership / f'{target}.json').read_text())
+                record = json.loads(ownership[target].read_text())
                 assert record['files'] == {} and record['registryExported']
             run(generate + ['--check'])
             fixture.write_bytes(original_fixture)

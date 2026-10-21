@@ -82,6 +82,8 @@ try:
         assert tomllib.loads((app / 'src' / service / '.forklaunch/contracts/Cargo.toml').read_text())['package']['publish'] is False
     assert not (app / 'sdks').exists()
     command('openapi', 'export')
+    # Default exports refresh each service's SDK folder; .forklaunch/ keeps only the manifest.
+    assert sorted(str(p.relative_to(app)) for p in (app / '.forklaunch').rglob('*')) == ['.forklaunch/manifest.toml']
     command('openapi', 'export', '--output', 'generated/openapi')
     for service in ['accounts', 'billing']:
         assert (app / 'generated/openapi' / service / 'openapi.json').is_file()

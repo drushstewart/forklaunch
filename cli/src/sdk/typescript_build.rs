@@ -378,10 +378,14 @@ pub(crate) fn remove_hook(root: &Path, name: &str) -> Result<()> {
         }
     }
     set_contract_build(root, name, false)?;
+    // Only the legacy shared exports are removed here; service-owned SDK folders
+    // go with their service.
     for path in [
-        root.join(format!(".forklaunch/contracts/{name}/contract.json")),
-        root.join(format!(".forklaunch/openapi/{name}/openapi.json")),
-    ] {
+        crate::core::artifact_paths::legacy(name, crate::core::artifact_paths::Artifact::Contract),
+        crate::core::artifact_paths::legacy(name, crate::core::artifact_paths::Artifact::OpenApi),
+    ]
+    .map(|path| root.join(path))
+    {
         if path.is_file() {
             fs::remove_file(path)?;
         }
@@ -466,12 +470,12 @@ fn fingerprint(directory: &Path) -> Result<Vec<u8>> {
 fn contract_path(root: &Path, name: &str) -> Result<String> {
     Ok(if let Some(local) = super::layout::local_sdk(root, name, "typescript")? {
         local.join("contract.json").strip_prefix(root.canonicalize()?)?.to_string_lossy().into_owned()
-    } else { format!(".forklaunch/contracts/{name}/contract.json") })
+    } else { crate::core::artifact_paths::application_path(root, name, crate::core::artifact_paths::Artifact::Contract) })
 }
 fn openapi_path(root: &Path, name: &str) -> Result<String> {
     Ok(if let Some(local) = super::layout::local_sdk(root, name, "typescript")? {
         local.join("openapi.json").strip_prefix(root.canonicalize()?)?.to_string_lossy().into_owned()
-    } else { format!(".forklaunch/openapi/{name}/openapi.json") })
+    } else { crate::core::artifact_paths::application_path(root, name, crate::core::artifact_paths::Artifact::OpenApi) })
 }
 fn record_local_ownership(root: &Path, service: &Path, name: &str) -> Result<()> {
     let path = root.join(".forklaunch/manifest.toml");

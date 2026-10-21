@@ -415,9 +415,9 @@ fn regenerate_native_app_sdks_after_sync(
     manifest: &ApplicationManifestData,
     stdout: &mut StandardStream,
 ) -> Result<()> {
-    let output_dir = app_root_path.join(".forklaunch/openapi");
+    // Each service refreshes its registered artifacts; no shared export folder.
     let exported_services =
-        openapi_export::export_all_services(app_root_path, manifest, &output_dir).context(
+        openapi_export::export_all_services(app_root_path, manifest, None).context(
             "Project sync completed, but contract/OpenAPI export failed before SDK regeneration",
         )?;
     if exported_services.is_empty() {

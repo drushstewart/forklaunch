@@ -40,7 +40,7 @@ versions = {p['name']: p['version'] for p in report['packages']}
 blueprint_report = json.loads((args.blueprint_release / 'release.json').read_text()) if args.blueprint_release else None
 assert blueprint_report is None or blueprint_report['scope'] == 'blueprint'
 blueprint_versions = {p['name']: p['version'] for p in blueprint_report['packages']} if blueprint_report else {
-    name: '0.1.0' for name in ['forklaunch-worker-interface', 'forklaunch-worker-database', 'forklaunch-worker-redis', 'forklaunch-worker-kafka']}
+    name: '0.1.1' for name in ['forklaunch-worker-interface', 'forklaunch-worker-database', 'forklaunch-worker-redis', 'forklaunch-worker-kafka']}
 cli = Path(os.environ['FORKLAUNCH_CLI']).resolve()
 env = {**os.environ, 'RUSTUP_TOOLCHAIN': 'stable', 'CARGO_INCREMENTAL': '0'}
 env.pop('FORKLAUNCH_SKIP_FORMAT', None)
@@ -192,6 +192,8 @@ try:
                 name: {'version': '=' + version, 'registry': 'forklaunch-staging'} for name, version in versions.items()}
             (app / 'Cargo.toml').write_bytes(manifest_text(workspace))
         mixed_checks = None
+        # Every generated artifact lives in its project; .forklaunch/ holds only the manifest.
+        assert sorted(str(path.relative_to(app)) for path in (app / '.forklaunch').rglob('*')) == ['.forklaunch/manifest.toml']
         if args.mixed:
             # The manifest is the only committed state; contract builds are a
             # manifest flag and the CLI compiles them in-process.

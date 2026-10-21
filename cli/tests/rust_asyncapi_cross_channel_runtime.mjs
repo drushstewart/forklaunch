@@ -11,7 +11,7 @@ const require = createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DE
 const { WebSocketServer, WebSocket } = require('ws');
 const parserRequire = createRequire(require.resolve(process.env.ASYNCAPI_PARSER_PATH ?? '@asyncapi/parser'));
 const { Parser } = parserRequire('@asyncapi/parser');
-const parsed = await new Parser().parse(await readFile(path.join(root, '.forklaunch/asyncapi/realtime/asyncapi.json'), 'utf8'));
+const parsed = await new Parser().parse(await readFile(path.join(root, 'src/realtime/sdk/typescript/asyncapi.json'), 'utf8'));
 assert.ok(parsed.document, JSON.stringify(parsed.diagnostics));
 assert.equal(parsed.diagnostics.filter(d => d.severity === 0).length, 0);
 

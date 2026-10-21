@@ -40,10 +40,11 @@ def rename(old, new):
     assert not Path(f'src/{old}').exists()
     assert Path(f'src/{new}/api/controllers/socket_contract_fixture.json').exists()
     project = next(project for project in tomllib.loads(manifest.read_text())['projects'] if project['name'] == new)
-    artifact = Path(project['metadata'].get('socketContractArtifactPath', f'.forklaunch/socket-contracts/{new}/socket-contract.json'))
+    sdk = Path(project['metadata']['cratePath']) / 'sdk/typescript'
+    artifact = Path(project['metadata'].get('socketContractArtifactPath', str(sdk / 'socket-contract.json')))
     portable = json.loads(artifact.read_text())
     assert portable['title'] == new
-    marker = json.loads(Path(f'.forklaunch/socket-contracts/{new}/registry-export.json').read_text())
+    marker = json.loads((sdk / 'socket-registry-export.json').read_text())
     assert marker['outputPath'] == str(artifact)
     assert marker['sha256'] == hashlib.sha256(artifact.read_bytes()).hexdigest()
     cargo = tomllib.loads(Path('Cargo.toml').read_text())
@@ -52,7 +53,9 @@ def rename(old, new):
     assert json.loads(Path(f'src/client-sdk/typescript-websocket/{new}/tsconfig.json').read_text()) == config
     assert json.loads(Path(f'src/client-sdk/typescript-websocket/{new}/package.json').read_text())['name'] == f'{new}-websocket-sdk'
     assert tomllib.loads(Path(f'src/client-sdk/rust/{new}-websocket-sdk/Cargo.toml').read_text())['package']['name'] == f'{new}-websocket-sdk'
-    assert not Path(f'.forklaunch/socket-sdk-outputs/{old}').exists()
+    assert not Path(f'src/client-sdk/typescript-websocket/.{old}.forklaunch.json').exists()
+    assert not Path(f'src/client-sdk/rust/.{old}-websocket-sdk.forklaunch.json').exists()
+    assert sorted(str(p) for p in Path('.forklaunch').rglob('*')) == ['.forklaunch/manifest.toml']
     run(generate(new) + ['--check'])
 
 
@@ -66,17 +69,17 @@ assert manifest.read_bytes() == before and source.read_bytes() == original_sourc
 assert (occupied / 'user.txt').read_text() == 'preserved'
 (occupied / 'user.txt').unlink()
 occupied.rmdir()
-# An explicitly configured default path must follow the service name.
-manifest.write_text(manifest.read_text().replace('[projects.metadata]\n', '[projects.metadata]\nsocketContractArtifactPath = ".forklaunch/socket-contracts/realtime/socket-contract.json"\n'))
+# An explicitly configured path inside the service must follow its crate.
+manifest.write_text(manifest.read_text().replace('[projects.metadata]\n', '[projects.metadata]\nsocketContractArtifactPath = "src/realtime/sdk/typescript/socket-contract.json"\n'))
 rename('realtime', 'live-events')
 assert edited.read_bytes().endswith(b'// user-owned old SDK edits\n')
 assert manual.read_text() == '// user-owned old SDK source\n'
 # A custom artifact path remains custom, while its registry service title changes.
-manifest.write_text(manifest.read_text().replace('.forklaunch/socket-contracts/live-events/socket-contract.json', 'custom/renamed-sockets.json'))
+manifest.write_text(manifest.read_text().replace('src/live-events/sdk/typescript/socket-contract.json', 'custom/renamed-sockets.json'))
 run([cli, 'openapi', 'export', '--path', '.'])
 rename('live-events', 'stream-events')
 assert Path('custom/renamed-sockets.json').exists()
-assert not Path('.forklaunch/socket-contracts/live-events').exists()
+assert not Path('src/stream-events/sdk/typescript/socket-contract.json').exists()
 assert Path('src/stream-events/.forklaunch/contracts/lib.rs').read_text().count('register_socket') == 1
 assert 'ServiceContract::new("stream-events"' in Path('src/stream-events/.forklaunch/contracts/lib.rs').read_text()
 # Strict consumers remain buildable after both renames.

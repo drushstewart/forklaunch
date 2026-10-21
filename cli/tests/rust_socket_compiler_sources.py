@@ -46,8 +46,8 @@ try:
         '-A', 'ForkLaunch', '-L', 'MIT', '--framework-version', '0.1.0')
     run('init', 'service', 'chat', '--language', 'rust')
     for source, fixture, relative in [
-        ('socket-contract', 'rust_socket_contract.json', '.forklaunch/socket-contracts/chat/socket-contract.json'),
-        ('asyncapi', 'rust_asyncapi_socket.json', '.forklaunch/asyncapi/chat/asyncapi.json'),
+        ('socket-contract', 'rust_socket_contract.json', 'src/chat/sdk/typescript/socket-contract.json'),
+        ('asyncapi', 'rust_asyncapi_socket.json', 'src/chat/sdk/typescript/asyncapi.json'),
     ]:
         artifact = app / relative
         artifact.parent.mkdir(parents=True, exist_ok=True)

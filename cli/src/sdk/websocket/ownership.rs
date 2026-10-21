@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::*;
+use crate::core::artifact_paths::{self, Artifact};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -99,16 +100,63 @@ pub(super) fn stage_package(
     )
 }
 
-fn marker(name: &str, target: &str) -> PathBuf {
-    PathBuf::from(format!(
-        ".forklaunch/socket-sdk-outputs/{name}/{target}.json"
-    ))
+/// Each generated package's ownership record sits beside the package (so it
+/// survives the package's retirement and the owning project's directory);
+/// AsyncAPI ownership sits beside that project's socket artifacts. Neither uses
+/// the application's `.forklaunch/`.
+fn marker_with(
+    root: &Path,
+    name: &str,
+    target: &str,
+    metadata: Option<&toml::Table>,
+) -> Result<PathBuf> {
+    if target == "asyncapi" {
+        return Ok(crate::core::artifact_paths::socket_receipt(name, metadata, target));
+    }
+    let package = package_at(root, name, target)?;
+    let file = package
+        .file_name()
+        .context("Socket SDK package name missing")?
+        .to_string_lossy()
+        .into_owned();
+    Ok(package.with_file_name(format!(".{file}{PACKAGE_RECEIPT_SUFFIX}")))
+}
+
+const PACKAGE_RECEIPT_SUFFIX: &str = ".forklaunch.json";
+
+fn marker(root: &Path, name: &str, target: &str) -> Result<PathBuf> {
+    if target != "asyncapi" {
+        return marker_with(root, name, target, None);
+    }
+    let metadata = crate::core::artifact_paths::application_metadata(root, name);
+    marker_with(root, name, target, metadata.as_ref())
+}
+
+pub(super) fn is_receipt(relative: &Path) -> bool {
+    relative.file_name().is_some_and(|file| {
+        let file = file.to_string_lossy();
+        (file.starts_with('.') && file.ends_with(PACKAGE_RECEIPT_SUFFIX))
+            || file == "socket-sdk-asyncapi.json"
+    }) || relative.starts_with(".forklaunch/socket-sdk-outputs")
+}
+
+#[cfg(test)]
+pub(super) fn package_receipt(root: &Path, name: &str, target: &str) -> PathBuf {
+    marker_with(root, name, target, None).unwrap()
 }
 
 fn read_ownership(root: &Path, name: &str, target: &str) -> Result<Option<Ownership>> {
-    let marker = marker(name, target);
-    validate_destination(root, &marker)?;
-    match fs::File::open(root.join(&marker)) {
+    read_ownership_at(root, name, target, &marker(root, name, target)?)
+}
+
+fn read_ownership_at(
+    root: &Path,
+    name: &str,
+    target: &str,
+    marker: &Path,
+) -> Result<Option<Ownership>> {
+    validate_destination(root, marker)?;
+    match fs::File::open(root.join(marker)) {
         Ok(file) => {
             let mut bytes = Vec::new();
             file.take(1024 * 1024 + 1).read_to_end(&mut bytes)?;
@@ -189,13 +237,7 @@ pub(super) fn rename_service(
         })
         .context("Renamed socket service missing from manifest")?;
     let metadata = project.get("metadata").and_then(toml::Value::as_table);
-    let contract_path = metadata
-        .and_then(|metadata| metadata.get("contractArtifactPath"))
-        .and_then(toml::Value::as_str)
-        .map_or_else(
-            || PathBuf::from(format!(".forklaunch/contracts/{new}/contract.json")),
-            PathBuf::from,
-        );
+    let contract_path = PathBuf::from(artifact_paths::path(new, metadata, Artifact::Contract));
     let contract = read_json(root, &contract_path, 16 * 1024 * 1024)?;
     let registered = crate::core::openapi_export::rename_registered_sockets(
         root,
@@ -207,12 +249,10 @@ pub(super) fn rename_service(
     let configured = metadata
         .and_then(|metadata| metadata.get("socketContractArtifactPath"))
         .and_then(toml::Value::as_str);
-    let new_artifact = configured.map_or_else(
-        || format!(".forklaunch/socket-contracts/{new}/socket-contract.json"),
-        str::to_owned,
-    );
-    let old_default = format!(".forklaunch/socket-contracts/{old}/socket-contract.json");
-    let new_default = format!(".forklaunch/socket-contracts/{new}/socket-contract.json");
+    let new_default = artifact_paths::default_path(new, metadata, Artifact::SocketContract);
+    let new_artifact = configured.map_or_else(|| new_default.clone(), str::to_owned);
+    // A service-owned SDK folder moved with its crate; legacy defaults are per name.
+    let old_default = artifact_paths::default_path(old, metadata, Artifact::SocketContract);
     let old_artifact = configured
         .filter(|configured| *configured != new_default)
         .map_or_else(|| old_default, str::to_owned);
@@ -249,7 +289,7 @@ pub(super) fn rename_service(
             fs::write(root.join(destination), config)?;
         }
     }
-    if cleanup_service(root, old)? {
+    if cleanup_service(root, old, None)? {
         crate::init::rust_project::remove_cargo_member(
             root,
             &package_at(root, old, "rust")?.to_string_lossy(),
@@ -279,7 +319,7 @@ pub(super) fn release_asyncapi(
     name: &str,
 ) -> Result<()> {
     if read_ownership(root, name, "asyncapi")?.is_some() {
-        let marker = marker(name, "asyncapi");
+        let marker = marker(root, name, "asyncapi")?;
         removals.insert(marker.clone(), hash(&fs::read(root.join(marker))?));
     }
     Ok(())
@@ -357,31 +397,27 @@ pub(super) fn stage_empty_asyncapi(
 
 /// Explicit project deletion retires its generated outputs even for offline
 /// artifacts. Hashes retain application edits, custom compiler files and aliases.
-pub(super) fn cleanup_service(root: &Path, name: &str) -> Result<bool> {
+/// `metadata` locates AsyncAPI ownership for a project already removed from the manifest.
+pub(super) fn cleanup_service(
+    root: &Path,
+    name: &str,
+    metadata: Option<&toml::Table>,
+) -> Result<bool> {
     let mut removals = BTreeMap::new();
     let mut rust_owned = false;
     for target in ["typescript", "rust", "asyncapi"] {
-        let Some(previous) = read_ownership(root, name, target)? else {
+        let marker = match metadata {
+            Some(metadata) => marker_with(root, name, target, Some(metadata))?,
+            None => marker(root, name, target)?,
+        };
+        let Some(previous) = read_ownership_at(root, name, target, &marker)? else {
             continue;
         };
         rust_owned |= target == "rust";
         removals.extend(previous.files);
-        let marker = marker(name, target);
         removals.insert(marker.clone(), hash(&fs::read(root.join(marker))?));
     }
     remove_unchanged(root, &removals)?;
-    let directory = root.join(format!(".forklaunch/socket-sdk-outputs/{name}"));
-    if directory.canonicalize().ok().as_ref() == Some(&directory) {
-        match fs::remove_dir(directory) {
-            Ok(()) => {}
-            Err(error)
-                if matches!(
-                    error.kind(),
-                    std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
-                ) => {}
-            Err(error) => return Err(error.into()),
-        }
-    }
     Ok(rust_owned)
 }
 
@@ -394,7 +430,7 @@ fn stage_record(
     source: Option<&str>,
     owned: BTreeMap<PathBuf, String>,
 ) -> Result<()> {
-    let marker = marker(name, target);
+    let marker = marker(root, name, target)?;
     validate_destination(root, &marker)?;
     stage(
         files,
@@ -426,12 +462,15 @@ fn read_json(root: &Path, relative: &Path, limit: u64) -> Result<Option<Value>> 
     Ok(Some(serde_json::from_slice(&bytes)?))
 }
 
-pub(super) fn registry_exported(root: &Path, name: &str, artifact: &Path) -> Result<bool> {
+pub(super) fn registry_exported(
+    root: &Path,
+    name: &str,
+    metadata: Option<&toml::Table>,
+    artifact: &Path,
+) -> Result<bool> {
     let Some(marker) = read_json(
         root,
-        Path::new(&format!(
-            ".forklaunch/socket-contracts/{name}/registry-export.json"
-        )),
+        &artifact_paths::socket_registry_marker(name, metadata),
         4096,
     )?
     else {
@@ -451,6 +490,7 @@ pub(super) fn registry_exported(root: &Path, name: &str, artifact: &Path) -> Res
 
 pub(super) struct RegistrySnapshot {
     name: String,
+    metadata: Option<toml::Table>,
     artifact: PathBuf,
     contract: PathBuf,
     value: Value,
@@ -460,7 +500,7 @@ impl RegistrySnapshot {
     pub(super) fn verify(&self, root: &Path) -> Result<()> {
         anyhow::ensure!(
             read_json(root, &self.contract, 16 * 1024 * 1024)?.as_ref() == Some(&self.value)
-                && registry_exported(root, &self.name, &self.artifact)?,
+                && registry_exported(root, &self.name, self.metadata.as_ref(), &self.artifact)?,
             "Socket registry changed during SDK compilation; retry after export completes"
         );
         Ok(())
@@ -476,18 +516,12 @@ pub(super) fn registry_snapshot(
     artifact: &Path,
     project: &toml::Value,
 ) -> Result<Option<RegistrySnapshot>> {
-    if !registry_exported(root, name, artifact)? {
+    let metadata = project.get("metadata").and_then(toml::Value::as_table);
+    if !registry_exported(root, name, metadata, artifact)? {
         // Independently authored/edited portable artifacts remain valid inputs.
         return Ok(None);
     }
-    let contract = project
-        .get("metadata")
-        .and_then(|metadata| metadata.get("contractArtifactPath"))
-        .and_then(toml::Value::as_str)
-        .map_or_else(
-            || PathBuf::from(format!(".forklaunch/contracts/{name}/contract.json")),
-            PathBuf::from,
-        );
+    let contract = PathBuf::from(artifact_paths::path(name, metadata, Artifact::Contract));
     let value = read_json(root, &contract, 16 * 1024 * 1024)?
         .context("Socket registry is unavailable; retry after export completes")?;
     let portable = read_json(root, artifact.strip_prefix(root)?, 16 * 1024 * 1024)?
@@ -503,6 +537,7 @@ pub(super) fn registry_snapshot(
     );
     Ok(Some(RegistrySnapshot {
         name: name.into(),
+        metadata: metadata.cloned(),
         artifact: artifact.to_path_buf(),
         contract,
         value,
@@ -526,14 +561,11 @@ pub(super) fn stage_empty_registry(
     if !previous.registry_exported {
         return Ok(false);
     }
-    let contract = project
-        .get("metadata")
-        .and_then(|metadata| metadata.get("contractArtifactPath"))
-        .and_then(toml::Value::as_str)
-        .map_or_else(
-            || format!(".forklaunch/contracts/{name}/contract.json"),
-            str::to_owned,
-        );
+    let contract = artifact_paths::path(
+        name,
+        project.get("metadata").and_then(toml::Value::as_table),
+        Artifact::Contract,
+    );
     let Some(contract) = read_json(root, Path::new(&contract), 16 * 1024 * 1024)? else {
         return Ok(false);
     };
@@ -814,13 +846,13 @@ mod tests {
         write_staged(&root, &files);
         fs::write(root.join(&edited), "user edits").unwrap();
         fs::write(root.join(&manual), "user file").unwrap();
-        assert!(cleanup_service(&root, "chat").unwrap());
+        assert!(cleanup_service(&root, "chat", None).unwrap());
         assert!(!root.join(source).exists());
         assert!(!root.join(api).exists());
-        assert!(!root.join(marker("chat", "rust")).exists());
+        assert!(!root.join(marker(&root, "chat", "rust").unwrap()).exists());
         assert_eq!(fs::read_to_string(root.join(edited)).unwrap(), "user edits");
         assert_eq!(fs::read_to_string(root.join(manual)).unwrap(), "user file");
-        assert!(!cleanup_service(&root, "chat").unwrap());
+        assert!(!cleanup_service(&root, "chat", None).unwrap());
     }
 
     #[test]
@@ -915,7 +947,7 @@ mod tests {
             fs::read_to_string(root.join(relative)).unwrap(),
             "concurrent edits"
         );
-        let marker = root.join(".forklaunch/socket-sdk-outputs/chat/rust.json");
+        let marker = root.join(package_receipt(&root, "chat", "rust"));
         fs::write(marker, serde_json::to_vec(&json!({"formatVersion":1,"files":{"sdks/rust/chat-websocket-sdk/../../../escape":hash(b"x")}})).unwrap()).unwrap();
         assert!(
             stage_package(

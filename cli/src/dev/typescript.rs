@@ -9,7 +9,10 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
 use super::contracts::{quote, resolved_output};
-use crate::core::application_output::output_path;
+use crate::core::{
+    application_output::output_path,
+    artifact_paths::{self, Artifact},
+};
 
 fn artifact(root: &Path, project: &toml::Value, field: &str, default: String) -> Result<PathBuf> {
     let configured = project
@@ -30,6 +33,14 @@ fn artifact(root: &Path, project: &toml::Value, field: &str, default: String) ->
         bail!("Development artifact must be a file");
     }
     Ok(path)
+}
+
+fn default_artifact(project: &toml::Value, name: &str, artifact: Artifact) -> String {
+    artifact_paths::default_path(
+        name,
+        project.get("metadata").and_then(toml::Value::as_table),
+        artifact,
+    )
 }
 
 fn script(scratch: &Path, output: &Path, runtime: &str) -> Result<String> {
@@ -96,11 +107,11 @@ pub(super) fn enable(
         for (field, default) in [
             (
                 "openapiPath",
-                format!(".forklaunch/openapi/{name}/openapi.json"),
+                default_artifact(project, name, Artifact::OpenApi),
             ),
             (
                 "contractArtifactPath",
-                format!(".forklaunch/contracts/{name}/contract.json"),
+                default_artifact(project, name, Artifact::Contract),
             ),
         ] {
             owners.insert(artifact(&root, project, field, default)?, name.to_owned());
@@ -148,7 +159,7 @@ pub(super) fn enable(
             &root,
             project,
             "openapiPath",
-            format!(".forklaunch/openapi/{name}/openapi.json"),
+            default_artifact(project, name, Artifact::OpenApi),
         )?;
         if let Some(previous) = owners.insert(destination.clone(), name.to_owned()) {
             bail!("Development artifact collision between {previous} and {name}");

@@ -13,6 +13,8 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 
+use crate::core::artifact_paths::{self, Artifact};
+
 pub(crate) const OBSERVABILITY_SERVICES: &[&str] = &[
     "mimir",
     "loki",
@@ -276,10 +278,13 @@ pub(crate) fn export_service_openapi(
     Ok(())
 }
 
+/// Export every service's OpenAPI document. `output_dir` additionally lays the
+/// documents out as `<dir>/<service>/openapi.json`; without it each service
+/// writes only its registered artifact (see `outputs::Outputs::plan`).
 pub(crate) fn export_all_services(
     app_root: &Path,
     manifest: &ApplicationManifestData,
-    output_dir: &Path,
+    output_dir: Option<&Path>,
 ) -> Result<Vec<String>> {
     // Validate all languages together before starting any exporter, including
     // collisions between one service's configured path and another's default.
@@ -304,14 +309,18 @@ pub(crate) fn export_all_services(
                         || !OBSERVABILITY_SERVICES.contains(&project.name.as_str()))
             })
             .map(|project| {
+                let metadata = project
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| toml::Table::try_from(metadata).ok());
                 (
                     project.name.as_str(),
-                    project
-                        .metadata
-                        .as_ref()
-                        .and_then(|metadata| metadata.openapi_path.as_deref()),
+                    artifact_paths::path(&project.name, metadata.as_ref(), Artifact::OpenApi),
                 )
-            }),
+            })
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|(name, path)| (*name, Some(path.as_str()))),
     )?;
     let mut exported_services = export_all_rust_services(app_root, output_dir)?;
 
@@ -384,12 +393,13 @@ pub(crate) fn export_all_services(
 
     for service in services {
         let service_path = app_root.join(&manifest.modules_path).join(&service.name);
-        let service_output_dir = output_dir.join(&service.name);
+        let openapi_file = outputs.exported(&service.name)?.to_path_buf();
+        let service_output_dir = openapi_file
+            .parent()
+            .context("OpenAPI output parent missing")?;
 
-        fs::create_dir_all(&service_output_dir)
+        fs::create_dir_all(service_output_dir)
             .with_context(|| format!("Failed to create directory: {:?}", service_output_dir))?;
-
-        let openapi_file = service_output_dir.join("openapi.json");
 
         let service_env_vars = all_env_vars
             .get(&service.name)
@@ -406,8 +416,21 @@ pub(crate) fn export_all_services(
         )?;
 
         let mut document: serde_json::Value = serde_json::from_str(&fs::read_to_string(&openapi_file)?)?;
-        portable::enrich_imported(&mut document, &service.name)
-            .with_context(|| format!("Failed to normalize TypeScript OpenAPI for {}", service.name))?;
+        // The framework exports either one document or a map keyed by API
+        // version (the unversioned API is keyed ""); normalize every document.
+        let documents: Vec<&mut serde_json::Value> = if document.get("openapi").is_some() {
+            vec![&mut document]
+        } else {
+            document
+                .as_object_mut()
+                .map(|versions| versions.values_mut().collect())
+                .unwrap_or_default()
+        };
+        for document in documents {
+            portable::enrich_imported(document, &service.name).with_context(|| {
+                format!("Failed to normalize TypeScript OpenAPI for {}", service.name)
+            })?;
+        }
         fs::write(&openapi_file, serde_json::to_string_pretty(&document)?)?;
 
         outputs.refresh(&service.name)?;
@@ -430,7 +453,10 @@ pub(crate) fn raw_contract_export_enabled(project: &toml::Value) -> bool {
         != Some(false)
 }
 
-pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Result<Vec<String>> {
+pub(crate) fn export_all_rust_services(
+    app_root: &Path,
+    output_dir: Option<&Path>,
+) -> Result<Vec<String>> {
     let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
     let manifest_content = fs::read_to_string(&manifest_path)
         .with_context(|| format!("Failed to read {}", manifest_path.display()))?;
@@ -463,19 +489,15 @@ pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Re
                     .get("name")
                     .and_then(toml::Value::as_str)
                     .map(|name| {
-                        let metadata = project.get("metadata");
                         (
                             name,
-                            metadata
-                                .and_then(|metadata| {
-                                    metadata
-                                        .get("openapiPath")
-                                        .or_else(|| metadata.get("openapi_path"))
-                                })
-                                .and_then(toml::Value::as_str),
+                            artifact_paths::project_path(project, Artifact::OpenApi),
                         )
                     })
-            }),
+            })
+            .collect::<Vec<_>>()
+            .iter()
+            .map(|(name, path)| (*name, path.as_deref())),
     )?;
     let mut exported_services = Vec::new();
     for project in projects {
@@ -499,23 +521,12 @@ pub(crate) fn export_all_rust_services(app_root: &Path, output_dir: &Path) -> Re
             continue;
         }
 
-        let service_output_dir = output_dir.join(service_name);
-        fs::create_dir_all(&service_output_dir)
+        let output_file = outputs.exported(service_name)?.to_path_buf();
+        let service_output_dir = output_file.parent().context("OpenAPI output parent missing")?;
+        fs::create_dir_all(service_output_dir)
             .with_context(|| format!("Failed to create directory: {:?}", service_output_dir))?;
-        let output_file = service_output_dir.join("openapi.json");
-        let contract_path = metadata
-            .and_then(|metadata| metadata.get("contractArtifactPath"))
-            .and_then(toml::Value::as_str)
-            .map_or_else(
-                || {
-                    app_root
-                        .join(".forklaunch")
-                        .join("contracts")
-                        .join(service_name)
-                        .join("contract.json")
-                },
-                |path| app_root.join(path),
-            );
+        let contract_path =
+            app_root.join(artifact_paths::path(service_name, metadata, Artifact::Contract));
         if let Some(contract_dir) = contract_path.parent() {
             fs::create_dir_all(contract_dir)
                 .with_context(|| format!("Failed to create {}", contract_dir.display()))?;
@@ -664,9 +675,7 @@ pub(crate) fn export_registered_sockets(
     let root = app_root.canonicalize()?;
     let marker = crate::core::application_output::output_path(
         &root,
-        Path::new(&format!(
-            ".forklaunch/socket-contracts/{service_name}/registry-export.json"
-        )),
+        &artifact_paths::socket_registry_marker(service_name, metadata),
     )?;
     let previous = read_socket_export_marker(&marker)?;
     let sockets = artifact
@@ -685,13 +694,7 @@ pub(crate) fn export_registered_sockets(
         return Ok(());
     }
     let sockets = sockets.unwrap();
-    let relative = metadata
-        .and_then(|metadata| metadata.get("socketContractArtifactPath"))
-        .and_then(toml::Value::as_str)
-        .map_or_else(
-            || format!(".forklaunch/socket-contracts/{service_name}/socket-contract.json"),
-            str::to_owned,
-        );
+    let relative = artifact_paths::path(service_name, metadata, Artifact::SocketContract);
     let output = crate::core::application_output::output_path(app_root, Path::new(&relative))?;
     let service = artifact
         .get("service")
@@ -757,11 +760,11 @@ pub(crate) fn rename_registered_sockets(
     artifact: Option<&serde_json::Value>,
 ) -> Result<bool> {
     let root = app_root.canonicalize()?;
+    // `metadata` is the renamed project's: a service-owned SDK folder (and its
+    // marker) moved with the crate, while legacy markers are named per service.
     let marker = crate::core::application_output::output_path(
         &root,
-        Path::new(&format!(
-            ".forklaunch/socket-contracts/{old}/registry-export.json"
-        )),
+        &artifact_paths::socket_registry_marker(old, metadata),
     )?;
     let Some(previous) = read_socket_export_marker(&marker)? else {
         return Ok(false);
@@ -769,15 +772,17 @@ pub(crate) fn rename_registered_sockets(
     let artifact =
         artifact.context("Registered socket rename requires its exported framework contract")?;
     export_registered_sockets(&root, new, metadata, artifact)?;
-    let output = metadata
-        .and_then(|metadata| metadata.get("socketContractArtifactPath"))
-        .and_then(toml::Value::as_str)
-        .map_or_else(
-            || format!(".forklaunch/socket-contracts/{new}/socket-contract.json"),
-            str::to_owned,
-        );
+    let output = artifact_paths::path(new, metadata, Artifact::SocketContract);
     let output = crate::core::application_output::output_path(&root, Path::new(&output))?;
     cleanup_socket_export(&root, Some(&previous), Some(&output))?;
+    if marker
+        == crate::core::application_output::output_path(
+            &root,
+            &artifact_paths::socket_registry_marker(new, metadata),
+        )?
+    {
+        return Ok(true);
+    }
     fs::remove_file(&marker)?;
     if let Some(parent) = marker.parent() {
         if parent.canonicalize().ok().as_deref() == Some(parent) {
@@ -1107,11 +1112,11 @@ openapiPath = "../must-not-plan-worker.json"
         let manifest: ApplicationManifestData = toml::from_str(source).unwrap();
         let output = root.join("exports");
         assert!(
-            export_all_services(root, &manifest, &output)
+            export_all_services(root, &manifest, Some(&output))
                 .unwrap()
                 .is_empty()
         );
-        assert!(export_all_rust_services(root, &output).unwrap().is_empty());
+        assert!(export_all_rust_services(root, Some(&output)).unwrap().is_empty());
         assert!(!output.exists());
         let serialized = toml::to_string(&manifest).unwrap();
         assert_eq!(serialized.matches("contractExport = false").count(), 2);
@@ -1196,7 +1201,7 @@ openapiPath = "custom/specs/native.json"
         .unwrap();
         let output = root.join("exported");
         assert_eq!(
-            export_all_rust_services(root, &output).unwrap(),
+            export_all_rust_services(root, Some(&output)).unwrap(),
             ["registered-service"]
         );
         assert_eq!(

@@ -9,7 +9,7 @@ import tempfile
 import time
 
 cli = sys.argv[1]
-artifact = Path('.forklaunch/socket-contracts/realtime/socket-contract.json')
+artifact = Path('src/realtime/sdk/typescript/socket-contract.json')
 original = artifact.read_bytes()
 manifest = Path('.forklaunch/manifest.toml')
 original_manifest = manifest.read_text()
@@ -28,8 +28,11 @@ def run(args=(), failure=None):
 
 def snapshot():
     paths = [Path('Cargo.toml'), Path('src/pnpm-workspace.yaml')]
-    for directory in ['src/client-sdk', '.forklaunch/asyncapi', '.forklaunch/socket-sdk-outputs']:
-        paths += [p for p in Path(directory).rglob('*') if p.is_file()]
+    # Generated outputs: socket SDK packages (with their ownership records) and
+    # the AsyncAPI document/record beside the input artifact in the SDK folder.
+    for directory in ['src/client-sdk', 'src/realtime/sdk/typescript']:
+        paths += [p for p in Path(directory).rglob('*')
+                  if p.is_file() and 'node_modules' not in p.parts and p != artifact]
     return {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
 
 
@@ -90,6 +93,10 @@ try:
     assert snapshot() == baseline
     manifest.write_text(original_manifest)
     artifact.write_bytes(original)
+    # A project without an SDK folder uses the legacy location; leave none behind.
+    broken.unlink()
+    broken.parent.rmdir()
+    broken.parent.parent.rmdir()
 
     with tempfile.TemporaryDirectory(prefix='fl-socket-outside-') as outside:
         external = Path(outside) / 'contract.json'
@@ -115,7 +122,7 @@ try:
     custom.parent.mkdir(parents=True, exist_ok=True)
     custom.write_bytes(original)
     custom_manifest = original_manifest.replace('[projects.metadata]\n', '[projects.metadata]\nsocketContractArtifactPath = "custom/socket-contract.json"\n')
-    custom_manifest = custom_manifest.replace('asyncapiPath = ".forklaunch/asyncapi/realtime/asyncapi.json"', 'asyncapiPath = "custom/asyncapi.json"')
+    custom_manifest = custom_manifest.replace('asyncapiPath = "src/realtime/sdk/typescript/asyncapi.json"', 'asyncapiPath = "custom/asyncapi.json"')
     manifest.write_text(custom_manifest)
     run()
     run(['--check'])

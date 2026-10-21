@@ -23,10 +23,12 @@ pub(super) fn has_local_sdk(dir: &Path) -> bool {
     dir.join("sdk/rust/.forklaunch-sdk-local").is_file()
 }
 /// Match the outputs owned by core::build::service_sdks and its provenance receipt.
+/// AsyncAPI lives beside them so every per-service artifact shares one folder.
 pub(super) fn set_artifact_paths(metadata: &mut Map<String, Value>, name: &str) {
     for (key, file) in [
         ("contractArtifactPath", "contract.json"),
         ("openapiPath", "openapi.json"),
+        ("asyncapiPath", "asyncapi.json"),
     ] {
         metadata.insert(
             key.into(),

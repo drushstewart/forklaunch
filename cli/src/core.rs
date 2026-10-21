@@ -4,6 +4,7 @@ pub(crate) mod log;
 pub(crate) mod accounts;
 pub(crate) mod ast;
 pub(crate) mod application_output;
+pub(crate) mod artifact_paths;
 pub(crate) mod storefront;
 pub(crate) mod base_path;
 pub(crate) mod bunfig;

@@ -17,7 +17,7 @@ const parserRequire = createRequire(
 const { Parser } = parserRequire('@asyncapi/parser');
 const parsed = await new Parser().parse(
   await readFile(
-    path.join(root, '.forklaunch/asyncapi/realtime/asyncapi.json'),
+    path.join(root, 'src/realtime/sdk/typescript/asyncapi.json'),
     'utf8',
   ),
 );

@@ -18,6 +18,7 @@ use toml::{Value, map::Map};
 use uuid::Uuid;
 
 use crate::core::{
+    artifact_paths::{self, Artifact},
     docker::{
         Command as DockerCommand, DockerBuild, DockerCompose, DockerNetwork, DockerService,
         HealthTest, Healthcheck, Restart,
@@ -278,30 +279,6 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         RenderedTemplate {
             path: root_path.join(".forklaunch").join("manifest.toml"),
             content: manifest,
-            context: None,
-        },
-        RenderedTemplate {
-            path: root_path
-                .join(".forklaunch")
-                .join("contracts")
-                .join(".gitkeep"),
-            content: String::new(),
-            context: None,
-        },
-        RenderedTemplate {
-            path: root_path
-                .join(".forklaunch")
-                .join("openapi")
-                .join(".gitkeep"),
-            content: String::new(),
-            context: None,
-        },
-        RenderedTemplate {
-            path: root_path
-                .join(".forklaunch")
-                .join("asyncapi")
-                .join(".gitkeep"),
-            content: String::new(),
             context: None,
         },
         RenderedTemplate {
@@ -880,6 +857,12 @@ fn delete_rust_project_inner(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    // Socket outputs are located from the project's metadata, which the manifest
+    // no longer holds once the project is removed.
+    let metadata = project_table(&manifest, name)
+        .and_then(|project| project.get("metadata"))
+        .and_then(Value::as_table)
+        .cloned();
     language_images::preflight(app_root)?;
     remove_project_from_manifest_value(&mut manifest, name, Some(kind))?;
     write_manifest_value(&manifest_path, &manifest)?;
@@ -895,7 +878,7 @@ fn delete_rust_project_inner(
     }
     remove_cargo_member(app_root, &format!("{crate_path}/domain"))?;
     remove_cargo_member(app_root, &format!("{crate_path}/sdk/rust"))?;
-    cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name)?;
+    cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name, metadata.as_ref())?;
     remove_rust_docker_compose_project(app_root, name)?;
     crate::infra::native_local::release_deleted_service(app_root)?;
     remove_rust_package_scripts(app_root, name)?;
@@ -920,12 +903,13 @@ fn cleanup_generated_outputs_for_deleted_rust_project(
     app_root: &Path,
     kind: RustProjectKind,
     name: &str,
+    metadata: Option<&Map<String, Value>>,
 ) -> Result<()> {
     if !matches!(kind, RustProjectKind::Service | RustProjectKind::Worker) {
         return Ok(());
     }
 
-    if crate::sdk::websocket::cleanup_service(app_root, name)? {
+    if crate::sdk::websocket::cleanup_service(app_root, name, metadata)? {
         remove_cargo_member(
             app_root,
             &crate::sdk::sdk_base(app_root)?
@@ -936,7 +920,7 @@ fn cleanup_generated_outputs_for_deleted_rust_project(
     crate::core::openapi_export::export_registered_sockets(
         app_root,
         name,
-        None,
+        metadata,
         &json!({"sockets": {}}),
     )?;
     remove_rust_project_artifacts(app_root, name)?;
@@ -1197,22 +1181,40 @@ pub(crate) fn change_rust_project(
             "cratePath".to_string(),
             Value::String(target_crate_path.clone()),
         );
-        metadata.insert(
-            "contractArtifactPath".to_string(),
-            Value::String(format!(".forklaunch/contracts/{target_name}/contract.json")),
-        );
-        metadata.insert(
-            "openapiPath".to_string(),
-            Value::String(format!(".forklaunch/openapi/{target_name}/openapi.json")),
-        );
+        // Artifacts inside the moved crate follow it, explicit legacy locations
+        // follow the renamed project, and other custom locations stay put.
+        let current_prefix = format!("{}/", current_crate_path.trim_end_matches('/'));
+        for key in [
+            Artifact::Contract.key(),
+            Artifact::OpenApi.key(),
+            Artifact::AsyncApi.key(),
+            Artifact::SocketContract.key(),
+            "asyncapiArtifactPath",
+        ] {
+            if let Some(relative) = metadata
+                .get(key)
+                .and_then(Value::as_str)
+                .and_then(|path| path.strip_prefix(&current_prefix))
+                .filter(|_| current_crate_path != target_crate_path)
+            {
+                let moved = format!("{}/{relative}", target_crate_path.trim_end_matches('/'));
+                metadata.insert(key.into(), Value::String(moved));
+            }
+        }
+        for artifact in [Artifact::Contract, Artifact::OpenApi, Artifact::AsyncApi] {
+            if metadata.get(artifact.key()).and_then(Value::as_str)
+                == Some(artifact_paths::legacy(current_name, artifact).as_str())
+            {
+                metadata.insert(
+                    artifact.key().into(),
+                    Value::String(artifact_paths::legacy(target_name, artifact)),
+                );
+            }
+        }
         if contracts_layout::is_native_service(&app_root.join(&target_crate_path))
             || contracts_layout::has_local_sdk(&app_root.join(&target_crate_path)) {
             contracts_layout::set_artifact_paths(metadata, target_name);
         }
-        metadata.insert(
-            "asyncapiPath".to_string(),
-            Value::String(format!(".forklaunch/asyncapi/{target_name}/asyncapi.json")),
-        );
         if metadata
             .get("socketContractArtifactPath")
             .and_then(Value::as_str)
@@ -1324,7 +1326,12 @@ pub(crate) fn change_rust_project(
             remove_cargo_member(app_root, &format!("{target_crate_path}/domain"))?;
             remove_path_if_exists(&crate_dir.join("domain/Cargo.toml"))?;
         }
-        cleanup_generated_outputs_for_deleted_rust_project(app_root, current_kind, target_name)?;
+        cleanup_generated_outputs_for_deleted_rust_project(
+            app_root,
+            current_kind,
+            target_name,
+            artifact_paths::application_metadata(app_root, target_name).as_ref(),
+        )?;
     }
 
     language_images::reconcile(app_root)?;
@@ -1376,7 +1383,7 @@ fn rename_rust_project_outputs(root: &Path, old: &str, new: &str) -> Result<()> 
         remove_cargo_member(root, &old_member)?;
         remove_path_if_exists(&root.join(&old_member))?;
         let source = if root
-            .join(format!(".forklaunch/contracts/{new}/contract.json"))
+            .join(artifact_paths::application_path(root, new, Artifact::Contract))
             .exists()
         {
             "contract"
@@ -2839,18 +2846,6 @@ fn project_manifest_entry(
     metadata.insert("language".to_string(), Value::String("rust".to_string()));
     metadata.insert("crateName".to_string(), Value::String(name.to_string()));
     metadata.insert("cratePath".to_string(), Value::String(crate_path));
-    metadata.insert(
-        "contractArtifactPath".to_string(),
-        Value::String(format!(".forklaunch/contracts/{name}/contract.json")),
-    );
-    metadata.insert(
-        "openapiPath".to_string(),
-        Value::String(format!(".forklaunch/openapi/{name}/openapi.json")),
-    );
-    metadata.insert(
-        "asyncapiPath".to_string(),
-        Value::String(format!(".forklaunch/asyncapi/{name}/asyncapi.json")),
-    );
     metadata.insert(
         "sdkTargets".to_string(),
         Value::Array(sdk_targets.iter().cloned().map(Value::String).collect()),

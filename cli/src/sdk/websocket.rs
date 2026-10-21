@@ -10,6 +10,8 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 use termcolor::{StandardStream, WriteColor};
 
+use crate::core::artifact_paths::{self, Artifact};
+
 mod compiler;
 mod ownership;
 
@@ -71,14 +73,7 @@ pub(crate) fn generate_from(
                 "rust"
             };
             if ownership::imported_target(&root, name, other)? {
-                let input = project
-                    .get("metadata")
-                    .and_then(|metadata| metadata.get("asyncapiArtifactPath"))
-                    .and_then(toml::Value::as_str)
-                    .map_or_else(
-                        || format!(".forklaunch/asyncapi/{name}/asyncapi.json"),
-                        str::to_owned,
-                    );
+                let input = imported_asyncapi(project, name);
                 let path = root.join(input).canonicalize()?;
                 anyhow::ensure!(
                     path.starts_with(&root),
@@ -97,12 +92,13 @@ pub(crate) fn generate_from(
                 })
             })
             .and_then(toml::Value::as_str);
+        let metadata = project.get("metadata").and_then(toml::Value::as_table);
         let artifact = root.join(configured.map_or_else(
             || {
                 if imported {
-                    format!(".forklaunch/asyncapi/{name}/asyncapi.json")
+                    imported_asyncapi(project, name)
                 } else {
-                    format!(".forklaunch/socket-contracts/{name}/socket-contract.json")
+                    artifact_paths::path(name, metadata, Artifact::SocketContract)
                 }
             },
             str::to_owned,
@@ -169,14 +165,7 @@ pub(crate) fn generate_from(
             bail!("Invalid compiled AsyncAPI document");
         }
         if !imported {
-            let asyncapi_output = project
-                .get("metadata")
-                .and_then(|metadata| metadata.get("asyncapiPath"))
-                .and_then(toml::Value::as_str)
-                .map_or_else(
-                    || format!(".forklaunch/asyncapi/{name}/asyncapi.json"),
-                    str::to_owned,
-                );
+            let asyncapi_output = artifact_paths::path(name, metadata, Artifact::AsyncApi);
             stage(&mut files, &asyncapi_output, pretty(&compiled["asyncapi"])?)?;
             ownership::stage_asyncapi(
                 &root,
@@ -301,12 +290,24 @@ pub(crate) fn generate_from(
     Ok(())
 }
 
+/// An imported AsyncAPI document defaults to the location socket export writes.
+fn imported_asyncapi(project: &toml::Value, name: &str) -> String {
+    let metadata = project.get("metadata").and_then(toml::Value::as_table);
+    metadata
+        .and_then(|metadata| metadata.get("asyncapiArtifactPath"))
+        .and_then(toml::Value::as_str)
+        .map_or_else(
+            || artifact_paths::path(name, metadata, Artifact::AsyncApi),
+            str::to_owned,
+        )
+}
+
 fn write_staged_outputs(root: &Path, files: &BTreeMap<PathBuf, String>) -> Result<()> {
     // Watchers use ownership hashes to observe completed generation. Publish
     // those receipts only after every source and package file is on disk.
     for receipts in [false, true] {
         for (relative, content) in files {
-            if relative.starts_with(".forklaunch/socket-sdk-outputs") != receipts {
+            if ownership::is_receipt(relative) != receipts {
                 continue;
             }
             let destination = root.join(relative);
@@ -648,7 +649,11 @@ fn validate_destination(root: &Path, relative: &Path) -> Result<()> {
     crate::core::application_output::output_path(root, relative).map(|_| ())
 }
 
-pub(crate) fn cleanup_service(root: &Path, name: &str) -> Result<bool> {
+pub(crate) fn cleanup_service(
+    root: &Path,
+    name: &str,
+    metadata: Option<&toml::Table>,
+) -> Result<bool> {
     if name.is_empty()
         || !name
             .bytes()
@@ -656,7 +661,7 @@ pub(crate) fn cleanup_service(root: &Path, name: &str) -> Result<bool> {
     {
         bail!("Invalid socket service name {name}");
     }
-    ownership::cleanup_service(&root.canonicalize()?, name)
+    ownership::cleanup_service(&root.canonicalize()?, name, metadata)
 }
 
 pub(crate) fn rename_service(
@@ -777,7 +782,7 @@ mod tests {
     fn socket_ownership_receipts_remain_old_until_all_outputs_are_written() {
         use super::*;
         let root = tempfile::tempdir().unwrap();
-        let receipt = PathBuf::from(".forklaunch/socket-sdk-outputs/chat/rust.json");
+        let receipt = PathBuf::from("sdks/rust/.chat-websocket-sdk.forklaunch.json");
         fs::create_dir_all(root.path().join(receipt.parent().unwrap())).unwrap();
         fs::write(root.path().join(&receipt), "previous verified outputs").unwrap();
         // A blocked destination fails after another SDK source was updated.

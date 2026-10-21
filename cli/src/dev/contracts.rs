@@ -7,7 +7,10 @@ use std::{
 use anyhow::{Context, Result, bail};
 use serde_json::{Value, json};
 
-use crate::core::application_output::output_path;
+use crate::core::{
+    application_output::output_path,
+    artifact_paths::{self, Artifact},
+};
 
 pub(super) fn quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\"'\"'"))
@@ -82,12 +85,20 @@ pub(super) fn enable(
             (
                 "contractArtifactPath",
                 "contract_artifact_path",
-                format!(".forklaunch/contracts/{binary}/contract.json"),
+                artifact_paths::default_path(
+                    binary,
+                    metadata.and_then(toml::Value::as_table),
+                    Artifact::Contract,
+                ),
             ),
             (
                 "openapiPath",
                 "openapi_path",
-                format!(".forklaunch/openapi/{binary}/openapi.json"),
+                artifact_paths::default_path(
+                    binary,
+                    metadata.and_then(toml::Value::as_table),
+                    Artifact::OpenApi,
+                ),
             ),
         ] {
             let configured = metadata

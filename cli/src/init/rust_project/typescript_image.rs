@@ -1131,7 +1131,7 @@ mod tests {
         assert!(!rust_before.0.contains("modules/api/") && !rust_before.0.contains("COPY . ."));
 
         // Exercise the actual watcher's socket generator after image planning.
-        let artifact = root.path().join(".forklaunch/socket-contracts/native/socket-contract.json");
+        let artifact = root.path().join("src/native/sdk/typescript/socket-contract.json");
         create_dir_all(artifact.parent().unwrap()).unwrap();
         write(artifact, include_str!("../../../tests/fixtures/rust_socket_contract.json")).unwrap();
         let mut stdout = termcolor::StandardStream::stdout(termcolor::ColorChoice::Never);
