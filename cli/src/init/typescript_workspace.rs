@@ -505,18 +505,6 @@ pub(super) fn attach_if_needed(matches: &ArgMatches) -> Result<bool> {
         let destination = stage.join(&output);
         if fs::symlink_metadata(&destination).is_err() {
             copy_file(&template.join(&relative), &destination, &template, &stage)?;
-            let receipts = [
-                Path::new(crate::core::forklaunch_state::GENERATED),
-                Path::new(crate::core::forklaunch_state::legacy::TYPESCRIPT_IMAGE),
-            ];
-            if receipts.contains(&relative.as_path()) {
-                let mut receipt: Json = serde_json::from_str(&fs::read_to_string(&destination)?)?;
-                let image = if relative == receipts[0] { &mut receipt["typescriptImage"] } else { &mut receipt };
-                if image.is_object() {
-                    image["dockerfilePath"] = Json::String("Dockerfile.typescript".into());
-                }
-                fs::write(&destination, serde_json::to_string_pretty(&receipt)?)?;
-            }
         }
     }
     merge_workspace(&stage, &template, &original)?;

@@ -540,36 +540,20 @@ fn compose(report: &mut Analysis, root: &Path, filter: Option<&str>) {
     }
     files.sort();
     files.dedup();
-    // Receipts come from generated.json (or legacy files not yet migrated);
-    // generated files are compared by digest.
-    use crate::core::forklaunch_state;
-    let receipts = forklaunch_state::generated(root).unwrap_or_default();
-    let image_receipt = receipts.get(forklaunch_state::RUST_IMAGE).cloned();
-    let generated_image = image_receipt.as_ref().filter(|receipt| {
-        receipt
-            .get("dockerfileSha256")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|expected| {
-                bounded(&root.join("Dockerfile.rust"))
-                    .is_ok_and(|current| forklaunch_state::sha256_hex(current) == expected)
-            })
-    });
-    let typescript_receipt = receipts.get(forklaunch_state::TYPESCRIPT_IMAGE).cloned();
-    let typescript_plan = forklaunch_state::production_plan(root).ok().flatten();
-    let managed_typescript = typescript_receipt.as_ref().filter(|receipt| {
-        receipt
-            .get("dockerfileSha256")
-            .and_then(serde_json::Value::as_str)
-            .is_some_and(|expected| {
-                let file = receipt
-                    .get("dockerfilePath")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("Dockerfile.typescript");
-                matches!(file, "Dockerfile" | "Dockerfile.typescript")
-                    && bounded(&root.join(file))
-                        .is_ok_and(|current| forklaunch_state::sha256_hex(current) == expected)
-            })
-    });
+    // Generated Dockerfiles carry a fingerprint; their inventories are derived.
+    let rust_image = crate::init::rust_project::rust_image_summary(root);
+    let generated_image = rust_image
+        .as_ref()
+        .filter(|(_, _, unchanged)| *unchanged)
+        .map(|(image, binaries, _)| serde_json::json!({"image": image, "binaries": binaries}));
+    let generated_image = generated_image.as_ref();
+    let typescript = crate::init::rust_project::typescript_image_summary(root);
+    let typescript_receipt = typescript.as_ref().map(|(receipt, _, _)| receipt);
+    let typescript_plan = typescript.as_ref().and_then(|(_, plan, _)| plan.clone());
+    let managed_typescript = typescript
+        .as_ref()
+        .filter(|(_, _, unchanged)| *unchanged)
+        .map(|(receipt, _, _)| receipt);
     if typescript_receipt.is_some() && managed_typescript.is_none() {
         report.issue("FLR-ANALYSIS-004", "warning", "", &root.join("Dockerfile.typescript"),
             "Custom or missing TypeScript Dockerfile: managed process commands and migration ordering were not checked");
@@ -1009,8 +993,8 @@ mod tests {
     #[test]
     fn generated_shared_image_commands_are_checked_but_custom_images_are_not_adopted() {
         let root = tempfile::tempdir().unwrap();
-        put(root.path(), "Dockerfile.rust", "FROM scratch\n");
-        put(root.path(),".forklaunch/generated.json",&serde_json::json!({"rustImage":{"dockerfileSha256":crate::core::forklaunch_state::sha256_hex("FROM scratch\n"),"image":"demo-rust:local","binaries":["notes"]}}).to_string());
+        put(root.path(), ".forklaunch/manifest.toml", "app_name = \"demo\"\nruntime = \"node\"\n");
+        put(root.path(), "Dockerfile.rust", &crate::core::forklaunch_state::stamp("FROM scratch\nCOPY --from=builder /app/target/release/notes /app/bin/notes\n"));
         put(
             root.path(),
             "compose.yaml",
@@ -1028,7 +1012,7 @@ mod tests {
             "services:\n  notes:\n    image: demo-rust:local\n    command: ['/app/bin/notes', 'migrate']\n",
         );
         assert!(!inspect(root.path(), "src", &[], Some("mixed"), None).has_errors());
-        put(root.path(), "Dockerfile.rust", "FROM custom\n");
+        put(root.path(), "Dockerfile.rust", "FROM custom\nCOPY --from=builder /app/target/release/notes /app/bin/notes\n");
         put(
             root.path(),
             "compose.yaml",
@@ -1040,23 +1024,17 @@ mod tests {
     #[test]
     fn typescript_managed_processes_require_commands_and_successful_migrations() {
         let root = tempfile::tempdir().unwrap();
-        put(root.path(), "Dockerfile.typescript", "FROM node:22\n");
+        put(root.path(), ".forklaunch/manifest.toml", "app_name = \"demo\"\nruntime = \"node\"\n");
+        let plan = serde_json::json!({
+            "processes":[{"directory":"notes","entries":["server"],"database":"postgresql"}],
+            "services":{"notes":{"directory":"notes","entry":"server"}}
+        });
         put(
             root.path(),
-            ".forklaunch/typescript-image.json",
-            &serde_json::json!({
-                "dockerfile":"FROM node:22\n", "image":"demo-typescript:local",
-                "processes":{"notes":{"directory":"notes","entry":"server"}}
-            })
-            .to_string(),
-        );
-        put(
-            root.path(),
-            ".forklaunch/typescript-build.json",
-            &serde_json::json!({
-                "processes":[{"directory":"notes","entries":["server"],"database":"postgresql"}]
-            })
-            .to_string(),
+            "Dockerfile.typescript",
+            &crate::core::forklaunch_state::stamp(&format!(
+                "FROM node:22\nCOPY <<\"FORKLAUNCH_EOF\" /forklaunch/production.json\n{plan}\nFORKLAUNCH_EOF\n"
+            )),
         );
         let mut compose = serde_json::json!({"services":{
             "notes":{"image":"demo-typescript:local", "command":["node","--enable-source-maps","/app/notes/production/server.mjs"],
@@ -1082,7 +1060,9 @@ mod tests {
                 .iter()
                 .any(|d| d.code == "FLR-LAYOUT-007")
         );
-        put(root.path(), "Dockerfile.typescript", "FROM custom\n");
+        // An edited generated Dockerfile keeps its stamp but no longer matches it.
+        let edited = std::fs::read_to_string(root.path().join("Dockerfile.typescript")).unwrap().replace("FROM node:22", "FROM custom");
+        put(root.path(), "Dockerfile.typescript", &edited);
         let report = inspect(root.path(), "src", &[], Some("mixed"), None);
         assert!(!report.has_errors());
         assert!(

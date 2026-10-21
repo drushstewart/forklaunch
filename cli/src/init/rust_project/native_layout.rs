@@ -959,7 +959,7 @@ mod tests {
                     write(source.join("Cargo.toml"), format!("[workspace.package]\nversion={:?}\n", version)).unwrap();
                     format!("path={}\n", toml::Value::String(source.to_string_lossy().into_owned()))
                 } else { format!("version={:?}\n", version) };
-                write(root.join(".forklaunch/framework-dependencies.toml"), config).unwrap();
+                { let manifest = root.join(".forklaunch/manifest.toml"); let prior = std::fs::read_to_string(&manifest).unwrap_or_default(); std::fs::write(&manifest, format!("{prior}\n[framework]\n{}\n", config)).unwrap(); }
             }
             let directory = root.join("modules/team/notes");
             let render = || service_templates(&directory, "notes", "Notes").into_iter()

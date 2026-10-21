@@ -31,11 +31,12 @@ try:
   print('PASS generated runtime migration:',runtime,flush=True)
   manifest=tomllib.loads((app/'.forklaunch/manifest.toml').read_text());assert manifest['runtime']==runtime and manifest['language']=='mixed' and manifest['test_framework']=='vitest'
   assert all(p.read_bytes()==content for p,content in saved.items())
-  config=json.loads((app/'.forklaunch/build.json').read_text())['contracts']['api'];assert config['runtime']==runtime
-  package=json.loads((app/'modules/api/package.json').read_text());assert package['scripts']['build'].startswith(runtime+' ')
+  api=next(p for p in manifest['projects'] if p['name']=='api');assert api['metadata']['contractBuild'] is True
+  package=json.loads((app/'modules/api/package.json').read_text());assert package['scripts']['build']=='tsc -b'
   docker=(app/'Dockerfile.typescript').read_text();assert ('FROM oven/bun:' in docker)==(runtime=='bun')
   assert package['scripts']['start:production:server']==runtime+' --enable-source-maps production/server.mjs'
-  assert json.loads((app/'modules/package.json').read_text())['scripts']['build:production'].startswith('bun run build && bun ' if runtime=='bun' else 'pnpm build && node ')
+  assert 'build:production' not in json.loads((app/'modules/package.json').read_text())['scripts']
+  assert (f'RUN {runtime} /forklaunch/production-build.mjs /forklaunch/production.json') in docker
   assert package['scripts']['test'].startswith('bun run --bun' if runtime=='bun' else 'pnpm')
   assert package['scripts']['retention:enforce']==('bun run scripts/enforce-retention.ts' if runtime=='bun' else 'pnpm tsx scripts/enforce-retention.ts')
   run([pm,'install','--ignore-scripts'],app/'modules')

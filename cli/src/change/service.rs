@@ -1493,7 +1493,7 @@ impl CliCommand for ServiceCommand {
         if let Some(name) = name {
             let old = service_base_path.file_name().and_then(|name| name.to_str()).context("Invalid project directory")?;
             if crate::sdk::typescript_build::preflight_lifecycle(&app_root_path, old)? {
-                anyhow::ensure!(old == name || crate::core::forklaunch_state::contract_plan(&app_root_path, &name)?.is_none(), "Destination contract hook already exists");
+                anyhow::ensure!(old == name || !crate::sdk::typescript_build::has_contract_build(&app_root_path, &name)?, "Destination contract hook already exists");
             }
             move_templates.push(change_name(
                 &service_base_path,

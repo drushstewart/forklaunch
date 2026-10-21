@@ -102,7 +102,7 @@ fn lifecycle_preserves_mixed_clients_and_check_is_read_only() {
     generate(root.path(), false).unwrap();
     let path = root.path().join("sdks/typescript/src/index.ts");
     let before = read_to_string(&path).unwrap();
-    let state = root.path().join(crate::core::forklaunch_state::GENERATED);
+    let state = root.path().join(crate::core::forklaunch_state::MANIFEST);
     let tracked = std::fs::read(&state).unwrap();
     generate(root.path(), true).unwrap();
     assert_eq!(std::fs::read(&state).unwrap(), tracked);
@@ -151,21 +151,6 @@ fn new_unexported_typescript_service_does_not_break_native_lifecycle() {
     assert!(!root.path().join("sdks/typescript/src/index.ts").exists());
 }
 
-#[test]
-fn malformed_source_tracking_fails_before_sdk_mutation() {
-    let root = fixture();
-    generate(root.path(), false).unwrap();
-    let path = root.path().join("sdks/typescript/src/index.ts");
-    let before = std::fs::read(&path).unwrap();
-    write(
-        root.path().join(crate::core::forklaunch_state::GENERATED),
-        "{\"sdkHttpSources\":\"invalid state\"}",
-    )
-    .unwrap();
-    assert!(generate(root.path(), false).is_err());
-    assert_eq!(std::fs::read(&path).unwrap(), before);
-}
-
 #[cfg(unix)]
 #[test]
 fn mixed_artifacts_and_tracking_reject_external_symlinks() {
@@ -177,10 +162,6 @@ fn mixed_artifacts_and_tracking_reject_external_symlinks() {
     assert!(generate(root.path(), false).is_err());
     std::fs::remove_file(&spec).unwrap();
     std::fs::rename(outside.path().join("spec.json"), &spec).unwrap();
-    std::fs::write(outside.path().join("generated.json"), "{}").unwrap();
-    let _ = std::fs::remove_file(root.path().join(crate::core::forklaunch_state::GENERATED));
-    std::os::unix::fs::symlink(outside.path().join("generated.json"), root.path().join(crate::core::forklaunch_state::GENERATED)).unwrap();
-    assert!(generate(root.path(), false).is_err());
     assert!(!root.path().join("sdks/typescript/src/index.ts").exists());
 }
 

@@ -1,8 +1,11 @@
 //! Build explicit TypeScript contract modules without loading service bootstraps.
+//!
+//! A service has a contract build when its manifest project carries
+//! `contractBuild = true`; every path it writes follows from the manifest and the
+//! SDK layout. `forklaunch sdk build` compiles in-process, so the application
+//! keeps no build tools or plans of its own.
 use sha2::{Digest, Sha256};
 use std::{fs, path::Path, process::Command as ProcessCommand, thread, time::Duration};
-
-use crate::core::forklaunch_state::{self, TYPESCRIPT_CONTRACTS};
 
 use anyhow::{Context, Result, ensure};
 use clap::{Arg, ArgAction, ArgMatches, Command};
@@ -10,21 +13,8 @@ use termcolor::{ColorChoice, StandardStream};
 
 use crate::{CliCommand, core::command::command};
 
-mod compiler_host;
-#[cfg(test)]
-mod compiler_host_tests;
-
-pub(crate) const REGISTRY_COMPILER: &str = ".forklaunch/tools/contract-compiler";
-
-pub(crate) const RUNNER: &str = include_str!("typescript_build/runner.mjs");
-/// The runner before build plans moved into `build.json`; migration replaces it.
-pub(crate) const PREVIOUS_RUNNER: &str = include_str!("typescript_build/runner_previous.mjs");
-/// The runner for vendored framework compilers only.
-pub(crate) const LEGACY_RUNNER: &str = include_str!("typescript_build/runner_legacy.mjs");
-
-fn owned_runner(source: &str) -> bool {
-    source == RUNNER || source == PREVIOUS_RUNNER || source == LEGACY_RUNNER
-}
+/// Manifest project metadata marking a service with a contract build.
+const CONTRACT_BUILD: &str = "contractBuild";
 
 #[derive(Debug)]
 pub(crate) struct BuildCommand;
@@ -92,15 +82,7 @@ impl CliCommand for BuildCommand {
                 if !watch {
                     result?;
                     if matches.get_flag("install_hooks") {
-                        install_hooks(
-                            &root,
-                            &service,
-                            name,
-                            &manifest.validator,
-                            &manifest.runtime,
-                            &manifest.modules_path,
-                            false,
-                        )?;
+                        install_hooks(&root, &service, name)?;
                     }
                     return Ok(());
                 }
@@ -128,7 +110,7 @@ fn compile(
             } else {
                 vec!["exec", "tsc", "-b"]
             })
-            .current_dir(&service)
+            .current_dir(service)
             .status()
             .context("Failed to start TypeScript compiler")?;
         ensure!(
@@ -147,56 +129,45 @@ fn compile(
     )
 }
 
-pub(crate) fn hook_script(root: &Path, service: &Path, name: &str) -> Result<String> {
-    let runner = pathdiff::diff_paths(root.join(".forklaunch/tools/contract-build.mjs"), service)
-        .context("Contract hook path")?;
-    let manifest: toml::Value = toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
-    let runtime = manifest["runtime"].as_str().context("Missing TypeScript runtime")?;
-    ensure!(matches!(runtime, "node" | "bun"), "Unsupported TypeScript runtime");
-    Ok(format!(
-        "{runtime} {} {}",
-        serde_json::to_string(&runner.to_string_lossy())?,
-        name
-    ))
+/// The `sdk:build` script of a service with a contract build.
+fn sdk_script(name: &str) -> String {
+    format!("forklaunch sdk build --service {name}")
 }
 
-pub(crate) fn installed_compiler(
-    root: &Path,
-    service: &Path,
-    name: &str,
-    script: &str,
-) -> Result<Option<String>> {
-    if script != hook_script(root, service, name)? {
-        return Ok(None);
-    }
-    ensure!(
-        owned_runner(&fs::read_to_string(root.join(".forklaunch/tools/contract-build.mjs"))?),
-        "Modified contract build runner requires a custom image"
-    );
-    let config = forklaunch_state::contract_plan(root, name)?
-        .with_context(|| format!("Contract build plan {name} is missing from {}", forklaunch_state::BUILD))?;
-    ensure!(
-        config["name"] == name
-            && config["service"].as_str() == service.strip_prefix(root)?.to_str(),
-        "Contract build hook must match its service"
-    );
-    let compiler = config["compiler"]
-        .as_str()
-        .context("Missing contract compiler source")?;
-    if compiler == REGISTRY_COMPILER {
-        let runner = fs::read_to_string(root.join(".forklaunch/tools/contract-build.mjs"))?;
-        // Before migration the runner still reads the per-service plan files.
-        let legacy = root.join(forklaunch_state::legacy::CONTRACT_PLANS).is_dir();
-        ensure!(runner == RUNNER || (legacy && runner == PREVIOUS_RUNNER), "Registry compiler requires the current generated runner");
-        compiler_host::validate(root)?;
-    } else {
-        ensure!(
-            matches!(compiler, "vendor/framework" | ".forklaunch/framework-rs")
-                && root.join(compiler).join("Cargo.lock").is_file(),
-            "Contract compiler requires a pinned source snapshot"
-        );
-    }
-    Ok(Some(compiler.to_owned()))
+fn manifest(root: &Path) -> Result<toml::Value> {
+    Ok(toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?)
+}
+
+fn project<'a>(manifest: &'a toml::Value, name: &str) -> Option<&'a toml::Value> {
+    manifest
+        .get("projects")?
+        .as_array()?
+        .iter()
+        .find(|project| project.get("name").and_then(toml::Value::as_str) == Some(name))
+}
+
+/// Whether `name` has a contract build.
+pub(crate) fn has_contract_build(root: &Path, name: &str) -> Result<bool> {
+    Ok(project(&manifest(root)?, name)
+        .and_then(|project| project.get("metadata")?.get(CONTRACT_BUILD)?.as_bool())
+        == Some(true))
+}
+
+/// Whether any service of the application has a contract build.
+pub(crate) fn any_contract_builds(root: &Path) -> Result<bool> {
+    let manifest = manifest(root)?;
+    Ok(manifest
+        .get("projects")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .any(|project| {
+            project
+                .get("metadata")
+                .and_then(|metadata| metadata.get(CONTRACT_BUILD))
+                .and_then(toml::Value::as_bool)
+                == Some(true)
+        }))
 }
 
 /// Install the proven default profile; retain unsupported profiles explicitly.
@@ -213,30 +184,30 @@ pub(crate) fn prepare_default_service(
     prepare_new_service(root, name)
 }
 
-/// Contract hooks exist so Rust code can consume TypeScript services. A
+/// Contract builds exist so Rust code can consume TypeScript services. A
 /// TypeScript-only application keeps `tsc -b` and needs no Rust toolchain.
 fn uses_rust(root: &Path) -> Result<bool> {
-    let manifest: toml::Value =
-        toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
     Ok(matches!(
-        manifest.get("language").and_then(toml::Value::as_str),
+        manifest(root)?.get("language").and_then(toml::Value::as_str),
         Some("mixed" | "rust")
     ))
 }
 
-/// Install contract hooks for TypeScript services written before the
+/// Install contract builds for TypeScript services written before the
 /// application gained a Rust project. Services without contract modules are
 /// left as they are.
 pub(crate) fn prepare_existing_services(root: &Path) -> Result<()> {
     if !uses_rust(root)? {
         return Ok(());
     }
-    let manifest: toml::Value =
-        toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
-    let Some(modules) = manifest.get("modules_path").and_then(toml::Value::as_str) else {
+    let Some(modules) = manifest(root)?
+        .get("modules_path")
+        .and_then(toml::Value::as_str)
+        .map(str::to_owned)
+    else {
         return Ok(());
     };
-    let Ok(entries) = fs::read_dir(root.join(modules)) else {
+    let Ok(entries) = fs::read_dir(root.join(&modules)) else {
         return Ok(());
     };
     let mut names: Vec<String> = entries
@@ -249,7 +220,7 @@ pub(crate) fn prepare_existing_services(root: &Path) -> Result<()> {
         .collect();
     names.sort();
     for name in names {
-        if forklaunch_state::contract_plan(root, &name)?.is_none() {
+        if !has_contract_build(root, &name)? {
             prepare_new_service(root, &name)?;
         }
     }
@@ -258,53 +229,48 @@ pub(crate) fn prepare_existing_services(root: &Path) -> Result<()> {
 
 /// Scaffold consumers without inventing a portable contract before compilation.
 pub(crate) fn prepare_new_service(root: &Path, name: &str) -> Result<()> {
-    compiler_host::preflight(root)?;
-    let manifest: toml::Value =
-        toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
+    let manifest = manifest(root)?;
     let modules = manifest["modules_path"]
         .as_str()
         .context("Modules path missing")?;
-    let validator = manifest["validator"]
-        .as_str()
-        .context("Validator missing")?;
-    let runtime = manifest["runtime"].as_str().context("Runtime missing")?;
     let service = root.join(modules).join(name);
     ensure!(
         service.join("api/contracts").is_dir(),
         "Explicit contract modules required for compile hooks"
     );
-    if forklaunch_state::contract_plan(root, name)?.is_none() {
+    if !has_contract_build(root, name)? {
         record_local_ownership(root, &service, name)?;
     }
     super::generate::prepare_contract_consumers(root, name)?;
-    install_hooks(root, &service, name, validator, runtime, modules, true)?;
-    record_contract_path(
-        root,
-        name,
-        contract_path(root, name)?,
-    )
+    install_hooks(root, &service, name)?;
+    record_contract_path(root, name, contract_path(root, name)?)
 }
 
-fn install_hooks(
-    root: &Path,
-    service: &Path,
-    name: &str,
-    validator: &str,
-    runtime: &str,
-    modules: &str,
-    initial: bool,
-) -> Result<()> {
+/// Where a contract build writes its Rust SDK, relative to the application.
+fn rust_sdk(root: &Path, service: &Path, name: &str) -> Result<std::path::PathBuf> {
+    Ok(if super::layout::typescript_authored(root, name)? {
+        service.strip_prefix(root)?.join("sdk/rust/lib.rs")
+    } else {
+        super::layout::source(root, &super::layout::rust(root)?.join(format!("{name}-sdk")))?
+            .join("lib.rs")
+    })
+}
+
+fn install_hooks(root: &Path, service: &Path, name: &str) -> Result<()> {
     let package_path = service.join("package.json");
     let mut package: serde_json::Value = serde_json::from_slice(&fs::read(&package_path)?)?;
-    let script = hook_script(root, service, name)?;
+    let script = sdk_script(name);
     let scripts = package["scripts"]
         .as_object_mut()
         .context("Service scripts missing")?;
+    // Earlier CLI builds routed `build` through a generated runner; SDKs are now
+    // built by the CLI, so the service builds with plain tsc again.
+    let retired = |value: &str| value.contains(".forklaunch/tools/contract-build.mjs") || value.contains(".forklaunch/typescript-build/");
     ensure!(
         scripts
             .get("build")
             .and_then(serde_json::Value::as_str)
-            .is_some_and(|value| value == "tsc -b" || value == script),
+            .is_some_and(|value| value == "tsc -b" || retired(value)),
         "Custom build script must be reconciled before installing the contract hook"
     );
     for (key, value) in [
@@ -312,226 +278,106 @@ fn install_hooks(
         ("sdk:watch", format!("{script} --watch")),
     ] {
         ensure!(
-            scripts
-                .get(key)
-                .is_none_or(|existing| existing.as_str() == Some(&value)),
+            scripts.get(key).and_then(serde_json::Value::as_str).is_none_or(|existing| existing == value || retired(existing)),
             "Custom SDK script must be preserved"
         );
         scripts.insert(key.into(), value.into());
     }
-    scripts.insert("build".into(), script.into());
-    let compiler = compiler_host::plan(root)?;
-    let contract_path = contract_path(root, name)?;
-    let (request_multipart, response_multipart) = if initial {
-        (false, false)
-    } else {
-        let compiled = forklaunch_core::build::http_artifact_sources(
-            &fs::read_to_string(root.join(&contract_path))?,
-            name,
-        )?;
-        (compiled.request_multipart, compiled.response_multipart)
-    };
-    let local = super::layout::typescript_authored(root, name)?;
-    let ts = if local { service.strip_prefix(root)?.join("sdk/index.ts") } else { super::layout::source(root, &super::layout::typescript(root)?)?.join(name).join("index.ts") };
-    let rust = if local { service.strip_prefix(root)?.join("sdk/rust/lib.rs") } else { super::layout::source(root, &super::layout::rust(root)?.join(format!("{name}-sdk")))?.join("lib.rs") };
-    let config = serde_json::json!({
-        "name": name, "service": service.strip_prefix(root)?, "validator":validator,
-        "runtime":runtime, "modules": modules, "compiler":compiler.compiler,
-        "contract":contract_path, "openapi":openapi_path(root, name)?,
-        "typescript":ts, "rust":rust, "typescriptOwned":local,
-        "requestMultipart":request_multipart, "responseMultipart":response_multipart
-    });
-    let runner = root.join(".forklaunch/tools/contract-build.mjs");
-    ensure!(
-        !runner.exists()
-            || owned_runner(&fs::read_to_string(&runner)?),
-        "Customized contract runner must be reconciled before installing hooks"
-    );
-    check_hook_config(root, name, &config)?;
-    compiler.write()?;
-    write_hook_config(root, name, &config)?;
-    super::write_if_changed(root.join(forklaunch_state::CONTRACT_BUILD), RUNNER)?;
-    super::write_if_changed(
-        package_path,
-        format!("{}\n", serde_json::to_string_pretty(&package)?),
-    )?;
-    crate::init::rust_project::enable_typescript_contract_image(root)?;
-    if config["compiler"] == REGISTRY_COMPILER {
-        crate::init::rust_project::refresh_mixed_images(root)?;
-    }
-    Ok(())
-}
-
-/// Plans live in `build.json#contracts.<name>`; their ownership receipts in
-/// `generated.json#typescriptContracts.<name>`.
-fn write_hook_config(root: &Path, name: &str, config: &serde_json::Value) -> Result<()> {
-    check_hook_config(root, name, config)?;
-    forklaunch_state::update_build(root, |plan| {
-        let contracts = plan
-            .entry("contracts")
-            .or_insert_with(|| serde_json::json!({}))
-            .as_object_mut()
-            .context("build.json contracts must be an object")?;
-        contracts.insert(name.into(), config.clone());
-        Ok(())
-    })?;
-    set_receipt(root, name, Some(forklaunch_state::json_sha256(config)))?;
+    scripts.insert("build".into(), "tsc -b".into());
+    set_contract_build(root, name, true)?;
     // Every build rewrites this SDK; formatting it would only fight freshness checks.
-    if let Some(sdk) = config["rust"].as_str().and_then(|lib| Path::new(lib).parent()) {
+    if let Some(sdk) = rust_sdk(root, service, name)?.parent() {
         let rustfmt = root.join(sdk).join("rustfmt.toml");
         if !rustfmt.exists() {
             fs::create_dir_all(root.join(sdk))?;
             super::write_if_changed(rustfmt, GENERATED_RUSTFMT)?;
         }
     }
+    super::write_if_changed(
+        package_path,
+        format!("{}\n", serde_json::to_string_pretty(&package)?),
+    )?;
+    crate::init::rust_project::refresh_mixed_images(root)
+}
+
+fn set_contract_build(root: &Path, name: &str, enabled: bool) -> Result<()> {
+    let path = root.join(".forklaunch/manifest.toml");
+    let source = fs::read_to_string(&path)?;
+    let mut document: toml_edit::DocumentMut = source.parse()?;
+    let projects = document["projects"]
+        .as_array_of_tables_mut()
+        .context("Manifest projects missing")?;
+    let project = projects
+        .iter_mut()
+        .find(|project| project.get("name").and_then(|name| name.as_str()) == Some(name))
+        .context("Contract project missing")?;
+    let metadata = project
+        .entry("metadata")
+        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+        .as_table_like_mut()
+        .context("Contract metadata must be a table")?;
+    if enabled {
+        metadata.insert(CONTRACT_BUILD, toml_edit::value(true));
+    } else {
+        metadata.remove(CONTRACT_BUILD);
+    }
+    let updated = document.to_string();
+    if updated != source {
+        fs::write(path, updated)?;
+    }
     Ok(())
-}
-
-fn receipt(root: &Path, name: &str) -> Result<Option<String>> {
-    Ok(forklaunch_state::generated_section(root, TYPESCRIPT_CONTRACTS)?
-        .and_then(|receipts| receipts.get(name)?.as_str().map(str::to_owned)))
-}
-
-fn set_receipt(root: &Path, name: &str, digest: Option<String>) -> Result<()> {
-    forklaunch_state::update_generated(root, |sections| {
-        let receipts = sections
-            .entry(TYPESCRIPT_CONTRACTS)
-            .or_insert_with(|| serde_json::json!({}))
-            .as_object_mut()
-            .context("generated.json typescriptContracts must be an object")?;
-        match digest {
-            Some(digest) => receipts.insert(name.into(), digest.into()),
-            None => receipts.remove(name),
-        };
-        if receipts.is_empty() {
-            sections.remove(TYPESCRIPT_CONTRACTS);
-        }
-        Ok(())
-    })
-}
-
-fn remove_contract_plan(root: &Path, name: &str) -> Result<()> {
-    forklaunch_state::update_build(root, |plan| {
-        if let Some(contracts) = plan.get_mut("contracts").and_then(serde_json::Value::as_object_mut) {
-            contracts.remove(name);
-        }
-        Ok(())
-    })?;
-    set_receipt(root, name, None)
 }
 
 /// Opts a build-owned Rust directory out of the application's `cargo fmt`.
 pub(crate) const GENERATED_RUSTFMT: &str = "# Generated by ForkLaunch; regenerated on build.\ndisable_all_formatting = true\n";
 
-fn check_hook_config(root: &Path, name: &str, next: &serde_json::Value) -> Result<()> {
-    if let Some(existing) = forklaunch_state::contract_plan(root, name)? {
-        ensure!(
-            existing == *next
-                || receipt(root, name)?.as_deref() == Some(&forklaunch_state::json_sha256(&existing)),
-            "Customized contract hook configuration must be reconciled before updating it"
-        );
-    }
-    Ok(())
-}
-
-/// Validate ownership before any project mutation, preserving custom hooks.
+/// Validate a service's contract build scripts before a project change, and
+/// report whether it has one.
 pub(crate) fn preflight_lifecycle(root: &Path, name: &str) -> Result<bool> {
-    let Some(config) = owned_config(root, name)? else {
+    if !has_contract_build(root, name)? {
         return Ok(false);
-    };
-    let service = crate::core::application_output::output_path(
-        root,
-        Path::new(config["service"].as_str().context("Missing hook service")?),
-    )?;
+    }
+    let modules = manifest(root)?["modules_path"]
+        .as_str()
+        .context("Modules path missing")?
+        .to_owned();
+    let service = crate::core::application_output::output_path(root, &Path::new(&modules).join(name))?;
     let package: serde_json::Value =
         serde_json::from_slice(&fs::read(service.join("package.json"))?)?;
-    let expected = hook_script(root, &service, name)?;
+    let expected = sdk_script(name);
     ensure!(
-        package["scripts"]["build"] == expected
+        package["scripts"]["build"] == "tsc -b"
             && package["scripts"]["sdk:build"] == expected
             && package["scripts"]["sdk:watch"] == format!("{expected} --watch"),
         "Customized contract build scripts must be reconciled before changing or deleting this project"
     );
-    ensure!(
-        installed_compiler(root, &service, name, &expected)?.is_some(),
-        "Contract compiler source is unavailable"
-    );
     Ok(true)
 }
 
-/// Stage descriptor changes only after every installed hook passes ownership checks.
-/// No files are written here, so change-command dry runs and later admission failures
-/// preserve the original application.
-pub(crate) fn application_descriptor_updates(
-    root: &Path,
-    validator: Option<&str>,
-    runtime: Option<&str>,
-) -> Result<(Vec<crate::core::rendered_template::RenderedTemplate>, Vec<(String, String)>)> {
-    let manifest: toml::Value = toml::from_str(&fs::read_to_string(root.join(".forklaunch/manifest.toml"))?)?;
-    let mut configs = Vec::new();
-    let mut scripts = Vec::new();
+/// Validate every contract build before an application-wide change. Plans
+/// follow the manifest, so a validator or runtime change needs no plan edits.
+pub(crate) fn preflight_application(root: &Path) -> Result<()> {
+    let manifest = manifest(root)?;
     for project in manifest["projects"].as_array().context("Missing projects")? {
         let name = project["name"].as_str().context("Missing project name")?;
-        if !preflight_lifecycle(root, name)? { continue; }
-        let mut config = owned_config(root, name)?.context("Missing owned hook")?;
-        if let Some(validator) = validator { config["validator"] = validator.into(); }
-        if let Some(runtime) = runtime {
-            ensure!(matches!(runtime, "node" | "bun"), "Unsupported TypeScript runtime");
-            config["runtime"] = runtime.into();
-            let service = root.join(config["service"].as_str().context("Missing service path")?);
-            let old = hook_script(root, &service, name)?;
-            let (_, arguments) = old.split_once(' ').context("Invalid owned hook script")?;
-            scripts.push((name.to_owned(), format!("{runtime} {arguments}")));
-        }
-        configs.push((name.to_owned(), config));
+        preflight_lifecycle(root, name)?;
     }
-    if configs.is_empty() {
-        return Ok((Vec::new(), scripts));
-    }
-    // Both consolidated files are rendered whole, including any plans and
-    // receipts still in legacy files, so writing them completes migration.
-    let updates = forklaunch_state::staged_contract_updates(root, |plan, generated| {
-        let contracts = plan
-            .entry("contracts")
-            .or_insert_with(|| serde_json::json!({}))
-            .as_object_mut()
-            .context("build.json contracts must be an object")?;
-        let receipts = generated
-            .entry(TYPESCRIPT_CONTRACTS)
-            .or_insert_with(|| serde_json::json!({}))
-            .as_object_mut()
-            .context("generated.json typescriptContracts must be an object")?;
-        for (name, config) in configs {
-            receipts.insert(name.clone(), forklaunch_state::json_sha256(&config).into());
-            contracts.insert(name, config);
-        }
-        Ok(())
-    })?
-    .into_iter()
-    .map(|(path, content)| crate::core::rendered_template::RenderedTemplate { path, content, context: None })
-    .collect();
-    Ok((updates, scripts))
-}
-
-fn owned_config(root: &Path, name: &str) -> Result<Option<serde_json::Value>> {
-    let Some(config) = forklaunch_state::contract_plan(root, name)? else {
-        return Ok(None);
-    };
-    ensure!(
-        receipt(root, name)?.as_deref() == Some(&forklaunch_state::json_sha256(&config)),
-        "Contract hook configuration was customized or predates ownership tracking; reconcile it with `forklaunch sdk build --service {name} --install-hooks` before changing the project"
-    );
-    Ok(Some(config))
+    Ok(())
 }
 
 pub(crate) fn remove_hook(root: &Path, name: &str) -> Result<()> {
-    let Some(config) = owned_config(root, name)? else { return Ok(()); };
-    if config["typescriptOwned"].as_bool() == Some(true) {
-        if let Some(path) = config["rust"].as_str().and_then(|path|Path::new(path).parent()) {
+    if !has_contract_build(root, name)? {
+        return Ok(());
+    }
+    let local = super::layout::typescript_authored(root, name)?;
+    if local {
+        let modules = manifest(root)?["modules_path"].as_str().context("Modules path missing")?.to_owned();
+        let service = root.join(&modules).join(name);
+        if let Some(path) = rust_sdk(root, &service, name)?.parent() {
             crate::init::rust_project::remove_cargo_member(root, &path.to_string_lossy())?;
         }
     }
-    remove_contract_plan(root, name)?;
+    set_contract_build(root, name, false)?;
     for path in [
         root.join(format!(".forklaunch/contracts/{name}/contract.json")),
         root.join(format!(".forklaunch/openapi/{name}/openapi.json")),
@@ -541,27 +387,28 @@ pub(crate) fn remove_hook(root: &Path, name: &str) -> Result<()> {
         }
     }
     super::generate::cleanup_service_generated_files(root, name)?;
-    if config["typescriptOwned"].as_bool() == Some(true) { return Ok(()); }
+    if local {
+        return Ok(());
+    }
     super::generate::refresh_contract_consumers(root)
 }
 
 pub(crate) fn rename_hook(root: &Path, old: &str, new: &str) -> Result<()> {
-    if old == new {
+    if old == new || !has_contract_build(root, old)? {
         return Ok(());
     }
-    let Some(mut config) = owned_config(root, old)? else {
-        return Ok(());
-    };
-    ensure!(
-        forklaunch_state::contract_plan(root, new)?.is_none(),
-        "Destination contract hook already exists"
-    );
-    let modules = config["modules"]
+    ensure!(!has_contract_build(root, new)?, "Destination contract hook already exists");
+    let modules = manifest(root)?["modules_path"]
         .as_str()
         .context("Missing hook modules path")?
         .to_owned();
     let service = root.join(&modules).join(new);
-    let local = config["typescriptOwned"].as_bool() == Some(true);
+    let local = super::layout::typescript_authored(root, old)?;
+    // Transports are recorded in the compiled contract, not in a plan.
+    let (request_multipart, response_multipart) = fs::read_to_string(root.join(contract_path(root, old)?))
+        .ok()
+        .and_then(|contract| forklaunch_core::build::http_artifact_sources(&contract, old).ok())
+        .map_or((false, false), |compiled| (compiled.request_multipart, compiled.response_multipart));
     if local {
         record_local_ownership(root, &service, new)?;
         crate::init::rust_project::rename_service_sdk_dependency(root, &format!("{modules}/{old}"), &format!("{modules}/{new}"), old, new)?;
@@ -569,35 +416,11 @@ pub(crate) fn rename_hook(root: &Path, old: &str, new: &str) -> Result<()> {
     super::generate::prepare_contract_consumers_with_transports(
         root,
         new,
-        config["requestMultipart"].as_bool().unwrap_or(false),
-        config["responseMultipart"].as_bool().unwrap_or(false),
+        request_multipart,
+        response_multipart,
     )?;
-    config["name"] = new.into();
-    config["service"] = serde_json::to_value(service.strip_prefix(root)?)?;
-    config["contract"] = contract_path(root, new)?.into();
-    config["openapi"] = openapi_path(root, new)?.into();
-    config["typescript"] = if local { serde_json::to_value(service.strip_prefix(root)?.join("sdk/index.ts"))? } else { serde_json::to_value(
-        super::layout::source(root, &super::layout::typescript(root)?)?
-            .join(new)
-            .join("index.ts"),
-    )? };
-    config["rust"] = if local { serde_json::to_value(service.strip_prefix(root)?.join("sdk/rust/lib.rs"))? } else { serde_json::to_value(
-        super::layout::source(root, &super::layout::rust(root)?.join(format!("{new}-sdk")))?
-            .join("lib.rs"),
-    )? };
-    write_hook_config(root, new, &config)?;
-    let package_path = service.join("package.json");
-    let mut package: serde_json::Value = serde_json::from_slice(&fs::read(&package_path)?)?;
-    let script = hook_script(root, &service, new)?;
-    package["scripts"]["build"] = script.clone().into();
-    package["scripts"]["sdk:build"] = script.clone().into();
-    package["scripts"]["sdk:watch"] = format!("{script} --watch").into();
-    super::write_if_changed(package_path, serde_json::to_string_pretty(&package)?)?;
-    record_contract_path(
-        root,
-        new,
-        contract_path(root, new)?,
-    )?;
+    install_hooks(root, &service, new)?;
+    record_contract_path(root, new, contract_path(root, new)?)?;
     remove_hook(root, old)
 }
 
@@ -728,22 +551,22 @@ mod tests {
     }
 
     #[test]
-    fn hook_ownership_rejects_custom_configuration_before_updates() {
+    fn contract_builds_are_manifest_metadata() {
         let root = tempfile::tempdir().unwrap();
-        let original = serde_json::json!({"name":"notes","requestMultipart":false});
-        write_hook_config(root.path(), "notes", &original).unwrap();
-        assert!(owned_config(root.path(), "notes").unwrap().is_some());
-        // Reformatting build.json is not a customization.
-        let path = root.path().join(forklaunch_state::BUILD);
-        let plan: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
-        fs::write(&path, serde_json::to_string(&plan).unwrap()).unwrap();
-        assert!(owned_config(root.path(), "notes").unwrap().is_some());
-        let custom = "{\"contracts\":{\"notes\":{\"custom\":true}}}";
-        fs::write(&path, custom).unwrap();
-        assert!(owned_config(root.path(), "notes").is_err());
-        assert!(write_hook_config(root.path(), "notes", &original).is_err());
-        assert_eq!(fs::read_to_string(path).unwrap(), custom);
-        assert!(!root.path().join(".forklaunch/typescript-build").exists());
+        fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+        fs::write(
+            root.path().join(".forklaunch/manifest.toml"),
+            "# kept\nmodules_path = 'src'\n\n[[projects]]\nname = 'iam'\ntype = 'Service'\n",
+        )
+        .unwrap();
+        assert!(!has_contract_build(root.path(), "iam").unwrap());
+        set_contract_build(root.path(), "iam", true).unwrap();
+        assert!(has_contract_build(root.path(), "iam").unwrap());
+        assert!(any_contract_builds(root.path()).unwrap());
+        let text = fs::read_to_string(root.path().join(".forklaunch/manifest.toml")).unwrap();
+        assert!(text.starts_with("# kept\n"), "{text}");
+        set_contract_build(root.path(), "iam", false).unwrap();
+        assert!(!any_contract_builds(root.path()).unwrap());
     }
 
     #[test]
@@ -779,7 +602,6 @@ mod tests {
         prepare_existing_services(root.path()).unwrap();
         assert_eq!(fs::read_to_string(service.join("package.json")).unwrap(), package);
         assert!(!root.path().join("Cargo.toml").exists());
-        assert!(!root.path().join(".forklaunch/build.json").exists());
         assert!(uses_rust_manifest(root.path(), "mixed"));
         assert!(uses_rust_manifest(root.path(), "rust"));
     }

@@ -106,14 +106,16 @@ pub(super) fn enable(
             owners.insert(artifact(&root, project, field, default)?, name.to_owned());
         }
     }
-    let production: Value = crate::core::forklaunch_state::generated_section(&root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?
-        .unwrap_or_else(|| json!({}));
-    if let Some(expected) = production["dockerfileSha256"].as_str() {
-        anyhow::ensure!(
-            crate::core::forklaunch_state::file_matches(&root.join("Dockerfile.typescript"), Some(expected)),
-            "Modified TypeScript image requires an explicit development profile"
-        );
-    }
+    anyhow::ensure!(
+        crate::core::forklaunch_state::file_stamped(&root.join("Dockerfile.typescript")) != Some(false),
+        "Modified TypeScript image requires an explicit development profile"
+    );
+    // Generated production processes, recognized by their Compose commands.
+    let production = if crate::core::forklaunch_state::file_stamped(&root.join("Dockerfile.typescript")).is_some() {
+        crate::init::rust_project::typescript_planned_processes(&root)
+    } else {
+        Default::default()
+    };
     let mut plans = Vec::new();
     let mut changes = serde_json::Map::new();
     for project in projects {
@@ -152,14 +154,11 @@ pub(super) fn enable(
             bail!("Development artifact collision between {previous} and {name}");
         }
         let mut service = compose["services"][name].clone();
-        if let Some(process) = production["processes"].get(name) {
+        if let Some((_, entry)) = production.get(name).filter(|(_, entry)| entry != "migrate") {
             anyhow::ensure!(
                 matches!(runtime, "node" | "bun"),
                 "Generated production profile requires Node or Bun development tooling"
             );
-            let entry = process["entry"]
-                .as_str()
-                .context("Production process entry missing")?;
             let package: Value =
                 serde_json::from_str(&fs::read_to_string(directory.join("package.json"))?)?;
             let script = if entry == "worker" {
@@ -185,7 +184,7 @@ pub(super) fn enable(
                 json!({"context":root,"dockerfile":"Dockerfile.typescript","target":"builder"});
             service["image"] = json!(format!(
                 "{}-{name}-dev:local",
-                production["image"]
+                compose["services"][name]["image"]
                     .as_str()
                     .unwrap_or("forklaunch-typescript")
                     .split(':')
@@ -348,8 +347,12 @@ mod tests {
                 format!(r#"{{"scripts":{{"dev":"{manager} run server.ts"}}}}"#),
             )
             .unwrap();
-            fs::write(root.path().join("Dockerfile.typescript"), "owned").unwrap();
-            fs::write(root.path().join(crate::core::forklaunch_state::GENERATED), serde_json::to_string(&json!({"typescriptImage":{"dockerfileSha256":crate::core::forklaunch_state::sha256_hex("owned"),"image":"demo-typescript:local","processes":{"api":{"directory":"api","entry":"server"}}}})).unwrap()).unwrap();
+            let plan = json!({"services": {"api": {"directory": "api", "entry": "server"}}});
+            fs::write(
+                root.path().join("Dockerfile.typescript"),
+                crate::core::forklaunch_state::stamp(&format!("COPY <<\"FORKLAUNCH_EOF\" /forklaunch/production.json\n{plan}\nFORKLAUNCH_EOF\n")),
+            )
+            .unwrap();
             let manifest: toml::Value = toml::from_str(
             &format!("modules_path='modules'\nruntime='{runtime}'\n[[projects]]\nname='api'\ntype='Service'\n"),
         )

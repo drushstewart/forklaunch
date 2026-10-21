@@ -76,7 +76,7 @@ python3 scripts/rust_release.py verify --output /tmp/blueprint-release --target-
 Publish with tag `rust-blueprint-vVERSION` and the release workflow's `scope:
 blueprint` input. Publication refuses to start until every pinned framework
 version is on crates.io. Generated applications record `blueprint_version` in
-`.forklaunch/framework-dependencies.toml` and depend on these crates by version;
+the `[framework]` table of `.forklaunch/manifest.toml` and depend on these crates by version;
 no blueprint source is copied.
 
 ## Publishing
@@ -164,7 +164,7 @@ For host framework development, use `--framework-path /absolute/path/framework-r
 instead. This deliberately produces host-local path dependencies. Before attaching
 Rust, the CLI requires an application-owned `Dockerfile.rust` integrating that
 source; managed images do not automatically supply a local checkout. The version, path and snapshot flags are mutually
-exclusive. Source selection is recorded in `.forklaunch/framework-dependencies.toml`
+exclusive. Source selection is recorded in the `[framework]` table of `.forklaunch/manifest.toml`
 and applied to subsequently generated native Cargo manifests. Blueprint module
 implementations remain development snapshots; their framework dependencies use
 the selected source.

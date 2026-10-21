@@ -101,12 +101,12 @@ fn plan_typescript_sibling(
             continue;
         }
         let actual = read_to_string(&source)?;
-        let receipt = crate::core::forklaunch_state::generated_section(root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?;
-        let mut recognized = if let Some(receipt) = receipt {
+        let stamp = crate::core::forklaunch_state::stamped(&actual);
+        if stamp.is_some() {
+            // A generated image that was edited is refused here, not adopted.
             super::typescript_image::preflight(root)?;
-            receipt["dockerfilePath"].as_str() == candidate.to_str()
-                && receipt["dockerfileSha256"].as_str() == Some(crate::core::forklaunch_state::sha256_hex(&actual).as_str())
-        } else { false };
+        }
+        let mut recognized = stamp == Some(true);
         for memory in [false, true] {
             let rendered = crate::core::template::render_embedded_template(
                 "application/Dockerfile",
@@ -281,11 +281,10 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
     }
     ensure_root_ignore_rules(root)?;
     if let Some((source, destination, content)) = typescript {
+        // A generated image keeps its stamp; its ignore file moves with it.
+        let generated = crate::core::forklaunch_state::stamped(&content) == Some(true);
         write(&destination, content)?;
-        use crate::core::forklaunch_state::{self, TYPESCRIPT_IMAGE};
-        if let Some(mut receipt) = forklaunch_state::generated_section(root, TYPESCRIPT_IMAGE)? {
-            receipt["dockerfilePath"] = json!("Dockerfile.typescript");
-            forklaunch_state::set_generated_section(root, TYPESCRIPT_IMAGE, Some(receipt))?;
+        if generated {
             let old_ignore = source.with_file_name(format!("{}.dockerignore", source.file_name().unwrap().to_string_lossy()));
             if old_ignore.is_file() { remove_file(old_ignore)?; }
         }
@@ -351,15 +350,15 @@ mod tests {
         for runtime in ["node", "bun"] {
             let root = fixture();
             write(root.path().join(".forklaunch/manifest.toml"), format!("runtime='{runtime}'\napp_name='demo'\nmodules_path='modules'\n")).unwrap();
-            write(root.path().join("Dockerfile"), "# generated compiler image\n").unwrap();
-            write(root.path().join("Dockerfile.dockerignore"), "node_modules\n").unwrap();
-            write(root.path().join(crate::core::forklaunch_state::GENERATED), serde_json::to_string(&json!({"typescriptImage":{"dockerfilePath":"Dockerfile", "dockerfileSha256":crate::core::forklaunch_state::sha256_hex("# generated compiler image\n"), "ignoreSha256":crate::core::forklaunch_state::sha256_hex("node_modules\n")}})).unwrap()).unwrap();
+            let generated = crate::core::forklaunch_state::stamp("# generated compiler image\n");
+            write(root.path().join("Dockerfile"), &generated).unwrap();
+            write(root.path().join("Dockerfile.dockerignore"), crate::core::forklaunch_state::stamp("node_modules\n")).unwrap();
             let manifest_before = read_to_string(root.path().join(".forklaunch/manifest.toml")).unwrap();
-            write(root.path().join("Dockerfile"), "# user customization\n").unwrap();
+            write(root.path().join("Dockerfile"), generated.replace("compiler image", "user customization")).unwrap();
             assert!(ensure_workspace(root.path(), false).is_err());
             assert_eq!(read_to_string(root.path().join(".forklaunch/manifest.toml")).unwrap(), manifest_before);
             assert!(!root.path().join("Dockerfile.typescript").exists());
-            write(root.path().join("Dockerfile"), "# generated compiler image\n").unwrap();
+            write(root.path().join("Dockerfile"), &generated).unwrap();
             write(root.path().join("Dockerfile.typescript"), "# custom sibling\n").unwrap();
             assert!(ensure_workspace(root.path(), false).is_err());
             assert_eq!(read_to_string(root.path().join("Dockerfile.typescript")).unwrap(), "# custom sibling\n");
@@ -367,7 +366,7 @@ mod tests {
             ensure_workspace(root.path(), false).unwrap();
             assert!(!root.path().join("Dockerfile").exists());
             assert!(!root.path().join("Dockerfile.dockerignore").exists());
-            assert_eq!(read_to_string(root.path().join("Dockerfile.typescript")).unwrap(), "# generated compiler image\n");
+            assert_eq!(read_to_string(root.path().join("Dockerfile.typescript")).unwrap(), generated);
             super::super::typescript_image::preflight(root.path()).unwrap();
         }
     }

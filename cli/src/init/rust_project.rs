@@ -58,7 +58,6 @@ pub(crate) fn rename_service_sdk_dependency(root: &Path, old_path: &str, new_pat
 }
 
 mod sdk_typescript;
-mod typescript_runtime;
 mod worker;
 pub(crate) use modules::generate_rust_module;
 
@@ -141,21 +140,25 @@ fn normalize_sdk_targets<'a>(targets: impl IntoIterator<Item = &'a str>) -> Vec<
     }
 }
 
+pub(crate) use language_images::summary as rust_image_summary;
+pub(crate) use typescript_image::summary as typescript_image_summary;
+pub(crate) use typescript_image::planned_processes as typescript_planned_processes;
+
+pub(crate) fn adopt_typescript_image(root: &Path) -> Result<()> {
+    typescript_image::adopt_image(root)
+}
+
+/// The generated TypeScript image (see `typescript_image::managed_image`).
+pub(crate) fn managed_typescript_image(root: &Path) -> Option<(PathBuf, bool)> {
+    typescript_image::managed_image(root)
+}
+
 pub(crate) fn preflight_mixed_images(root: &Path) -> Result<()> {
     language_images::preflight(root)
 }
 
 pub(crate) fn preflight_typescript_runtime_change(root: &Path) -> Result<()> {
     typescript_image::preflight_runtime(root)
-}
-
-pub(crate) fn enable_typescript_contract_image(root: &Path) -> Result<()> {
-    typescript_image::enable_contract_image(root)
-}
-
-/// Retire a vendored `@forklaunch/universal-sdk` copy (see `typescript_runtime`).
-pub(crate) fn migrate_vendored_universal_sdk(root: &Path) -> Result<()> {
-    typescript_runtime::migrate(root)
 }
 
 pub(super) fn prepare_mixed_workspace_images(root: &Path) -> Result<()> {
@@ -165,7 +168,7 @@ pub(super) fn prepare_mixed_workspace_images(root: &Path) -> Result<()> {
 
 pub(crate) fn refresh_mixed_images(root: &Path) -> Result<()> {
     let path = root.join(".forklaunch/manifest.toml");
-    if path.is_file() && (read_manifest_value(&path)?.get("language").and_then(Value::as_str) == Some("mixed") || crate::core::forklaunch_state::build_plan(root)?.get("contracts").is_some_and(|contracts| contracts.as_object().is_some_and(|contracts| !contracts.is_empty()))) {
+    if path.is_file() && (read_manifest_value(&path)?.get("language").and_then(Value::as_str) == Some("mixed") || crate::sdk::typescript_build::any_contract_builds(root)?) {
         language_images::preflight(root)?;
         language_images::reconcile(root)?;
     }

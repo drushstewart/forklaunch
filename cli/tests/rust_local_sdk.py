@@ -49,7 +49,7 @@ try:
     command('init', 'service', 'portal', '--language', 'typescript', '-d', 'postgresql', '-D', 'TypeScript consumer')
     docker = (app / 'Dockerfile.typescript').read_text()
     assert 'RUN cargo check --locked -p api-sdk' in docker
-    assert 'COPY --from=contract-compiler [\"/app/src/api/sdk/typescript/\",\"/app/src/api/sdk/typescript/\"]' in docker
+    assert 'COPY --from=native-sdk-compiler [\"/app/src/api/sdk/typescript/\",\"/app/src/api/sdk/typescript/\"]' in docker
     assert docker.index('RUN cargo check --locked -p api-sdk') < docker.index('FROM node:')
     print('PASS: clean local SDK + dependency-only aggregate compile, service-owned artifacts, CLI freshness')
 finally:

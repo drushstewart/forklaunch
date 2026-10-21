@@ -24,6 +24,11 @@ def run(*args, cwd=ROOT):
 def cli(*args):
     return run(str(CLI), *args, '--path', str(APP))
 
+def sdks(*names):
+    # SDKs are built by the CLI; `pnpm build` is plain tsc.
+    for name in names:
+        cli('sdk', 'build', '--skip-compile', '--service', name)
+
 try:
     cli('init', 'application', 'contract-proof', '--language', 'typescript', '--modules-path', 'modules',
         '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
@@ -38,12 +43,13 @@ try:
         with (service / file).open('a') as output:
             output.write('\nthrow new Error("BOOTSTRAP_MUST_NOT_RUN");\n')
     run('pnpm', 'install', '--ignore-scripts', cwd=APP / 'modules')
-    assert 'contract-build.mjs' in json.loads((service / 'package.json').read_text())['scripts']['build']
+    assert json.loads((service / 'package.json').read_text())['scripts']['build'] == 'tsc -b'
     assert not (service / 'sdk/contract.json').exists()
     environment = {**os.environ, 'CARGO_TARGET_DIR': str(REPO / 'cli/target'), 'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable'}
     result = subprocess.run([sys.executable, str(REPO / 'cli/tests/fixtures/worker_runtime_lock.py'), '-c',
         shlex.join(['pnpm', '--dir', str(APP / 'modules'), 'build'])], cwd=REPO, env=environment, text=True, capture_output=True)
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-6000:]
+    sdks('notes')
     assert (service / 'sdk/contract.json').is_file()
     print('PASS fresh default normal TypeScript build emits contract without bootstrap evaluation', flush=True)
     cli('sdk', 'build', '--service', 'notes')
@@ -106,17 +112,20 @@ try:
     result = subprocess.run([sys.executable, str(REPO / 'cli/tests/fixtures/worker_runtime_lock.py'), '-c',
         shlex.join(['pnpm', '--dir', str(service), 'build'])], cwd=REPO, env=environment, text=True, capture_output=True)
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-6000:]
-    assert not (APP / '.forklaunch/framework-rs').exists() and not (APP / '.forklaunch/tools/target').exists()
-    print('PASS installed normal build hook, pinned source compiler, generated SDK package typecheck', flush=True)
+    sdks('notes')
+    assert sorted(p.name for p in (APP / '.forklaunch').iterdir()) == ['manifest.toml']
+    print('PASS normal build plus CLI SDK build, no in-app compiler, generated SDK package typecheck', flush=True)
     cli('init', 'worker', 'jobs', '--language', 'typescript', '-t', 'database', '-d', 'postgresql', '-D', 'Default worker')
-    assert 'contract-build.mjs' in json.loads((APP / 'modules/jobs/package.json').read_text())['scripts']['build']
+    assert json.loads((APP / 'modules/jobs/package.json').read_text())['scripts']['build'] == 'tsc -b'
     assert not (APP / 'modules/jobs/sdk/contract.json').exists()
     run('pnpm', 'install', '--ignore-scripts', cwd=APP / 'modules')
     result = subprocess.run([sys.executable, str(REPO / 'cli/tests/fixtures/worker_runtime_lock.py'), '-c',
         shlex.join(['pnpm', '--dir', str(APP / 'modules'), 'build'])], cwd=REPO, env=environment, text=True, capture_output=True)
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-6000:]
+    sdks('notes', 'jobs')
     for name in ['notes', 'jobs']:
-        config = json.loads((APP / '.forklaunch/build.json').read_text())['contracts'][name]
+        config = {'contract': f'modules/{name}/sdk/contract.json', 'rust': f'modules/{name}/sdk/rust/lib.rs',
+                  'service': f'modules/{name}', 'typescript': f'modules/{name}/sdk/index.ts', 'typescriptOwned': True}
         assert len(json.loads((APP / config['contract']).read_text())['routes']) == 2
         assert config['typescriptOwned'] is True
         assert (APP / config['rust']).is_file()
@@ -139,6 +148,7 @@ try:
     result = subprocess.run([sys.executable, str(REPO / 'cli/tests/fixtures/worker_runtime_lock.py'), '-c',
         shlex.join(['pnpm', '--dir', str(service), 'build'])], cwd=REPO, env=environment, text=True, capture_output=True)
     assert result.returncode == 0, result.stdout[-4000:] + result.stderr[-6000:]
+    sdks('notes', 'jobs')
     updated = json.loads(contract_file.read_text())
     post = next(route for route in updated['routes'] if route['method'] == 'POST')
     assert post['request']['body']['kind'] == 'multipart'

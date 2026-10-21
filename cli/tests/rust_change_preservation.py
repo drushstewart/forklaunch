@@ -21,6 +21,19 @@ if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
 root = Path(tempfile.mkdtemp(prefix='forklaunch-change-preservation-'))
 app = root / 'app'
 
+def rust_image():
+    """The generated Rust image inventory, read from Dockerfile.rust and Compose."""
+    lines = (app / 'Dockerfile.rust').read_text().splitlines()
+    inputs = [json.loads(line[len('COPY '):])[0] for line in lines if line.startswith('COPY [')]
+    release = 'COPY --from=builder /app/target/release/'
+    binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
+    services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
+        'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    processes = {name: service for name, service in services.items()
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+    return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
+
+
 def run(args, cwd=None, check=True):
     print('Running:', shlex.join(map(str, args)), flush=True)
     result = subprocess.run(args, cwd=cwd or (app if app.exists() else repo), env=env, text=True, capture_output=True)
@@ -92,8 +105,7 @@ try:
     for process, binary in [('customer-accounts', 'customer-accounts'), ('email-jobs', 'email-jobs-worker'), ('email-jobs-server', 'email-jobs')]:
         assert compose['services'][process]['image'] == 'changed-app-rust:local'
         assert compose['services'][process]['command'] == ['/app/bin/' + binary]
-    images = json.loads((app / '.forklaunch/generated.json').read_text())
-    assert set(images['rustImage']['processes']) == {'customer-accounts', 'email-jobs', 'email-jobs-server'}
+    assert set(rust_image()['processes']) == {'customer-accounts', 'email-jobs', 'email-jobs-server'}
     before = tree()
     command('change', 'library', '-N', 'dry-core', '--dryrun', path=library)
     assert tree() == before, 'Dry run mutated the application'

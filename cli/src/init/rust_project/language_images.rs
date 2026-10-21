@@ -58,7 +58,6 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
         .context("Explicit Cargo workspace members required")?;
     let mut pending = VecDeque::new();
     let mut runnable = BTreeSet::new();
-    let mut build_tool = false;
     for member in members {
         let pattern = root.join(member.as_str().context("Cargo member must be a path")?);
         let mut found = false;
@@ -70,20 +69,6 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
                 "A root Cargo package needs explicit scoped Docker inputs"
             );
             let manifest: Value = toml::from_str(&read_to_string(directory.join("Cargo.toml"))?)?;
-            if directory == root.join(crate::sdk::typescript_build::REGISTRY_COMPILER) {
-                // Keep the private host in the Cargo graph and build inputs,
-                // but never ship development tooling as an application process.
-                anyhow::ensure!(
-                    manifest.get("package").and_then(|package| package.get("name")).and_then(Value::as_str)
-                        == Some("forklaunch-contract-compiler")
-                        && manifest.get("package").and_then(|package| package.get("publish")).and_then(Value::as_bool)
-                            == Some(false),
-                    "Reserved contract compiler directory must contain private build tooling"
-                );
-                build_tool = true;
-                pending.push_back(directory);
-                continue;
-            }
             let mut package_bins = BTreeSet::new();
             if let Some(binaries) = manifest.get("bin").and_then(Value::as_array) {
                 for binary in binaries {
@@ -250,9 +235,6 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
         ));
     }
     docker.push_str("ARG CARGO_BUILD_JOBS=2\nRUN cargo build --locked --release --workspace --bins");
-    if build_tool {
-        docker.push_str(" --exclude forklaunch-contract-compiler");
-    }
     docker.push_str("\nFROM debian:bookworm-slim AS runtime\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*\n");
     // Deployed PostgreSQL URLs verify the server against the AWS RDS CA bundle.
     docker.push_str(&format!("ADD --chmod=0644 {RDS_CA_BUNDLE_URL} {RDS_CA_BUNDLE_PATH}\n"));
@@ -269,13 +251,25 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
     Ok((docker, inputs, runnable.into_iter().collect()))
 }
 
+/// The generated Rust image of this application: its image name and binary
+/// inventory, and whether `Dockerfile.rust` is unchanged since generation.
+pub(crate) fn summary(root: &Path) -> Option<(String, Vec<String>, bool)> {
+    let source = read_to_string(root.join("Dockerfile.rust")).ok()?;
+    let unchanged = forklaunch_state::stamped(&source)?;
+    // The runtime stage copies exactly the binaries the image can run.
+    let binaries = source
+        .lines()
+        .filter_map(|line| line.strip_prefix("COPY --from=builder /app/target/release/")?.split_once(' '))
+        .map(|(binary, _)| binary.to_owned())
+        .collect();
+    Some((format!("{}-rust:local", rust_app_name(root).ok()?), binaries, unchanged))
+}
+
 pub(super) fn preflight(root: &Path) -> Result<()> {
     super::typescript_image::preflight(root)?;
-    if let Some(previous) = forklaunch_state::generated_section(root, forklaunch_state::RUST_IMAGE)?
-        && let Some(expected) = previous.get("dockerfileSha256").and_then(JsonValue::as_str)
-    {
+    if let Some(unchanged) = forklaunch_state::file_stamped(&root.join("Dockerfile.rust")) {
         anyhow::ensure!(
-            forklaunch_state::file_matches(&root.join("Dockerfile.rust"), Some(expected)),
+            unchanged,
             "Shared Rust Dockerfile was modified; reconcile it before changing projects"
         );
         let expected = render_static_rust_template("rust/application/dockerignore");
@@ -302,13 +296,11 @@ fn reconcile_images(root: &Path) -> Result<()> {
         return Ok(());
     }
     let destination = root.join("Dockerfile.rust");
-    let previous: JsonValue = forklaunch_state::generated_section(root, forklaunch_state::RUST_IMAGE)?
-        .unwrap_or_else(|| json!({}));
     let actual = read_to_string(&destination).ok();
     let template = render_static_rust_template("rust/application/Dockerfile");
-    if let Some(expected) = previous.get("dockerfileSha256").and_then(JsonValue::as_str) {
+    if let Some(unchanged) = forklaunch_state::file_stamped(&destination) {
         anyhow::ensure!(
-            forklaunch_state::file_matches(&destination, Some(expected)),
+            unchanged,
             "Shared Rust Dockerfile was modified; reconcile the custom image before changing generated image inputs"
         );
     } else if actual
@@ -318,7 +310,7 @@ fn reconcile_images(root: &Path) -> Result<()> {
         // An existing custom image is authoritative; never adopt it by heuristic.
         return Ok(());
     }
-    let (docker, inputs, binaries) = plan(root)?;
+    let (docker, _, binaries) = plan(root)?;
     let compose_path = root.join(
         manifest
             .get("docker_compose_path")
@@ -334,9 +326,7 @@ fn reconcile_images(root: &Path) -> Result<()> {
                 build.dockerfile.as_str(),
                 "Dockerfile.rust" | "./Dockerfile.rust"
             )
-        }) || service.image.as_deref() == Some(&image)
-            || previous.get("image").and_then(JsonValue::as_str)
-                .is_some_and(|previous_image| service.image.as_deref() == Some(previous_image));
+        }) || service.image.as_deref() == Some(&image);
         if !uses_rust {
             continue;
         }
@@ -388,14 +378,9 @@ fn reconcile_images(root: &Path) -> Result<()> {
             "Custom Rust Dockerfile ignore rules require explicit review before generated image inputs change"
         );
     }
-    write(destination, &docker)?;
+    write(destination, forklaunch_state::stamp(&docker))?;
     write(ignore_path, ignore)?;
     write(compose_path, yaml_to_string(&compose)?)?;
-    forklaunch_state::set_generated_section(
-        root,
-        forklaunch_state::RUST_IMAGE,
-        Some(json!({"dockerfileSha256":forklaunch_state::sha256_hex(&docker),"image":image,"inputs":inputs,"binaries":binaries,"processes":processes})),
-    )?;
     Ok(())
 }
 
@@ -459,11 +444,12 @@ mod tests {
             read_to_string(root.path().join("Dockerfile.rust")).unwrap(),
             docker
         );
-        write(root.path().join("Dockerfile.rust"), "# edited\n").unwrap();
+        let edited = docker.replace("FROM rust", "FROM custom-rust");
+        write(root.path().join("Dockerfile.rust"), &edited).unwrap();
         assert!(reconcile(root.path()).is_err());
         assert_eq!(
             read_to_string(root.path().join("Dockerfile.rust")).unwrap(),
-            "# edited\n"
+            edited
         );
     }
     #[test]

@@ -23,7 +23,7 @@ try:
  package=json.loads((app/'modules/api/package.json').read_text());assert package['scripts']['build']==hook
  assert 'vitest' in package['scripts']['test']
  # Hook customizations must fail before registrations, dependencies or manifest mutate.
- config=app/'.forklaunch/build.json';original=config.read_bytes();plan=json.loads(original);plan['contracts']['api']['customized']=True;config.write_text(json.dumps(plan))
+ config=app/'modules/api/package.json';original=config.read_bytes();scripts=json.loads(original);scripts['scripts']['sdk:build']+=' --customized';config.write_text(json.dumps(scripts))
  before={str(p.relative_to(app)):hashlib.sha256(p.read_bytes()).hexdigest() for p in app.rglob('*') if p.is_file()}
  rejected=subprocess.run([str(cli),'change','application','--validator','typebox','--confirm','--path',str(app)],env=env,capture_output=True,text=True)
  assert rejected.returncode!=0 and 'customized' in (rejected.stdout+rejected.stderr).lower()

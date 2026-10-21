@@ -2,32 +2,101 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
-use crate::core::forklaunch_state::{self, TYPESCRIPT_IMAGE};
+use crate::core::forklaunch_state;
 
-/// `build:production` for the workspace at `workspace`: the ordinary build, then
-/// the production bundler reading `build.json#production`.
-fn production_build_script(root: &Path, workspace: &Path, runtime: &str) -> Result<String> {
-    let helper = pathdiff::diff_paths(root.join(forklaunch_state::PRODUCTION_BUILD), workspace)
-        .context("Production build helper path")?;
-    Ok(format!(
-        "{} && {runtime} {}",
-        if runtime == "bun" { "bun run build" } else { "pnpm build" },
-        helper.display()
-    ))
+/// Where the generated image writes the production bundler and its plan.
+const BUILD_TOOL: &str = "/forklaunch/production-build.mjs";
+const BUILD_PLAN: &str = "/forklaunch/production.json";
+const PRODUCTION_BUILD_SOURCE: &str = include_str!("typescript_image/production_build.mjs");
+
+/// `build:production` scripts earlier CLI builds wrote before the bundler moved
+/// into the generated Dockerfile; they are removed when the image regenerates.
+fn retired_production_script(script: &str) -> bool {
+    script.contains(".forklaunch/tools/production-build.mjs")
+        || script.contains(".forklaunch/typescript-build.mjs")
 }
 
-/// The script earlier releases wrote, with a separate plan file argument.
-fn legacy_production_build_script(root: &Path, workspace: &Path, runtime: &str) -> Result<String> {
-    let helper = pathdiff::diff_paths(root.join(forklaunch_state::legacy::PRODUCTION_SCRIPT), workspace)
-        .context("Build helper path")?;
-    let config = pathdiff::diff_paths(root.join(forklaunch_state::legacy::PRODUCTION_PLAN), workspace)
-        .context("Build config path")?;
-    Ok(format!(
-        "{} && {runtime} {} {}",
-        if runtime == "bun" { "bun run build" } else { "pnpm build" },
-        helper.display(),
-        config.display()
-    ))
+/// The generated TypeScript image of this application: `Dockerfile.typescript`
+/// beside a Rust image, otherwise `Dockerfile`, when it carries a ForkLaunch
+/// stamp. `Some(false)` means it was edited after generation.
+pub(crate) fn managed_image(root: &Path) -> Option<(PathBuf, bool)> {
+    ["Dockerfile.typescript", "Dockerfile"].into_iter().find_map(|name| {
+        let path = root.join(name);
+        forklaunch_state::file_stamped(&path).map(|unchanged| (path, unchanged))
+    })
+}
+
+/// The production plan embedded in a generated Dockerfile.
+pub(crate) fn embedded_plan(dockerfile: &str) -> Option<JsonValue> {
+    let (_, rest) = dockerfile.split_once(&format!("COPY <<\"FORKLAUNCH_EOF\" {BUILD_PLAN}\n"))?;
+    let (plan, _) = rest.split_once("\nFORKLAUNCH_EOF\n")?;
+    serde_json::from_str(plan).ok()
+}
+
+/// The `{service: {directory, entry}}` map an embedded plan records.
+fn plan_services(plan: &JsonValue) -> BTreeMap<String, (String, String)> {
+    plan["services"]
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter_map(|(name, process)| {
+            Some((name.clone(), (process["directory"].as_str()?.to_owned(), process["entry"].as_str()?.to_owned())))
+        })
+        .collect()
+}
+
+/// The generated processes of this application's TypeScript image, by
+/// Compose service name, as recorded in its embedded plan.
+pub(crate) fn planned_processes(root: &Path) -> BTreeMap<String, (String, String)> {
+    managed_image(root)
+        .and_then(|(path, _)| read_to_string(path).ok())
+        .and_then(|source| embedded_plan(&source))
+        .map(|plan| plan_services(&plan))
+        .unwrap_or_default()
+}
+
+/// What static analysis needs to know about the generated image: its image
+/// name, runtime and processes (as `{name: {directory, entry}}`), its embedded
+/// production plan, and whether the Dockerfile is unchanged since generation.
+pub(crate) fn summary(root: &Path) -> Option<(JsonValue, Option<JsonValue>, bool)> {
+    let (path, unchanged) = managed_image(root)?;
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml")).ok()?;
+    let runtime = manifest.get("runtime").and_then(Value::as_str).unwrap_or("node").to_owned();
+    let image = format!("{}-typescript:local", rust_app_name(root).ok()?);
+    let plan = read_to_string(&path).ok().and_then(|source| embedded_plan(&source));
+    let processes = plan.as_ref().map_or_else(|| json!({}), |plan| plan["services"].clone());
+    Some((json!({"image": image, "runtime": runtime, "processes": processes}), plan, unchanged))
+}
+
+/// Compose services running the generated image, by name, with the workspace
+/// directory and entry (`server`, `worker` or `migrate`) of each.
+pub(crate) fn managed_processes(compose: &JsonValue, runtimes: &[&str]) -> BTreeMap<String, (String, String)> {
+    let mut processes = BTreeMap::new();
+    let Some(services) = compose["services"].as_object() else {
+        return processes;
+    };
+    for (name, service) in services {
+        let Some(command) = service["command"].as_array().filter(|command| command.len() == 3) else {
+            continue;
+        };
+        if !command[0].as_str().is_some_and(|runtime| runtimes.contains(&runtime))
+            || command[1] != "--enable-source-maps"
+        {
+            continue;
+        }
+        let Some((directory, entry)) = command[2]
+            .as_str()
+            .and_then(|path| path.strip_prefix("/app/"))
+            .and_then(|path| path.split_once("/production/"))
+            .and_then(|(directory, entry)| Some((directory, entry.strip_suffix(".mjs")?)))
+        else {
+            continue;
+        };
+        if matches!(entry, "server" | "worker" | "migrate") && service["working_dir"] == format!("/app/{directory}") {
+            processes.insert(name.clone(), (directory.to_owned(), entry.to_owned()));
+        }
+    }
+    processes
 }
 
 fn safe_bun_workspace_path(relative: &str) -> bool {
@@ -48,50 +117,17 @@ fn bun_sdk_runtime_copy(relative: &str) -> Result<String> {
     Ok(format!(r#"find {relative} -type d -name node_modules -prune -o -type f -name package.json -print | while IFS= read -r manifest; do directory="${{manifest%/package.json}}"; mkdir -p "/out/$directory"; cp "$manifest" "/out/$directory/"; for artifact in dist lib production; do if [ -d "$directory/$artifact" ]; then cp -R "$directory/$artifact" "/out/$directory/"; fi; done; done"#))
 }
 
-/// Compile build tooling from the same dependency graph selected by the app.
-fn contract_compiler_stage(root: &Path, compiler: &str) -> Result<(String, String)> {
-    let mut stage = "FROM rust:1.98-slim-bookworm AS contract-compiler\n".to_owned();
-    let registry = compiler == crate::sdk::typescript_build::REGISTRY_COMPILER;
-    stage.push_str(if registry { "WORKDIR /app\n" } else { "WORKDIR /compiler\n" });
-    stage.push_str("RUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*\nARG CARGO_BUILD_JOBS=2\n");
-    if registry {
-        let (_, inputs, _) = super::language_images::plan(root)?;
-        for input in inputs {
-            stage.push_str(&format!("COPY {}\n", serde_json::to_string(&[
-                input.clone(), format!("/app/{input}"),
-            ])?));
-        }
-        stage.push_str("RUN cargo build --release --locked -p forklaunch-contract-compiler --bin forklaunch-contract-compiler\n");
-        Ok((stage, "/app/target/release/forklaunch-contract-compiler".into()))
-    } else {
-        let copy = serde_json::to_string(&[format!("{compiler}/"), "/compiler/".to_owned()])?;
-        stage.push_str(&format!("COPY {copy}\nRUN cargo build --release --locked -p forklaunch-core --features typescript-source --example typescript_contract_build\n"));
-        Ok((stage, "/compiler/target/release/examples/typescript_contract_build".into()))
-    }
-}
-
 pub(super) fn preflight(root: &Path) -> Result<()> {
-    if let Some(receipt) = forklaunch_state::generated_section(root, TYPESCRIPT_IMAGE)? {
-        let file = receipt["dockerfilePath"]
-            .as_str()
-            .unwrap_or("Dockerfile.typescript");
+    if let Some((path, unchanged)) = managed_image(root) {
         anyhow::ensure!(
-            matches!(file, "Dockerfile" | "Dockerfile.typescript"),
-            "Invalid TypeScript image ownership path"
-        );
-        let expected = receipt["dockerfileSha256"]
-            .as_str()
-            .context("Invalid TypeScript image ownership receipt")?;
-        anyhow::ensure!(
-            forklaunch_state::file_matches(&root.join(file), Some(expected)),
+            unchanged,
             "Generated TypeScript Dockerfile was modified; reconcile it before changing projects"
         );
-        if let Some(ignore) = receipt["ignoreSha256"].as_str() {
-            anyhow::ensure!(
-                forklaunch_state::file_matches(&root.join(format!("{file}.dockerignore")), Some(ignore)),
-                "Generated TypeScript ignore rules were modified; reconcile before changing projects"
-            );
-        }
+        let ignore = path.with_file_name(format!("{}.dockerignore", path.file_name().unwrap().to_string_lossy()));
+        anyhow::ensure!(
+            forklaunch_state::file_stamped(&ignore) != Some(false),
+            "Generated TypeScript ignore rules were modified; reconcile before changing projects"
+        );
     }
     Ok(())
 }
@@ -99,23 +135,18 @@ pub(super) fn preflight(root: &Path) -> Result<()> {
 /// Validate managed process commands/scripts before a runtime migration writes files.
 pub(super) fn preflight_runtime(root: &Path) -> Result<()> {
     preflight(root)?;
-    let Some(receipt) = forklaunch_state::generated_section(root, TYPESCRIPT_IMAGE)? else {
+    if managed_image(root).is_none() {
         return Ok(());
-    };
-    let owned_config = receipt["productionSha256"].as_str().context("Production build ownership predates runtime migration; regenerate and review image configuration before changing runtime")?;
-    anyhow::ensure!(
-        forklaunch_state::production_plan(root)?
-            .is_some_and(|plan| forklaunch_state::json_sha256(&plan) == owned_config),
-        "Customized production build configuration must be reconciled before changing runtime"
-    );
+    }
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     let workspace = root.join(
         manifest["modules_path"]
             .as_str()
             .context("Missing modules path")?,
     );
-    let runtime = receipt["runtime"]
-        .as_str()
+    let runtime = manifest
+        .get("runtime")
+        .and_then(Value::as_str)
         .context("Missing image runtime")?;
     let compose: JsonValue = serde_yml::from_str(&read_to_string(
         root.join(
@@ -127,69 +158,54 @@ pub(super) fn preflight_runtime(root: &Path) -> Result<()> {
     )?)?;
     let package: JsonValue =
         serde_json::from_str(&read_to_string(workspace.join("package.json"))?)?;
-    let legacy = root.join(forklaunch_state::legacy::PRODUCTION_SCRIPT).is_file();
-    let build = if legacy {
-        legacy_production_build_script(root, &workspace, runtime)?
-    } else {
-        production_build_script(root, &workspace, runtime)?
-    };
     anyhow::ensure!(
-        package["scripts"]["build:production"] == build,
+        package["scripts"]["build:production"]
+            .as_str()
+            .is_none_or(retired_production_script),
         "Customized production build script must be reconciled before changing runtime"
     );
-    let helper = root.join(if legacy { forklaunch_state::legacy::PRODUCTION_SCRIPT } else { forklaunch_state::PRODUCTION_BUILD });
-    anyhow::ensure!(
-        forklaunch_state::owned_production_script(&read_to_string(helper)?),
-        "Customized production build helper must be reconciled before changing runtime"
-    );
-    for (name, process) in receipt["processes"]
-        .as_object()
-        .context("Missing image processes")?
-    {
-        let directory = process["directory"]
-            .as_str()
-            .context("Missing process directory")?;
-        let entry = process["entry"].as_str().context("Missing process entry")?;
+    let processes = planned_processes(root);
+    for (name, (directory, entry)) in &processes {
         let service = &compose["services"][name];
         anyhow::ensure!(
-            service["command"]
-                == json!([
-                    runtime,
-                    "--enable-source-maps",
-                    format!("/app/{directory}/production/{entry}.mjs")
-                ])
+            service["command"] == json!([runtime, "--enable-source-maps", format!("/app/{directory}/production/{entry}.mjs")])
                 && service["working_dir"] == format!("/app/{directory}")
                 && service.get("entrypoint").is_none(),
             "Customized production process {name} must be reconciled before changing runtime"
         );
-        let package: JsonValue = serde_json::from_str(&read_to_string(
-            workspace.join(directory).join("package.json"),
-        )?)?;
-        anyhow::ensure!(
-            package["scripts"][format!("start:production:{entry}")]
-                == format!("{runtime} --enable-source-maps production/{entry}.mjs"),
-            "Customized production start script must be reconciled before changing runtime"
-        );
         let migration = format!("{directory}-migrate");
         if let Some(service) = compose["services"].get(&migration) {
             anyhow::ensure!(
-                service["command"]
-                    == json!([
-                        runtime,
-                        "--enable-source-maps",
-                        format!("/app/{directory}/production/migrate.mjs")
-                    ])
-                    && package["scripts"]["migrate:production"]
-                        == format!("{runtime} --enable-source-maps production/migrate.mjs"),
+                service["command"] == json!([runtime, "--enable-source-maps", format!("/app/{directory}/production/migrate.mjs")]),
                 "Customized migration process must be reconciled before changing runtime"
             );
         }
     }
+    let migrations: BTreeSet<(String, String)> = processes
+        .values()
+        .filter(|(directory, _)| compose["services"].get(format!("{directory}-migrate")).is_some())
+        .map(|(directory, _)| (directory.clone(), "migrate".to_owned()))
+        .collect();
+    for (directory, entry) in processes.into_values().chain(migrations) {
+        let package: JsonValue = serde_json::from_str(&read_to_string(
+            workspace.join(&directory).join("package.json"),
+        )?)?;
+        let (key, file) = if entry == "migrate" {
+            ("migrate:production".to_owned(), "migrate")
+        } else {
+            (format!("start:production:{entry}"), entry.as_str())
+        };
+        anyhow::ensure!(
+            package["scripts"][&key] == format!("{runtime} --enable-source-maps production/{file}.mjs"),
+            "Customized production script {key} in {directory} must be reconciled before changing runtime"
+        );
+    }
     Ok(())
 }
 
-/// Adopt only the known ordinary Dockerfile when compile hooks need root inputs.
-pub(super) fn enable_contract_image(root: &Path) -> Result<()> {
+/// Move the known ordinary Dockerfile to the application root, where it becomes
+/// the shared production image. A custom Dockerfile is left alone.
+pub(super) fn adopt_image(root: &Path) -> Result<()> {
     let root = root.canonicalize()?;
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     anyhow::ensure!(
@@ -197,7 +213,7 @@ pub(super) fn enable_contract_image(root: &Path) -> Result<()> {
             manifest.get("runtime").and_then(Value::as_str),
             Some("node" | "bun")
         ),
-        "Automatic contract compiler images require Node or Bun"
+        "Shared TypeScript images require Node or Bun"
     );
     preflight(&root)?;
     if manifest.get("language").and_then(Value::as_str) == Some("mixed") {
@@ -206,12 +222,12 @@ pub(super) fn enable_contract_image(root: &Path) -> Result<()> {
     let destination = root.join("Dockerfile");
     if destination.is_file() {
         anyhow::ensure!(
-            forklaunch_state::generated_section(&root, TYPESCRIPT_IMAGE)?.is_some()
+            forklaunch_state::file_stamped(&destination).is_some()
                 || super::mixed::recognized_typescript_default(
                     &manifest,
                     &read_to_string(&destination)?
                 )?,
-            "Custom Dockerfile requires explicit contract compiler integration before installing build hooks"
+            "Custom Dockerfile requires an explicit production image integration"
         );
         return reconcile(&root);
     }
@@ -224,10 +240,10 @@ pub(super) fn enable_contract_image(root: &Path) -> Result<()> {
         &Path::new(modules).join("Dockerfile"),
     )?;
     let content = read_to_string(&source)
-        .context("Generated Dockerfile required for automatic contract builds")?;
+        .context("Generated Dockerfile required for the shared production image")?;
     anyhow::ensure!(
         super::mixed::recognized_typescript_default(&manifest, &content)?,
-        "Custom Dockerfile requires explicit contract compiler integration before installing build hooks"
+        "Custom Dockerfile requires an explicit production image integration"
     );
     let compose_path = root.join(
         manifest
@@ -320,8 +336,8 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         return Ok(());
     }
     preflight(&root)?;
-    let previous_receipt = forklaunch_state::generated_section(&root, TYPESCRIPT_IMAGE)?;
-    if previous_receipt.is_none()
+    let managed = forklaunch_state::file_stamped(&docker_path).is_some();
+    if !managed
         && !super::mixed::recognized_typescript_default(&manifest, &read_to_string(&docker_path)?)?
     {
         return Ok(());
@@ -451,36 +467,35 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     let services = compose["services"]
         .as_object_mut()
         .context("Compose services missing")?;
-    let previous: JsonValue = previous_receipt.unwrap_or_else(|| json!({}));
-    let prior_runtime = previous["runtime"].as_str().unwrap_or(runtime);
-    let previous_processes = previous["processes"].as_object();
+    // Generated processes are recognizable from their Compose commands, under
+    // either runtime while a runtime change is in progress.
+    let previous_processes = read_to_string(&docker_path)
+        .ok()
+        .filter(|_| managed)
+        .and_then(|source| embedded_plan(&source))
+        .map(|plan| plan_services(&plan))
+        .unwrap_or_else(|| managed_processes(&json!({"services": services.clone()}), &["node", "bun"]));
+    let prior_runtime = previous_processes
+        .keys()
+        .find_map(|name| services.get(name)?["command"][0].as_str())
+        .unwrap_or(runtime)
+        .to_owned();
+    let prior_runtime = prior_runtime.as_str();
     let mut processes = BTreeMap::new();
     let mut projects: BTreeMap<String, JsonValue> = BTreeMap::new();
-    let mut contract_compiler = None;
     for (name, service) in services.iter() {
         let generated = service["build"]["dockerfile"].as_str().is_some_and(|file| {
             Path::new(file)
                 .file_name()
                 .is_some_and(|name| name == docker_name)
         }) || service["image"].as_str() == Some(&image)
-            || previous["image"]
-                .as_str()
-                .is_some_and(|prior| service["image"].as_str() == Some(prior));
+            || previous_processes.contains_key(name);
         if !generated || name.ends_with("-migrate") {
             continue;
         }
         let (mut directory, entry) =
-            if let Some(previous) = previous_processes.and_then(|values| values.get(name)) {
-                (
-                    previous["directory"]
-                        .as_str()
-                        .context("Invalid process directory")?
-                        .to_owned(),
-                    previous["entry"]
-                        .as_str()
-                        .context("Invalid process entry")?
-                        .to_owned(),
-                )
+            if let Some((directory, entry)) = previous_processes.get(name) {
+                (directory.clone(), entry.clone())
             } else if service["command"].as_array().is_some_and(|command| {
                 command.len() == 3 && command[0] == runtime && command[1] == "--enable-source-maps"
             }) {
@@ -606,32 +621,15 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         let build = package["scripts"]["build"]
             .as_str()
             .context("Missing TypeScript build script")?;
-        let compiler = crate::sdk::typescript_build::installed_compiler(
-            &root,
-            &workspace.join(&directory),
-            &directory,
-            build,
-        )?;
         anyhow::ensure!(
-            build == "tsc -b" || compiler.is_some(),
+            build == "tsc -b",
             "Custom TypeScript build script requires a custom Dockerfile"
         );
-        if let Some(compiler) = compiler {
-            anyhow::ensure!(
-                contract_compiler
-                    .as_ref()
-                    .is_none_or(|existing| existing == &compiler),
-                "Shared image requires one canonical contract compiler"
-            );
-            contract_compiler = Some(compiler);
-        }
         processes.insert(name.clone(), json!({"directory":directory,"entry":entry}));
     }
-    if let Some(previous) = previous_processes {
-        for process in previous.values() {
-            let directory = process["directory"]
-                .as_str()
-                .context("Invalid process receipt")?;
+    {
+        for (directory, _) in previous_processes.values() {
+            let directory = directory.as_str();
             if !projects.contains_key(directory) {
                 let migration = format!("{directory}-migrate");
                 if let Some(service) = services.get(&migration) {
@@ -685,33 +683,11 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     } else {
         None
     };
-    // One plan file carries the production plan and every contract plan.
-    inputs.insert(forklaunch_state::PRODUCTION_BUILD.into());
-    inputs.insert(forklaunch_state::BUILD.into());
-    if let Some(compiler) = &contract_compiler {
-        inputs.insert(format!("{compiler}/"));
-        inputs.insert(forklaunch_state::CONTRACT_BUILD.into());
-    }
     let ignore_path = root.join(format!("{docker_name}.dockerignore"));
-    let mut ignore = read_to_string(&ignore_path).unwrap_or_default();
+    let mut ignore = forklaunch_state::unstamped(&read_to_string(&ignore_path).unwrap_or_default()).to_owned();
     // Required exclusions must come after custom negations; retaining an earlier
     // duplicate is insufficient because Docker evaluates the last matching rule.
     const REQUIRED_IGNORE: &str = "\n# Forklaunch shared image exclusions\n.git/\n**/node_modules/\n**/target/\n**/.env*\n!**/.env.example\n**/dist/\n**/lib/\n**/.forklaunch-runtime/\n**/production/\n";
-    if let Some(compiler) = &contract_compiler
-        && compiler != crate::sdk::typescript_build::REGISTRY_COMPILER
-    {
-        // The TypeScript default excludes directories named build, but core's
-        // canonical compiler is source code under src/build. Admit only that
-        // exact source subtree, then reapply secret/cache exclusions afterwards.
-        let source_rule =
-            format!("\n!{compiler}/crates/core/src/build/\n!{compiler}/crates/core/src/build/**\n");
-        if !ignore.contains(&source_rule) {
-            if ignore.ends_with(REQUIRED_IGNORE) {
-                ignore.truncate(ignore.len() - REQUIRED_IGNORE.len());
-            }
-            ignore.push_str(&source_rule);
-        }
-    }
     if !ignore.ends_with(REQUIRED_IGNORE) {
         ignore.push_str(REQUIRED_IGNORE);
     }
@@ -747,29 +723,14 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         );
         package["packageManager"] = json!(pnpm_pin);
     }
-    let production_build = production_build_script(&root, &workspace, runtime)?;
-    let existing_build = package["scripts"].get("build:production").cloned();
-    anyhow::ensure!(
-        existing_build.is_none()
-            || [
-                production_build.clone(),
-                production_build_script(&root, &workspace, prior_runtime)?,
-                legacy_production_build_script(&root, &workspace, runtime)?,
-                legacy_production_build_script(&root, &workspace, prior_runtime)?,
-            ]
-            .iter()
-            .any(|script| existing_build.as_ref() == Some(&json!(script))),
-        "Custom production build script requires a custom Dockerfile"
-    );
-    let helper_path = root.join(forklaunch_state::PRODUCTION_BUILD);
-    if let Ok(existing) = read_to_string(&helper_path) {
+    // The bundler runs only inside the image; nothing in the workspace calls it.
+    if let Some(existing) = package["scripts"].get("build:production") {
         anyhow::ensure!(
-            forklaunch_state::owned_production_script(&existing),
-            "Customized production build helper {} must be reconciled before regenerating the image",
-            helper_path.display()
+            existing.as_str().is_some_and(retired_production_script),
+            "Custom production build script requires a custom Dockerfile"
         );
+        package["scripts"].as_object_mut().unwrap().remove("build:production");
     }
-    package["scripts"]["build:production"] = json!(production_build);
     let mut runtime_packages = workspace_package_updates;
     for project in projects.values() {
         let (directory, original) = &packages[project["package"].as_str().unwrap()];
@@ -859,18 +820,10 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     if bun {
         docker = "# Generated shared Bun production image. Commit bun.lock before building.\nFROM oven/bun:1.2.19 AS builder\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\n".into();
     }
-    if let Some(compiler) = &contract_compiler {
-        let (stage, binary) = contract_compiler_stage(&root, compiler)?;
-        docker = format!("{stage}{docker}COPY --from=contract-compiler {binary} /usr/local/bin/forklaunch-contract-compiler\nENV FORKLAUNCH_CONTRACT_COMPILER=/usr/local/bin/forklaunch-contract-compiler\n");
-    }
-    let native_stage = if contract_compiler.is_some() { "contract-compiler" } else { "native-sdk-compiler" };
+    let native_stage = "native-sdk-compiler";
     if !native_sdks.is_empty() {
         let (_, native_inputs, _) = super::language_images::plan(&root)?;
-        let mut generation = if contract_compiler.is_some() {
-            String::from("WORKDIR /app\nARG CARGO_BUILD_JOBS=2\n")
-        } else {
-            String::from("FROM rust:1.98-slim-bookworm AS native-sdk-compiler\nWORKDIR /app\nARG CARGO_BUILD_JOBS=2\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*\n")
-        };
+        let mut generation = String::from("FROM rust:1.98-slim-bookworm AS native-sdk-compiler\nWORKDIR /app\nARG CARGO_BUILD_JOBS=2\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*\n");
         for input in native_inputs {
             generation.push_str(&format!(
                 "COPY {}\n",
@@ -889,12 +842,6 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         docker.insert_str(position, &generation);
     }
     for input in &inputs {
-        if contract_compiler
-            .as_ref()
-            .is_some_and(|compiler| input == &format!("{compiler}/"))
-        {
-            continue;
-        }
         docker.push_str(&format!(
             "COPY {}\n",
             serde_json::to_string(&[input.clone(), format!("/app/{input}")])?
@@ -907,7 +854,17 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             serde_json::to_string(&[path.clone(), path])?
         ));
     }
-    docker.push_str(&format!("WORKDIR /app/{modules}\nRUN {package_manager} install --frozen-lockfile{}\nRUN {package_manager} run build:production\nRUN mkdir -p /out\n", if bun { " --ignore-scripts" } else { "" }));
+    // The bundler and its plan travel inside this file; the application keeps no
+    // copy of either.
+    let production_plan = json!({"workspace":format!("/app/{modules}"),"packages":packages.values().map(|(path,_)|path.strip_prefix(&workspace).unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(),"output":".forklaunch-runtime","packageOutputs":true,"processes":projects.values().collect::<Vec<_>>(),"services":processes});
+    for (path, content) in [
+        (BUILD_TOOL, PRODUCTION_BUILD_SOURCE.to_owned()),
+        (BUILD_PLAN, format!("{}\n", serde_json::to_string_pretty(&production_plan)?)),
+    ] {
+        anyhow::ensure!(!content.lines().any(|line| line == "FORKLAUNCH_EOF"), "Heredoc delimiter in generated content");
+        docker.push_str(&format!("COPY <<\"FORKLAUNCH_EOF\" {path}\n{content}FORKLAUNCH_EOF\n"));
+    }
+    docker.push_str(&format!("WORKDIR /app/{modules}\nRUN {package_manager} install --frozen-lockfile{}\nRUN {package_manager} run build\nRUN {runtime} {BUILD_TOOL} {BUILD_PLAN}\nRUN mkdir -p /out\n", if bun { " --ignore-scripts" } else { "" }));
     for project in projects.values() {
         let directory = project["directory"].as_str().unwrap();
         let name = project["package"].as_str().unwrap();
@@ -1041,22 +998,16 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         workspace.join("package.json"),
         serde_json::to_string_pretty(&package)?,
     )?;
-    create_dir_all(helper_path.parent().context("Tools directory")?)?;
-    write(&helper_path, forklaunch_state::PRODUCTION_BUILD_SOURCE)?;
-    let production_config = json!({"workspace":format!("../{modules}"),"packages":packages.values().map(|(path,_)|path.strip_prefix(&workspace).unwrap().to_string_lossy().into_owned()).collect::<Vec<_>>(),"output":".forklaunch-runtime","packageOutputs":true,"processes":projects.values().collect::<Vec<_>>()});
-    let production_digest = forklaunch_state::json_sha256(&production_config);
-    forklaunch_state::update_build(&root, |plan| {
-        plan.insert("production".into(), production_config);
-        Ok(())
-    })?;
-    write(&docker_path, &docker)?;
-    write(ignore_path, &ignore)?;
+    write(&docker_path, forklaunch_state::stamp(&docker))?;
+    write(ignore_path, forklaunch_state::stamp(&ignore))?;
     write(compose_path, serde_yml::to_string(&compose)?)?;
-    forklaunch_state::set_generated_section(
-        &root,
-        TYPESCRIPT_IMAGE,
-        Some(json!({"productionSha256":production_digest,"dockerfilePath":docker_name,"runtime":runtime,"dockerfileSha256":forklaunch_state::sha256_hex(&docker),"ignoreSha256":forklaunch_state::sha256_hex(&ignore),"image":image,"inputs":inputs,"processes":processes})),
-    )?;
+    // Files the bundler and its plan once lived in are no longer read.
+    for retired in [".forklaunch/tools/production-build.mjs", ".forklaunch/typescript-build.mjs"] {
+        let path = root.join(retired);
+        if path.is_file() {
+            remove_file(path)?;
+        }
+    }
     Ok(())
 }
 
@@ -1065,34 +1016,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn registry_contract_compiler_uses_workspace_inputs_without_shipping_the_tool() {
+    fn bundler_and_plan_travel_inside_the_stamped_dockerfile() {
         let root = fixture();
-        let compiler = crate::sdk::typescript_build::REGISTRY_COMPILER;
-        for directory in [compiler, "vendor/serde_json"] {
-            create_dir_all(root.path().join(directory)).unwrap();
+        reconcile(root.path()).unwrap();
+        let docker = read_to_string(root.path().join("Dockerfile.typescript")).unwrap();
+        assert_eq!(forklaunch_state::stamped(&docker), Some(true));
+        assert!(docker.contains(&format!("COPY <<\"FORKLAUNCH_EOF\" {BUILD_TOOL}\n")));
+        assert!(docker.contains(&format!("RUN node {BUILD_TOOL} {BUILD_PLAN}\n")));
+        let plan = embedded_plan(&docker).unwrap();
+        assert_eq!(plan["workspace"], "/app/modules");
+        assert!(plan["processes"].as_array().is_some_and(|processes| !processes.is_empty()));
+        for retired in [".forklaunch/build.json", ".forklaunch/generated.json", ".forklaunch/tools"] {
+            assert!(!root.path().join(retired).exists(), "{retired}");
         }
-        write(root.path().join(format!("{compiler}/Cargo.toml")),
-            "[package]\nname='forklaunch-contract-compiler'\nversion='0.0.0'\npublish=false\n[[bin]]\nname='forklaunch-contract-compiler'\npath='main.rs'\n[dependencies]\nforklaunch-core={version='=0.1.1',features=['typescript-source']}\n").unwrap();
-        write(root.path().join("src/native/Cargo.toml"),
-            "[package]\nname='notes'\nversion='0.1.0'\n[[bin]]\nname='notes'\npath='main.rs'\n").unwrap();
-        write(root.path().join("vendor/serde_json/Cargo.toml"),
-            "[package]\nname='serde_json'\nversion='1.0.151'\n").unwrap();
-        write(root.path().join("Cargo.toml"), format!(
-            "[workspace]\nmembers=['{compiler}','src/native']\nexclude=['vendor/serde_json']\n[patch.crates-io]\nserde_json={{path='vendor/serde_json'}}\n")).unwrap();
-        let (stage, binary) = contract_compiler_stage(root.path(), compiler).unwrap();
-        for input in ["Cargo.toml", "Cargo.lock", "vendor/serde_json/", ".forklaunch/tools/contract-compiler/"] {
-            assert!(stage.contains(&format!("COPY {}", serde_json::to_string(&[
-                input.to_owned(), format!("/app/{input}"),
-            ]).unwrap())), "missing build input {input}");
-        }
-        assert!(stage.contains("--release --locked -p forklaunch-contract-compiler --bin forklaunch-contract-compiler"));
-        assert_eq!(binary, "/app/target/release/forklaunch-contract-compiler");
-        assert!(!stage.contains("vendor/framework"));
-        let (docker, inputs, runnable) = super::super::language_images::plan(root.path()).unwrap();
-        assert_eq!(runnable, vec!["notes"]);
-        assert!(inputs.contains(&format!("{compiler}/")));
-        assert!(docker.contains("--workspace --bins --exclude forklaunch-contract-compiler"));
-        assert!(!docker.contains("/app/bin/forklaunch-contract-compiler"));
+        let package: JsonValue =
+            serde_json::from_str(&read_to_string(root.path().join("modules/package.json")).unwrap()).unwrap();
+        assert!(package["scripts"].get("build:production").is_none());
+        // Regenerating an unchanged image is a no-op.
+        reconcile(root.path()).unwrap();
+        assert_eq!(read_to_string(root.path().join("Dockerfile.typescript")).unwrap(), docker);
     }
 
     #[test]
@@ -1112,15 +1054,14 @@ mod tests {
             .to_string()
             .contains("Customized production process"));
         write(&path, original).unwrap();
-        let path = root.path().join(forklaunch_state::BUILD);
-        let mut plan: JsonValue = serde_json::from_str(&read_to_string(&path).unwrap()).unwrap();
-        plan["production"]["custom"] = json!(true);
-        let custom = serde_json::to_string(&plan).unwrap();
+        let path = root.path().join("Dockerfile.typescript");
+        let generated = read_to_string(&path).unwrap();
+        let custom = generated.replace("\"output\"", "\"custom\"");
         write(&path, &custom).unwrap();
         assert!(preflight_runtime(root.path())
             .unwrap_err()
             .to_string()
-            .contains("Customized production build configuration"));
+            .contains("Generated TypeScript Dockerfile was modified"));
         assert_eq!(read_to_string(path).unwrap(), custom);
     }
 
@@ -1336,9 +1277,9 @@ mod tests {
         assert!(docker.contains("bun install --production --frozen-lockfile --ignore-scripts"));
         assert!(docker.contains("cp .forklaunch/universal-sdk/package.json /out/.forklaunch/universal-sdk/"));
         assert!(docker.contains("cp -R .forklaunch/universal-sdk/lib /out/.forklaunch/universal-sdk/"));
-        let config = forklaunch_state::production_plan(path).unwrap().unwrap();
+        let config = embedded_plan(&docker).unwrap();
         assert!(config["packages"].as_array().unwrap().contains(&json!(".forklaunch/universal-sdk")));
-        assert!(path.join(forklaunch_state::PRODUCTION_BUILD).is_file());
+        assert!(docker.contains(&format!("RUN bun {BUILD_TOOL} {BUILD_PLAN}\n")));
         assert!(!docker.contains("pnpm"));
         assert!(!path.join("modules/pnpm-workspace.yaml").exists());
         let compose: JsonValue = serde_yml::from_str(&read_to_string(compose).unwrap()).unwrap();
@@ -1425,7 +1366,7 @@ mod tests {
                 .replace("../Dockerfile.typescript", "Dockerfile"),
         )
         .unwrap();
-        enable_contract_image(root.path()).unwrap();
+        adopt_image(root.path()).unwrap();
         assert!(root.path().join("Dockerfile").is_file());
         assert!(!root.path().join("modules/Dockerfile").exists());
         assert!(read_to_string(manifest)
@@ -1542,7 +1483,7 @@ mod tests {
             read_to_string(root.path().join("Dockerfile.typescript")).unwrap(),
             docker
         );
-        write(root.path().join("Dockerfile.typescript"), "# custom edit\n").unwrap();
+        write(root.path().join("Dockerfile.typescript"), docker.replace("FROM node", "FROM custom-node")).unwrap();
         assert!(preflight(root.path()).is_err());
     }
 

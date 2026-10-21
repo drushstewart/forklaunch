@@ -6,7 +6,6 @@ use crate::core::{
 };
 use std::collections::BTreeSet;
 
-use crate::core::forklaunch_state::{self, TYPESCRIPT_SDK_SERVICES};
 const START: &str = "// <forklaunch:service-sdk-types>";
 const END: &str = "// </forklaunch:service-sdk-types>";
 
@@ -44,9 +43,9 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             services.insert(name.to_owned());
         }
     }
-    let previous: BTreeSet<String> = forklaunch_state::generated_section(root, TYPESCRIPT_SDK_SERVICES)?
-        .map(serde_json::from_value)
-        .transpose()?
+    // The generated export region records which services were registered.
+    let previous = read_to_string(sdk.join("index.ts"))
+        .map(|source| registered_services(&source))
         .unwrap_or_default();
     if services.is_empty() && previous.is_empty() {
         return Ok(());
@@ -98,16 +97,21 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     if updated != current {
         write(index, updated)?;
     }
-    if !services.is_empty() {
-        super::typescript_runtime::ensure(root)?;
-    }
     crate::sdk::include_typescript_sdk(root)?;
-    forklaunch_state::set_generated_section(
-        root,
-        TYPESCRIPT_SDK_SERVICES,
-        Some(serde_json::to_value(&services)?),
-    )?;
     Ok(())
+}
+
+/// Services named in the generated export region of the client SDK index.
+fn registered_services(source: &str) -> BTreeSet<String> {
+    let Some((_, rest)) = source.split_once(START) else {
+        return BTreeSet::new();
+    };
+    let region = rest.split_once(END).map_or(rest, |(region, _)| region);
+    region
+        .lines()
+        .filter_map(|line| line.trim().strip_suffix("';")?.rsplit_once('/'))
+        .map(|(_, name)| name.to_owned())
+        .collect()
 }
 
 #[cfg(test)]
@@ -124,7 +128,6 @@ mod tests {
         reconcile(temp.path()).unwrap();
         assert_eq!(read_to_string(path).unwrap(), manifest);
         assert!(!temp.path().join("src").exists());
-        assert!(!temp.path().join(forklaunch_state::GENERATED).exists());
     }
 
     #[test]
@@ -185,8 +188,8 @@ mod tests {
         }
         assert!(!root.join("src/.forklaunch/universal-sdk").exists());
         assert_eq!(
-            forklaunch_state::generated_section(root, TYPESCRIPT_SDK_SERVICES).unwrap(),
-            Some(json!(["notes"]))
+            registered_services(&read_to_string(root.join("src/client-sdk/index.ts")).unwrap()),
+            BTreeSet::from(["notes".to_owned()])
         );
         let root_package: JsonValue =
             serde_json::from_str(&read_to_string(root.join("package.json")).unwrap()).unwrap();

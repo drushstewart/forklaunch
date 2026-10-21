@@ -35,8 +35,12 @@ try:
     sample.unlink()
     print('PASS Bun root and project test scripts run selected Vitest on Bun', flush=True)
     locked(['bun','run','--cwd',str(app/'modules'),'build'])
+    paths = lambda name: {'contract': f'modules/{name}/sdk/contract.json', 'openapi': f'modules/{name}/sdk/openapi.json',
+                          'rust': f'modules/{name}/sdk/rust/lib.rs', 'typescript': f'modules/{name}/sdk.ts'}
     for name in ['notes','jobs']:
-        config = json.loads((app / '.forklaunch/build.json').read_text())['contracts'][name]
+        # `bun run build` is plain tsc; the CLI builds the SDKs.
+        run([str(cli),'sdk','build','--skip-compile','--service',name,'--path',str(app)], root)
+        config = paths(name)
         assert len(json.loads((app/config['contract']).read_text())['routes']) == 2
         assert all((app/config[key]).is_file() for key in ['typescript','rust','openapi'])
     print('PASS fresh Bun normal service/worker build emits both SDKs without bootstrap evaluation', flush=True)
@@ -45,9 +49,9 @@ try:
     run([str(cli),'sdk','build','--skip-compile','--service','notes','--path',str(app)], root, {**env,'PATH':str(binaries)})
     print('PASS isolated Bun export with Node absent from PATH', flush=True)
     schema=app/'modules/notes/domain/schemas/notes.schema.ts';original=schema.read_text()
-    config=json.loads((app / '.forklaunch/build.json').read_text())['contracts']['notes']
+    config=paths('notes')
     with (root/'watch.log').open('w') as output:
-        watcher=subprocess.Popen(['bun',str(app/'.forklaunch/tools/contract-build.mjs'),'notes','--watch'],cwd=app,env=env,stdout=output,stderr=output)
+        watcher=subprocess.Popen([str(cli),'sdk','build','--watch','--service','notes','--path',str(app)],cwd=app,env=env,stdout=output,stderr=output)
         try:
             time.sleep(3);schema.write_text(original.replace('message: string','message: string.min(3)'))
             deadline=time.monotonic()+120
@@ -60,7 +64,8 @@ try:
             watcher.terminate();watcher.wait(timeout=15)
     print('PASS Bun normal watch updates TypeScript and Rust SDKs',flush=True)
     docker=(app/'Dockerfile').read_text()
-    assert 'FROM oven/bun:1.2.19 AS runtime' in docker and 'contract-compiler' in docker and 'pnpm' not in docker
+    assert 'FROM oven/bun:1.2.19 AS runtime' in docker and 'contract-compiler' not in docker and 'pnpm' not in docker
+    assert sorted(p.name for p in (app/'.forklaunch').iterdir()) == ['manifest.toml']
     assert (app/'modules/bun.lock').is_file()
 finally:
     if os.environ.get('FORKLAUNCH_KEEP_FIXTURE'):print('Fixture retained:',root,flush=True)

@@ -188,24 +188,20 @@ try:
                     path.write_bytes(manifest_text(value))
         mixed_checks = None
         if args.mixed:
-            # The raw TS module must install its own registry compiler hook;
-            # neither a CLI export nor an environment override supplies assets.
-            compiler_path = '.forklaunch/tools/contract-compiler'
-            compiler = app / compiler_path
+            # The manifest is the only committed state; contract builds are a
+            # manifest flag and the CLI compiles them in-process.
+            state = sorted(str(path.relative_to(app)) for path in (app / '.forklaunch').rglob('*') if path.is_file())
+            assert state == ['.forklaunch/manifest.toml'], state
+            manifest = tomllib.loads((app / '.forklaunch/manifest.toml').read_text())
+            iam = next(project for project in manifest['projects'] if project['name'] == 'iam')
+            assert iam['metadata']['contractBuild'] is True and iam['metadata']['sdkLayout'] == 'project-local-v1'
             workspace = tomllib.loads((app / 'Cargo.toml').read_text())
-            assert workspace['workspace']['members'].count(compiler_path) == 1
-            compiler_manifest = tomllib.loads((compiler / 'Cargo.toml').read_text())
-            assert compiler_manifest['package']['name'] == 'forklaunch-contract-compiler'
-            assert compiler_manifest['package']['publish'] is False
-            core = compiler_manifest['dependencies']['forklaunch-core']
-            assert core['version'] == '=' + versions['forklaunch-core'] and 'path' not in core
-            assert not (compiler / 'Cargo.lock').exists()
-            config = json.loads((app / '.forklaunch/build.json').read_text())['contracts']['iam']
-            assert config['compiler'] == compiler_path and config['typescriptOwned'] is True
-            artifacts = [app / config[key] for key in ['contract', 'openapi', 'rust']]
+            assert not any('contract-compiler' in member for member in workspace['workspace']['members'])
+            artifacts = [app / 'src/iam/sdk' / name for name in ['contract.json', 'openapi.json', 'rust/lib.rs']]
             assert not artifacts[0].exists() and not artifacts[1].exists(), 'Raw init must wait for compilation to emit the IAM contract'
             package = json.loads((app / 'src/iam/package.json').read_text())
-            assert 'contract-build.mjs' in package['scripts']['build']
+            assert package['scripts']['build'] == 'tsc -b'
+            assert package['scripts']['sdk:build'] == 'forklaunch sdk build --service iam'
             # Installing first must discover the encrypted event package too.
             # A preparatory Cargo build would conceal a missing raw manifest.
             assert not (app / 'Cargo.lock').exists(), 'Mixed first-install proof must precede Cargo preparation'
@@ -222,10 +218,9 @@ try:
             run('pnpm', 'install', timeout=600)
             assert_dependency_manifests(install_inputs)
             run('pnpm', 'run', 'build', timeout=1800)
+            command('sdk', 'build', '--service', 'iam', '--skip-compile')
             assert_dependency_manifests(install_inputs)
             assert json.loads(event_manifest_path.read_text()) == event_manifest
-            assert (app / 'Cargo.lock').is_file()
-            assert not (compiler / 'Cargo.lock').exists()
             assert all(path.is_file() for path in artifacts)
             contract = json.loads(artifacts[0].read_text())
             openapi = json.loads(artifacts[1].read_text())
@@ -236,18 +231,17 @@ try:
             assert any(document['paths'] for document in documents)
             rust_sdk = artifacts[2].parent
             rust_source = '\n'.join(path.read_text() for path in rust_sdk.rglob('*.rs'))
-            assert 'pub struct Client' in rust_source, 'The TS build must emit the typed IAM Rust client'
-            # A second ordinary service build exercises the locked compiler
-            # path and must leave the root dependency resolution unchanged.
-            lock = (app / 'Cargo.lock').read_bytes()
-            run('pnpm', '--filter', package['name'], 'run', 'build', timeout=1800)
-            assert (app / 'Cargo.lock').read_bytes() == lock
+            assert 'pub struct Client' in rust_source, 'The contract build must emit the typed IAM Rust client'
+            # Rebuilding the SDK is idempotent.
+            digests = {path: path.read_bytes() for path in artifacts}
+            command('sdk', 'build', '--service', 'iam', '--skip-compile')
+            assert all(path.read_bytes() == content for path, content in digests.items())
             assert_dependency_manifests(install_inputs)
             mixed_checks = {'typescriptModule': 'iam-better-auth', 'rustAggregate': 'registry-clients',
                             'normalPnpmInstallAndBuild': True, 'compilerOverride': False,
                             'workerEventPackagePresentBeforeInstall': True, 'packageDependenciesStableAfterBuild': True,
                             'rawDependencyManifestSha256': hashlib.sha256(json.dumps(install_inputs, sort_keys=True).encode()).hexdigest(),
-                            'compilerWorkspaceMember': compiler_path, 'rootLockStableOnRebuild': True,
+                            'manifestOnlyState': True, 'sdkRebuildIdempotent': True,
                             'iamArtifactSha256': {str(path.relative_to(app)): hashlib.sha256(path.read_bytes()).hexdigest() for path in artifacts}}
         run('cargo', 'check', '--workspace', '--all-targets')
         run('cargo', 'test', '-p', 'notes', '--test', 'http')
@@ -266,11 +260,8 @@ try:
                 assert package['source'] and (blueprint_index.removeprefix('sparse+') if blueprint_index else 'crates.io-index') in package['source'], package
         if args.mixed:
             packages = {package['name']: package for package in metadata['packages']}
-            assert {'forklaunch-contract-compiler', 'iam-sdk', 'registry-clients'} <= packages.keys()
-            host = packages['forklaunch-contract-compiler']
-            assert host['id'] in metadata['workspace_members'] and host['source'] is None
-            core = next(dependency for dependency in host['dependencies'] if dependency['name'] == 'forklaunch-core')
-            assert core['req'] == '=' + versions['forklaunch-core'] and core['source'].startswith('registry+')
+            assert {'iam-sdk', 'registry-clients'} <= packages.keys()
+            assert 'forklaunch-contract-compiler' not in packages
             assert not (app / 'vendor/framework').exists() and not (app / '.forklaunch/framework-rs').exists()
         for artifact in ['sdk/typescript/openapi.json', 'sdk/typescript/contract.json', 'sdk/typescript/sdk.ts']:
             assert (app / 'src/notes' / artifact).is_file()

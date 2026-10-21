@@ -204,15 +204,6 @@ pub(crate) fn generate_or_check_sdk_outputs(
         bail!("No HTTP services or workers found for SDK generation");
     }
 
-    let mut tracked_sources = super::http_sources::read(app_root)?;
-    for project in typescript_sdk_projects(&manifest, selected_service) {
-        if let Some(name) = project.get("name").and_then(Value::as_str)
-            && services.iter().any(|service| service.name == name)
-        {
-            tracked_sources.insert(name.to_owned());
-        }
-    }
-
     // Validate every requested output before mutating workspace files.
     if matches!(target, "typescript" | "all") {
         typescript_sdk(&services)?;
@@ -244,7 +235,6 @@ pub(crate) fn generate_or_check_sdk_outputs(
         log_ok!(stdout, "Generated Rust SDK sources");
     }
 
-    super::http_sources::write(app_root, &tracked_sources)?;
     Ok(())
 }
 
@@ -267,10 +257,6 @@ pub(crate) fn regenerate_sdk_outputs_if_present(
         generate_typescript_sdk(app_root, &services)?;
         log_ok!(stdout, "Regenerated TypeScript SDK");
     }
-    let services_names = services
-        .iter()
-        .map(|service| service.name.clone())
-        .collect::<BTreeSet<_>>();
     let existing_rust_services = services
         .into_iter()
         .filter(|service| {
@@ -283,13 +269,6 @@ pub(crate) fn regenerate_sdk_outputs_if_present(
         generate_rust_sdks(app_root, &existing_rust_services)?;
         log_ok!(stdout, "Regenerated Rust SDK crate(s)");
     }
-    let imported = typescript_sdk_projects(&manifest, None)
-        .into_iter()
-        .filter_map(|project| project.get("name").and_then(Value::as_str))
-        .filter(|name| services_names.contains(*name))
-        .map(str::to_owned)
-        .collect();
-    super::http_sources::write(app_root, &imported)?;
     Ok(())
 }
 
@@ -1526,6 +1505,7 @@ fn generate_typescript_sdk_scoped(
         }
     }
     super::write_if_changed(source.join("index.ts"), typescript_sdk(services)?)?;
+    super::http_sources::record(&source, services.iter().map(|service| service.name.as_str()))?;
     // Bun requires literal members to exist. Publish the actual SDK package
     // before recording its workspace membership.
     super::workspace::include_typescript_sdk(app_root)

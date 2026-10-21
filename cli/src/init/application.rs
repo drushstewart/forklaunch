@@ -1398,7 +1398,7 @@ impl CliCommand for ApplicationCommand {
             })?;
 
         if !dryrun {
-            rust_project::enable_typescript_contract_image(&origin_path)?;
+            rust_project::adopt_typescript_image(&origin_path)?;
             if data.projects.iter().any(|project| project.name == "iam" && matches!(project.variant.as_deref(), Some("iam-base" | "iam-better-auth"))) {
                 crate::sdk::typescript_build::prepare_default_service(&origin_path, "iam", &data.runtime, true)?;
                 crate::init::rust_project::refresh_mixed_images(&origin_path)?;

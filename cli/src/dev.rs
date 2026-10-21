@@ -178,7 +178,7 @@ impl CliCommand for DevCommand {
         if matches.get_flag("export_contracts")
             || matches.contains_id("sdk_target")
             || (!matches.get_flag("no_watch")
-                && crate::core::forklaunch_state::generated_section(&root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?.is_some())
+                && crate::init::rust_project::managed_typescript_image(&root).is_some())
         {
             contracts::enable(&root, &manifest, &mut planned, &mut changes)?;
             let active = active_services(&planned, &selected, !matches.get_flag("no_deps"))?;

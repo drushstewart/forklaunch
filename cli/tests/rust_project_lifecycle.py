@@ -39,6 +39,19 @@ with cli.open('rb') as executable:
 
 root = Path(tempfile.mkdtemp(prefix=f'forklaunch-project-{args.phase}-'))
 app = root / 'app'
+
+def rust_image():
+    """The generated Rust image inventory, read from Dockerfile.rust and Compose."""
+    lines = (app / 'Dockerfile.rust').read_text().splitlines()
+    inputs = [json.loads(line[len('COPY '):])[0] for line in lines if line.startswith('COPY [')]
+    release = 'COPY --from=builder /app/target/release/'
+    binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
+    services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
+        'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    processes = {name: service for name, service in services.items()
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+    return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
+
 modules = 'src'
 
 
@@ -172,11 +185,10 @@ def assert_removed(name, kind):
                for member in cargo(app)['workspace']['members'])
     scripts = json.loads((app / 'package.json').read_text())['scripts']
     assert not any(key.endswith(':' + name) for key in scripts), scripts
-    images_path = app / '.forklaunch/generated.json'
-    if images_path.exists():
-        images = json.loads(images_path.read_text())
-        assert name not in images.get('rustImage', {}).get('processes', {})
-        assert name + '-server' not in images.get('rustImage', {}).get('processes', {})
+    if (app / 'Dockerfile.rust').exists():
+        processes = rust_image()['processes']
+        assert name not in processes
+        assert name + '-server' not in processes
 
 
 def clone(source_name, destination_name, kind='service'):
@@ -286,8 +298,7 @@ def check_init():
     assert '#[forklaunch_core::contract::api]' in (project('accounts') / 'api/controllers/users.rs').read_text()
     assert 'controller_contract!(users' in (project('accounts') / '.forklaunch/contracts/lib.rs').read_text()
     assert all((app / filename).is_file() for filename in ['Dockerfile.rust', 'Dockerfile.typescript'])
-    images = json.loads((app / '.forklaunch/generated.json').read_text())
-    assert set(images['rustImage']['processes']) == {'accounts', 'jobs', 'jobs-server'}
+    assert set(rust_image()['processes']) == {'accounts', 'jobs', 'jobs-server'}
 
     owned = {path: path.read_bytes() for name in ['accounts', 'jobs'] for path in project(name).rglob('*.rs')}
     service()

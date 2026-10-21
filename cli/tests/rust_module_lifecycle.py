@@ -22,6 +22,19 @@ if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
         '-c', shlex.join([sys.executable, str(Path(__file__).resolve())])], env=env).returncode)
 root = Path(tempfile.mkdtemp(prefix='forklaunch-module-lifecycle-')).resolve()
 app = root / 'app'
+
+def rust_image():
+    """The generated Rust image inventory, read from Dockerfile.rust and Compose."""
+    lines = (app / 'Dockerfile.rust').read_text().splitlines()
+    inputs = [json.loads(line[len('COPY '):])[0] for line in lines if line.startswith('COPY [')]
+    release = 'COPY --from=builder /app/target/release/'
+    binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
+    services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
+        'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    processes = {name: service for name, service in services.items()
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+    return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
+
 variants = ['iam-base', 'cac-base', 'ecommerce-stripe', 'billing-base', 'billing-stripe']
 print('CLI SHA256:', hashlib.sha256(cli.read_bytes()).hexdigest(), flush=True)
 
@@ -177,9 +190,10 @@ def verify_export_provenance(names, compiler_artifacts, verifier):
 
 def check_images(names):
     """Each runnable module shares the same scoped image and exec-form process."""
-    rust = json.loads((app / '.forklaunch/generated.json').read_text())['rustImage']
+    rust = rust_image()
     dockerfile = (app / 'Dockerfile.rust').read_text()
-    assert rust['dockerfileSha256'] == hashlib.sha256(dockerfile.encode()).hexdigest()
+    header, body = dockerfile.split('\n', 1)
+    assert hashlib.sha256(body.encode()).hexdigest() in header, 'Dockerfile.rust must carry its generation fingerprint'
     assert 'USER 65532:65532' in dockerfile
     assert 'cargo build --locked --release --workspace --bins' in dockerfile
     assert 'COPY . .' not in dockerfile

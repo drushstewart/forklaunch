@@ -141,7 +141,7 @@ pub(super) fn preflight_mixed_image(root: &Path) -> Result<()> {
     let template = render_static_rust_template("rust/application/Dockerfile");
     let marked = crate::core::watermark::apply_watermark(&RenderedTemplate { path: path.clone(), content: template.clone(), context: None })?;
     let custom = read_to_string(&path).is_ok_and(|source| source.trim_end() != template.trim_end() && source.trim_end() != marked.trim_end());
-    anyhow::ensure!(custom && forklaunch_state::generated_section(root, forklaunch_state::RUST_IMAGE)?.is_none(),
+    anyhow::ensure!(custom && forklaunch_state::file_stamped(&path).is_none(),
         "Local --framework-path dependencies are a host-development override outside the generated Docker build context. Before adding Rust to this workspace, provide an application-owned Dockerfile.rust integrating that local source, or use the published default for the managed image. No project files were generated.");
     Ok(())
 }
@@ -149,7 +149,6 @@ pub(super) fn preflight_mixed_image(root: &Path) -> Result<()> {
 /// Registry and path modes need no local sources; earlier parser patches are removed.
 pub(super) fn prepare(root: &Path, dryrun: bool) -> Result<()> {
     if dryrun { return Ok(()); }
-    forklaunch_state::migrate(root)?;
     remove_literal_json_patch(root)?;
     rewrite_tree(root, root)?;
     remove_vendor_excludes(root)
@@ -398,5 +397,90 @@ mod tests {
         let mut framework: Value = toml::from_str("[dependencies]\ncore = {package='forklaunch-core',path='../../vendor/framework/crates/core',features=['typed-schema']}\n").unwrap();
         rewrite_value(&mut framework, &config);
         assert_eq!(framework["dependencies"]["core"]["path"].as_str(), Some("/tmp/framework-rs/crates/core"));
+    }
+
+    fn workspace_toml(relative: &str) -> toml::Value {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+        toml::from_str(&read_to_string(&path).unwrap()).unwrap()
+    }
+
+    fn member_manifests(workspace: &str) -> Vec<toml::Value> {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join(workspace);
+        let members = workspace_toml(&format!("{workspace}/Cargo.toml"))["workspace"]["members"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let mut manifests = Vec::new();
+        for member in members {
+            let pattern = root.join(member.as_str().unwrap()).join("Cargo.toml");
+            for path in glob::glob(pattern.to_str().unwrap()).unwrap() {
+                manifests.push(toml::from_str(&read_to_string(path.unwrap()).unwrap()).unwrap());
+            }
+        }
+        manifests
+    }
+
+    /// Generated applications default to the release this checkout builds, and
+    /// the blueprint pins exactly that framework release.
+    #[test]
+    fn default_versions_follow_the_framework_and_blueprint_workspaces() {
+        let framework = workspace_toml("../framework-rs/Cargo.toml");
+        assert_eq!(framework["workspace"]["package"]["version"].as_str(), Some(RELEASE_VERSION));
+        let blueprint = workspace_toml("../blueprint-rs/Cargo.toml");
+        assert_eq!(blueprint["workspace"]["package"]["version"].as_str(), Some(BLUEPRINT_RELEASE_VERSION));
+        let pinned = format!("={RELEASE_VERSION}");
+        for manifest in member_manifests("../blueprint-rs") {
+            for section in ["dependencies", "dev-dependencies", "build-dependencies"] {
+                for (name, dependency) in manifest.get(section).and_then(toml::Value::as_table).into_iter().flatten() {
+                    let package = dependency.get("package").and_then(toml::Value::as_str).unwrap_or(name);
+                    let path = dependency.get("path").and_then(toml::Value::as_str).unwrap_or_default();
+                    if path.contains("framework-rs/") {
+                        assert_eq!(dependency["version"].as_str(), Some(pinned.as_str()), "{package}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Third-party crates the Rust templates name directly must use the same
+    /// requirement as the framework, so generated code and framework types unify.
+    #[test]
+    fn template_dependencies_match_the_framework_requirements() {
+        let mut framework: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> = Default::default();
+        for manifest in member_manifests("../framework-rs") {
+            for section in ["dependencies", "dev-dependencies"] {
+                for (name, dependency) in manifest.get(section).and_then(toml::Value::as_table).into_iter().flatten() {
+                    let requirement = dependency.as_str().or_else(|| dependency.get("version")?.as_str());
+                    if let Some(requirement) = requirement && !name.starts_with("forklaunch-") {
+                        framework.entry(name.clone()).or_default().insert(requirement.trim_start_matches('=').to_owned());
+                    }
+                }
+            }
+        }
+        let templates = Path::new(env!("CARGO_MANIFEST_DIR")).join("src/templates/rust");
+        let pattern = templates.join("*/Cargo.toml.template");
+        let mut checked = 0;
+        for path in glob::glob(pattern.to_str().unwrap()).unwrap() {
+            let path = path.unwrap();
+            for line in read_to_string(&path).unwrap().lines() {
+                let Some((name, rest)) = line.split_once('=') else { continue };
+                let name = name.trim();
+                let Some(versions) = framework.get(name).filter(|versions| versions.len() == 1) else { continue };
+                let requirement = rest
+                    .split('"')
+                    .nth(1)
+                    .filter(|_| rest.trim_start().starts_with('"') || rest.contains("version"))
+                    .unwrap_or_default();
+                let expected = versions.iter().next().unwrap();
+                // Compare the declared compatibility range (major, or major.minor below 1.0).
+                let range = |version: &str| {
+                    let parts: Vec<&str> = version.split('.').collect();
+                    if parts[0] == "0" { parts.iter().take(2).copied().collect::<Vec<_>>().join(".") } else { parts[0].to_owned() }
+                };
+                assert_eq!(range(requirement), range(expected), "{} in {}", name, path.display());
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "No template dependencies were compared");
     }
 }

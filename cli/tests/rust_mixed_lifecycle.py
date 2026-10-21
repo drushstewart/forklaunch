@@ -15,6 +15,19 @@ output = repo / 'cli/tests/output/rust-mixed-lifecycle'
 output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
 app = root / 'app'
+
+def rust_image():
+    """The generated Rust image inventory, read from Dockerfile.rust and Compose."""
+    lines = (app / 'Dockerfile.rust').read_text().splitlines()
+    inputs = [json.loads(line[len('COPY '):])[0] for line in lines if line.startswith('COPY [')]
+    release = 'COPY --from=builder /app/target/release/'
+    binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
+    services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
+        'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    processes = {name: service for name, service in services.items()
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+    return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
+
 account = 'parity-offline-lifecycle-' + root.name.removeprefix('run.').replace('_', '-')
 account_path = Path.home() / '.forklaunch/accounts' / (account + '.toml')
 assert not account_path.exists()
@@ -56,7 +69,7 @@ for kind, name, extra in [('worker', 'native-jobs', ['-t', 'redis', '--consumer-
                           ('library', 'native-models', [])]:
     run('init', kind, name, '--language', 'rust', '-D', name, *extra)
 native_paths = {project['name']: project['metadata']['cratePath'] for project in manifest()['projects'] if project.get('metadata', {}).get('language') == 'rust'}
-image_inventory = json.loads((app / '.forklaunch/generated.json').read_text())['rustImage']
+image_inventory = rust_image()
 assert {'native-api', 'native-jobs'} <= set(image_inventory['binaries'])
 # Rust image may need the TypeScript projects' generated Rust client crates,
 # but must not copy their application implementations or Node dependencies.
@@ -124,7 +137,7 @@ for kind, name in [('service', 'native-api'), ('worker', 'native-jobs'), ('libra
     run('delete', kind, name, '--continue')
     assert not (app / native_paths[name]).exists()
 assert manifest()['runtime'] == 'node'
-assert json.loads((app / '.forklaunch/generated.json').read_text())['rustImage']['binaries'] == []
+assert rust_image()['binaries'] == []
 print('PASS actual mixed TypeScript/Rust service, worker, library and router lifecycle dispatch', flush=True)
 print(f'Mixed lifecycle fixture evidence: {root}', flush=True)
 if os.environ.get('FORKLAUNCH_MIXED_LIFECYCLE_RECEIPT'):

@@ -6,47 +6,55 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::core::forklaunch_state::{self, SDK_HTTP_SOURCES};
+use crate::core::forklaunch_state::MANIFEST;
 
 use anyhow::{Context, Result, bail};
-use serde::{Deserialize, Serialize};
 
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Sources {
-    format_version: u8,
-    typescript_services: BTreeSet<String>,
-}
-
-/// Tracked in `generated.json#sdkHttpSources` (formerly `.forklaunch/sdk/http-sources.json`).
+/// TypeScript services whose SDKs were already generated, read from the
+/// generated Rust SDK crates on disk. A service listed here must keep its
+/// OpenAPI export; losing it is an error rather than a silent removal.
 pub(super) fn read(root: &Path) -> Result<BTreeSet<String>> {
-    let Some(value) = forklaunch_state::generated_section(root, SDK_HTTP_SOURCES)
-        .context("Failed to read HTTP SDK source state")?
-    else {
+    let Ok(source) = fs::read_to_string(root.join(MANIFEST)) else {
         return Ok(BTreeSet::new());
     };
-    let sources: Sources =
-        serde_json::from_value(value).context("Failed to read HTTP SDK source state")?;
-    if sources.format_version != 1 {
-        bail!("Unsupported HTTP SDK source state version");
+    let manifest: toml::Value =
+        toml::from_str(&source).context("Failed to read the application manifest")?;
+    let shared = root.join(super::layout::rust(root)?);
+    let typescript = root.join(super::layout::typescript(root)?);
+    let recorded: BTreeSet<String> = fs::read_to_string(super::layout::source(root, &typescript)?.join(RECORD))
+        .map(|text| text.lines().map(str::to_owned).collect())
+        .unwrap_or_default();
+    let mut services = BTreeSet::new();
+    for project in manifest
+        .get("projects")
+        .and_then(toml::Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|project| is_typescript(project))
+    {
+        let Some(name) = project.get("name").and_then(toml::Value::as_str) else {
+            continue;
+        };
+        let local = super::layout::local_sdk(root, name, "rust")?;
+        if shared.join(format!("{name}-sdk/Cargo.toml")).is_file()
+            || local.is_some_and(|directory| directory.join("Cargo.toml").is_file())
+            || recorded.contains(name)
+        {
+            services.insert(name.to_owned());
+        }
     }
-    Ok(sources.typescript_services)
+    Ok(services)
 }
 
-pub(super) fn write(root: &Path, services: &BTreeSet<String>) -> Result<()> {
-    let current = forklaunch_state::generated_section(root, SDK_HTTP_SOURCES)?;
-    if services.is_empty() && current.is_none() {
-        return Ok(());
-    }
-    let next = serde_json::to_value(Sources {
-        format_version: 1,
-        typescript_services: services.clone(),
-    })?;
-    if current.as_ref() == Some(&next) && !root.join(forklaunch_state::legacy::HTTP_SOURCES).exists() {
-        return Ok(());
-    }
-    forklaunch_state::set_generated_section(root, SDK_HTTP_SOURCES, Some(next))
-        .context("Failed to save HTTP SDK source state")
+/// Services written into the shared TypeScript SDK, beside its index.
+const RECORD: &str = ".forklaunch-services";
+
+pub(super) fn record<'a>(source: &Path, names: impl Iterator<Item = &'a str>) -> Result<()> {
+    let mut names: Vec<&str> = names.collect();
+    names.sort_unstable();
+    names.dedup();
+    super::write_if_changed(source.join(RECORD), names.iter().map(|name| format!("{name}\n")).collect::<String>())?;
+    Ok(())
 }
 
 pub(super) fn is_typescript(project: &toml::Value) -> bool {

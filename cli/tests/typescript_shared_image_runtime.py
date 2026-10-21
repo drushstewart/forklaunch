@@ -80,10 +80,11 @@ try:
         if PURE_NODE:
             assert not (APP / "modules/Dockerfile").exists()
             assert not (APP / "Dockerfile.rust").exists()
-        assert "AS contract-compiler" in docker_source
-        assert "cargo build --release --locked" in docker_source
-        assert "ENV FORKLAUNCH_CONTRACT_COMPILER=" in docker_source
-        print("PASS explicit contract build hook and pinned Linux compiler stage", flush=True)
+        # SDKs are built on the host by the CLI; the image only copies them.
+        assert "contract-compiler" not in docker_source
+        assert "COPY <<\"FORKLAUNCH_EOF\" /forklaunch/production-build.mjs" in docker_source
+        assert sorted(p.name for p in (APP / ".forklaunch").iterdir()) == ["manifest.toml"]
+        print("PASS CLI contract builds with no in-image compiler; bundler embedded in the Dockerfile", flush=True)
     run(PM, "install", "--lockfile-only", "--ignore-scripts", cwd=APP / "modules")
     locked = (APP / ("modules/bun.lock" if RUNTIME == "bun" else "modules/pnpm-lock.yaml")).read_bytes()
     print("PASS fresh ordinary CLI generation and locked workspace", flush=True)
@@ -95,7 +96,8 @@ try:
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 for (const name of ['api', 'jobs']) {
-  const config = JSON.parse(fs.readFileSync('/app/.forklaunch/build.json')).contracts[name];
+  const config = { contract: `modules/${name}/sdk/contract.json`, typescript: `modules/${name}/sdk.ts`,
+                   rust: `modules/${name}/sdk/rust/lib.rs`, openapi: `modules/${name}/sdk/openapi.json` };
   const contract = JSON.parse(fs.readFileSync(`/app/${config.contract}`));
   assert.equal(contract.sdkCompiler, 'forklaunch.sdk.http.v1');
   assert.equal(contract.routes.length, 2);
@@ -110,7 +112,7 @@ for (const name of ['api', 'jobs']) {
                'test "$(id -u)" = 1000 && '
                'test -s /app/api/production/server.mjs && test -s /app/jobs/production/worker.mjs && '
                'bun /app/api/production/migrate.mjs && bun /app/jobs/production/migrate.mjs && '
-               'test ! -d /app/node_modules/typescript && test ! -e /usr/local/bin/forklaunch-contract-compiler && '
+               'test ! -d /app/node_modules/typescript && test ! -e /forklaunch && '
                'test ! -f /app/api/server.ts && test -s /app/core/lib/index.js')
     else:
         docker("run", "--rm", "--entrypoint", "sh", IMAGE, "-c",

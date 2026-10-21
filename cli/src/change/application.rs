@@ -1242,8 +1242,7 @@ fn change_runtime(
     }
 
     let managed_image = base_path.ancestors().any(|root| {
-        crate::core::forklaunch_state::generated_section(root, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)
-            .is_ok_and(|receipt| receipt.is_some())
+        crate::init::rust_project::managed_typescript_image(root).is_some()
     });
     if !managed_image {
     let dockerfile_template_path = TEMPLATES_DIR
@@ -1997,15 +1996,8 @@ impl CliCommand for ApplicationCommand {
         if runtime.is_some() {
             rust_project::preflight_typescript_runtime_change(&app_root_path)?;
         }
-        let mut runtime_hook_scripts = Vec::new();
         if validator.is_some() || http_framework.is_some() || runtime.is_some() {
-            let (updates, scripts) = crate::sdk::typescript_build::application_descriptor_updates(
-                &app_root_path, validator.as_deref(), runtime.as_deref(),
-            )?;
-            runtime_hook_scripts = scripts;
-            for template in updates {
-                rendered_templates_cache.insert(template.path.to_string_lossy().to_string(), template);
-            }
+            crate::sdk::typescript_build::preflight_application(&app_root_path)?;
         }
 
         if let Some(name) = name {
@@ -2076,7 +2068,7 @@ impl CliCommand for ApplicationCommand {
         }
 
         if let Some(runtime) = runtime {
-            if !dryrun && crate::core::forklaunch_state::generated_section(&app_root_path, crate::core::forklaunch_state::TYPESCRIPT_IMAGE)?.is_none() {
+            if !dryrun && crate::init::rust_project::managed_typescript_image(&app_root_path).is_none() {
             clean_application(
                 &app_path,
                 &manifest_data.runtime.parse()?,
@@ -2156,13 +2148,6 @@ impl CliCommand for ApplicationCommand {
                 context: None,
             },
         );
-        for (name, script) in runtime_hook_scripts {
-            let scripts = project_jsons_to_write.get_mut(&name).context("Owned hook project missing")?
-                .scripts.as_mut().context("Owned hook scripts missing")?;
-            scripts.build = Some(script.clone());
-            scripts.additional_scripts.insert("sdk:build".into(), script.clone());
-            scripts.additional_scripts.insert("sdk:watch".into(), format!("{script} --watch"));
-        }
         project_jsons_to_write
             .iter()
             .for_each(|(project_name, project_json)| {

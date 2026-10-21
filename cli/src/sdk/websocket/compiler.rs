@@ -167,11 +167,7 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let root = temporary.path();
         fs::create_dir(root.join(".forklaunch")).unwrap();
-        fs::write(
-            root.join(".forklaunch/framework-dependencies.toml"),
-            "version = '0.1.0'",
-        )
-        .unwrap();
+        { let manifest = root.join(".forklaunch/manifest.toml"); let prior = std::fs::read_to_string(&manifest).unwrap_or_default(); std::fs::write(&manifest, format!("{prior}\n[framework]\n{}\n", "version = '0.1.0'")).unwrap(); }
         let artifact = SocketContractArtifact::new("Fixture", "1").with_socket(
             "chat",
             SocketContract::new("/chat")
@@ -221,22 +217,14 @@ mod tests {
                 .unwrap();
             }
             if selection == "registry" {
-                fs::write(
-                    root.join(".forklaunch/framework-dependencies.toml"),
-                    "version='0.1.0'",
-                )
-                .unwrap();
+                { let manifest = root.join(".forklaunch/manifest.toml"); let prior = std::fs::read_to_string(&manifest).unwrap_or_default(); std::fs::write(&manifest, format!("{prior}\n[framework]\n{}\n", "version='0.1.0'")).unwrap(); }
             } else if selection == "local" {
-                fs::write(
-                    root.join(".forklaunch/framework-dependencies.toml"),
-                    format!(
+                { let manifest = root.join(".forklaunch/manifest.toml"); let prior = std::fs::read_to_string(&manifest).unwrap_or_default(); std::fs::write(&manifest, format!("{prior}\n[framework]\n{}\n", format!(
                         "path={}",
                         toml::Value::String(
                             root.join("custom/framework").to_string_lossy().into_owned()
                         )
-                    ),
-                )
-                .unwrap();
+                    ))).unwrap(); }
             }
             let document: toml::Value = toml::from_str(
                 &compiler_manifest(root, &["zod-checks", "zod-regex"]).unwrap(),
