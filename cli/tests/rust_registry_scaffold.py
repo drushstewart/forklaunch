@@ -44,6 +44,7 @@ blueprint_versions = {p['name']: p['version'] for p in blueprint_report['package
 cli = Path(os.environ['FORKLAUNCH_CLI']).resolve()
 env = {**os.environ, 'RUSTUP_TOOLCHAIN': 'stable', 'CARGO_INCREMENTAL': '0'}
 env.pop('FORKLAUNCH_FRAMEWORK_SNAPSHOT', None)
+env.pop('FORKLAUNCH_FRAMEWORK_PATH', None)
 env.pop('FORKLAUNCH_SKIP_FORMAT', None)
 env.pop('FORKLAUNCH_CONTRACT_COMPILER', None)
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
@@ -186,6 +187,12 @@ try:
                             changed = True
                 if changed:
                     path.write_bytes(manifest_text(value))
+            # Published blueprint crates depend on crates.io framework crates;
+            # point those at the staged release so the graph has one copy.
+            workspace = tomllib.loads((app / 'Cargo.toml').read_text())
+            workspace.setdefault('patch', {})['crates-io'] = {
+                name: {'version': '=' + version, 'registry': 'forklaunch-staging'} for name, version in versions.items()}
+            (app / 'Cargo.toml').write_bytes(manifest_text(workspace))
         mixed_checks = None
         if args.mixed:
             # The manifest is the only committed state; contract builds are a

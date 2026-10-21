@@ -11,6 +11,10 @@ import subprocess
 import time
 import tomllib
 import uuid
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from universal_sdk_source import copy_universal_sdk  # noqa: E402
 
 
 def raw_application(run, cli, application, name, *, database='postgresql', runtime='node', dryrun=False):
@@ -26,7 +30,7 @@ def raw_application(run, cli, application, name, *, database='postgresql', runti
 def build_public_runtime(run, application, destination, repo):
     """Build the exact bundled public package; return its actual ESM entrypoint."""
     application, destination, repo = map(Path, (application, destination, repo))
-    shutil.copytree(repo / 'framework/universal-sdk', destination, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    copy_universal_sdk(repo, destination)
     run('npm', 'install', '--prefix', destination, '--ignore-scripts', '--package-lock=false')
     run('npm', '--prefix', destination, 'run', 'build')
     run('node', repo / 'framework/universal-sdk/__test__/publicTransport.mjs', destination)

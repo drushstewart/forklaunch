@@ -59,7 +59,6 @@ try:
     endpoint = f'http://127.0.0.1:{server.server_port}'
     env = {**os.environ, 'FORKLAUNCH_ACCOUNT': account_name, 'CI': 'true',
            'FORKLAUNCH_CLI': str(binary), 'FORKLAUNCH_SKIP_FORMAT': '1',
-           'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1',
            'FORKLAUNCH_PLATFORM_MANAGEMENT_API_URL': endpoint,
            'FORKLAUNCH_BILLING_API_URL': endpoint}
     require_supported = os.environ.get('FORKLAUNCH_EXPECT_SHARED_RELEASE_SUPPORTED') == '1'

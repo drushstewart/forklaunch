@@ -86,7 +86,8 @@ try:
     # Dependencies support the actual repository validator source. The schema
     # and expected cases are never duplicated as hand-maintained approximations.
     shared = root / 'universal-sdk'
-    shutil.copytree(repo / 'framework/universal-sdk', shared, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, shared)
     validator_dependencies = json.loads((repo / 'framework/validator/package.json').read_text())['dependencies']
     run('npm', 'install', '--prefix', shared, '--ignore-scripts', '--package-lock=false', '--no-save',
         *[f'{name}@{validator_dependencies[name]}' for name in ['zod', 'ts-deepmerge']])

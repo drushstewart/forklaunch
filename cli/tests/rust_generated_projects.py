@@ -17,7 +17,7 @@ import tempfile
 repo = Path(__file__).resolve().parents[2]
 cli = Path(os.environ['FORKLAUNCH_CLI']).resolve()
 env = {**os.environ, 'RUSTUP_TOOLCHAIN': os.environ.get('RUSTUP_TOOLCHAIN', 'stable'), 'CARGO_INCREMENTAL': '0'}
-for variable in ('FORKLAUNCH_SKIP_FORMAT', 'FORKLAUNCH_FRAMEWORK_SNAPSHOT', 'FORKLAUNCH_CONTRACT_COMPILER'):
+for variable in ('FORKLAUNCH_SKIP_FORMAT', 'FORKLAUNCH_FRAMEWORK_SNAPSHOT', 'FORKLAUNCH_FRAMEWORK_PATH', 'FORKLAUNCH_CONTRACT_COMPILER'):
     env.pop(variable, None)
 root = Path(tempfile.mkdtemp(prefix='forklaunch-generated-projects-'))
 app = root / 'app'

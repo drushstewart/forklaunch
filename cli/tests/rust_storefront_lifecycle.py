@@ -18,7 +18,7 @@ account = 'parity-offline-storefront-' + root.name.removeprefix('run.').replace(
 account_path = Path.home() / '.forklaunch/accounts' / (account + '.toml')
 assert not account_path.exists()
 env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_ACCOUNT': account,
-       'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1'}
+       'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs')}
 # No Cargo output is built here. Freeze the CLI independently of concurrent
 # compilation so the complete mutation proof refers to a single executable.
 shutil.copy2(binary, root / 'forklaunch')

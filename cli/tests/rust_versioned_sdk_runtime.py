@@ -111,7 +111,8 @@ try:
     binary = Path(env['CARGO_TARGET_DIR']) / 'debug/versions'
     run('node', repo / 'cli/tests/rust_mcp_service_startup.mjs', binary)
     shared = root / 'universal-sdk'
-    shutil.copytree(repo / 'framework/universal-sdk', shared, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, shared)
     run('npm', 'install', '--prefix', shared, '--ignore-scripts', '--package-lock=false')
     run('npm', '--prefix', shared, 'run', 'build')
     dependency = app / 'node_modules/@forklaunch'

@@ -71,7 +71,8 @@ use serde_json::{Value,json};
     # Install the generated runtime dependency so the real type-only package
     # resolves without a repository node_modules assumption.
     shared = root / 'universal-sdk'
-    shutil.copytree(repo / 'framework/universal-sdk', shared, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, shared)
     run('npm', 'install', '--prefix', shared, '--ignore-scripts', '--package-lock=false')
     run('npm', '--prefix', shared, 'run', 'build')
     dependencies = app / 'node_modules/@forklaunch'

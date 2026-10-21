@@ -36,7 +36,7 @@ def cleanup_fixture():
         shutil.copy2(path, destination / f'framework-mixed-dev-{runtime}-{path.name}')
     shutil.rmtree(root)
 atexit.register(cleanup_fixture)
-env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1', 'FORKLAUNCH_ACCOUNT': 'parity-offline-dev', 'CARGO_INCREMENTAL': '0', 'HUSKY': '0'}
+env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'FORKLAUNCH_ACCOUNT': 'parity-offline-dev', 'CARGO_INCREMENTAL': '0', 'HUSKY': '0'}
 print(f'RUN {runtime} mixed dev: CLI {binary} SHA-256 {hashlib.sha256(binary.read_bytes()).hexdigest()}', flush=True)
 def cli(*args):
     return subprocess.run([str(binary), *args, '--path', str(app)], cwd=root, env=env, check=True, timeout=180)

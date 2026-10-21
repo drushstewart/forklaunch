@@ -13,13 +13,17 @@ pub(crate) fn configuration(matches: &ArgMatches) -> Result<toml::Table> {
         .try_get_one::<String>("framework-version")
         .ok()
         .flatten();
+    // FORKLAUNCH_FRAMEWORK_PATH defaults --framework-path, so test suites build
+    // generated apps against the framework checkout they are testing.
+    let environment_path = std::env::var("FORKLAUNCH_FRAMEWORK_PATH").ok().filter(|path| !path.is_empty());
     let path = matches
         .try_get_one::<String>("framework-path")
         .ok()
-        .flatten();
+        .flatten()
+        .or(environment_path.as_ref().filter(|_| selected_version.is_none()));
     if std::env::var("FORKLAUNCH_FRAMEWORK_SNAPSHOT").is_ok_and(|value| value == "1") {
         eprintln!(
-            "warning: FORKLAUNCH_FRAMEWORK_SNAPSHOT is no longer supported; framework crates come from the registry (use --framework-path for a local checkout)."
+            "warning: FORKLAUNCH_FRAMEWORK_SNAPSHOT is no longer supported; framework crates come from the registry (use --framework-path or FORKLAUNCH_FRAMEWORK_PATH for a local checkout)."
         );
     }
     let version = selected_version.map(String::as_str)
@@ -233,10 +237,7 @@ fn framework_suffix(path: &str) -> Option<&str> {
 }
 
 fn render(root: &Path, source: &str) -> Result<String> {
-    let config = forklaunch_state::framework(root).context("Framework dependency selection missing")?;
-    let mut document: Value = toml::from_str(source)?;
-    rewrite_value(&mut document, &config);
-    Ok(toml::to_string_pretty(&document)?)
+    Ok(rewrite_in_place(root, source)?.unwrap_or_else(|| source.into()))
 }
 
 /// Rewrite an existing manifest's framework dependencies, keeping its comments
@@ -266,6 +267,15 @@ fn rewrite_item(item: &mut toml_edit::Item, config: &Value, changed: &mut bool) 
                 table.remove("path");
                 table.insert("version", toml_edit::value(version));
                 *changed = true;
+                if let Some(inline) = item.as_inline_table_mut() {
+                    // Keep inline specs readable: the version leads, as in templates.
+                    let version = inline.remove("version").unwrap_or_else(|| version.into());
+                    let mut ordered = toml_edit::InlineTable::new();
+                    ordered.insert("version", version);
+                    ordered.extend(inline.iter().map(|(key, value)| (key.to_owned(), value.clone())));
+                    *inline = ordered;
+                }
+                return;
             }
             _ => {}
         }

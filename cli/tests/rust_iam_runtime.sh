@@ -5,7 +5,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/cli/target}"
 export CARGO_INCREMENTAL=0
 export FORKLAUNCH_SKIP_FORMAT=1
-export FORKLAUNCH_FRAMEWORK_SNAPSHOT=1
+export FORKLAUNCH_FRAMEWORK_PATH="${FORKLAUNCH_FRAMEWORK_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/framework-rs}"
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
 if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-0}" != 1 ]; then
     exec python3 "$SCRIPT_DIR/fixtures/worker_runtime_lock.py" "$SCRIPT_DIR/rust_iam_runtime.sh"

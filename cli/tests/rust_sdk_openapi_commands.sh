@@ -6,7 +6,7 @@ export FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-$REPO_ROOT/cli/target/debug/forklaunch}
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/cli/target}"
 export CARGO_INCREMENTAL=0
 export FORKLAUNCH_SKIP_FORMAT=1
-export FORKLAUNCH_FRAMEWORK_SNAPSHOT=1
+export FORKLAUNCH_FRAMEWORK_PATH="${FORKLAUNCH_FRAMEWORK_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/framework-rs}"
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"
 if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-0}" != 1 ]; then
     exec python3 "$SCRIPT_DIR/fixtures/worker_runtime_lock.py" "$SCRIPT_DIR/rust_sdk_openapi_commands.sh"
@@ -93,7 +93,8 @@ try:
     command('sdk', 'generate', '--target', 'all', '--from', 'openapi', '--check')
     # Compile against the real bundled TypeScript runtime in an isolated install.
     runtime = root / 'typescript-runtime'
-    shutil.copytree(repo / 'framework/universal-sdk', runtime, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, runtime)
     run('npm', 'install', '--prefix', runtime, '--ignore-scripts', '--package-lock=false')
     run('npm', '--prefix', runtime, 'run', 'build')
     run('node', repo / 'framework/universal-sdk/__test__/publicTransport.mjs', runtime)

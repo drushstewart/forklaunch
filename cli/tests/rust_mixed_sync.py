@@ -19,7 +19,7 @@ output.mkdir(parents=True, exist_ok=True)
 root = Path(tempfile.mkdtemp(prefix='run.', dir=output)).resolve()
 app = root / 'app'
 env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'CARGO_INCREMENTAL': '0',
-       'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1', 'RUSTUP_TOOLCHAIN': 'stable'}
+       'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'RUSTUP_TOOLCHAIN': 'stable'}
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
     shutil.rmtree(root)

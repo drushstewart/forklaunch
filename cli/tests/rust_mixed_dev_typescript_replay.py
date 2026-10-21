@@ -15,7 +15,7 @@ app = Path(sys.argv[1]).resolve()
 assert app.is_relative_to(repo / 'cli/tests/output/rust-mixed-dev')
 binary = Path(os.environ.get('FORKLAUNCH_CLI', repo / 'cli/target/debug/forklaunch')).resolve()
 project = 'typescript-replay-' + uuid.uuid4().hex[:12]
-env = {**os.environ, 'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1', 'FORKLAUNCH_ACCOUNT': 'parity-offline-dev', 'CARGO_INCREMENTAL': '0'}
+env = {**os.environ, 'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs'), 'FORKLAUNCH_ACCOUNT': 'parity-offline-dev', 'CARGO_INCREMENTAL': '0'}
 config = json.loads(subprocess.check_output(['docker', 'compose', '--project-directory', str(app), '-f', str(app / 'docker-compose.yaml'), 'config', '--format', 'json'], text=True))
 port = int(config['services']['legacy-api']['environment']['PORT'])
 log_path = app.parent / 'typescript-replay.log'

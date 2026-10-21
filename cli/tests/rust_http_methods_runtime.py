@@ -165,7 +165,8 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
     run('cargo', 'build', '--workspace')
     command('openapi', 'export')
     runtime = root / 'typescript-runtime'
-    shutil.copytree(repo / 'framework/universal-sdk', runtime, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, runtime)
     run('npm', 'install', '--prefix', runtime, '--ignore-scripts', '--package-lock=false')
     run('npm', '--prefix', runtime, 'run', 'build')
     tsc = Path(env.get('TSC_BIN', runtime / 'node_modules/.bin/tsc'))

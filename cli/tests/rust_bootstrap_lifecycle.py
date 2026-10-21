@@ -2,7 +2,7 @@
 """Raw native generation preserves composition, startup, export and secured listeners."""
 import json
 import os
-os.environ["FORKLAUNCH_FRAMEWORK_SNAPSHOT"] = "1"
+os.environ.setdefault("FORKLAUNCH_FRAMEWORK_PATH", os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "../../framework-rs")))
 from pathlib import Path
 import shlex
 import shutil

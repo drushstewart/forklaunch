@@ -22,6 +22,7 @@ env = dict(os.environ)
 registry = env.get('FORKLAUNCH_TEST_REGISTRY_SOCKET') == '1'
 if registry:
     env.pop('FORKLAUNCH_FRAMEWORK_SNAPSHOT', None)
+    env.pop('FORKLAUNCH_FRAMEWORK_PATH', None)
 cross = env.get('FORKLAUNCH_TEST_ASYNCAPI_CROSS_CHANNEL') == '1'
 resources = env.get('FORKLAUNCH_TEST_ASYNCAPI_RESOURCES') == '1'
 passed = False

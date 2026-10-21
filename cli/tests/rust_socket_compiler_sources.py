@@ -11,8 +11,9 @@ import sys
 import tempfile
 
 repo = Path(__file__).resolve().parents[2]
-env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '0',
+env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1',
        'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable'}
+env.pop('FORKLAUNCH_FRAMEWORK_PATH', None)
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
     sys.exit(subprocess.run([sys.executable, str(repo / 'cli/tests/fixtures/worker_runtime_lock.py'),

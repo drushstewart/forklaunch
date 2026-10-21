@@ -146,7 +146,8 @@ pub struct UsersQuery { pub label: Option<String> }
     binary = Path(env['CARGO_TARGET_DIR']) / 'debug/accounts'
     # Install the actual bundled public package, never a test reimplementation.
     runtime = root / 'typescript-runtime'
-    shutil.copytree(repo / 'framework/universal-sdk', runtime, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, runtime)
     run('npm', 'install', '--prefix', runtime, '--ignore-scripts', '--package-lock=false')
     run('npm', '--prefix', runtime, 'run', 'build')
     run('node', repo / 'framework/universal-sdk/__test__/publicTransport.mjs', runtime)

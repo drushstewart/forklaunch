@@ -17,7 +17,7 @@ import tomllib
 repo = Path(__file__).resolve().parents[2]
 binary = Path(os.environ.get('FORKLAUNCH_CLI', repo / 'cli/target/debug/forklaunch')).resolve()
 env = {**os.environ, 'CARGO_INCREMENTAL': '0', 'RUSTUP_TOOLCHAIN': 'stable',
-       'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_SNAPSHOT': '1'}
+       'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_FRAMEWORK_PATH': str(repo / 'framework-rs')}
 env.setdefault('CARGO_TARGET_DIR', str(repo / 'cli/target'))
 if not env.get('FORKLAUNCH_WORKER_RUNTIME_LOCKED'):
     sys.exit(subprocess.run([sys.executable, str(repo / 'cli/tests/fixtures/worker_runtime_lock.py'),
@@ -303,7 +303,8 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
     native_url = start(native)
     ts_url = start(tools / 'node_modules/.bin/tsx', app / 'src/typescript-api/server.ts')
     runtime = root / 'typescript-runtime'
-    shutil.copytree(repo / 'framework/universal-sdk', runtime, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, runtime)
     run('npm', 'install', '--ignore-scripts', '--package-lock=false', cwd=runtime)
     run('npm', 'run', 'build', cwd=runtime)
     scope = tools / 'node_modules/@forklaunch'

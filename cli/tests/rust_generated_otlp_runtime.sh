@@ -2,7 +2,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-export FORKLAUNCH_FRAMEWORK_SNAPSHOT=1
+export FORKLAUNCH_FRAMEWORK_PATH="${FORKLAUNCH_FRAMEWORK_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/framework-rs}"
 export FORKLAUNCH_SKIP_FORMAT=1
 export CARGO_INCREMENTAL=0
 export RUSTUP_TOOLCHAIN="${RUSTUP_TOOLCHAIN:-stable}"

@@ -118,7 +118,8 @@ try:
     binary = Path(env['CARGO_TARGET_DIR']) / 'debug/streams'
     run('node', repo / 'cli/tests/rust_mcp_service_startup.mjs', binary)
     runtime = root / 'typescript-runtime'
-    shutil.copytree(repo / 'framework/universal-sdk', runtime, ignore=shutil.ignore_patterns('node_modules', 'lib', 'docs', '__test__'))
+    import sys; sys.path.insert(0, str(repo / 'cli/tests/fixtures')); from universal_sdk_source import copy_universal_sdk
+    copy_universal_sdk(repo, runtime)
     run('npm', 'install', '--prefix', runtime, '--ignore-scripts', '--package-lock=false')
     run('npm', '--prefix', runtime, 'run', 'build')
     run('node', repo / 'framework/universal-sdk/__test__/publicTransport.mjs', runtime)
