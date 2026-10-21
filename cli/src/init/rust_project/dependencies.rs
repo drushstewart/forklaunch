@@ -345,7 +345,7 @@ mod tests {
         let updated = rewrite_in_place(root.path(), source).unwrap().unwrap();
         assert!(updated.starts_with("# owned\n") && updated.contains("# framework\n"), "{updated}");
         let value: Value = toml::from_str(&updated).unwrap();
-        assert_eq!(value["dependencies"]["core"]["version"].as_str(), Some("=0.1.3"));
+        assert_eq!(value["dependencies"]["core"]["version"].as_str(), Some("=0.1.2"));
         assert_eq!(value["dependencies"]["core"]["features"][0].as_str(), Some("build"));
         assert_eq!(value["dependencies"]["worker"]["version"].as_str(), Some("=0.1.0"));
         assert_eq!(value["dependencies"]["local"]["path"].as_str(), Some("../local"));

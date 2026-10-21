@@ -598,11 +598,11 @@ mod tests {
         let workspace: PnpmWorkspace = from_str(&generated.content).unwrap();
         assert_eq!(
             workspace.other["overrides"]["@forklaunch/core"].as_str(),
-            Some("3.0.1")
+            Some("3.1.0")
         );
         assert_eq!(
             workspace.other["overrides"]["@forklaunch/testing"].as_str(),
-            Some("1.2.35")
+            Some("1.2.36")
         );
         let mut customized = workspace;
         customized

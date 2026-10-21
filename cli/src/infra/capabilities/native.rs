@@ -284,7 +284,7 @@ pub(crate) fn cleanup_deleted_native_service(
                     .and_then(|mock| mock.environment.as_ref())
                     .and_then(|env| env.get(&format!("MOCK_EVENTS_URL_{}", feature.to_uppercase())))
                     .cloned();
-                release_gateway_mock(compose, name, feature, true, remaining.is_empty());
+                release_gateway_mock(compose, name, feature, super::find(feature).is_none_or(|c| c.receives_events), true, remaining.is_empty());
                 retain_callback_target(compose, name, feature, previous, &remaining);
             }
             for (feature, service) in &remaining {
@@ -681,7 +681,7 @@ pub(super) fn apply(
         let service_name = edit.service_name.clone();
         let feature = capability.id;
         edit.update_compose(|compose| {
-            ensure_gateway_mock(compose, &service_name, feature)?;
+            ensure_gateway_mock(compose, &service_name, feature, super::find(feature).is_none_or(|c| c.receives_events))?;
             let service = compose
                 .services
                 .get_mut(&service_name)
@@ -758,7 +758,7 @@ pub(super) fn apply(
                 .and_then(|mock| mock.environment.as_ref())
                 .and_then(|env| env.get(&format!("MOCK_EVENTS_URL_{}", feature.to_uppercase())))
                 .cloned();
-            release_gateway_mock(compose, &service, feature, service_empty, app_empty);
+            release_gateway_mock(compose, &service, feature, super::find(feature).is_none_or(|c| c.receives_events), service_empty, app_empty);
             retain_callback_target(compose, &service, feature, previous, &owners);
             if service_empty {
                 if let Some(target) = compose.services.get_mut(&service) {
