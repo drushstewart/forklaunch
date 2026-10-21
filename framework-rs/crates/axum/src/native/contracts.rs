@@ -31,7 +31,8 @@ pub fn write_contract_artifacts(
 /// Handle the CLI contract-export protocol before configuration/auth/database setup.
 /// Returns true after export so the caller can exit without binding a listener.
 /// Supports `FORKLAUNCH_MODE=contract|openapi` and direct `--export-contracts`.
-/// Output locations are `FORKLAUNCH_CONTRACT_OUTPUT` and `FORKLAUNCH_OPENAPI_OUTPUT`.
+/// Output locations are `FORKLAUNCH_CONTRACT_OUTPUT` and `FORKLAUNCH_OPENAPI_OUTPUT`,
+/// defaulting to the service SDK folder (`sdk/typescript/`) under the working directory.
 ///
 /// # Errors
 /// Propagates filesystem errors; callers must fail startup rather than serve on error.
@@ -43,9 +44,9 @@ pub fn export_contracts_from_env(registry: &ContractRegistry) -> io::Result<bool
         return Ok(false);
     }
     let contract = env::var_os("FORKLAUNCH_CONTRACT_OUTPUT")
-        .unwrap_or_else(|| ".forklaunch/contracts/contract.json".into());
+        .unwrap_or_else(|| "sdk/typescript/contract.json".into());
     let openapi = env::var_os("FORKLAUNCH_OPENAPI_OUTPUT")
-        .unwrap_or_else(|| ".forklaunch/openapi/openapi.json".into());
+        .unwrap_or_else(|| "sdk/typescript/openapi.json".into());
     write_contract_artifacts(registry, contract, openapi)?;
     Ok(true)
 }
