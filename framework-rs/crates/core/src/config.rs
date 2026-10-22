@@ -76,8 +76,9 @@ pub(crate) fn parse<T: FromStr>(
     })
 }
 
-/// A startup configuration variable that is missing or malformed.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// A startup configuration variable that is missing or malformed. Its `Debug`
+/// form is the message, so `main` returning this error reports it readably.
+#[derive(Clone, PartialEq, Eq)]
 pub struct ConfigError {
     name: String,
     problem: Problem,
@@ -137,6 +138,15 @@ impl fmt::Display for ConfigError {
                 )
             }
         }
+    }
+}
+
+impl fmt::Debug for ConfigError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_tuple("ConfigError")
+            .field(&self.to_string())
+            .finish()
     }
 }
 
@@ -227,6 +237,10 @@ mod tests {
             "environment variable WORKER_HTTP_ADDR is not a valid SocketAddr"
         );
         assert!(!format!("{address:?}").contains("secret"));
+        assert_eq!(
+            format!("{port:?}"),
+            "ConfigError(\"environment variable PORT is not a valid u16\")"
+        );
         let binary = parse::<String>("TOKEN", Err(env::VarError::NotUnicode(OsString::new())));
         assert_eq!(
             binary.unwrap_err().to_string(),
