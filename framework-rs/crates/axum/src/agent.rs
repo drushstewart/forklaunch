@@ -22,6 +22,7 @@ use forklaunch_core::agent::contract::{tasks_endpoint, tasks_stream_endpoint, to
 use forklaunch_core::agent::{Agent, AgentCaller, AgentError, AgentEvent};
 use forklaunch_core::auth::jwt::{Algorithm, RemoteJwks, RemoteJwksConfig, Validation};
 use forklaunch_core::auth::{AuthError, JwtClaims, Principal, parse_bearer};
+use forklaunch_core::config;
 use forklaunch_core::contract::RouteContract;
 use forklaunch_core::http::FrameworkRequest;
 use futures_util::stream;
@@ -237,14 +238,14 @@ pub fn jwt_policy(jwks: RemoteJwks, validation: Validation) -> SessionPolicy {
 }
 
 /// [`jwt_policy`] from the service settings: `JWKS_PUBLIC_KEY_URL` (required),
-/// optional `JWT_ISSUER` and `JWT_AUDIENCE`, with the asymmetric algorithms
-/// the framework's other services accept.
+/// optional `JWT_ISSUER` and `JWT_AUDIENCE` (each unenforced when unset), with
+/// the asymmetric algorithms the framework's other services accept.
 /// # Errors
-/// Rejects a missing or invalid JWKS URL.
-pub fn jwt_policy_from_env() -> Result<SessionPolicy, AuthError> {
-    let setting = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
-    let url = setting("JWKS_PUBLIC_KEY_URL").ok_or(AuthError::MissingCredentials)?;
-    let jwks = RemoteJwks::new(RemoteJwksConfig::new(url))?;
+/// Names a missing JWKS URL and rejects an invalid one.
+pub fn jwt_policy_from_env() -> Result<SessionPolicy, Box<dyn std::error::Error + Send + Sync>> {
+    let url: String = config::required("JWKS_PUBLIC_KEY_URL")?;
+    let jwks = RemoteJwks::new(RemoteJwksConfig::new(url))
+        .map_err(|_| "JWKS_PUBLIC_KEY_URL must be a valid http(s) URL")?;
     let mut validation = Validation::new(Algorithm::RS256);
     validation.algorithms = vec![
         Algorithm::RS256,
@@ -260,10 +261,10 @@ pub fn jwt_policy_from_env() -> Result<SessionPolicy, AuthError> {
     validation.validate_nbf = true;
     validation.leeway = 0;
     validation.validate_aud = false;
-    if let Some(issuer) = setting("JWT_ISSUER") {
+    if let Some(issuer) = config::optional::<String>("JWT_ISSUER")? {
         validation.set_issuer(&[issuer]);
     }
-    if let Some(audience) = setting("JWT_AUDIENCE") {
+    if let Some(audience) = config::optional::<String>("JWT_AUDIENCE")? {
         validation.validate_aud = true;
         validation.set_audience(&[audience]);
     }

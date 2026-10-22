@@ -20,6 +20,8 @@ pub mod openapi;
 #[cfg(feature = "mappers")]
 pub mod mappers;
 
+/// Required and optional startup settings read from the environment.
+pub mod config;
 pub mod persistence;
 pub mod telemetry;
 

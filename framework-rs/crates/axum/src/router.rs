@@ -953,7 +953,8 @@ impl ForkLaunchRouter {
     pub(super) fn default_mcp_options(
         &self,
     ) -> Result<Option<forklaunch_core::mcp::server::McpServerOptions>, String> {
-        let enabled = std::env::var("MCP_ENABLED").unwrap_or_else(|_| "true".into());
+        let enabled: String =
+            forklaunch_core::config::required("MCP_ENABLED").map_err(|error| error.to_string())?;
         match enabled.as_str() {
             "false" | "0" => return Ok(None),
             "true" | "1" => {}

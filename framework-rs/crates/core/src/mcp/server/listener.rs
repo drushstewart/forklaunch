@@ -70,7 +70,7 @@ where
     F: Future<Output = ()> + Send,
     L: Fn(Router) -> Router,
 {
-    let enabled = std::env::var("MCP_ENABLED").unwrap_or_else(|_| "true".into());
+    let enabled: String = crate::config::required("MCP_ENABLED")?;
     match enabled.as_str() {
         "false" | "0" => return serve_listeners(listener, layer(router), None, shutdown).await,
         "true" | "1" => {}

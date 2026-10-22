@@ -1,6 +1,9 @@
 //! Contract export runs before application configuration or resource initialization.
-use forklaunch_core::contract::ContractRegistry;
-use std::{env, fs, io, path::Path};
+use forklaunch_core::{config, contract::ContractRegistry};
+use std::{
+    env, fs, io,
+    path::{Path, PathBuf},
+};
 
 /// Write language-neutral contracts and `OpenAPI` from the same registry.
 ///
@@ -30,23 +33,23 @@ pub fn write_contract_artifacts(
 
 /// Handle the CLI contract-export protocol before configuration/auth/database setup.
 /// Returns true after export so the caller can exit without binding a listener.
-/// Supports `FORKLAUNCH_MODE=contract|openapi` and direct `--export-contracts`.
-/// Output locations are `FORKLAUNCH_CONTRACT_OUTPUT` and `FORKLAUNCH_OPENAPI_OUTPUT`,
-/// defaulting to the service SDK folder (`sdk/typescript/`) under the working directory.
+/// Supports `FORKLAUNCH_MODE=contract|openapi` and direct `--export-contracts`;
+/// without either the process starts normally. Export mode requires both
+/// `FORKLAUNCH_CONTRACT_OUTPUT` and `FORKLAUNCH_OPENAPI_OUTPUT`, which the CLI
+/// always sets.
 ///
 /// # Errors
-/// Propagates filesystem errors; callers must fail startup rather than serve on error.
+/// Rejects a missing output location and propagates filesystem errors; callers
+/// must fail startup rather than serve on error.
 pub fn export_contracts_from_env(registry: &ContractRegistry) -> io::Result<bool> {
-    let mode = env::var("FORKLAUNCH_MODE").unwrap_or_default();
-    if !matches!(mode.as_str(), "contract" | "openapi")
+    let mode: Option<String> = config::optional("FORKLAUNCH_MODE")?;
+    if !matches!(mode.as_deref(), Some("contract" | "openapi"))
         && !env::args().any(|argument| argument == "--export-contracts")
     {
         return Ok(false);
     }
-    let contract = env::var_os("FORKLAUNCH_CONTRACT_OUTPUT")
-        .unwrap_or_else(|| "sdk/typescript/contract.json".into());
-    let openapi = env::var_os("FORKLAUNCH_OPENAPI_OUTPUT")
-        .unwrap_or_else(|| "sdk/typescript/openapi.json".into());
+    let contract: PathBuf = config::required("FORKLAUNCH_CONTRACT_OUTPUT")?;
+    let openapi: PathBuf = config::required("FORKLAUNCH_OPENAPI_OUTPUT")?;
     write_contract_artifacts(registry, contract, openapi)?;
     Ok(true)
 }

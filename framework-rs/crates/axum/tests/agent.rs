@@ -110,7 +110,7 @@ async fn notes_service() -> String {
         .unwrap()
         .finish()
         .unwrap();
-    let router = with_openapi(router, &registry, "/openapi.json").unwrap();
+    let router = with_openapi(router, &registry, "/openapi.json", "v1").unwrap();
     let mut options = McpServerOptions::new("notes", "1.0.0");
     options.authorize = Arc::new(Gate);
     serve(mount_http(router, &registry, options).unwrap()).await
@@ -211,7 +211,7 @@ async fn agent_service(notes: &str, model: Arc<FakeModel>) -> String {
     .unwrap()
     .finish()
     .unwrap();
-    let router = with_openapi(router, &registry, "/openapi.json").unwrap();
+    let router = with_openapi(router, &registry, "/openapi.json", "v1").unwrap();
     serve(
         mount_http(
             router,

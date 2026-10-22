@@ -1172,7 +1172,7 @@ variables remain; the helper does not clear stale database/infrastructure keys.
 use forklaunch_testing::{TestEnvConfig, TestService};
 
 let service = TestService::new("accounts")
-    .with_env("SERVICE_PORT", "0")
+    .with_env("PORT", "0")
     .with_test_environment(&TestEnvConfig::default())?;
 let mut command = std::process::Command::new("./accounts");
 command.envs(&service.env);

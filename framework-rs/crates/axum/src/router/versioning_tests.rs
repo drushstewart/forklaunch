@@ -58,7 +58,12 @@ async fn versioned_http_dispatch_selects_last_match_and_its_response_contract() 
 #[cfg(feature = "mcp")]
 #[tokio::test]
 async fn versioned_http_and_mcp_start_discover_invoke_and_shutdown() {
-    let app = versioned_router().into_router_with_default_mcp().unwrap();
+    let app = versioned_router()
+        .into_router_with_mcp(forklaunch_core::mcp::server::McpServerOptions::new(
+            "versioned",
+            "1",
+        ))
+        .unwrap();
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let (stop, stopped) = tokio::sync::oneshot::channel();

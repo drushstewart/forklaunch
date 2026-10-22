@@ -2,6 +2,7 @@
 //! once from an executable, after handling offline contract export. Libraries
 //! should accept a collector instead of installing process-global providers.
 //!
+//! `RUST_LOG` is required and sets the stderr log filter.
 //! Set `OTEL_EXPORTER_OTLP_ENDPOINT` (or a signal-specific endpoint) to enable
 //! export. Standard OTLP headers, resource attributes and signal-specific endpoint
 //! settings are read by the upstream exporters. HTTP/protobuf (default) and
@@ -54,7 +55,8 @@ impl TelemetryRuntime {
 
     fn install(service: &str, version: &str) -> FrameworkResult<Self> {
         let config = Configuration::from_env()?;
-        let filter = EnvFilter::try_new(env::var("RUST_LOG").unwrap_or_else(|_| "info".to_owned()))
+        let filter: String = crate::config::required("RUST_LOG")?;
+        let filter = EnvFilter::try_new(filter)
             .map_err(|_| error("telemetry_config", "Invalid logging filter"))?;
         if INSTALLED
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)

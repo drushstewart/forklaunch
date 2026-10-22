@@ -84,7 +84,8 @@ async fn adapter_discovery_uses_checked_public_descriptors_and_stable_document_h
 
     #[cfg(feature = "native")]
     {
-        let native = crate::native::with_openapi(Router::new(), &registry, "/reference").unwrap();
+        let native =
+            crate::native::with_openapi(Router::new(), &registry, "/reference", "v1").unwrap();
         assert_eq!(read(&native, "/openapi.json-hash").await.2, fingerprint);
     }
 }

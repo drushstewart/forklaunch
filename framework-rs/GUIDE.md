@@ -99,6 +99,11 @@ Applications choose production cookie security, storage and revocation policy.
 
 ## Infrastructure and operations
 
+Read settings with [`forklaunch_core::config`](../docs/adding-projects/rust.md#configuration):
+`config::required::<T>("NAME")?` fails startup with an error naming a missing or
+malformed variable, and `config::optional` is reserved for settings whose absence
+is a documented choice. Configuration values never have in-code defaults.
+
 [PostgreSQL](../docs/adding-projects/rust.md#postgresql-iam),
 [Redis](../docs/adding-projects/rust.md#redis-adapter),
 [S3](../docs/adding-projects/rust.md#async-s3-object-storage),

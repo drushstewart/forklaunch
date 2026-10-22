@@ -3,10 +3,16 @@
 pub enum EnvelopeError {
     InvalidInput,
     Encryption,
+    /// A required `ENCRYPTION_*` setting is missing or not text; names the
+    /// variable, never its value.
+    Configuration(crate::config::ConfigError),
 }
 impl std::fmt::Display for EnvelopeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("encrypted envelope unavailable")
+        match self {
+            Self::Configuration(error) => error.fmt(f),
+            Self::InvalidInput | Self::Encryption => f.write_str("encrypted envelope unavailable"),
+        }
     }
 }
 impl std::error::Error for EnvelopeError {}

@@ -22,17 +22,17 @@ impl Default for PostgresConnectionPolicy {
 }
 
 impl PostgresConnectionPolicy {
-    /// Read the explicit local-network exception; remote deployments default to verified TLS.
+    /// Read the required `DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT` setting: `true`
+    /// only on an isolated local network, `false` (verified TLS) everywhere else.
     /// # Errors
-    /// Rejects malformed boolean values and invalid pool sizes.
+    /// Rejects a missing or malformed boolean value and invalid pool sizes.
     pub fn from_env(max_connections: u32) -> FrameworkResult<Self> {
-        let allow_plaintext_development =
-            match std::env::var("DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT") {
-                Err(std::env::VarError::NotPresent) => false,
-                Ok(value) if matches!(value.as_str(), "true" | "1") => true,
-                Ok(value) if matches!(value.as_str(), "false" | "0") => false,
-                _ => return Err(configuration()),
-            };
+        let allow: String = crate::config::required("DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT")?;
+        let allow_plaintext_development = match allow.as_str() {
+            "true" | "1" => true,
+            "false" | "0" => false,
+            _ => return Err(configuration()),
+        };
         let policy = Self {
             allow_plaintext_development,
             max_connections,

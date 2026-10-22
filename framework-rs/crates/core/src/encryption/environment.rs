@@ -1,5 +1,6 @@
 //! Bounded keyring configuration shared by service and worker bootstrappers.
 use super::{EnvelopeError, EnvelopeKey, EnvelopeProfile};
+use crate::config;
 use std::{collections::BTreeMap, env::VarError};
 use zeroize::{Zeroize, Zeroizing};
 
@@ -7,13 +8,16 @@ impl EnvelopeKey {
     /// Load the standard `ENCRYPTION_*` variables. Missing, malformed or oversized
     /// configuration fails closed without including secret values in errors.
     ///
-    /// Writes use v3 with tenant-derived keys. v2 reads use the configured key IDs.
-    /// Legacy reads default to the active key for initial adoption;
-    /// retain the original key explicitly on rotation, or set the legacy value to
-    /// `disabled` after all v1 data has been migrated.
+    /// `ENCRYPTION_KEY_HEX`, `ENCRYPTION_KEY_ID` and `ENCRYPTION_LEGACY_KEY_HEX`
+    /// are required. Writes use v3 with tenant-derived keys; v2 reads use the
+    /// configured key IDs. Set the legacy value to the key that wrote v1 data
+    /// (the active key on initial adoption), or to `disabled` once all v1 data
+    /// has been migrated. `ENCRYPTION_PREVIOUS_KEYS_JSON` lists retired keys and
+    /// may be unset when there are none.
     ///
     /// # Errors
-    /// Rejects missing, malformed or excessive key configuration without exposing values.
+    /// Rejects missing, malformed or excessive key configuration without exposing
+    /// values; a missing variable is reported by name.
     pub fn from_env(profile: EnvelopeProfile) -> Result<Self, EnvelopeError> {
         from_values(profile, |name| std::env::var(name))
     }
@@ -23,10 +27,9 @@ fn from_values(
     profile: EnvelopeProfile,
     mut read: impl FnMut(&str) -> Result<String, VarError>,
 ) -> Result<EnvelopeKey, EnvelopeError> {
-    let active =
-        Zeroizing::new(read("ENCRYPTION_KEY_HEX").map_err(|_| EnvelopeError::InvalidInput)?);
+    let active = Zeroizing::new(required(&mut read, "ENCRYPTION_KEY_HEX")?);
     let active_key = decode_key(&active)?;
-    let active_id = optional(&mut read, "ENCRYPTION_KEY_ID")?.unwrap_or_else(|| "primary".into());
+    let active_id = required(&mut read, "ENCRYPTION_KEY_ID")?;
     let raw =
         Zeroizing::new(optional(&mut read, "ENCRYPTION_PREVIOUS_KEYS_JSON")?.unwrap_or_default());
     if raw.len() > 2048 {
@@ -44,11 +47,10 @@ fn from_values(
         let value = Zeroizing::new(std::mem::take(value));
         keys.push((id.clone(), decode_key(&value)?));
     }
-    let legacy = optional(&mut read, "ENCRYPTION_LEGACY_KEY_HEX")?.map(Zeroizing::new);
-    let legacy = match legacy.as_deref().map(String::as_str) {
-        None | Some("") => Some(active_key),
-        Some("disabled") => None,
-        Some(value) => Some(decode_key(value)?),
+    let legacy = Zeroizing::new(required(&mut read, "ENCRYPTION_LEGACY_KEY_HEX")?);
+    let legacy = match legacy.as_str() {
+        "disabled" => None,
+        value => Some(decode_key(value)?),
     };
     EnvelopeKey::with_rotation(profile, active_id, active_key, keys, legacy)
 }
@@ -57,11 +59,14 @@ fn optional(
     read: &mut impl FnMut(&str) -> Result<String, VarError>,
     name: &str,
 ) -> Result<Option<String>, EnvelopeError> {
-    match read(name) {
-        Ok(value) => Ok(Some(value)),
-        Err(VarError::NotPresent) => Ok(None),
-        Err(_) => Err(EnvelopeError::InvalidInput),
-    }
+    config::parse(name, read(name)).map_err(EnvelopeError::Configuration)
+}
+
+fn required(
+    read: &mut impl FnMut(&str) -> Result<String, VarError>,
+    name: &str,
+) -> Result<String, EnvelopeError> {
+    config::present(name, optional(read, name)?).map_err(EnvelopeError::Configuration)
 }
 
 struct SecretMap(BTreeMap<String, String>);
@@ -104,6 +109,7 @@ mod tests {
         let old = load(&[
             ("ENCRYPTION_KEY_HEX", "11".repeat(32)),
             ("ENCRYPTION_KEY_ID", "old".into()),
+            ("ENCRYPTION_LEGACY_KEY_HEX", "11".repeat(32)),
         ])
         .unwrap();
         let tenant = uuid::Uuid::new_v4();
@@ -123,8 +129,34 @@ mod tests {
             &*rotated.open(tenant, item, "body", &sealed).unwrap(),
             b"sensitive"
         );
-        let retired = load(&values[..2]).unwrap();
+        let retired = load(&[values[0].clone(), values[1].clone(), values[3].clone()]).unwrap();
         assert!(retired.open(tenant, item, "body", &sealed).is_err());
+    }
+    #[test]
+    fn missing_settings_are_named_and_never_defaulted() {
+        let active = ("ENCRYPTION_KEY_HEX", "11".repeat(32));
+        for (present, missing) in [
+            (vec![], "ENCRYPTION_KEY_HEX"),
+            (vec![active.clone()], "ENCRYPTION_KEY_ID"),
+            (
+                vec![active.clone(), ("ENCRYPTION_KEY_ID", "primary".into())],
+                "ENCRYPTION_LEGACY_KEY_HEX",
+            ),
+        ] {
+            let Err(EnvelopeError::Configuration(error)) = load(&present) else {
+                panic!("{missing} must be required");
+            };
+            assert_eq!(error.name(), missing);
+            assert!(error.is_missing());
+        }
+        assert!(
+            load(&[
+                active,
+                ("ENCRYPTION_KEY_ID", "primary".into()),
+                ("ENCRYPTION_LEGACY_KEY_HEX", "disabled".into()),
+            ])
+            .is_ok()
+        );
     }
     #[test]
     fn invalid_configuration_never_falls_back_or_discloses_values() {
@@ -137,6 +169,8 @@ mod tests {
         assert!(
             load(&[
                 ("ENCRYPTION_KEY_HEX", "11".repeat(32)),
+                ("ENCRYPTION_KEY_ID", "primary".into()),
+                ("ENCRYPTION_LEGACY_KEY_HEX", "disabled".into()),
                 ("ENCRYPTION_PREVIOUS_KEYS_JSON", " ".repeat(2049))
             ])
             .is_err()
@@ -144,6 +178,8 @@ mod tests {
         assert!(
             load(&[
                 ("ENCRYPTION_KEY_HEX", "11".repeat(32)),
+                ("ENCRYPTION_KEY_ID", "primary".into()),
+                ("ENCRYPTION_LEGACY_KEY_HEX", "disabled".into()),
                 (
                     "ENCRYPTION_PREVIOUS_KEYS_JSON",
                     format!("{{\"primary\":\"{}\"}}", "22".repeat(32))
