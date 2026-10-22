@@ -27,6 +27,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 async fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
+    if args == ["--migrate"] { return migrate().await; }
     if args.is_empty() || args.first().map(String::as_str) == Some("--enqueue") { events::validate_configuration()?; }
     if !args.is_empty() && args != ["--migrate"] && args != ["--control-service"]
         && !(args.len() == 3 && args[0] == "--enqueue")
@@ -59,7 +60,6 @@ async fn run() -> Result<(), Box<dyn Error>> {
     events::transport_policy()?.kafka(&options.brokers, &options.properties)?;
     options.validate()?;
     match args.first().map(String::as_str) {
-        Some("--migrate") => initialize_topics(&options, config::required("KAFKA_PARTITIONS")?, config::required("KAFKA_REPLICATION_FACTOR")?).await?,
         Some("--enqueue") => {
             let queue = options.queue.clone();
             KafkaProducer::connect(options).await?.enqueue(Job::new(&args[1], queue, events::seal(&args[1], &args[2])?)).await?;
@@ -88,6 +88,26 @@ async fn run() -> Result<(), Box<dyn Error>> {
         }
         _ => unreachable!("arguments validated"),
     }
+    Ok(())
+}
+
+/// Create the queue topics. Needs only the broker, queue identity and topic
+/// shape, not the runner settings a consumer requires.
+async fn migrate() -> Result<(), Box<dyn Error>> {
+    let mut options = KafkaOptions::new(
+        config::required::<String>("KAFKA_BROKERS")?,
+        config::required::<String>("WORKER_NAMESPACE")?,
+        TenantContext::new(config::required::<String>("TENANT_ID")?)?,
+        config::required::<String>("WORKER_QUEUE")?,
+        "migration".to_owned(),
+    );
+    if let Some(timeout) = config::optional::<u64>("KAFKA_OPERATION_TIMEOUT_MS")? { options.operation_timeout = Duration::from_millis(timeout); }
+    if let Some(value) = config::optional::<String>("KAFKA_CLIENT_PROPERTIES")? {
+        options.properties = serde_json::from_str(&value).map_err(|_| "KAFKA_CLIENT_PROPERTIES must be a JSON object of string properties")?;
+    }
+    events::transport_policy()?.kafka(&options.brokers, &options.properties)?;
+    options.validate()?;
+    initialize_topics(&options, config::required("KAFKA_PARTITIONS")?, config::required("KAFKA_REPLICATION_FACTOR")?).await?;
     Ok(())
 }
 

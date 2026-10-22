@@ -27,7 +27,8 @@ pub(super) fn templates(
             }
             "build.rs" => template.content = template.content.replace("    println!(\"cargo:rerun-if-changed=persistence/compliance_schema.rs\");", "    println!(\"cargo:rerun-if-changed=migrations\");\n    println!(\"cargo:rerun-if-changed=persistence/compliance_schema.rs\");"),
             "bootstrapper.rs" => {
-                template.content = template.content.replace("    if !arguments.is_empty() { return Err(\"Expected no arguments\".into()); }", "    if arguments == [\"--migrate\"] { return Ok(crate::persistence::database::migrate().await?); }\n    if !arguments.is_empty() { return Err(\"Expected no arguments or --migrate\".into()); }")
+                template.content = template.content.replace("pub async fn run() -> ApplicationResult {\n", "pub async fn run() -> ApplicationResult {\n    // Migrations need only MIGRATION_DATABASE_URL, not runtime settings such as RUST_LOG.\n    if env::args().skip(1).eq([\"--migrate\"]) { return Ok(crate::persistence::database::migrate().await?); }\n")
+                    .replace("    if !arguments.is_empty() { return Err(\"Expected no arguments\".into()); }", "    if arguments == [\"--migrate\"] { return Ok(crate::persistence::database::migrate().await?); }\n    if !arguments.is_empty() { return Err(\"Expected no arguments or --migrate\".into()); }")
                     .replace("registrations::register(config)?", "registrations::register(config).await?")
                     .replace("server::serve(state, listener, stopping.signal()).await", "let repository = state.repository.clone();\n    forklaunch_axum::native::with_cleanup(\n        server::serve(state, listener, stopping.signal()),\n        repository.close(),\n    ).await");
             }

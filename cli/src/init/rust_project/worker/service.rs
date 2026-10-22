@@ -145,6 +145,21 @@ pub(in crate::init::rust_project) fn templates(
         schema.content.push_str("\n#[path=\"../consumer/persistence/compliance_schema.rs\"]\nmod queue;\npub fn declarations()->Vec<ComplianceEntity> { let mut entities=service_declarations(); entities.extend(queue::declarations()); entities }\n");
     }
     producer(&mut output, dir, name, apalis, backend)?;
+    // `--migrate` means the same for both binaries: the consumer's migrations
+    // (queue schema or topics), so either can run the one-shot migrate job.
+    let bootstrapper = output
+        .iter_mut()
+        .find(|file| file.path == dir.join("bootstrapper.rs"))
+        .context("producer bootstrapper")?;
+    anyhow::ensure!(
+        bootstrapper.content.contains("pub async fn run() -> ApplicationResult {\n"),
+        "Unexpected producer bootstrapper layout"
+    );
+    bootstrapper.content = bootstrapper.content.replacen(
+        "pub async fn run() -> ApplicationResult {\n",
+        "pub async fn run() -> ApplicationResult {\n    if env::args().skip(1).eq([\"--migrate\"]) {\n        return crate::consumer::bootstrapper::run().await.map_err(|error| error.to_string().into());\n    }\n",
+        1,
+    );
     let assets = output
         .iter_mut()
         .find(|file| file.path == dir.join("build_assets.rs"))

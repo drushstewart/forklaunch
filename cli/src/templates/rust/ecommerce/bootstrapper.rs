@@ -20,6 +20,10 @@ pub async fn run() -> Result<()> {
         )?;
         return Ok(());
     }
+    // Migrations need only the owner database URL, not runtime settings such as RUST_LOG.
+    if env::args().skip(1).eq(["--migrate"]) {
+        return database::migrate().await;
+    }
     let telemetry = TelemetryRuntime::start(crate::SERVICE_NAME, env!("CARGO_PKG_VERSION")).await?;
     let result = start().await;
     let flushed = telemetry.shutdown().await;

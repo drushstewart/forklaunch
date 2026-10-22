@@ -31,10 +31,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 async fn run() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().skip(1).collect();
     if args.is_empty() || args.first().map(String::as_str) == Some("--enqueue") { events::validate_configuration()?; }
+    // Redis queues have no schema; `--migrate` is accepted so every worker binary shares one contract.
+    if args == ["--migrate"] { return Ok(()); }
     if !args.is_empty() && args != ["--control-service"] && !(args.len() == 3 && args[0] == "--enqueue")
         && !(args.len() == 2 && matches!(args[0].as_str(), "--inspect" | "--dead-letters" | "--retry" | "--signal"))
         && !(args.len() == 3 && matches!(args[0].as_str(), "--purge-completed" | "--purge-failed")) {
-        return Err("Expected --signal pause/resume/drain, no arguments, --control-service, --enqueue ID JSON, --inspect ID, --dead-letters LIMIT, --retry ID, or --purge-completed/--purge-failed AGE_SECONDS LIMIT".into());
+        return Err("Expected --signal pause/resume/drain, no arguments, --control-service, --migrate, --enqueue ID JSON, --inspect ID, --dead-letters LIMIT, --retry ID, or --purge-completed/--purge-failed AGE_SECONDS LIMIT".into());
     }
     if args == ["--control-service"] {
         let http = http_config()?.ok_or("--control-service requires WORKER_HTTP_ADDR")?;
