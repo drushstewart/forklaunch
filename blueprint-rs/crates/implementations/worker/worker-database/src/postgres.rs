@@ -119,7 +119,7 @@ impl PostgresWorkerQueue {
         migrator.set_locking(false);
         // Same arguments `Migrator::run` passes: every pending migration.
         migrator
-            .run_direct(None, &mut *tx, true)
+            .run_direct(None, &mut *tx, false)
             .await
             .map_err(storage_error)?;
         tx.commit().await.map_err(storage_error)

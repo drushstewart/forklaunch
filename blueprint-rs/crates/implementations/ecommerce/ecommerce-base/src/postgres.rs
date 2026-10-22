@@ -60,7 +60,7 @@ impl PostgresEcommerceStore {
         let mut migrator = sqlx::migrate!("./migrations");
         migrator.set_locking(false);
         migrator
-            .run_direct(None, &mut *tx, true)
+            .run_direct(None, &mut *tx, false)
             .await
             .map_err(storage_error)?;
         tx.commit().await.map_err(storage_error)

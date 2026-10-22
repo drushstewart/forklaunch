@@ -98,7 +98,7 @@ impl Fixture {
             .await
             .unwrap();
         migrations
-            .run_direct(None, &mut *initial, true)
+            .run_direct(None, &mut *initial, false)
             .await
             .unwrap();
         initial.commit().await.unwrap();
