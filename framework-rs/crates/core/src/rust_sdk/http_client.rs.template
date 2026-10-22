@@ -1,7 +1,7 @@
 use std::fmt;
 {{#has_operations}}use std::collections::BTreeMap;{{/has_operations}}
 use forklaunch_universal_sdk as runtime;
-pub use runtime::{SdkError, SdkAuth, SdkResponseWithHeaders};
+pub use runtime::{SdkError, SdkAuth, HmacSigner, SdkResponseWithHeaders};
 {{#has_multipart}}pub use runtime::{MultipartForm, MultipartPart};{{/has_multipart}}
 {{#has_multipart_response}}pub use runtime::{MultipartResponse, MultipartResponsePart};{{/has_multipart_response}}
 {{#has_sse}}pub use runtime::{SdkEventStream, sse};{{/has_sse}}
@@ -104,9 +104,24 @@ impl {{client_name}} {
         self.runtime = self.runtime.with_basic_auth(username, password);
         self
     }
+    /// One fixed `authorization` value; an HMAC credential verifies at most once.
+    /// Prefer `with_hmac_secret` for service-to-service calls.
     #[must_use]
     pub fn with_hmac_authorization(mut self, value: impl Into<String>) -> Self {
         self.runtime = self.runtime.with_hmac_authorization(value);
+        self
+    }
+    /// Sign every request with the ForkLaunch request HMAC (`keyId=default`): the final
+    /// method, URL path, body bytes, a fresh timestamp and a random nonce.
+    #[must_use]
+    pub fn with_hmac_secret(mut self, secret: impl Into<Vec<u8>>) -> Self {
+        self.runtime = self.runtime.with_hmac_secret(secret);
+        self
+    }
+    /// Sign every request with a named server key.
+    #[must_use]
+    pub fn with_hmac_signer(mut self, signer: HmacSigner) -> Self {
+        self.runtime = self.runtime.with_hmac_signer(signer);
         self
     }
     #[must_use]

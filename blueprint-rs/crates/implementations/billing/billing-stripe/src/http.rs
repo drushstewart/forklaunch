@@ -113,6 +113,7 @@ pub struct BillingBackend {
     bound_payment_link_expiration:
         Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
     configured_hmac: bool,
+    mount_relative_hmac: bool,
     configured_subscription_updates: bool,
     configured_payment_link_updates: bool,
     configured_cached_reads: bool,
@@ -149,6 +150,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_hmac: false,
+            mount_relative_hmac: false,
             configured_subscription_updates: false,
             configured_payment_link_updates: false,
             configured_cached_reads: false,
@@ -185,6 +187,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_hmac: false,
+            mount_relative_hmac: false,
             configured_subscription_updates: false,
             configured_payment_link_updates: false,
             configured_cached_reads: false,
@@ -201,7 +204,19 @@ impl BillingBackend {
         self.configured_subscription_updates = enabled;
         self
     }
-    /// Select actual configured internal billing HMAC parsing and mounted-path signing.
+    /// Deprecated compatibility: also accept configured-HMAC signatures over the
+    /// Express router-relative path (`/` for `POST /payment-link`) that older
+    /// TypeScript callers produced. Off by default. A relative signature is not
+    /// bound to its mount, so one signed for `POST /plan` also verifies as
+    /// `POST /payment-link`; enable only temporarily while old clients migrate.
+    /// `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true` enables it at startup as well.
+    #[must_use]
+    pub const fn with_mount_relative_hmac_paths(mut self, enabled: bool) -> Self {
+        self.mount_relative_hmac = enabled;
+        self
+    }
+    /// Select actual configured internal billing HMAC parsing. The signed path is
+    /// the full wire path (see [`Self::with_mount_relative_hmac_paths`]).
     /// Generic HMAC, Portal JWT and bound operation policies remain unchanged.
     /// ISO timestamp forms are supported; legacy/local-time JavaScript Date strings
     /// remain a distinct unsupported boundary in this implementation phase.
@@ -761,6 +776,7 @@ impl BillingRoutes {
 /// Response formats and request authentication selected by the backend.
 fn router_config(backend: &BillingBackend, auth: Arc<HmacJwksAuth>) -> RouterConfig {
     let configured_hmac = backend.configured_hmac;
+    let mount_relative = backend.mount_relative_hmac || configured_hmac::mount_relative_from_env();
     RouterConfig {
         response_status_error_format: if backend.configured_cached_reads
             || backend.configured_payment_link_updates
@@ -784,7 +800,7 @@ fn router_config(backend: &BillingBackend, auth: Arc<HmacJwksAuth>) -> RouterCon
         let auth = Arc::clone(&auth);
         async move {
             if configured_hmac && configured_hmac::selected(&contract) {
-                return configured_hmac::authenticate(&auth, &request, &contract);
+                return configured_hmac::authenticate(&auth, &request, &contract, mount_relative);
             }
             let jwt = matches!(
                 contract.auth,

@@ -1,4 +1,11 @@
 //! Actual configured billing HMAC header semantics. Legacy authentication remains separate.
+//!
+//! Signed path: the full wire path (`POST /payment-link`), matching the framework
+//! verifier, every other module and the generated Rust/TypeScript SDK signers.
+//! The Express router-relative path (`/` for `POST /payment-link`) that older
+//! TypeScript callers signed is deprecated and rejected unless explicitly enabled
+//! (`BillingBackend::with_mount_relative_hmac_paths` or
+//! `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true`), because it is not bound to a mount.
 use forklaunch_axum::{
     module_auth::{HmacJwksAuth, HmacPayloadError},
     session::AuthenticatedSession,
@@ -71,10 +78,16 @@ fn part<'a>(value: &'a str, label: &str) -> Option<&'a str> {
     let (key, value) = value.split_once('=')?;
     (key == label && !value.is_empty()).then_some(value)
 }
+/// `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS` (`true`/`1`): deprecated, off by default.
+pub(super) fn mount_relative_from_env() -> bool {
+    std::env::var("HMAC_ACCEPT_MOUNT_RELATIVE_PATHS")
+        .is_ok_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "true" | "1"))
+}
 pub(super) fn authenticate(
     auth: &HmacJwksAuth,
     request: &FrameworkRequest,
     route: &RouteContract,
+    accept_mount_relative: bool,
 ) -> Result<AuthenticatedSession, ErrorResponse> {
     let token = request.headers.get("authorization").ok_or_else(|| {
         ErrorResponse::new(ErrorKind::Unauthorized, "Authorization token required.")
@@ -100,33 +113,56 @@ pub(super) fn authenticate(
     let millis = parse_host(values[1]).map_err(|_| internal(request))?;
     let timestamp = iso_timestamp(millis);
     let wire_path = request.raw_path.as_deref().unwrap_or(&request.path);
-    let prefix = mount(route).unwrap_or_default();
-    let path = if wire_path
-        .get(..prefix.len())
-        .is_some_and(|part| part.eq_ignore_ascii_case(prefix))
-    {
-        &wire_path[prefix.len()..]
-    } else {
-        wire_path
-    };
-    let path = if path.is_empty() { "/" } else { path };
     let body = match &request.body {
         Body::Empty => "undefined".into(),
         Body::Text(value) => format!("{value}\n"),
         Body::Binary(value) => format!("{}\n", String::from_utf8_lossy(value)),
     };
-    let payload = format!(
-        "{}\n{path}\n{body}{timestamp}\n{}",
-        request.method.as_str(),
-        values[2]
-    );
-    auth.verify_hmac_payload_for_route(route, values[0], payload.as_bytes(), values[3])
-        .map_err(|error| match error {
-            HmacPayloadError::InvalidSignature => {
-                ErrorResponse::new(ErrorKind::Forbidden, "Invalid Authorization signature.")
-            }
-            HmacPayloadError::NotHmac | HmacPayloadError::UnknownKey => internal(request),
-        })
+    let payload = |path: &str| {
+        format!(
+            "{}\n{path}\n{body}{timestamp}\n{}",
+            request.method.as_str(),
+            values[2]
+        )
+    };
+    // The signed path is the full wire path, as every other module and both
+    // generated SDK signers use. The Express router-relative form is opt-in only.
+    let mut candidates = vec![wire_path];
+    if accept_mount_relative
+        && let Some(relative) = mount_relative(wire_path, mount(route).unwrap_or_default())
+    {
+        candidates.push(relative);
+    }
+    let mut result = Err(HmacPayloadError::InvalidSignature);
+    for path in candidates {
+        result = auth.verify_hmac_payload_for_route(
+            route,
+            values[0],
+            payload(path).as_bytes(),
+            values[3],
+        );
+        if !matches!(result, Err(HmacPayloadError::InvalidSignature)) {
+            break;
+        }
+    }
+    result.map_err(|error| match error {
+        HmacPayloadError::InvalidSignature => {
+            ErrorResponse::new(ErrorKind::Forbidden, "Invalid Authorization signature.")
+        }
+        HmacPayloadError::NotHmac | HmacPayloadError::UnknownKey => internal(request),
+    })
+}
+/// The Express router-relative form of a mounted path (`/payment-link/x` → `/x`).
+fn mount_relative<'a>(wire_path: &'a str, prefix: &str) -> Option<&'a str> {
+    if prefix.is_empty()
+        || !wire_path
+            .get(..prefix.len())
+            .is_some_and(|part| part.eq_ignore_ascii_case(prefix))
+    {
+        return None;
+    }
+    let path = &wire_path[prefix.len()..];
+    Some(if path.is_empty() { "/" } else { path })
 }
 // Civil-date conversion over the complete JavaScript TimeClip range, including
 // signed extended years, without chrono's narrower representable year range.
@@ -220,7 +256,7 @@ mod tests {
             (Some(valid.replace("signature=", "signature=bad")), 403),
         ] {
             assert_eq!(
-                authenticate(&auth, &request(value), &route)
+                authenticate(&auth, &request(value), &route, true)
                     .unwrap_err()
                     .kind
                     .status_code(),
@@ -234,12 +270,13 @@ mod tests {
             "+275760-09-13T00:00:00.000Z",
         ] {
             let value = header(stamp, stamp);
-            assert!(authenticate(&auth, &request(Some(value.clone())), &route).is_ok());
+            assert!(authenticate(&auth, &request(Some(value.clone())), &route, true).is_ok());
             assert!(
                 authenticate(
                     &auth,
                     &request(Some(format!("{value} ignored=extra"))),
-                    &route
+                    &route,
+                    true
                 )
                 .is_ok()
             );
@@ -251,7 +288,7 @@ mod tests {
             ("2026-10-15T07:23:45.678+02:00", "2026-10-15T05:23:45.678Z"),
         ] {
             assert!(
-                authenticate(&auth, &request(Some(header(stamp, canonical))), &route).is_ok(),
+                authenticate(&auth, &request(Some(header(stamp, canonical))), &route, true).is_ok(),
                 "{stamp}"
             );
         }
@@ -263,21 +300,65 @@ mod tests {
             "HMAC keyId=other ts=2026-10-15T07:23:45.678Z nonce=repeat signature={}",
             forklaunch_core::auth::hmac_sign(b"different", payload)
         );
-        assert!(authenticate(&private, &request(Some(private_header.clone())), &route).is_ok());
+        assert!(authenticate(&private, &request(Some(private_header.clone())), &route, true).is_ok());
         let mut other = route.clone();
         other.path = "/payment-link/another".into();
         assert_eq!(
-            authenticate(&private, &request(Some(private_header)), &other)
+            authenticate(&private, &request(Some(private_header)), &other, true)
                 .unwrap_err()
                 .kind,
             ErrorKind::Internal
         );
         assert_eq!(
-            authenticate(&private, &request(Some(valid)), &route)
+            authenticate(&private, &request(Some(valid)), &route, true)
                 .unwrap_err()
                 .kind,
             ErrorKind::Internal
         );
+    }
+    #[test]
+    fn full_wire_path_is_canonical_and_router_relative_is_opt_in() {
+        let auth = auth();
+        let route = route();
+        let stamp = "2026-10-15T07:23:45.678Z";
+        let sign = |path: &str| {
+            let payload = format!("PUT\n{path}\n{{\"amount\":\"12\"}}\n{stamp}\nfull");
+            format!(
+                "HMAC keyId=default ts={stamp} nonce=full signature={}",
+                forklaunch_core::auth::hmac_sign(KEY, payload.as_bytes())
+            )
+        };
+        for (path, default, opted_in) in [
+            ("/payment-link/owned", true, true),
+            // Deprecated router-relative form: rejected unless explicitly enabled.
+            ("/owned", false, true),
+            ("/plan/owned", false, false),
+            ("/payment-link/other", false, false),
+            ("/", false, false),
+        ] {
+            for (relative, accepted) in [(false, default), (true, opted_in)] {
+                let result = authenticate(&auth, &request(Some(sign(path))), &route, relative);
+                assert_eq!(result.is_ok(), accepted, "{path} relative={relative}");
+                if !accepted {
+                    assert_eq!(result.unwrap_err().kind, ErrorKind::Forbidden);
+                }
+            }
+        }
+        // The SDK signer's header verifies unchanged.
+        let header = forklaunch_core::auth::request_hmac::generate_hmac_auth_header(
+            KEY,
+            "default",
+            "PUT",
+            "/payment-link/owned",
+            forklaunch_core::auth::request_hmac::SignedBody::Text("{\"amount\":\"12\"}"),
+            stamp,
+            "sdk",
+        )
+        .unwrap();
+        assert!(authenticate(&auth, &request(Some(header)), &route, false).is_ok());
+        assert_eq!(mount_relative("/payment-link", "/payment-link"), Some("/"));
+        assert_eq!(mount_relative("/PLAN/x", "/plan"), Some("/x"));
+        assert_eq!(mount_relative("/plan", "/payment-link"), None);
     }
     #[test]
     fn full_time_clip_iso_and_selected_metadata() {
@@ -335,7 +416,7 @@ mod tests {
                 let verifier = Arc::clone(&verifier);
                 async move {
                     if selected(&route) {
-                        authenticate(&verifier, &request, &route)
+                        authenticate(&verifier, &request, &route, true)
                     } else {
                         verifier
                             .authenticate(request, route)
@@ -372,6 +453,9 @@ mod tests {
             ("/payment-link/owned?query=1", "/owned"),
             ("/payment-link/abc%2Fdef", "/abc%2Fdef"),
             ("/payment-link/owned/", "/owned/"),
+            ("/payment-link/owned?query=1", "/payment-link/owned"),
+            ("/payment-link/abc%2Fdef", "/payment-link/abc%2Fdef"),
+            ("/payment-link/owned/", "/payment-link/owned/"),
         ] {
             let stamp = "1900-01-01T00:00:00.000Z";
             let payload = format!("GET\n{signed}\nundefined{stamp}\nnonce");
@@ -429,6 +513,7 @@ mod tests {
         );
         let mut route = route();
         route.method = HttpMethod::Get;
-        assert!(authenticate(&auth(), &req, &route).is_ok());
+        assert!(authenticate(&auth(), &req, &route, true).is_ok());
+        assert!(authenticate(&auth(), &req, &route, false).is_err());
     }
 }

@@ -35,3 +35,14 @@ request bodies rather than pretending to apply decompression. Defaults must be
 UTF-8; alternate default charsets and runtime-only verifier/reviver functions are
 outside this portable profile. Charset sentinel processing of percent-encoded
 form data uses the same native parser and canonical `qs` behavior.
+
+## Service-to-service HMAC
+
+`with_hmac_secret(key)` (or `with_hmac_signer(HmacSigner::with_key_id(id, key))`)
+signs every request with the ForkLaunch request HMAC, after defaults and request
+hooks, over the final method, URL path without the query, and the exact bytes sent
+(streaming multipart bodies are buffered first). Each request gets a fresh timestamp
+and a random nonce, so verifiers that claim nonces reject replays. The signed path is
+the full wire path (`POST /payment-link`), the same as every Rust verifier and the
+TypeScript SDK signer. `with_hmac_authorization` sends one fixed value, which an HMAC
+verifier accepts at most once.

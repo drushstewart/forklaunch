@@ -1,6 +1,8 @@
 //! TypeScript `createHmacToken` / `generateHmacAuthHeaders` wire compatibility.
 //! Signs the method, path (without query), verbatim UTF-8 body, normalized ISO
-//! timestamp and nonce. JSON callers should serialize once, sign the wire bytes,
+//! timestamp and nonce. The path is the full wire path the client sent
+//! (`/payment-link/abc`), never an Express router-relative path; the SDK signers
+//! (`forklaunch_universal_sdk::HmacSigner`, TS `universalSdk({ hmac })`) sign it. JSON callers should serialize once, sign the wire bytes,
 //! and send those same bytes rather than reserializing a JSON object.
 //!
 //! [`HmacAuthorization::verify`](crate::auth::request_hmac::HmacAuthorization::verify) matches the TypeScript signature check;

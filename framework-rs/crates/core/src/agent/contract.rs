@@ -32,8 +32,14 @@ fn endpoint<I: EndpointBody, O: EndpointBody>(
     // The shared contract fixes these operationIds for both runtimes.
     operation.clone_into(&mut route.operation_name);
     if upstream_failures {
+        // Upstream failures carry the agent's own body, replacing the framework default.
         for status in [429, 502] {
-            route = route.with_response(status, Some(BodyContract::json_type::<AgentFailure>()));
+            let body = Some(BodyContract::json_type::<AgentFailure>());
+            if let Some(response) = route.responses.iter_mut().find(|r| r.status_code == status) {
+                response.body = body;
+            } else {
+                route = route.with_response(status, body);
+            }
         }
     }
     Endpoint::from_contract(route).expect("fixed agent endpoint contract")

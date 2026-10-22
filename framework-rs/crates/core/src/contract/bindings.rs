@@ -45,6 +45,18 @@
 //! }
 //! let _ = AuthorizedBinding::<operations::Callback, _, _>::new((), ());
 //! ```
+//! An operation type cannot reuse a name already imported into the module
+//! (`create_item` generates `CreateItem`); the macro reports the collision:
+//! ```compile_fail
+//! use forklaunch_core::contract::{endpoint::{Endpoint, NoBody, TextBody}, HttpMethod};
+//! pub struct CreateItem;
+//! #[forklaunch_core::contract::api]
+//! mod operations {
+//!     use super::*;
+//!     use super::CreateItem;
+//!     pub fn create_item() -> Endpoint<NoBody, TextBody> { Endpoint::new("create", "create", HttpMethod::Post, "/items", 201).unwrap() }
+//! }
+//! ```
 //! Static protected bindings require the authorization marker:
 //! ```compile_fail
 //! use forklaunch_core::contract::{endpoint::{Endpoint, NoBody, TextBody}, HttpMethod};

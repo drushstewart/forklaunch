@@ -32,15 +32,8 @@ fn sign(method: &str, path: &str, body: Option<&Value>, actor: &str) -> String {
         KEY,
         actor,
         method,
-        path.split('?')
-            .next()
-            .unwrap()
-            .get("/payment-link".len()..)
-            .filter(|_| {
-                path.get(.."/payment-link".len())
-                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case("/payment-link"))
-            })
-            .unwrap_or(path),
+        // The full wire path, as the SDK signers sign it (no query string).
+        path.split('?').next().unwrap(),
         encoded
             .as_deref()
             .map_or(SignedBody::Absent, SignedBody::Text),
@@ -451,7 +444,7 @@ async fn hmac_matrix(http: &reqwest::Client, url: &str, id: &str, state: &Provid
         (Some(valid), 200, ""),
     ];
     for stamp in ["1900-01-01T00:00:00.000Z", "2100-01-01T00:00:00.000Z"] {
-        let payload = format!("PUT\n/{id}\n{body}\n{stamp}\nrepeat");
+        let payload = format!("PUT\n/payment-link/{id}\n{body}\n{stamp}\nrepeat");
         let signature = forklaunch_core::auth::hmac_sign(KEY, payload.as_bytes());
         cases.push((
             Some(format!(
@@ -468,7 +461,7 @@ async fn hmac_matrix(http: &reqwest::Client, url: &str, id: &str, state: &Provid
             let canonical = case["canonical"]
                 .as_str()
                 .unwrap_or("2000-01-01T00:00:00.000Z");
-            let payload = format!("PUT\n/{id}\n{body}\n{canonical}\nrepeat");
+            let payload = format!("PUT\n/payment-link/{id}\n{body}\n{canonical}\nrepeat");
             let signature = forklaunch_core::auth::hmac_sign(KEY, payload.as_bytes());
             cases.push((
                 Some(format!(

@@ -55,6 +55,7 @@ fn generate(module: &mut ItemMod, source: Option<&syn::LitStr>) -> syn::Result<(
     let mut mount = Vec::new();
     let mut mount_bounds = Vec::new();
     let mut shapes = Vec::new();
+    let occupied = module_type_names(items);
     for item in items.iter_mut() {
         let Item::Fn(function) = item else { continue };
         if !matches!(function.vis, Visibility::Public(_)) {
@@ -65,6 +66,7 @@ fn generate(module: &mut ItemMod, source: Option<&syn::LitStr>) -> syn::Result<(
         evidence.push(quote!(#path::assembly::BindingDeclaration::http(#source, #group_name, stringify!(#name), &#name().contract())?));
         let descriptor = operation_type(function)?;
         let tag = operation_tag(name)?;
+        reject_collision(&occupied, &tag, name)?;
         let parameter = format_ident!("Binding{}", parameters.len());
         let public_constructor = public_constructor(public, &tag, &path);
         declarations.push(quote! {
@@ -126,6 +128,58 @@ fn generate(module: &mut ItemMod, source: Option<&syn::LitStr>) -> syn::Result<(
     let generated: syn::File = syn::parse2(generated)?;
     items.extend(generated.items);
     Ok(())
+}
+
+/// The generated operation type must not shadow a DTO already named in the module.
+fn reject_collision(occupied: &[syn::Ident], tag: &syn::Ident, name: &syn::Ident) -> syn::Result<()> {
+    let Some(existing) = occupied.iter().find(|existing| *existing == tag) else {
+        return Ok(());
+    };
+    let mut error = syn::Error::new_spanned(
+        name,
+        format!(
+            "#[contract::api] generates the operation type `{tag}` for endpoint `{name}`, \
+             which collides with `{existing}` already named in this module; refer to the \
+             DTO through its module path (e.g. `dto::{existing}`) or import it under \
+             another name (`use ...::{existing} as {existing}Body`)"
+        ),
+    );
+    error.combine(syn::Error::new_spanned(
+        existing,
+        format!("`{existing}` is named here; #[contract::api] also defines `{tag}`"),
+    ));
+    Err(error)
+}
+
+/// Type names a module item already binds (explicit imports and local types).
+/// Glob imports are shadowed by the generated operation types, so they never collide.
+fn module_type_names(items: &[Item]) -> Vec<syn::Ident> {
+    fn tree(use_tree: &syn::UseTree, names: &mut Vec<syn::Ident>) {
+        match use_tree {
+            syn::UseTree::Path(path) => tree(&path.tree, names),
+            syn::UseTree::Name(name) if name.ident != "self" => names.push(name.ident.clone()),
+            syn::UseTree::Rename(rename) => names.push(rename.rename.clone()),
+            syn::UseTree::Group(group) => {
+                for item in &group.items {
+                    tree(item, names);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut names = Vec::new();
+    for item in items {
+        match item {
+            Item::Use(item) => tree(&item.tree, &mut names),
+            Item::Struct(item) => names.push(item.ident.clone()),
+            Item::Enum(item) => names.push(item.ident.clone()),
+            Item::Type(item) => names.push(item.ident.clone()),
+            Item::Union(item) => names.push(item.ident.clone()),
+            Item::Trait(item) => names.push(item.ident.clone()),
+            _ => {}
+        }
+    }
+    names
 }
 
 fn operation_type(function: &syn::ItemFn) -> syn::Result<&Type> {

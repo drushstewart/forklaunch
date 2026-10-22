@@ -26,3 +26,23 @@ Ordinary TypeScript OpenAPI registries keep the existing dispatch path.
 Rust compiler runtime. The core `sdk_package_layout` test checks exact equality;
 regenerate from its `FORKLAUNCH_PACKAGE_SDK_FIXTURE` output when changing that
 runtime. Service packages contain declarations, not copies of this engine.
+
+### Service-to-service HMAC
+
+Internal (`access: 'internal'`) routes take the ForkLaunch request HMAC. Pass the
+target service's key and the SDK signs every request itself, with a fresh timestamp
+and random nonce, over the final method, URL path (no query) and body bytes:
+
+```ts
+const billing = await universalSdk<BillingSdkClient>({
+  host: process.env.BILLING_URL!,
+  registryOptions: { url: `${process.env.BILLING_URL}/openapi.json` },
+  hmac: { secretKey: process.env.BILLING_HMAC_SECRET_KEY! } // keyId defaults to 'default'
+});
+```
+
+`createHmacAuthorization` and `hmacSignedFetch` expose the same signer for
+hand-written calls. The signed path is the full wire path (`POST /payment-link`),
+which every verifier accepts. Express routers used to verify the router-relative
+`req.path` (`/`); that form is deprecated and only accepted while
+`HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true`, because it is not bound to a mount.
