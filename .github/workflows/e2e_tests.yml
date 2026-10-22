@@ -280,7 +280,13 @@ jobs:
         with:
           version: 10
       - uses: oven-sh/setup-bun@v2
-        if: startsWith(matrix.suite, 'sdk-') || startsWith(matrix.suite, 'dev-')
+        if: startsWith(matrix.suite, 'sdk-')
+      # Generated Bun images build with oven/bun:1.2.19, which cannot read the
+      # lockfile format newer Bun releases write. Install the same release.
+      - uses: oven-sh/setup-bun@v2
+        if: startsWith(matrix.suite, 'dev-')
+        with:
+          bun-version: 1.2.19
       - uses: actions/download-artifact@v4
         with:
           name: forklaunch-cli

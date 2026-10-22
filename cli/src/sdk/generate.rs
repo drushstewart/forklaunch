@@ -215,9 +215,15 @@ fn generate_or_check(
         );
     }
     let manifest = read_manifest(app_root)?;
+    // A watch pass that skipped a service still waiting for its export writes
+    // only what it found and keeps the skipped service's existing outputs.
+    let mut skipped_exports = false;
     let services = match source {
         "contract" | "openapi" if pending_exports => {
-            exported_http_sdk_services(app_root, &manifest, selected_service, source, stdout)?
+            let (services, skipped) =
+                exported_http_sdk_services(app_root, &manifest, selected_service, source, stdout)?;
+            skipped_exports = skipped;
+            services
         }
         "contract" => http_sdk_services_from_contracts(app_root, &manifest, selected_service)?,
         "openapi" => {
@@ -258,7 +264,11 @@ fn generate_or_check(
     }
 
     if matches!(target, "typescript" | "all") {
-        generate_typescript_sdk_scoped(app_root, &services, selected_service.is_some())?;
+        generate_typescript_sdk_scoped(
+            app_root,
+            &services,
+            selected_service.is_some() || skipped_exports,
+        )?;
         log_ok!(stdout, "Generated TypeScript SDK");
     }
 
@@ -526,15 +536,16 @@ fn rust_sdk_services_for_lifecycle(app_root: &Path, manifest: &Value) -> Result<
 }
 
 /// Every service's artifact, skipping TypeScript services whose export has not
-/// been written yet.
+/// been written yet. The flag reports whether any service was skipped.
 fn exported_http_sdk_services(
     app_root: &Path,
     manifest: &Value,
     selected_service: Option<&str>,
     source: &str,
     stdout: &mut StandardStream,
-) -> Result<Vec<SdkService>> {
+) -> Result<(Vec<SdkService>, bool)> {
     let mut services = Vec::new();
+    let mut skipped = false;
     for project in super::http_sources::projects(manifest, selected_service) {
         let name = project
             .get("name")
@@ -550,12 +561,13 @@ fn exported_http_sdk_services(
                             .is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound)
                     }) =>
             {
+                skipped = true;
                 log_info!(stdout, "Waiting for {name} to export its OpenAPI document");
             }
             Err(error) => return Err(error),
         }
     }
-    Ok(services)
+    Ok((services, skipped))
 }
 
 fn http_sdk_services_from_contracts(
@@ -1484,7 +1496,12 @@ fn package_service_names(
 /// The generated application SDK package re-exports each service-local SDK's
 /// client type when every service owns its SDK. Applications that maintain their
 /// own TypeScript client SDK are left alone.
-fn local_typescript_aggregate(app_root: &Path, services: &[SdkService]) -> Result<()> {
+/// A partial pass keeps every service-local SDK already on disk in the aggregate.
+fn local_typescript_aggregate(
+    app_root: &Path,
+    services: &[SdkService],
+    partial: bool,
+) -> Result<()> {
     let sdk_root = app_root.join(super::layout::typescript(app_root)?);
     let manifest_path = sdk_root.join("package.json");
     let Ok(source) = read_to_string(&manifest_path) else { return Ok(()) };
@@ -1492,12 +1509,26 @@ fn local_typescript_aggregate(app_root: &Path, services: &[SdkService]) -> Resul
     if package.get("name").and_then(serde_json::Value::as_str) != Some("@forklaunch-generated/sdk") {
         return Ok(());
     }
+    let mut names = services
+        .iter()
+        .map(|service| service.name.clone())
+        .collect::<std::collections::BTreeSet<_>>();
+    if partial {
+        let manifest = read_manifest(app_root)?;
+        for project in super::http_sources::projects(&manifest, None) {
+            let Some(name) = project.get("name").and_then(Value::as_str) else { continue };
+            let Some(local) = super::layout::local_sdk(app_root, name, "typescript")? else { continue };
+            if local.join("package.json").is_file() {
+                names.insert(name.to_owned());
+            }
+        }
+    }
     let mut packages = std::collections::BTreeMap::new();
-    for service in services {
-        let Some(local) = super::layout::local_sdk(app_root, &service.name, "typescript")? else { continue };
+    for service in &names {
+        let Some(local) = super::layout::local_sdk(app_root, service, "typescript")? else { continue };
         let local: serde_json::Value = serde_json::from_str(&read_to_string(local.join("package.json"))?)?;
         let name = local.get("name").and_then(serde_json::Value::as_str).context("Service SDK package name")?;
-        packages.insert(service.name.clone(), name.to_owned());
+        packages.insert(service.clone(), name.to_owned());
     }
     let mut index = String::new();
     let mut fields = String::new();
@@ -1555,7 +1586,7 @@ fn generate_typescript_sdk_scoped(
         // workspace. Repair that membership before returning from the local path.
         super::workspace::include_typescript_sdk(app_root)?;
         if shared.is_empty() {
-            return local_typescript_aggregate(app_root, services);
+            return local_typescript_aggregate(app_root, services, partial);
         }
         return generate_typescript_sdk_scoped(app_root, &shared, partial);
     }
