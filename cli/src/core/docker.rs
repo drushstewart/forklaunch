@@ -2859,7 +2859,7 @@ pub(crate) fn sync_docker_compose_env_vars(
     let existing_hmac_secret = find_existing_hmac_secret(modules_path);
     let hmac_secret_for_sync = existing_hmac_secret.unwrap_or_else(|| {
         let mut bytes = vec![0u8; 32];
-        getrandom::getrandom(&mut bytes).expect("Failed to generate random bytes");
+        getrandom::fill(&mut bytes).expect("Failed to generate random bytes");
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)
     });
 

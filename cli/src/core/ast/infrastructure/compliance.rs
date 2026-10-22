@@ -77,8 +77,8 @@ fn collect_variable_declarations<'a>(program: &'a oxc_ast::ast::Program<'a>) -> 
     for stmt in &program.body {
         let var_decl = match stmt {
             Statement::VariableDeclaration(vd) => vd,
-            Statement::ExportNamedDeclaration(export) => match &export.declaration {
-                Some(Declaration::VariableDeclaration(vd)) => vd,
+            Statement::ExportDeclaration(export) => match &export.declaration {
+                Declaration::VariableDeclaration(vd) => vd,
                 _ => continue,
             },
             _ => continue,
@@ -86,8 +86,7 @@ fn collect_variable_declarations<'a>(program: &'a oxc_ast::ast::Program<'a>) -> 
 
         for declarator in &var_decl.declarations {
             if let Some(init) = &declarator.init {
-                if let oxc_ast::ast::BindingPatternKind::BindingIdentifier(id) = &declarator.id.kind
-                {
+                if let oxc_ast::ast::BindingPattern::BindingIdentifier(id) = &declarator.id {
                     decls.insert(id.name.to_string(), init);
                 }
             }
@@ -107,7 +106,7 @@ fn collect_imports(program: &oxc_ast::ast::Program) -> ImportMap {
             _ => continue,
         };
 
-        let source = import.source.value.to_string();
+        let source = import.source.value.display().to_string();
 
         if let Some(specifiers) = &import.specifiers {
             for spec in specifiers {
@@ -205,28 +204,26 @@ fn resolve_imported_variable(
     // Check re-exports (export * from './other', export { X } from './other')
     for stmt in &program.body {
         if let Statement::ExportAllDeclaration(export_all) = stmt {
-            let re_export_source = export_all.source.value.to_string();
+            let re_export_source = export_all.source.value.display().to_string();
             if let Some(result) =
                 resolve_imported_variable(&re_export_source, original_name, &resolved_path, visited)
             {
                 return Some(result);
             }
         }
-        if let Statement::ExportNamedDeclaration(export) = stmt {
-            if let Some(ref source) = export.source {
-                let re_export_source = source.value.to_string();
-                for spec in &export.specifiers {
-                    let exported_name = spec.exported.name().to_string();
-                    if exported_name == original_name {
-                        let local_name = spec.local.name().to_string();
-                        if let Some(result) = resolve_imported_variable(
-                            &re_export_source,
-                            &local_name,
-                            &resolved_path,
-                            visited,
-                        ) {
-                            return Some(result);
-                        }
+        if let Statement::ExportFromDeclaration(export) = stmt {
+            let re_export_source = export.source.value.display().to_string();
+            for spec in &export.specifiers {
+                let exported_name = spec.exported.name().to_string();
+                if exported_name == original_name {
+                    let local_name = spec.local.name().to_string();
+                    if let Some(result) = resolve_imported_variable(
+                        &re_export_source,
+                        &local_name,
+                        &resolved_path,
+                        visited,
+                    ) {
+                        return Some(result);
                     }
                 }
             }
@@ -388,7 +385,7 @@ impl<'a, 'b> Visit<'a> for ComplianceVisitor<'a, 'b> {
                             match key_name.as_deref() {
                                 Some("name") => {
                                     if let Expression::StringLiteral(s) = &obj_prop.value {
-                                        entity_name = s.value.to_string();
+                                        entity_name = s.value.display().to_string();
                                     }
                                 }
                                 Some("retention") => {
@@ -542,7 +539,7 @@ fn extract_retention(expr: &Expression) -> Option<RetentionInfo> {
                 Some("duration") => duration = extract_duration_value(&obj_prop.value),
                 Some("action") => {
                     if let Expression::StringLiteral(s) = &obj_prop.value {
-                        action = Some(s.value.to_string());
+                        action = Some(s.value.display().to_string());
                     }
                 }
                 _ => {}
@@ -561,7 +558,7 @@ fn extract_retention(expr: &Expression) -> Option<RetentionInfo> {
 
 fn extract_duration_value(expr: &Expression) -> Option<String> {
     match expr {
-        Expression::StringLiteral(s) => Some(s.value.to_string()),
+        Expression::StringLiteral(s) => Some(s.value.display().to_string()),
         Expression::CallExpression(call) => {
             if let Expression::StaticMemberExpression(member) = &call.callee {
                 let method = member.property.name.as_str();
@@ -590,7 +587,7 @@ fn find_compliance_call(expr: &Expression) -> Option<String> {
                 if member.property.name == "compliance" {
                     if let Some(arg) = call.arguments.first() {
                         if let Some(Expression::StringLiteral(s)) = arg.as_expression() {
-                            return Some(s.value.to_string());
+                            return Some(s.value.display().to_string());
                         }
                     }
                 }
@@ -650,7 +647,9 @@ fn extract_compliance_from_source_with_path(
     let allocator = Allocator::default();
 
     let ParserReturn {
-        program, errors, ..
+        program,
+        diagnostics: errors,
+        ..
     } = Parser::new(
         &allocator,
         source_code,
@@ -658,7 +657,7 @@ fn extract_compliance_from_source_with_path(
     )
     .parse();
 
-    if !errors.is_empty() {
+    if errors.has_errors() {
         log::debug!(
             "TypeScript parse errors during compliance scan: {:?}",
             errors

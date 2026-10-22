@@ -23,8 +23,8 @@ fn inject_into_universal_sdk_function<'a>(
         SourceType::ts(),
     );
 
-    if let Some(Statement::ExportNamedDeclaration(export_stmt)) = export_program.body.first() {
-        app_program_ast.body.push(Statement::ExportNamedDeclaration(
+    if let Some(Statement::ExportDeclaration(export_stmt)) = export_program.body.first() {
+        app_program_ast.body.push(Statement::ExportDeclaration(
             export_stmt.clone_in(allocator),
         ));
     }
@@ -45,7 +45,7 @@ fn ensure_named_import<'a>(
                 .as_ref()
                 .is_some_and(|items| items.iter().any(|item| item.name() == name))
         {
-            if import.source.value.as_str() != source {
+            if import.source.value != source {
                 bail!(
                     "Cannot generate Better Auth SDK: import binding {name} already belongs to another module"
                 );
@@ -60,7 +60,7 @@ fn ensure_named_import<'a>(
     };
     for statement in &mut program.body {
         if let Statement::ImportDeclaration(import) = statement
-            && import.source.value.as_str() == source
+            && import.source.value == source
             && let Some(items) = &mut import.specifiers
             && items.iter().all(|item| {
                 matches!(
@@ -140,8 +140,8 @@ pub(crate) fn inject_into_client_sdk<'a>(
             SourceType::ts(),
         );
 
-        if let Some(Statement::ExportNamedDeclaration(export_stmt)) = export_program.body.first() {
-            app_program_ast.body.push(Statement::ExportNamedDeclaration(
+        if let Some(Statement::ExportDeclaration(export_stmt)) = export_program.body.first() {
+            app_program_ast.body.push(Statement::ExportDeclaration(
                 export_stmt.clone_in(allocator),
             ));
         }

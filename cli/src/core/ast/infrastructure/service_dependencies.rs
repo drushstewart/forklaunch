@@ -63,7 +63,7 @@ impl SdkImportVisitor {
 
 impl<'a> Visit<'a> for SdkImportVisitor {
     fn visit_import_declaration(&mut self, decl: &ImportDeclaration<'a>) {
-        let source = decl.source.value.as_str();
+        let source = decl.source.value.as_str().unwrap_or_default();
 
         // Check if this import contains an SdkClient type
         if let Some(specifiers) = &decl.specifiers {
@@ -100,7 +100,9 @@ fn extract_sdk_dependencies_from_source(source_code: &str) -> Result<Vec<Service
     let allocator = Allocator::default();
 
     let ParserReturn {
-        program, errors, ..
+        program,
+        diagnostics: errors,
+        ..
     } = Parser::new(
         &allocator,
         source_code,
@@ -108,7 +110,7 @@ fn extract_sdk_dependencies_from_source(source_code: &str) -> Result<Vec<Service
     )
     .parse();
 
-    if !errors.is_empty() {
+    if errors.has_errors() {
         log::debug!("TypeScript parse errors during SDK deps scan: {:?}", errors);
     }
 

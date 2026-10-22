@@ -282,7 +282,7 @@ pub fn sync_env_local_files(
     // Generate one if none exists, so all vars in this sync run share the same secret
     let hmac_secret_for_sync = existing_hmac_secret.clone().unwrap_or_else(|| {
         let mut bytes = vec![0u8; 32];
-        getrandom::getrandom(&mut bytes).expect("Failed to generate random bytes");
+        getrandom::fill(&mut bytes).expect("Failed to generate random bytes");
         base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &bytes)
     });
 

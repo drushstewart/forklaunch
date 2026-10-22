@@ -15,15 +15,15 @@ pub(crate) fn inject_into_index_ts_export<'a>(
         .enumerate()
         .for_each(|(index, stmt)| {
             match stmt {
-                Statement::ExportNamedDeclaration(expr) => {
-                    if let Some(source) = &expr.source {
-                        if source.value.as_str() <= target_module_path.as_str() {
-                            maybe_splice_pos = Some(index);
-                        }
+                Statement::ExportFromDeclaration(expr) => {
+                    if expr.source.value.as_str().unwrap_or_default() <= target_module_path.as_str()
+                    {
+                        maybe_splice_pos = Some(index);
                     }
                 }
                 Statement::ExportAllDeclaration(expr) => {
-                    if expr.source.value.as_str() <= target_module_path.as_str() {
+                    if expr.source.value.as_str().unwrap_or_default() <= target_module_path.as_str()
+                    {
                         maybe_splice_pos = Some(index);
                     }
                 }

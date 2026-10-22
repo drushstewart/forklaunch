@@ -713,16 +713,16 @@ fn migrate_module_imports(
             if !template.content.contains(from) { continue; }
             let allocator = oxc_allocator::Allocator::default();
             let parsed = oxc_parser::Parser::new(&allocator, &template.content, SourceType::from_path(entry.path())?).parse();
-            anyhow::ensure!(parsed.errors.is_empty(), "Cannot migrate imports in invalid TypeScript source {}", entry.path().display());
+            anyhow::ensure!(!parsed.diagnostics.has_errors(), "Cannot migrate imports in invalid TypeScript source {}", entry.path().display());
             let mut spans = Vec::new();
             for statement in &parsed.program.body {
                 let source = match statement {
                     Statement::ImportDeclaration(import) => Some(&import.source),
-                    Statement::ExportNamedDeclaration(export) => export.source.as_ref(),
+                    Statement::ExportFromDeclaration(export) => Some(&export.source),
                     Statement::ExportAllDeclaration(export) => Some(&export.source),
                     _ => None,
                 };
-                if let Some(source) = source.filter(|source| source.value.as_str() == from) { spans.push(source.span); }
+                if let Some(source) = source.filter(|source| source.value == from) { spans.push(source.span); }
             }
             drop(parsed);
             for span in spans.iter().rev() {
