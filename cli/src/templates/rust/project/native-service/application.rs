@@ -15,7 +15,9 @@ pub fn http_router(state: AppState) -> ApplicationResult<Router> {
 
 pub fn http(state: AppState) -> ApplicationResult<NativeApplication> {
     let origin = state.config.origin();
+    let cors_origins = state.config.cors_origins.clone();
     let telemetry = state.telemetry.clone();
-    NativeApplication::new(http_router(state)?, contracts::registry(), "{{{name}}}", env!("CARGO_PKG_VERSION"), &origin, telemetry)
+    NativeApplication::new(http_router(state)?, contracts::registry(), "{{{name}}}", env!("CARGO_PKG_VERSION"), &origin, telemetry)?
+        .with_cors_origins(cors_origins)
 }
 

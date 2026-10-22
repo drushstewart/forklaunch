@@ -34,6 +34,7 @@ mod discovery;
 pub(crate) mod dependencies;
 mod mixed;
 mod agent;
+mod auth_env;
 mod language_images;
 mod local_runtime;
 mod typescript_image;

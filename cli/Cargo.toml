@@ -21,6 +21,8 @@ url = "2"
 ctrlc = { version = "3.5.2", features = ["termination"] }
 anyhow = "1.0"
 base64 = "0.23.1"
+# Development session-signing keys for generated Rust IAM modules.
+rsa = { version = "0.9", features = ["getrandom"] }
 clap = { version = "4.6.7", features = ["cargo"] }
 convert_case = "0.8.0"
 futures-io = "0.3.34"
@@ -79,3 +81,9 @@ toml_edit = "0.25.17"
 [target.'cfg(unix)'.dependencies]
 nix = { version = "0.31", features = ["signal", "process"] }
 
+
+# RSA key generation is unusably slow unoptimized; debug CLIs generate dev keys too.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+[profile.dev.package.rsa]
+opt-level = 3

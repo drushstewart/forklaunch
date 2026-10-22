@@ -284,7 +284,9 @@ pub(super) fn preflight(root: &Path) -> Result<()> {
 
 pub(super) fn reconcile(root: &Path) -> Result<()> {
     reconcile_images(root)?;
-    super::local_runtime::reconcile(root)
+    super::auth_env::compose(root)?;
+    super::local_runtime::reconcile(root)?;
+    super::auth_env::local_envs(root)
 }
 
 fn reconcile_images(root: &Path) -> Result<()> {

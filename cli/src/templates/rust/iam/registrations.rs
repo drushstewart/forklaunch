@@ -35,6 +35,8 @@ pub async fn register(config: ServiceConfig) -> Result<AppState> {
     let pool = database::connect().await?;
     let tenant = TenantContext::new(config.tenant_id.clone())?;
     let issuer = RsaJwtSessionIssuer::from_env()?;
+    // Other services verify session JWTs against this key at /api/auth/jwks.
+    let jwks = issuer.as_ref().map(|issuer| issuer.jwks().clone());
     if config.directory_mode == DirectoryAuthorizationMode::StoredSessions && issuer.is_none() {
         return Err("Stored-session directory authorization requires SESSION_JWT signing configuration".into());
     }
@@ -50,6 +52,11 @@ pub async fn register(config: ServiceConfig) -> Result<AppState> {
     };
     let directory = PostgresDirectoryStore::new(pool.clone(), tenant, encryptor, AuditContext::system("iam-startup")).await?;
     let iam = IamHttp::new(sessions, directory, config.module_auth()?, config.directory_mode, service_info());
+    let iam = iam.with_cors_origins(&config.cors_origins)?;
+    let iam = match jwks {
+        Some(jwks) => iam.with_jwks(jwks),
+        None => iam,
+    };
     Ok(AppState { config, pool, iam, browser })
 }
 

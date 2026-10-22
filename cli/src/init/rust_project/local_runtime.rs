@@ -116,6 +116,9 @@ fn random(bytes: usize) -> Vec<u8> {
 
 /// A local value for a required compose variable, or None when only a person can supply it.
 fn local_value(name: &str, app: &str, tenant: &str, jwks: Option<&str>) -> Option<String> {
+    if let Some(value) = super::auth_env::local_value(name, app) {
+        return Some(value);
+    }
     let url = |prefix: &str, suffix: &str| {
         format!("postgresql://{}@postgresql:5432/{}", role(prefix, suffix), database(app, prefix))
     };
