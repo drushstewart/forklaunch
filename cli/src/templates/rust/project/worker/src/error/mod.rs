@@ -18,3 +18,9 @@ impl fmt::Display for WorkerError {
 }
 
 impl Error for WorkerError {}
+
+impl From<forklaunch_core::config::ConfigError> for WorkerError {
+    fn from(error: forklaunch_core::config::ConfigError) -> Self {
+        Self::InvalidConfig(error.to_string())
+    }
+}

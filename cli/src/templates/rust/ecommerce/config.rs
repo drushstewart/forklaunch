@@ -6,11 +6,9 @@ use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_core::auth::jwt::{RemoteJwks, RemoteJwksConfig};
 use forklaunch_worker_database::{http::HttpConfig, runner::RunnerConfig};
 use forklaunch_worker_interface::RetryPolicy;
+use forklaunch_core::config;
 use jsonwebtoken::{Algorithm, Validation};
-use std::{
-    env::{self, VarError},
-    time::Duration,
-};
+use std::time::Duration;
 
 /// The tenant and order-event queue policy shared by the HTTP service and the inventory worker.
 #[derive(Clone)]
@@ -22,8 +20,8 @@ pub struct StoreConfig {
 impl StoreConfig {
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            tenant_id: env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?,
-            retry: RetryPolicy::new(u32::try_from(number("WORKER_MAX_ATTEMPTS", 3)?)?, number("WORKER_BACKOFF_SECONDS", 30)?),
+            tenant_id: config::required("TENANT_ID")?,
+            retry: RetryPolicy::new(config::required("WORKER_MAX_ATTEMPTS")?, config::required("WORKER_BACKOFF_SECONDS")?),
         })
     }
 }
@@ -44,7 +42,8 @@ pub struct ServiceConfig {
 #[derive(Clone)]
 pub struct StripeConfig {
     pub api_key: String,
-    pub api_base: String,
+    /// A trusted HTTPS proxy; unset calls the Stripe API directly.
+    pub api_base: Option<String>,
     pub webhook_secret: String,
     /// Direct Connect charges to this account, with an optional platform fee.
     pub connect: Option<(String, u16)>,
@@ -59,39 +58,41 @@ pub struct PaypalConfig {
 }
 
 impl ServiceConfig {
+    /// Every setting is required at startup; a missing or malformed variable is
+    /// an error naming it. Stripe Connect, PayPal, the Stripe proxy and the JWT
+    /// issuer/audience constraints are optional features that stay off while unset.
     pub fn from_env(store: StoreConfig) -> Result<Self> {
-        let hmac_secret = env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?;
-        let jwks_url = env::var("JWKS_PUBLIC_KEY_URL").map_err(|_| "JWKS_PUBLIC_KEY_URL is required")?;
+        let connected_account: Option<String> = config::optional("STRIPE_CONNECTED_ACCOUNT_ID")?;
+        let platform_fee: Option<u16> = config::optional("STRIPE_PLATFORM_FEE_BPS")?;
         let stripe = StripeConfig {
-            api_base: env::var("STRIPE_API_BASE").unwrap_or_else(|_| "https://api.stripe.com".to_owned()),
-            api_key: env::var("STRIPE_API_KEY").map_err(|_| "STRIPE_API_KEY is required")?,
-            webhook_secret: env::var("STRIPE_WEBHOOK_SECRET").map_err(|_| "STRIPE_WEBHOOK_SECRET is required")?,
-            connect: match env::var("STRIPE_CONNECTED_ACCOUNT_ID") {
-                Ok(account) => Some((account, u16::try_from(number("STRIPE_PLATFORM_FEE_BPS", 0)?)?)),
-                Err(_) if env::var_os("STRIPE_PLATFORM_FEE_BPS").is_some() => {
-                    return Err("STRIPE_PLATFORM_FEE_BPS requires STRIPE_CONNECTED_ACCOUNT_ID".into());
-                }
-                Err(_) => None,
+            api_base: config::optional("STRIPE_API_BASE")?,
+            api_key: config::required("STRIPE_API_KEY")?,
+            webhook_secret: config::required("STRIPE_WEBHOOK_SECRET")?,
+            connect: match (connected_account, platform_fee) {
+                (Some(account), Some(fee)) => Some((account, fee)),
+                (Some(_), None) => return Err("STRIPE_CONNECTED_ACCOUNT_ID requires STRIPE_PLATFORM_FEE_BPS".into()),
+                (None, Some(_)) => return Err("STRIPE_PLATFORM_FEE_BPS requires STRIPE_CONNECTED_ACCOUNT_ID".into()),
+                (None, None) => None,
             },
         };
-        let paypal = match (env::var("PAYPAL_CLIENT_ID"), env::var("PAYPAL_CLIENT_SECRET")) {
-            (Ok(client_id), Ok(client_secret)) => Some(PaypalConfig {
+        let paypal = match (config::optional::<String>("PAYPAL_CLIENT_ID")?, config::optional::<String>("PAYPAL_CLIENT_SECRET")?) {
+            (Some(client_id), Some(client_secret)) => Some(PaypalConfig {
                 client_id,
                 client_secret,
-                base_url: env::var("PAYPAL_BASE_URL").map_err(|_| "PAYPAL_BASE_URL is required with PayPal credentials")?,
-                webhook_id: env::var("PAYPAL_WEBHOOK_ID").map_err(|_| "PAYPAL_WEBHOOK_ID is required with PayPal credentials")?,
+                base_url: config::required("PAYPAL_BASE_URL")?,
+                webhook_id: config::required("PAYPAL_WEBHOOK_ID")?,
             }),
-            (Err(VarError::NotPresent), Err(VarError::NotPresent)) => None,
+            (None, None) => None,
             _ => return Err("Both PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET are required to enable PayPal".into()),
         };
         Ok(Self {
             store,
-            host: env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned()),
-            port: env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?,
-            hmac_secret,
-            jwks_url,
-            jwt_issuer: env::var("JWT_ISSUER").ok(),
-            jwt_audience: env::var("JWT_AUDIENCE").ok(),
+            host: config::required("HOST")?,
+            port: config::required("PORT")?,
+            hmac_secret: config::required("HMAC_SECRET_KEY")?,
+            jwks_url: config::required("JWKS_PUBLIC_KEY_URL")?,
+            jwt_issuer: config::optional("JWT_ISSUER")?,
+            jwt_audience: config::optional("JWT_AUDIENCE")?,
             stripe,
             paypal,
         })
@@ -134,44 +135,30 @@ pub struct WorkerConfig {
 }
 
 impl WorkerConfig {
+    /// The runner settings are required; the readiness/control listener is
+    /// optional and stays off without `WORKER_HTTP_ADDR`.
     pub fn from_env(store: StoreConfig) -> Result<Self> {
         let runner = RunnerConfig {
             queue: "order-events".to_owned(),
-            concurrency: usize::try_from(number("WORKER_CONCURRENCY", 1)?)?,
-            batch_size: usize::try_from(number("WORKER_BATCH_SIZE", 1)?)?,
-            poll_interval: Duration::from_millis(number("WORKER_POLL_MS", 250)?),
-            lease_duration: Duration::from_millis(number("WORKER_LEASE_MS", 30000)?),
-            renew_interval: Duration::from_millis(number("WORKER_RENEW_MS", 10000)?),
-            drain_timeout: Duration::from_millis(number("WORKER_DRAIN_MS", 30000)?),
+            concurrency: config::required("WORKER_CONCURRENCY")?,
+            batch_size: config::required("WORKER_BATCH_SIZE")?,
+            poll_interval: Duration::from_millis(config::required("WORKER_POLL_MS")?),
+            lease_duration: Duration::from_millis(config::required("WORKER_LEASE_MS")?),
+            renew_interval: Duration::from_millis(config::required("WORKER_RENEW_MS")?),
+            drain_timeout: Duration::from_millis(config::required("WORKER_DRAIN_MS")?),
         };
         runner.validate()?;
         Ok(Self { store, runner, http: http_config()? })
     }
 }
 
-fn number(key: &str, default: u64) -> Result<u64> {
-    match env::var(key) {
-        Ok(value) => Ok(value.parse()?),
-        Err(VarError::NotPresent) => Ok(default),
-        Err(error) => Err(error.into()),
-    }
-}
-
 fn http_config() -> Result<Option<HttpConfig>> {
-    let token = match env::var("WORKER_CONTROL_TOKEN") {
-        Ok(value) => Some(value),
-        Err(VarError::NotPresent) => None,
-        Err(error) => return Err(error.into()),
-    };
-    let address = match env::var("WORKER_HTTP_ADDR") {
-        Ok(value) => value.parse()?,
-        Err(VarError::NotPresent) => {
-            if token.is_some() {
-                return Err("WORKER_CONTROL_TOKEN requires WORKER_HTTP_ADDR".into());
-            }
-            return Ok(None);
+    let token: Option<String> = config::optional("WORKER_CONTROL_TOKEN")?;
+    let Some(address) = config::optional("WORKER_HTTP_ADDR")? else {
+        if token.is_some() {
+            return Err("WORKER_CONTROL_TOKEN requires WORKER_HTTP_ADDR".into());
         }
-        Err(error) => return Err(error.into()),
+        return Ok(None);
     };
     let config = HttpConfig { address, control_token: token };
     config.validate()?;

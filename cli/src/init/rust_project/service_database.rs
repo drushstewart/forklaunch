@@ -34,7 +34,6 @@ pub(super) fn templates(
             "api/controllers/health.rs" => template.content = template.content.replace("Ok(state.health.report())", "state.health.report().await.map_err(|_| EndpointError::Unavailable)"),
             "persistence/mod.rs" => template.content = "pub mod entities;\npub mod compliance_schema;\npub mod database;\nmod repository;\npub use repository::PostgresRepository;\n".into(),
             "persistence/entities/mod.rs" => template.content = "pub use super::compliance_schema::StoredRecord;\n".into(),
-            "config.rs" => template.content = template.content.replace("let database_url = env::var(\"DATABASE_URL\")\n            .unwrap_or_else(|_| \"postgres://localhost/forklaunch\".to_string());", "let database_url = String::new(); // Credentials live only in the non-Debug database config."),
             "Makefile" => template.content.push_str("\n.PHONY: migrate\nmigrate:\n\t$(CARGO) run --package $(PACKAGE) -- --migrate\n"),
             "__test__/http.rs" => template.content = template.content.replace("#[tokio::test]", "#[tokio::test]\n#[ignore = \"requires migrated PostgreSQL, restricted DATABASE_URL, TENANT_ID and encryption keys\"]").replace("::config::ServiceConfig::default()).unwrap()", "::config::ServiceConfig::default()).await.unwrap()"),
             _ => {}

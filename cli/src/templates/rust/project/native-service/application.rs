@@ -7,7 +7,7 @@ use forklaunch_axum::native;
 pub fn http_router(state: AppState) -> ApplicationResult<Router> {
     let registry = contracts::registry();
     let router = native::with_openapi(
-        routes::router()?, &registry, &state.config.docs_path,
+        routes::router()?, &registry, &state.config.docs_path, &state.config.version,
     )?.with_state(state);
     Ok(router)
 }

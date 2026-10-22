@@ -855,7 +855,7 @@ fn render_module_with_layout(features: &[String], native_router: bool) -> Result
         };
         clients.push(format!("{module}::{ty}"));
         if feature == "sms" {
-            factories.push("pub fn sms_client() -> BlueprintResult<SmsClient> {\n    if ![\"PLATFORM_GATEWAY_URL\", \"INSTANCE_ID\", \"INSTANCE_HMAC_KEY\"].iter().all(|name| env::var(name).is_ok_and(|value| !value.is_empty())) {\n        return Ok(SmsClient::deferred());\n    }\n    Ok(SmsClient::new(instance_gateway()?))\n}".into());
+            factories.push("pub fn sms_client() -> BlueprintResult<SmsClient> {\n    // SMS stays deferred until the managed gateway settings are all present.\n    for name in [\"PLATFORM_GATEWAY_URL\", \"INSTANCE_ID\", \"INSTANCE_HMAC_KEY\"] {\n        if forklaunch_core::config::optional::<String>(name)?.is_none() {\n            return Ok(SmsClient::deferred());\n        }\n    }\n    Ok(SmsClient::new(instance_gateway()?))\n}".into());
         } else {
             factories.push(format!("pub fn {feature}_client() -> BlueprintResult<{ty}> {{ Ok({ty}::new(instance_gateway()?)) }}"));
         }

@@ -430,6 +430,27 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
     }
     env.entry("TENANT_ID".into())
         .or_insert_with(|| format!("${{{prefix}_TENANT_ID:?Configure a trusted tenant UUID}}"));
+    // Runner settings are required at startup; these match `.env.example`.
+    let runner: &[(&str, &str)] = match backend {
+        _ if native_apalis => &[],
+        Backend::Postgres | Backend::Redis => &[
+            ("WORKER_MAX_ATTEMPTS", "3"), ("WORKER_BACKOFF_SECONDS", "30"), ("WORKER_CONCURRENCY", "1"),
+            ("WORKER_BATCH_SIZE", "1"), ("WORKER_POLL_MS", "250"), ("WORKER_LEASE_MS", "30000"),
+            ("WORKER_RENEW_MS", "10000"), ("WORKER_DRAIN_MS", "30000"),
+        ],
+        Backend::Kafka => &[
+            ("KAFKA_GROUP_ID", "workers"), ("KAFKA_PARTITIONS", "3"), ("KAFKA_REPLICATION_FACTOR", "1"),
+            ("KAFKA_OPERATION_TIMEOUT_MS", "5000"), ("KAFKA_SESSION_TIMEOUT_MS", "10000"),
+            ("WORKER_MAX_PAYLOAD_BYTES", "1048576"), ("WORKER_MAX_ATTEMPTS", "3"),
+            ("WORKER_BACKOFF_SECONDS", "30"), ("WORKER_HANDLER_TIMEOUT_MS", "300000"), ("WORKER_DRAIN_MS", "30000"),
+        ],
+    };
+    if !native_apalis {
+        env.entry("WORKER_QUEUE".into()).or_insert_with(|| name.into());
+    }
+    for (key, value) in runner {
+        env.entry((*key).into()).or_insert_with(|| (*value).into());
+    }
     for (name, value) in [
         ("WORKER_ALLOW_PLAINTEXT_DEVELOPMENT", "${WORKER_ALLOW_PLAINTEXT_DEVELOPMENT:-false}"),
         ("ENCRYPTION_KEY_HEX", "${ENCRYPTION_KEY_HEX:?Configure a 32-byte worker encryption key}"),
@@ -694,6 +715,24 @@ mod tests {
             let repeated = producer(root.path(), "jobs");
             assert_eq!(repeated.ports, initial.ports);
             assert_eq!(repeated.environment, initial.environment);
+        }
+    }
+
+    #[test]
+    fn leased_workers_and_producers_get_explicit_runner_settings() {
+        for (backend, setting) in [
+            (Backend::Postgres, "WORKER_LEASE_MS"),
+            (Backend::Redis, "WORKER_POLL_MS"),
+            (Backend::Kafka, "KAFKA_GROUP_ID"),
+        ] {
+            let root = fixture("jobs");
+            compose(root.path(), "jobs", backend).unwrap();
+            let compose = read_or_create_rust_docker_compose(&root.path().join("docker-compose.yaml")).unwrap();
+            for service in ["jobs", "jobs-server"] {
+                let env = compose.services[service].environment.as_ref().unwrap();
+                assert_eq!(env["WORKER_QUEUE"], "jobs", "{service}");
+                assert!(env.contains_key(setting), "{service} {setting}");
+            }
         }
     }
 

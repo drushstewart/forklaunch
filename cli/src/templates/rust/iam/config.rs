@@ -5,8 +5,8 @@ use crate::error::Result;
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_core::auth::jwt::{RemoteJwks, RemoteJwksConfig};
 use forklaunch_iam_base::http::DirectoryAuthorizationMode;
+use forklaunch_core::config;
 use jsonwebtoken::{Algorithm, Validation};
-use std::env::{self, VarError};
 
 #[derive(Clone)]
 pub struct ServiceConfig {
@@ -32,49 +32,46 @@ pub struct OidcConfig {
 }
 
 impl ServiceConfig {
+    /// Every setting is required at startup; a missing or malformed variable is
+    /// an error naming it. Browser sessions (`SESSION_COOKIE_ORIGIN`), OIDC
+    /// login (`SESSION_OIDC_*`) and the JWT issuer/audience constraints are
+    /// optional features that stay off while unset.
     pub fn from_env() -> Result<Self> {
-        let tenant_id = env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?;
-        let directory_mode = match env::var("IAM_DIRECTORY_AUTHORIZATION") {
-            Err(VarError::NotPresent) => DirectoryAuthorizationMode::JwtClaims,
-            Ok(value) if value == "jwt-claims" => DirectoryAuthorizationMode::JwtClaims,
-            Ok(value) if value == "stored-session" => DirectoryAuthorizationMode::StoredSessions,
+        let directory_mode: String = config::required("IAM_DIRECTORY_AUTHORIZATION")?;
+        let directory_mode = match directory_mode.as_str() {
+            "jwt-claims" => DirectoryAuthorizationMode::JwtClaims,
+            "stored-session" => DirectoryAuthorizationMode::StoredSessions,
             _ => return Err("IAM_DIRECTORY_AUTHORIZATION must be jwt-claims or stored-session".into()),
         };
-        let oidc_enabled = ["SESSION_OIDC_ISSUER", "SESSION_OIDC_CLIENT_ID", "SESSION_OIDC_CLIENT_SECRET"]
-            .iter()
-            .any(|name| env::var_os(name).is_some());
-        if oidc_enabled && env::var_os("SESSION_COOKIE_ORIGIN").is_none() {
+        let issuer: Option<String> = config::optional("SESSION_OIDC_ISSUER")?;
+        let client_id: Option<String> = config::optional("SESSION_OIDC_CLIENT_ID")?;
+        let client_secret: Option<String> = config::optional("SESSION_OIDC_CLIENT_SECRET")?;
+        let browser_origin: Option<String> = config::optional("SESSION_COOKIE_ORIGIN")?;
+        let oidc_enabled = issuer.is_some() || client_id.is_some() || client_secret.is_some();
+        if oidc_enabled && browser_origin.is_none() {
             return Err("OIDC requires SESSION_COOKIE_ORIGIN".into());
         }
-        let browser_origin = match env::var("SESSION_COOKIE_ORIGIN") {
-            Ok(origin) => Some(origin),
-            Err(VarError::NotPresent) => None,
-            Err(VarError::NotUnicode(_)) => return Err("Invalid browser session origin".into()),
-        };
         let oidc = if oidc_enabled {
             Some(OidcConfig {
-                issuer: env::var("SESSION_OIDC_ISSUER").map_err(|_| "SESSION_OIDC_ISSUER is required")?,
-                client_id: env::var("SESSION_OIDC_CLIENT_ID").map_err(|_| "SESSION_OIDC_CLIENT_ID is required")?,
-                client_secret: match env::var("SESSION_OIDC_CLIENT_SECRET") {
-                    Ok(value) => Some(value),
-                    Err(VarError::NotPresent) => None,
-                    Err(_) => return Err("Invalid OIDC client secret".into()),
-                },
+                issuer: issuer.ok_or("SESSION_OIDC_ISSUER is required with OIDC")?,
+                client_id: client_id.ok_or("SESSION_OIDC_CLIENT_ID is required with OIDC")?,
+                // Public clients have no secret.
+                client_secret,
             })
         } else {
             None
         };
         Ok(Self {
-            host: env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned()),
-            port: env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?,
-            tenant_id,
+            host: config::required("HOST")?,
+            port: config::required("PORT")?,
+            tenant_id: config::required("TENANT_ID")?,
             directory_mode,
             browser_origin,
             oidc,
-            hmac_secret: env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?,
-            jwks_url: env::var("JWKS_PUBLIC_KEY_URL").map_err(|_| "JWKS_PUBLIC_KEY_URL is required")?,
-            jwt_issuer: env::var("JWT_ISSUER").ok(),
-            jwt_audience: env::var("JWT_AUDIENCE").ok(),
+            hmac_secret: config::required("HMAC_SECRET_KEY")?,
+            jwks_url: config::required("JWKS_PUBLIC_KEY_URL")?,
+            jwt_issuer: config::optional("JWT_ISSUER")?,
+            jwt_audience: config::optional("JWT_AUDIENCE")?,
         })
     }
 

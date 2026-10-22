@@ -4,8 +4,8 @@
 use crate::error::Result;
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_core::auth::jwt::{RemoteJwks, RemoteJwksConfig};
+use forklaunch_core::config;
 use jsonwebtoken::{Algorithm, Validation};
-use std::env;
 
 #[derive(Clone)]
 pub struct ServiceConfig {
@@ -18,14 +18,17 @@ pub struct ServiceConfig {
 }
 
 impl ServiceConfig {
+    /// Every setting is required at startup except the JWT issuer/audience
+    /// constraints; a missing or malformed variable is an error naming it.
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            host: env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned()),
-            port: env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?,
-            hmac_secret: env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?,
-            jwks_url: env::var("JWKS_PUBLIC_KEY_URL").map_err(|_| "JWKS_PUBLIC_KEY_URL is required")?,
-            jwt_issuer: env::var("JWT_ISSUER").ok(),
-            jwt_audience: env::var("JWT_AUDIENCE").ok(),
+            host: config::required("HOST")?,
+            port: config::required("PORT")?,
+            hmac_secret: config::required("HMAC_SECRET_KEY")?,
+            jwks_url: config::required("JWKS_PUBLIC_KEY_URL")?,
+            // Optional constraints: an unset issuer or audience is not checked.
+            jwt_issuer: config::optional("JWT_ISSUER")?,
+            jwt_audience: config::optional("JWT_AUDIENCE")?,
         })
     }
 

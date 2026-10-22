@@ -12,7 +12,7 @@ cargo run -p <service-name>
 forklaunch dev
 ```
 
-Services expose `/health`, `/openapi.json`, and the OpenAPI document at `/docs`. Set `HOST` and `PORT` to configure the HTTP listener. Services stop gracefully on Ctrl-C or SIGTERM.
+Services expose `/health`, `/openapi.json`, and the OpenAPI document at `/docs`. Configuration has no in-code defaults: `HOST`, `PORT`, `PROTOCOL`, `VERSION`, `DOCS_PATH`, `RUST_LOG` and `MCP_ENABLED` are required, and a missing or malformed setting stops startup with an error naming it. `forklaunch dev` supplies them from `docker-compose.yaml`; for `cargo run`, load the service `.env.local` (see `.env.example`). Services stop gracefully on Ctrl-C or SIGTERM.
 
 ## Contracts and SDKs
 

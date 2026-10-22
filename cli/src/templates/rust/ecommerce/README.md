@@ -10,7 +10,7 @@ Runtime database roles must have no SUPERUSER/BYPASSRLS. Grant schema USAGE on `
 
 Order transitions and their inventory jobs commit together. The worker decrements on paid, restocks cancellation from paid/fulfilled and ignores stock for pending cancellation. All item deltas and durable receipts commit together, preserving stock on retry/redelivery. The worker uses the same tenant and database, with optional HTTP readiness and bearer-authenticated pause/resume/drain controls.
 
-Connect charges default to zero platform fees, matching the TypeScript module. Client secrets appear only in Stripe creation responses. `STRIPE_API_BASE` accepts HTTPS proxies or explicit loopback fixtures. Stripe callbacks require `STRIPE_WEBHOOK_SECRET`. PayPal requires its client ID/secret/base URL and `PAYPAL_WEBHOOK_ID` together.
+Stripe Connect requires both `STRIPE_CONNECTED_ACCOUNT_ID` and `STRIPE_PLATFORM_FEE_BPS` (`0` for no platform fee). Client secrets appear only in Stripe creation responses. The optional `STRIPE_API_BASE` accepts HTTPS proxies or explicit loopback fixtures; unset, the Stripe API is called directly. Stripe callbacks require `STRIPE_WEBHOOK_SECRET`. PayPal requires its client ID/secret/base URL and `PAYPAL_WEBHOOK_ID` together.
 
 This template covers 31 application routes, including external-ID catalog imports that preserve live stock and USD checkout with Stripe Tax/estimated fallback and domestic/international shipping. Provider capture reconciliation and compliance controllers remain tracked in the Rust parity plan; native database tables are not a shared MikroORM schema. Add custom HTTP routers through `routes::contracts()` and `routes::register_router(...)` and regenerate both SDKs after changing contracts.
 

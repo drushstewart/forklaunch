@@ -22,3 +22,9 @@ impl fmt::Display for AppError {
 }
 
 impl Error for AppError {}
+
+impl From<forklaunch_core::config::ConfigError> for AppError {
+    fn from(error: forklaunch_core::config::ConfigError) -> Self {
+        Self::InvalidConfig(error.to_string())
+    }
+}

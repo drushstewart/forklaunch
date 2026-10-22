@@ -1,6 +1,6 @@
 # {{{name}}}
 
-Tenant-bound persistent billing with thirty plan, subscription, checkout session, payment link and billing portal operations, compliance and health. Internal routes use request HMAC; billing portal routes require an asymmetric JWT with the `admin` role. HTTP and Streamable HTTP MCP share the listener and authentication rules. MCP defaults to `/mcp`; configure `MCP_ENABLED`, `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` as needed.
+Tenant-bound persistent billing with thirty plan, subscription, checkout session, payment link and billing portal operations, compliance and health. Internal routes use request HMAC; billing portal routes require an asymmetric JWT with the `admin` role. HTTP and Streamable HTTP MCP share the listener and authentication rules. MCP is served at `/mcp`; `MCP_ENABLED` (true or false) is required, and `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` are optional.
 
 The crate follows the generated service layout. `config.rs` reads trusted settings, `registrations.rs` builds the store, provider client and `AppState`, and `api/routes/<resource>.rs` binds each billing contract to the controller in `api/controllers/<resource>.rs`. Controllers return handlers from `forklaunch-billing-stripe`, which owns provider flows, bound capabilities, audit and authorization; replace a controller to customize one operation. Routers added with `forklaunch init router` live in `api/routes/extensions`.
 

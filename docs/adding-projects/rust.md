@@ -37,7 +37,7 @@ functions. A service without `--database` uses the in-memory starter. Selecting
 `--database postgresql` generates its PostgreSQL repository and service-local
 migrations; configure the database and encryption settings before running it.
 
-The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentation UI at `/docs`. `HOST`/`PORT` (or `SERVICE_HOST`/`SERVICE_PORT`) configure the listener. `DOCS_PATH`, `DOCS_SERVER_URLS`, and `DOCS_SERVER_DESCRIPTIONS` configure documentation. Ctrl-C and SIGTERM stop the HTTP server gracefully.
+The service serves `/health`, `/users`, `/openapi.json`, and a Scalar documentation UI at `/docs`. `HOST`, `PORT`, `PROTOCOL`, `VERSION`, `DOCS_PATH`, `RUST_LOG` and `MCP_ENABLED` are required; optional `PUBLIC_ORIGIN`, `DOCS_SERVER_URLS` and `DOCS_SERVER_DESCRIPTIONS` default to the listener's own address. Generated configuration has no in-code defaults (see [Configuration](#configuration)). Ctrl-C and SIGTERM stop the HTTP server gracefully.
 
 Network requests use Axum and the same contract handlers as `local_router`. Path parameters, decoded URL queries, headers, binary bodies, body limits, CORS, and request IDs pass through the framework adapter.
 
@@ -536,6 +536,34 @@ Configure `RouterConfig::with_authenticator` with an async credential verifier. 
 
 Basic login and credential verification callbacks remain application-configured. `parse_basic`, `hmac_verify`, and JWT verification helpers provide credential primitives; provider integrations and the remaining IAM/session lifecycle are tracked separately.
 
+## Configuration
+
+Generated Rust code reads settings with `forklaunch_core::config`, never with
+in-code defaults. `config::required::<T>(NAME)` reads and parses a variable and
+fails startup when it is unset, empty or malformed; `config::optional::<T>(NAME)`
+is used only where absence is a documented choice (for example JWT issuer and
+audience constraints, `PUBLIC_ORIGIN`, PayPal, Stripe Connect, worker HTTP
+controls, retention ages). Errors name the variable and the expected type and
+never include its value:
+
+```rust
+use forklaunch_core::config;
+
+let port: u16 = config::required("PORT")?;
+// environment variable PORT is not set; it is required at startup
+```
+
+`ConfigError` converts into `FrameworkError`, `BlueprintError`, `io::Error` and
+generated `AppError`/`WorkerError` values. The values themselves come from the
+generated `docker-compose.yaml` environment (used by `forklaunch dev`), each
+service's git-ignored `.env.local` (HTTP listener settings for `cargo run`) and
+the `.env.example`/`.env.database.example` files. Framework runtime readers follow
+the same rule: `RUST_LOG`, `MCP_ENABLED`, `DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT`,
+`ENCRYPTION_KEY_ID` and `ENCRYPTION_LEGACY_KEY_HEX` are required, and contract
+export requires both `FORKLAUNCH_CONTRACT_OUTPUT` and `FORKLAUNCH_OPENAPI_OUTPUT`
+(the CLI always sets them). OpenTelemetry `OTEL_*` variables keep their
+specification-defined meaning.
+
 ## Telemetry
 
 `forklaunch_core::telemetry::OpenTelemetryCollector` records counters, gauges, histograms, and up/down counters, and exposes its meter for observable instruments. It supplies structured trace/debug/info/warn/error/fatal logging through `tracing`.
@@ -651,7 +679,7 @@ forklaunch init worker jobs --language rust -t database -d postgresql --consumer
 
 New workers with this backend bundle blueprint source and run a continuous polling loop through `forklaunch-worker-database`'s `runtime` feature. Apply migrations with `cargo run -p jobs -- --migrate` using the owner connection. Start the worker with a restricted `DATABASE_URL` and trusted `TENANT_ID`. Implement application work in `src/jobs/domain/services/handler.rs`; the initial handler fails with `worker_handler_not_implemented` and leaves jobs subject to their retry budget instead of discarding them.
 
-The runner processes up to `WORKER_CONCURRENCY` jobs at once (1–256, default 1) and renews each active lease while its handler runs. Multiple processes can consume the same queue. `WORKER_QUEUE` defaults to the crate name. Retry policy uses `WORKER_MAX_ATTEMPTS` and `WORKER_BACKOFF_SECONDS`; polling, leases, renewal, and shutdown drain use `WORKER_POLL_MS`, `WORKER_LEASE_MS`, `WORKER_RENEW_MS`, and `WORKER_DRAIN_MS`. Invalid settings fail startup. Queue operations have bounded timeouts. Renewal must run at least three times per lease duration.
+The runner processes up to `WORKER_CONCURRENCY` jobs at once (1–256) and renews each active lease while its handler runs. Multiple processes can consume the same queue named by `WORKER_QUEUE`. Every runner setting is required (`.env.example` and Compose list the generated values). Retry policy uses `WORKER_MAX_ATTEMPTS` and `WORKER_BACKOFF_SECONDS`; polling, leases, renewal, and shutdown drain use `WORKER_POLL_MS`, `WORKER_LEASE_MS`, `WORKER_RENEW_MS`, and `WORKER_DRAIN_MS`. Invalid settings fail startup. Queue operations have bounded timeouts. Renewal must run at least three times per lease duration.
 
 Ctrl-C or SIGTERM stops new claims and drains the active job while renewing its lease. If draining times out, the runner cancels the handler and leaves the delivery recoverable after lease expiry. It also cancels a handler when lease renewal reports an obsolete token. Keep all handler work inside its returned future and make external side effects idempotent. Application error codes are retained; detailed handler errors are not automatically persisted.
 
@@ -697,7 +725,7 @@ Optional HTTP health/readiness and authenticated pause/resume/drain, scoped Pub/
 
 ## Worker concurrency
 
-Both generated PostgreSQL and Redis workers accept `WORKER_CONCURRENCY` (1–256, default 1). Each active job has its own lease; batches renew their leases together. On shutdown every consumer stops claiming jobs and drains its active handler within `WORKER_DRAIN_MS`; work still queued remains available for the next process. A storage failure stops the other consumers and drains their active work before the runner returns the first error.
+Both generated PostgreSQL and Redis workers accept `WORKER_CONCURRENCY` (1–256). Each active job has its own lease; batches renew their leases together. On shutdown every consumer stops claiming jobs and drains its active handler within `WORKER_DRAIN_MS`; work still queued remains available for the next process. A storage failure stops the other consumers and drains their active work before the runner returns the first error.
 
 For direct library use, set `RunnerConfig::concurrency`. `RunReport` combines counts from all consumers. Handlers share the same `JobHandler` instance and must support concurrent calls, keep asynchronous work inside the returned future, and make external side effects idempotent. This setting controls concurrent async handler batches; use separate processes or a blocking executor for CPU-heavy work. Batch handlers are described below. Optional distributed controls are described below.
 
@@ -724,7 +752,7 @@ Integration tests cover stale capabilities after retry, changed retry budgets, c
 
 ## Automatic worker retention
 
-Generated Redis and PostgreSQL workers opt into periodic cleanup when `WORKER_COMPLETED_RETENTION_SECONDS` and/or `WORKER_FAILED_RETENTION_SECONDS` is set to a positive age. Each unset status is retained indefinitely. The defaults are no automatic deletion, a 60000 ms interval, at most 100 deletions per enabled status per tick, and a 5000 ms operation timeout. Configure the latter settings with `WORKER_RETENTION_INTERVAL_MS`, `WORKER_RETENTION_BATCH_LIMIT`, and `WORKER_RETENTION_TIMEOUT_MS`. Invalid ages, limits, intervals, and timeouts fail startup.
+Generated Redis and PostgreSQL workers opt into periodic cleanup when `WORKER_COMPLETED_RETENTION_SECONDS` and/or `WORKER_FAILED_RETENTION_SECONDS` is set to a positive age. Each unset status is retained indefinitely; with neither set there is no automatic deletion. Enabled retention requires `WORKER_RETENTION_INTERVAL_MS`, `WORKER_RETENTION_BATCH_LIMIT` (per status per tick) and `WORKER_RETENTION_TIMEOUT_MS`; `.env.example` lists 60000, 100 and 5000. Invalid ages, limits, intervals, and timeouts fail startup.
 
 For direct library use, enable the database worker's `runtime` feature and call `retention::run_worker` with a `RetentionPolicy`, or use `retention::run` for standalone maintenance. Cleanup starts after the first interval and remains scoped to the queue's tenant. Reports count completed and failed deletions separately. Shutdown cancels maintenance and drains current handlers with lease renewal; a cleanup error or timeout also stops new claims and drains active handlers before returning the first error. Newly completed jobs during shutdown drain are retained because maintenance has already stopped.
 
@@ -772,7 +800,7 @@ The trait's compatibility default supports a limit of one and rejects larger bat
 
 ## Worker batch handlers
 
-Set `WORKER_BATCH_SIZE` (default 1) to claim and process up to that many ready jobs in each handler call. `WORKER_CONCURRENCY` now limits simultaneous handler batches; their product must be at most 1000, and batch size must be 1–1000. Batches contain currently eligible jobs and can be smaller than the limit; the runner does not wait to fill a batch. With size 1, existing `JobHandler::process` behavior is preserved.
+Set `WORKER_BATCH_SIZE` (generated as 1) to claim and process up to that many ready jobs in each handler call. `WORKER_CONCURRENCY` now limits simultaneous handler batches; their product must be at most 1000, and batch size must be 1–1000. Batches contain currently eligible jobs and can be smaller than the limit; the runner does not wait to fill a batch. With size 1, existing `JobHandler::process` behavior is preserved.
 
 Override `JobHandler::process_batch(Vec<Job>) -> BlueprintResult<Vec<JobFailure>>` for bulk application work. Return only failed job IDs and errors; omitted jobs are acknowledged. A whole-batch error retries every job. An unknown or duplicate failure ID invalidates the entire result before any acknowledgments and fails all deliveries with `worker_invalid_batch_result`. Each job follows its own persisted retry budget. The compatibility implementation calls `process` sequentially for each job, so existing generated handlers remain usable. Only bounded, sanitized error codes are stored.
 
@@ -882,7 +910,7 @@ Administrative controllers can call `RedisSignalPublisher::connect(url, namespac
 
 Generated workers accept `--signal pause`, `--signal resume`, and `--signal drain`
 with `WORKER_SIGNAL_REDIS_URL`, `WORKER_SIGNAL_NAMESPACE`, `TENANT_ID`, and
-`WORKER_QUEUE` (defaults to the worker name). Signal commands do not connect to queue
+`WORKER_QUEUE`. Signal commands do not connect to queue
 storage. When enabled, authenticated HTTP controls publish to the same scoped group,
 apply through the ordered subscription, and return `{ "subscribers": N }`; this count is not an acknowledgement.
 A publication failure returns 503; delivery can remain uncertain after a timeout. Subscriptions
@@ -928,7 +956,7 @@ validation, route authentication, tenant binding and auditing. Every request
 presents its own credentials; tool arguments can supply route-specific signed
 headers, and bearer credentials on the MCP request also reach JWT routes.
 
-`MCP_ENABLED=false` disables the endpoint. `MCP_PATH` changes its path.
+`MCP_ENABLED` (`true` or `false`) is required. `MCP_PATH` changes the path.
 `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` accept comma-separated allowlists;
 Hosts default to localhost/loopback and browser Origins are rejected until
 explicitly allowed. Configure the public host when deploying behind a proxy.

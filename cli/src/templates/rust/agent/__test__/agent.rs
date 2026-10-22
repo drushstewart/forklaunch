@@ -82,7 +82,7 @@ async fn send(router: &Router, method: &str, path: &str, body: Option<Value>) ->
 async fn agent_routes_require_a_verified_token() {
     let jwks = RemoteJwks::new(RemoteJwksConfig::new("http://127.0.0.1:9/jwks")).unwrap();
     let auth = jwt_policy(jwks, Validation::new(Algorithm::RS256));
-    let router = router(AgentRuntime::new(scripted(builder(), vec![]).build().unwrap(), Some(auth)));
+    let router = router(AgentRuntime::new(scripted(builder(), vec![]).build().unwrap(), auth));
     let response = router
         .oneshot(Request::builder().uri("/api/v1/agent/tools").body(Body::empty()).unwrap())
         .await
@@ -94,7 +94,7 @@ async fn agent_routes_require_a_verified_token() {
 async fn tools_list_the_read_only_example() {
     let agent = scripted(builder(), vec![]).build().unwrap();
     agent.check().await.unwrap();
-    let router = router(AgentRuntime::new(agent, Some(test_sessions())));
+    let router = router(AgentRuntime::new(agent, test_sessions()));
     let (status, listing) = send(&router, "GET", "/api/v1/agent/tools", None).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(listing["model"], "test-model");
@@ -133,7 +133,7 @@ async fn write_tools_wait_for_approval() {
         json!({"choices": [{"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "Created the draft."}}]}),
     ];
     let agent = scripted(builder().tool(write), model).build().unwrap();
-    let router = router(AgentRuntime::new(agent, Some(test_sessions())));
+    let router = router(AgentRuntime::new(agent, test_sessions()));
     let (status, paused) = send(&router, "POST", "/api/v1/agent/tasks", Some(json!({"task": "Draft a grocery note"}))).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(paused["answer"], Value::Null);

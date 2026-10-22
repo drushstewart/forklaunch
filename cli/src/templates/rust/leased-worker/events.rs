@@ -1,7 +1,8 @@
 //! Shared typed input and authenticated event contract for publishers/processors.
 use forklaunch_core::domain::BlueprintError;
 use forklaunch_core::domain::BlueprintResult;
-use forklaunch_core::encryption::{EnvelopeKey, EnvelopeProfile};
+use forklaunch_core::config;
+use forklaunch_core::encryption::{EnvelopeError, EnvelopeKey, EnvelopeProfile};
 use forklaunch_worker_interface::{EncryptedChannel, SealedEvent};
 use forklaunch_worker_interface::Job;
 use uuid::Uuid;
@@ -10,7 +11,6 @@ use zeroize::Zeroizing;
 pub use super::event_contract::{WorkEvent, WorkInput};
 use crate::WORKER_NAME;
 use forklaunch_worker_interface::{BrokerTransportPolicy, JobContext, ProcessorError};
-use std::env::{self, VarError};
 
 /// The producer always authenticates and encrypts before returning transport data.
 pub fn seal_work(
@@ -45,30 +45,31 @@ struct EventBoundary {
     tenant: Uuid,
     queue: String,
 }
+/// Missing settings are named; every other failure stays opaque.
 fn boundary() -> BlueprintResult<EventBoundary> {
-    let tenant = env::var("TENANT_ID")
-        .map_err(|_| rejected())?
-        .parse::<Uuid>()
-        .map_err(|_| rejected())?;
+    let tenant: Uuid = config::required("TENANT_ID")?;
     if tenant.is_nil() {
         return Err(rejected());
     }
     let profile = EnvelopeProfile::new(WORKER_NAME).map_err(|_| rejected())?;
     Ok(EventBoundary {
-        key: EnvelopeKey::from_env(profile).map_err(|_| rejected())?,
+        key: EnvelopeKey::from_env(profile).map_err(|error| match error {
+            EnvelopeError::Configuration(error) => error.into(),
+            _ => rejected(),
+        })?,
         channel: EncryptedChannel::new("work-v1").map_err(|_| rejected())?,
         tenant,
-        queue: env::var("WORKER_QUEUE").unwrap_or_else(|_| WORKER_NAME.into()),
+        queue: config::required("WORKER_QUEUE")?,
     })
 }
 /// Transport admission is separate from payload encryption. Remote brokers
-/// require verified TLS unless the operator explicitly selects local development.
+/// require verified TLS unless the required `WORKER_ALLOW_PLAINTEXT_DEVELOPMENT`
+/// explicitly selects local development.
 pub fn transport_policy() -> BlueprintResult<BrokerTransportPolicy> {
-    match env::var("WORKER_ALLOW_PLAINTEXT_DEVELOPMENT").as_deref() {
-        Ok("true") => Ok(BrokerTransportPolicy::PlaintextDevelopment),
-        Ok("false") | Err(VarError::NotPresent) => {
-            Ok(BrokerTransportPolicy::default())
-        }
+    let allow: String = config::required("WORKER_ALLOW_PLAINTEXT_DEVELOPMENT")?;
+    match allow.as_str() {
+        "true" => Ok(BrokerTransportPolicy::PlaintextDevelopment),
+        "false" => Ok(BrokerTransportPolicy::default()),
         _ => Err(rejected()),
     }
 }

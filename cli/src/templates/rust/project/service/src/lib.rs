@@ -117,9 +117,8 @@ pub fn router(state: AppState) -> ForkLaunchRouter {
     })
 }
 
-#[must_use]
-pub fn openapi_json() -> String {
-    openapi_json_with_config(&ServiceConfig::from_env())
+pub fn openapi_json() -> Result<String> {
+    Ok(openapi_json_with_config(&ServiceConfig::from_env()?))
 }
 
 #[must_use]
@@ -178,8 +177,8 @@ pub fn write_contract_artifacts(
     contract_output: impl AsRef<Path>,
     openapi_output: impl AsRef<Path>,
 ) -> io::Result<()> {
+    // Export reads no runtime settings; served documents add configured servers.
     let registry = contract_registry();
-    let config = ServiceConfig::from_env();
 
     if let Some(parent) = contract_output.as_ref().parent() {
         fs::create_dir_all(parent)?;
@@ -188,7 +187,7 @@ pub fn write_contract_artifacts(
 
     openapi::write_openapi_json(
         &registry,
-        &openapi_options(&registry, &config),
+        &OpenApiOptions::from_registry(&registry),
         openapi_output,
     )
 }

@@ -8,9 +8,9 @@ REDIS_URL=redis://localhost:6379/ WORKER_NAMESPACE=my-app TENANT_ID=11111111-111
 
 Configure Redis persistence and replication for your durability requirements. Namespace and tenant keys provide logical isolation; configure Redis ACLs separately. Bind `TENANT_ID` and `WORKER_NAMESPACE` from trusted application configuration. The adapter uses a standalone Redis connection manager; Redis Cluster redirection support is not implemented. The example env file is not loaded automatically.
 
-With runtime configuration set, `--enqueue ID JSON` submits a job and `--inspect ID` reports its state without the payload or lease token. `WORKER_QUEUE` defaults to the crate name. Timing and retry settings are listed in `.env.example`; invalid values fail startup. Contract/OpenAPI export requires no Redis connection.
+With runtime configuration set, `--enqueue ID JSON` submits a job and `--inspect ID` reports its state without the payload or lease token. `WORKER_QUEUE`, timing and retry settings are required and listed in `.env.example`; a missing or invalid value fails startup with its name. Contract/OpenAPI export requires no Redis connection.
 
-The runner allows `WORKER_CONCURRENCY` simultaneous handler batches per process (1–256, default 1). `WORKER_BATCH_SIZE` defaults to 1; their product must not exceed 1000. On shutdown it stops claiming jobs, renews each active lease, and waits up to `WORKER_DRAIN_MS` for all active handlers. A timeout cancels the handler and leaves the job recoverable after lease expiry. Keep all handler work inside its returned future. Delivery is at least once; external side effects must be idempotent. Application error codes are retained as failure reasons; detailed error reporting belongs in the handler.
+The runner allows `WORKER_CONCURRENCY` simultaneous handler batches per process (1–256). `WORKER_BATCH_SIZE` sets the batch size; their product must not exceed 1000. On shutdown it stops claiming jobs, renews each active lease, and waits up to `WORKER_DRAIN_MS` for all active handlers. A timeout cancels the handler and leaves the job recoverable after lease expiry. Keep all handler work inside its returned future. Delivery is at least once; external side effects must be idempotent. Application error codes are retained as failure reasons; detailed error reporting belongs in the handler.
 
 Administration commands use the configured tenant and queue:
 
@@ -23,7 +23,7 @@ cargo run -p {{{name}}} -- --purge-failed 2592000 100
 
 Listing omits payloads and lease tokens. Retry acts only on a failed job and resets its attempts and failure reason using the configured retry budget. Purge permanently removes at most the requested number of completed or failed jobs older than the given age in seconds; queued and processing jobs are preserved. Limits must be 1–1000 and ages must be positive and at most 3650 days. Purged identities may be submitted again. Automatic retention is disabled by default; explicit purge commands remain available.
 
-To enable periodic retention, set `WORKER_COMPLETED_RETENTION_SECONDS` and/or `WORKER_FAILED_RETENTION_SECONDS` to a positive age. An unset age keeps that status indefinitely. `WORKER_RETENTION_INTERVAL_MS` defaults to 60000, `WORKER_RETENTION_BATCH_LIMIT` to 100 per status per tick, and `WORKER_RETENTION_TIMEOUT_MS` to 5000. Invalid settings fail startup. Cleanup begins after the first interval, stops on shutdown, and never purges queued or processing jobs. A cleanup failure stops new claims and drains active handlers before the worker exits with an error.
+To enable periodic retention, set `WORKER_COMPLETED_RETENTION_SECONDS` and/or `WORKER_FAILED_RETENTION_SECONDS` to a positive age. An unset age keeps that status indefinitely. Enabled retention also requires `WORKER_RETENTION_INTERVAL_MS`, `WORKER_RETENTION_BATCH_LIMIT` (per status per tick) and `WORKER_RETENTION_TIMEOUT_MS`; `.env.example` lists 60000, 100 and 5000. Missing or invalid settings fail startup. Cleanup begins after the first interval, stops on shutdown, and never purges queued or processing jobs. A cleanup failure stops new claims and drains active handlers before the worker exits with an error.
 
 Set `WORKER_HTTP_ADDR=127.0.0.1:8081` to opt into internal `GET /health` and `/ready`. Health returns process state; readiness is 200 when running and 503 while paused or draining, without probing storage. Controls are disabled unless `WORKER_CONTROL_TOKEN` contains a random secret of 32–4096 printable ASCII characters without whitespace. With `Authorization: Bearer <secret>`, POST to `/control/pause`, `/control/resume`, or `/control/drain`. Accepted commands return 202; pause/resume after drain return 409. Pause preserves active work; drain is irreversible and stops retention immediately. Health remains available during drain. HTTP is disabled by default; a token without an address fails startup. Bind this plain HTTP listener to a trusted interface and protect remote access through deployment controls or a TLS proxy. Controls affect this process only, not other replicas. Internal management endpoints are separate from application contracts and SDKs.
 
@@ -33,7 +33,7 @@ Set `WORKER_BATCH_SIZE` to 1–1000 to claim currently eligible jobs in batches;
 
 Set `WORKER_SIGNAL_REDIS_URL` and `WORKER_SIGNAL_NAMESPACE` on every participating
 worker to enable Redis Pub/Sub controls. The group is scoped by signal namespace,
-trusted `TENANT_ID`, and `WORKER_QUEUE` (defaults to this worker's name). PostgreSQL
+trusted `TENANT_ID`, and `WORKER_QUEUE` (this worker's name in `.env.example`). PostgreSQL
 workers may use a separate Redis deployment for controls. Without these variables,
 HTTP controls remain process-local and no signal connection is opened.
 

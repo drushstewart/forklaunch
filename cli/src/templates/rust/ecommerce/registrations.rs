@@ -61,8 +61,11 @@ pub async fn stores(config: &StoreConfig) -> Result<Stores> {
 pub async fn register(config: ServiceConfig, stores: Stores) -> Result<AppState> {
     let auth = config.module_auth()?;
     let stripe = &config.stripe;
-    let transport = ProviderHttpClient::new(&stripe.api_base, Duration::from_secs(15), 1024 * 1024)?;
-    let mut backend = EcommerceBackend::new(stores.store, stores.queue, StripeClient::with_transport(stripe.api_key.clone(), transport)?)
+    let client = match &stripe.api_base {
+        Some(base) => StripeClient::with_transport(stripe.api_key.clone(), ProviderHttpClient::new(base, Duration::from_secs(15), 1024 * 1024)?)?,
+        None => StripeClient::new(stripe.api_key.clone())?,
+    };
+    let mut backend = EcommerceBackend::new(stores.store, stores.queue, client)
         .with_stripe_webhook(StripeWebhookVerifier::new(stripe.webhook_secret.clone())?);
     if let Some((account, fee)) = stripe.connect.clone() {
         backend = backend.with_connect(StripeConnect::new(account, fee)?);

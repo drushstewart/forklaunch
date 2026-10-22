@@ -439,6 +439,8 @@ fn ensure_ecommerce_compose(root: &Path, name: &str, dryrun: bool) -> Result<()>
             "STRIPE_WEBHOOK_SECRET",
             "${STRIPE_WEBHOOK_SECRET:?Configure Stripe webhook verification}",
         ),
+        ("WORKER_MAX_ATTEMPTS", "3"),
+        ("WORKER_BACKOFF_SECONDS", "30"),
     ] {
         env.entry(key.to_owned())
             .or_insert_with(|| value.to_owned());
@@ -470,10 +472,23 @@ fn ensure_ecommerce_compose(root: &Path, name: &str, dryrun: bool) -> Result<()>
                     | "ENCRYPTION_KEY"
                     | "LEGACY_ENCRYPTION_KEYS"
                     | "RUST_LOG"
+                    | "WORKER_MAX_ATTEMPTS"
+                    | "WORKER_BACKOFF_SECONDS"
             ) || key.starts_with("OTEL_")
             {
                 worker_env.insert(key.clone(), value.clone());
             }
+        }
+        // Runner settings are required at startup; these match `.env.example`.
+        for (key, value) in [
+            ("WORKER_CONCURRENCY", "1"),
+            ("WORKER_BATCH_SIZE", "1"),
+            ("WORKER_POLL_MS", "250"),
+            ("WORKER_LEASE_MS", "30000"),
+            ("WORKER_RENEW_MS", "10000"),
+            ("WORKER_DRAIN_MS", "30000"),
+        ] {
+            worker_env.insert(key.to_owned(), value.to_owned());
         }
         worker_env.insert("WORKER_HTTP_ADDR".to_owned(), "0.0.0.0:9090".to_owned());
         worker.environment = Some(worker_env);
@@ -551,6 +566,7 @@ fn ensure_billing_compose(
             "JWKS_PUBLIC_KEY_URL",
             "${BILLING_JWKS_PUBLIC_KEY_URL:?Configure trusted JWKS}",
         ),
+        ("BILLING_DATABASE_BACKUP", "false"),
     ] {
         env.entry(key.to_owned())
             .or_insert_with(|| value.to_owned());
@@ -593,6 +609,8 @@ fn ensure_iam_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
     });
     env.entry("TENANT_ID".to_owned())
         .or_insert_with(|| "${IAM_TENANT_ID:?Configure a trusted tenant}".to_owned());
+    env.entry("IAM_DIRECTORY_AUTHORIZATION".to_owned())
+        .or_insert_with(|| "jwt-claims".to_owned());
     for (key, value) in [
         (
             "ENCRYPTION_KEY",

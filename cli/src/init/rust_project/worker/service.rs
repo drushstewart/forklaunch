@@ -314,7 +314,7 @@ pub async fn enqueue(_state:State<AppState>,tenant:Uuid,input:WorkInput)->Result
     let queue_expression = if apalis {
         "env!(\"CARGO_PKG_NAME\").to_owned()"
     } else {
-        "env::var(\"WORKER_QUEUE\").unwrap_or_else(|_|env!(\"CARGO_PKG_NAME\").to_owned())"
+        "config::required::<String>(\"WORKER_QUEUE\").map_err(|_|EndpointError::Unavailable)?"
     };
     files.push(RenderedTemplate {path:dir.join("domain/services/producer.rs"),context:None,content:format!(r#"
 {imports}
@@ -355,10 +355,10 @@ pub async fn enqueue(tenant:Uuid,input:WorkInput)->Result<AcceptedJob,EndpointEr
 fn leased_submit(backend: Backend) -> (&'static str, &'static str) {
     match backend {
         Backend::Postgres => (
-            "use std::{env,error::Error};\nuse forklaunch_core::persistence::TenantContext;\nuse forklaunch_worker_database::postgres::PostgresWorkerQueue;\nuse forklaunch_worker_interface::{AsyncWorkerQueue,Job,RetryPolicy};\nuse sqlx::postgres::PgPoolOptions;\nuse crate::consumer::events;",
+            "use std::error::Error;\nuse forklaunch_core::{config,persistence::TenantContext};\nuse forklaunch_worker_database::postgres::PostgresWorkerQueue;\nuse forklaunch_worker_interface::{AsyncWorkerQueue,Job,RetryPolicy};\nuse sqlx::postgres::PgPoolOptions;\nuse crate::consumer::events;",
             r#"
     let submit = async {
-        let url=env::var("DATABASE_URL")?;
+        let url=config::required::<String>("DATABASE_URL")?;
         events::transport_policy()?.postgres(&url)?;
         let pool=PgPoolOptions::new().max_connections(2).connect(&url).await?;
         let queue=PostgresWorkerQueue::new(pool.clone(),TenantContext::new(tenant.to_string())?,RetryPolicy::new(3,30)).await?;
@@ -371,12 +371,12 @@ fn leased_submit(backend: Backend) -> (&'static str, &'static str) {
 "#,
         ),
         Backend::Redis => (
-            "use std::{env,error::Error};\nuse forklaunch_core::persistence::TenantContext;\nuse forklaunch_worker_interface::{AsyncWorkerQueue,Job,RetryPolicy};\nuse forklaunch_worker_redis::leased::RedisLeasedQueue;\nuse crate::consumer::events;",
+            "use std::error::Error;\nuse forklaunch_core::{config,persistence::TenantContext};\nuse forklaunch_worker_interface::{AsyncWorkerQueue,Job,RetryPolicy};\nuse forklaunch_worker_redis::leased::RedisLeasedQueue;\nuse crate::consumer::events;",
             r#"
     let submit = async {
-        let url=env::var("REDIS_URL")?;
+        let url=config::required::<String>("REDIS_URL")?;
         events::transport_policy()?.redis(&url)?;
-        let queue=RedisLeasedQueue::connect(&url,&env::var("WORKER_NAMESPACE")?,TenantContext::new(tenant.to_string())?,RetryPolicy::new(3,30)).await?;
+        let queue=RedisLeasedQueue::connect(&url,&config::required::<String>("WORKER_NAMESPACE")?,TenantContext::new(tenant.to_string())?,RetryPolicy::new(3,30)).await?;
         queue.enqueue(Job::new(operation.to_string(),&queue_name,serde_json::to_string(&event)?)).await?;
         Ok::<(),Box<dyn Error>> (())
     }.await;
@@ -384,11 +384,11 @@ fn leased_submit(backend: Backend) -> (&'static str, &'static str) {
 "#,
         ),
         Backend::Kafka => (
-            "use std::{env,error::Error};\nuse forklaunch_core::persistence::TenantContext;\nuse forklaunch_worker_interface::Job;\nuse forklaunch_worker_kafka::client::{KafkaOptions,KafkaProducer};\nuse crate::consumer::events;",
+            "use std::error::Error;\nuse forklaunch_core::{config,persistence::TenantContext};\nuse forklaunch_worker_interface::Job;\nuse forklaunch_worker_kafka::client::{KafkaOptions,KafkaProducer};\nuse crate::consumer::events;",
             r#"
     let submit = async {
-        let mut options=KafkaOptions::new(env::var("KAFKA_BROKERS")?,env::var("WORKER_NAMESPACE")?,TenantContext::new(tenant.to_string())?,&queue_name,env::var("KAFKA_PUBLISHER_ID")?);
-        if let Ok(properties)=env::var("KAFKA_CLIENT_PROPERTIES") { options.properties=serde_json::from_str(&properties)?; }
+        let mut options=KafkaOptions::new(config::required::<String>("KAFKA_BROKERS")?,config::required::<String>("WORKER_NAMESPACE")?,TenantContext::new(tenant.to_string())?,&queue_name,config::required::<String>("KAFKA_PUBLISHER_ID")?);
+        if let Some(properties)=config::optional::<String>("KAFKA_CLIENT_PROPERTIES")? { options.properties=serde_json::from_str(&properties)?; }
         events::transport_policy()?.kafka(&options.brokers,&options.properties)?;
         KafkaProducer::connect(options).await?.enqueue(Job::new(operation.to_string(),&queue_name,serde_json::to_string(&event)?)).await?;
         Ok::<(),Box<dyn Error>> (())

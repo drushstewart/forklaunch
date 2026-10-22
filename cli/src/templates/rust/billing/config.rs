@@ -5,8 +5,8 @@ use crate::error::Result;
 use forklaunch_axum::module_auth::HmacJwksAuth;
 use forklaunch_billing_stripe::http::{BillingRequestDateProfile, profiles};
 use forklaunch_core::auth::jwt::{RemoteJwks, RemoteJwksConfig};
+use forklaunch_core::config;
 use jsonwebtoken::{Algorithm, Validation};
-use std::env;
 
 #[derive(Clone)]
 pub struct ServiceConfig {
@@ -33,30 +33,32 @@ pub struct StripeConfig {
     pub instance_id: Option<String>,
     pub instance_key: Option<String>,
 }
-
-fn non_empty(name: &str) -> Option<String> {
-    env::var(name).ok().filter(|value| !value.is_empty())
-}
 {{/stripe}}
 impl ServiceConfig {
+    /// Every setting is required at startup; a missing or malformed variable is
+    /// an error naming it. The JWT issuer/audience constraints are optional{{#stripe}},
+    /// and Stripe needs either a key or the complete managed gateway settings{{/stripe}}.
     pub fn from_env() -> Result<Self> {
         Ok(Self {
-            host: env::var("HOST").or_else(|_| env::var("SERVICE_HOST")).unwrap_or_else(|_| "127.0.0.1".to_owned()),
-            port: env::var("SERVICE_PORT").or_else(|_| env::var("PORT")).unwrap_or_else(|_| "8000".to_owned()).parse()?,
-            tenant_id: env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?,
-            hmac_secret: env::var("HMAC_SECRET_KEY").map_err(|_| "HMAC_SECRET_KEY is required")?,
-            jwks_url: env::var("JWKS_PUBLIC_KEY_URL").map_err(|_| "JWKS_PUBLIC_KEY_URL is required")?,
-            jwt_issuer: env::var("JWT_ISSUER").ok(),
-            jwt_audience: env::var("JWT_AUDIENCE").ok(),
+            host: config::required("HOST")?,
+            port: config::required("PORT")?,
+            tenant_id: config::required("TENANT_ID")?,
+            hmac_secret: config::required("HMAC_SECRET_KEY")?,
+            jwks_url: config::required("JWKS_PUBLIC_KEY_URL")?,
+            jwt_issuer: config::optional("JWT_ISSUER")?,
+            jwt_audience: config::optional("JWT_AUDIENCE")?,
 {{#stripe}}            stripe: StripeConfig {
-                api_key: non_empty("STRIPE_API_KEY").or_else(|| non_empty("STRIPE_SECRET_KEY")),
-                api_base: env::var("STRIPE_API_BASE").ok(),
-                webhook_secret: non_empty("STRIPE_WEBHOOK_SECRET"),
-                gateway_url: non_empty("PLATFORM_GATEWAY_URL"),
-                instance_id: non_empty("INSTANCE_ID"),
-                instance_key: non_empty("INSTANCE_HMAC_KEY"),
+                api_key: match config::optional("STRIPE_API_KEY")? {
+                    Some(key) => Some(key),
+                    None => config::optional("STRIPE_SECRET_KEY")?,
+                },
+                api_base: config::optional("STRIPE_API_BASE")?,
+                webhook_secret: config::optional("STRIPE_WEBHOOK_SECRET")?,
+                gateway_url: config::optional("PLATFORM_GATEWAY_URL")?,
+                instance_id: config::optional("INSTANCE_ID")?,
+                instance_key: config::optional("INSTANCE_HMAC_KEY")?,
             },
-{{/stripe}}            database_backup: env::var("BILLING_DATABASE_BACKUP").unwrap_or_else(|_| "false".into()).parse()?,
+{{/stripe}}            database_backup: config::required("BILLING_DATABASE_BACKUP")?,
             request_dates: profiles::request_date_profile_from_env()?,
         })
     }

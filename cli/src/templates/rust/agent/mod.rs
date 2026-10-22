@@ -45,33 +45,30 @@ pub fn builder() -> AgentBuilder {
 #[derive(Clone)]
 pub struct AgentRuntime {
     pub agent: Agent,
-    /// `None` until `JWKS_PUBLIC_KEY_URL` is set; the routes then answer 503.
-    pub auth: Option<SessionPolicy>,
+    pub auth: SessionPolicy,
 }
 
 impl AgentRuntime {
     #[must_use]
-    pub fn new(agent: Agent, auth: Option<SessionPolicy>) -> Self {
+    pub fn new(agent: Agent, auth: SessionPolicy) -> Self {
         Self { agent, auth }
     }
 
-    /// The agent with JWT auth from `JWKS_PUBLIC_KEY_URL`.
+    /// The agent with JWT auth from the required `JWKS_PUBLIC_KEY_URL`.
     /// # Errors
-    /// Rejects invalid tool definitions.
+    /// Names a missing or invalid JWKS setting and rejects invalid tool definitions.
     pub fn from_env() -> Result<Self, AppError> {
         let agent = builder()
             .build()
             .map_err(|error| AppError::InvalidConfig(error.to_string()))?;
-        Ok(Self::new(agent, jwt_policy_from_env().ok()))
+        let auth = jwt_policy_from_env().map_err(|error| AppError::InvalidConfig(error.to_string()))?;
+        Ok(Self::new(agent, auth))
     }
 
-    /// Startup checks: trusted JWKS is configured and no tool names collide.
+    /// Startup check: no tool names collide.
     /// # Errors
-    /// Returns the missing setting or the collision.
+    /// Returns the collision.
     pub async fn check(&self) -> Result<(), Box<dyn Error>> {
-        if self.auth.is_none() {
-            return Err("JWKS_PUBLIC_KEY_URL must be a valid http(s) URL for the agent routes".into());
-        }
         self.agent.check().await?;
         Ok(())
     }
@@ -91,8 +88,7 @@ impl EndpointPolicy<AppState> for AgentAuth {
         state: &AppState,
         route: &RouteContract,
     ) -> Result<AuthenticatedSession, EndpointError> {
-        let auth = state.agent.auth.as_ref().ok_or(EndpointError::Unavailable)?;
-        auth.authorize(parts, state, route).await
+        state.agent.auth.authorize(parts, state, route).await
     }
 }
 

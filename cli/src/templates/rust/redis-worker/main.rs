@@ -1,7 +1,7 @@
 mod signals;
 use std::{env, time::Duration, error::Error};
 use forklaunch_worker_database::http::HttpConfig;
-use forklaunch_core::{persistence::TenantContext, telemetry::otlp::TelemetryRuntime};
+use forklaunch_core::{config, persistence::TenantContext, telemetry::otlp::TelemetryRuntime};
 use forklaunch_worker_database::runner::RunnerConfig;
 use forklaunch_worker_redis::leased::RedisLeasedQueue;
 use forklaunch_worker_database::retention::RetentionPolicy;
@@ -11,10 +11,10 @@ use serde_json::Value;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
+    if matches!(config::optional::<String>("FORKLAUNCH_MODE")?.as_deref(), Some("openapi" | "contract")) {
         write_contract_artifacts(
-            env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/contract.json").to_owned()),
-            env::var("FORKLAUNCH_OPENAPI_OUTPUT").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/openapi.json").to_owned()),
+            config::required::<String>("FORKLAUNCH_CONTRACT_OUTPUT")?,
+            config::required::<String>("FORKLAUNCH_OPENAPI_OUTPUT")?,
         )?;
         return Ok(());
     }
@@ -45,16 +45,16 @@ async fn run() -> Result<(), Box<dyn Error>> {
         signals::publish(&args[1]).await?;
         return Ok(());
     }
-    let url = env::var("REDIS_URL").map_err(|_| "REDIS_URL is required")?;
+    let url = config::required::<String>("REDIS_URL")?;
     events::transport_policy()?.redis(&url)?;
-    let namespace = env::var("WORKER_NAMESPACE").map_err(|_| "WORKER_NAMESPACE is required")?;
-    let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
+    let namespace = config::required::<String>("WORKER_NAMESPACE")?;
+    let tenant = TenantContext::new(config::required::<String>("TENANT_ID")?)?;
     let policy = RetryPolicy::new(
-        u32::try_from(number("WORKER_MAX_ATTEMPTS", 3)?)?,
-        number("WORKER_BACKOFF_SECONDS", 30)?,
+        config::required("WORKER_MAX_ATTEMPTS")?,
+        config::required("WORKER_BACKOFF_SECONDS")?,
     );
     let queue = RedisLeasedQueue::connect(&url, &namespace, tenant, policy).await?;
-    let queue_name = env::var("WORKER_QUEUE").unwrap_or_else(|_| WORKER_NAME.to_owned());
+    let queue_name = config::required::<String>("WORKER_QUEUE")?;
     if args.first().map(String::as_str) == Some("--enqueue") {
         queue.enqueue(Job::new(&args[1], &queue_name, events::seal(&args[1], &args[2])?)).await?;
         println!("job enqueued");
@@ -74,12 +74,12 @@ async fn run() -> Result<(), Box<dyn Error>> {
     } else {
         let config = RunnerConfig {
             queue: queue_name,
-            concurrency: usize::try_from(number("WORKER_CONCURRENCY", 1)?)?,
-            batch_size: usize::try_from(number("WORKER_BATCH_SIZE", 1)?)?,
-            poll_interval: Duration::from_millis(number("WORKER_POLL_MS", 250)?),
-            lease_duration: Duration::from_millis(number("WORKER_LEASE_MS", 30000)?),
-            renew_interval: Duration::from_millis(number("WORKER_RENEW_MS", 10000)?),
-            drain_timeout: Duration::from_millis(number("WORKER_DRAIN_MS", 30000)?),
+            concurrency: config::required("WORKER_CONCURRENCY")?,
+            batch_size: config::required("WORKER_BATCH_SIZE")?,
+            poll_interval: Duration::from_millis(config::required("WORKER_POLL_MS")?),
+            lease_duration: Duration::from_millis(config::required("WORKER_LEASE_MS")?),
+            renew_interval: Duration::from_millis(config::required("WORKER_RENEW_MS")?),
+            drain_timeout: Duration::from_millis(config::required("WORKER_DRAIN_MS")?),
         };
         config.validate()?;
         let retention = retention_policy()?;
@@ -102,17 +102,8 @@ fn snapshot_json(snapshot: JobSnapshot) -> Value {
 }
 
 fn http_config() -> Result<Option<HttpConfig>, Box<dyn Error>> {
-    let address = match env::var("WORKER_HTTP_ADDR") {
-        Ok(value) => Some(value.parse()?),
-        Err(env::VarError::NotPresent) => None,
-        Err(error) => return Err(error.into()),
-    };
-    let control_token = match env::var("WORKER_CONTROL_TOKEN") {
-        Ok(value) => Some(value),
-        Err(env::VarError::NotPresent) => None,
-        Err(error) => return Err(error.into()),
-    };
-    let Some(address) = address else {
+    let control_token: Option<String> = config::optional("WORKER_CONTROL_TOKEN")?;
+    let Some(address) = config::optional("WORKER_HTTP_ADDR")? else {
         if control_token.is_some() { return Err("WORKER_CONTROL_TOKEN requires WORKER_HTTP_ADDR".into()); }
         return Ok(None);
     };
@@ -121,32 +112,23 @@ fn http_config() -> Result<Option<HttpConfig>, Box<dyn Error>> {
     Ok(Some(config))
 }
 
+/// Retention is off unless an age is set; enabled retention requires its
+/// interval, batch limit and timeout settings.
 fn retention_policy() -> Result<Option<RetentionPolicy>, Box<dyn Error>> {
+    let completed_age = config::optional("WORKER_COMPLETED_RETENTION_SECONDS")?.map(Duration::from_secs);
+    let failed_age = config::optional("WORKER_FAILED_RETENTION_SECONDS")?.map(Duration::from_secs);
+    if completed_age.is_none() && failed_age.is_none() {
+        return Ok(None);
+    }
     let policy = RetentionPolicy {
-        completed_age: optional_number("WORKER_COMPLETED_RETENTION_SECONDS")?.map(Duration::from_secs),
-        failed_age: optional_number("WORKER_FAILED_RETENTION_SECONDS")?.map(Duration::from_secs),
-        interval: Duration::from_millis(number("WORKER_RETENTION_INTERVAL_MS", 60000)?),
-        batch_limit: usize::try_from(number("WORKER_RETENTION_BATCH_LIMIT", 100)?)?,
-        operation_timeout: Duration::from_millis(number("WORKER_RETENTION_TIMEOUT_MS", 5000)?),
+        completed_age,
+        failed_age,
+        interval: Duration::from_millis(config::required("WORKER_RETENTION_INTERVAL_MS")?),
+        batch_limit: config::required("WORKER_RETENTION_BATCH_LIMIT")?,
+        operation_timeout: Duration::from_millis(config::required("WORKER_RETENTION_TIMEOUT_MS")?),
     };
     policy.validate()?;
-    Ok((policy.completed_age.is_some() || policy.failed_age.is_some()).then_some(policy))
-}
-
-fn optional_number(name: &str) -> Result<Option<u64>, Box<dyn Error>> {
-    match env::var(name) {
-        Ok(value) => Ok(Some(value.parse()?)),
-        Err(env::VarError::NotPresent) => Ok(None),
-        Err(error) => Err(error.into()),
-    }
-}
-
-fn number(name: &str, default: u64) -> Result<u64, Box<dyn Error>> {
-    match env::var(name) {
-        Ok(value) => Ok(value.parse()?),
-        Err(env::VarError::NotPresent) => Ok(default),
-        Err(error) => Err(error.into()),
-    }
+    Ok(Some(policy))
 }
 
 async fn shutdown() {

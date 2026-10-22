@@ -11,7 +11,8 @@ use forklaunch_axum::native::{ContractRouter, EndpointError, EndpointPolicy, Pol
 use forklaunch_core::http::platform_events::VerifiedPlatformEvent;
 use forklaunch_core::contract::RouteContract;
 use crate::registrations::AppState;
-use std::{sync::{Arc, OnceLock}, env};
+use forklaunch_core::config;
+use std::sync::{Arc, OnceLock};
 __CLIENT_IMPORTS__
 fn instance_gateway() -> BlueprintResult<InstanceGatewayClient> {
     // Reuse the connection pool after the first successful resolution. A
@@ -49,8 +50,10 @@ impl EndpointPolicy<AppState> for CallbackPolicy {
 pub trait ManagedCapabilitiesRouterExt { fn with_managed_capabilities(self) -> Result<Self, String> where Self: Sized; }
 impl ManagedCapabilitiesRouterExt for ContractRouter<AppState> {
     fn with_managed_capabilities(self) -> Result<Self, String> {
-        let verifier = Arc::new(env::var("INSTANCE_HMAC_KEY").ok().and_then(|key|
-            PlatformEventVerifier::new(key, nonce_store::store()).ok()));
+        // Platform callbacks are rejected until the managed INSTANCE_HMAC_KEY is set.
+        let key: Option<String> = config::optional("INSTANCE_HMAC_KEY").map_err(|error| error.to_string())?;
+        let verifier = Arc::new(key.map(|key| PlatformEventVerifier::new(key, nonce_store::store()))
+            .transpose().map_err(|error| error.to_string())?);
         self.bind_authorized(contracts::platform_events::endpoint(), CallbackPolicy(verifier), |_, context, _body| async move {
             let event = context.event.ok_or(EndpointError::Unauthorized)?;
             let result: BlueprintResult<()> = match context.feature.as_str() {

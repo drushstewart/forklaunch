@@ -11,7 +11,7 @@ pub async fn run() -> ApplicationResult {
 async fn start() -> ApplicationResult {
     let arguments: Vec<_> = env::args().skip(1).collect();
     if !arguments.is_empty() { return Err("Expected no arguments".into()); }
-    let mut config = ServiceConfig::from_env();
+    let mut config = ServiceConfig::from_env()?;
     config.validate()?;
     let listener = TcpListener::bind(config.bind_addr()).await?;
     config.set_bound_port(listener.local_addr()?.port());

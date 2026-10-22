@@ -1,6 +1,6 @@
 mod signals;
 use std::{env, time::Duration, error::Error};
-use forklaunch_core::{persistence::TenantContext, telemetry::otlp::TelemetryRuntime};
+use forklaunch_core::{config, persistence::TenantContext, telemetry::otlp::TelemetryRuntime};
 use forklaunch_worker_database::http::HttpConfig;
 use forklaunch_worker_interface::{Job, RetryPolicy};
 use forklaunch_worker_kafka::client::{KafkaInspector, KafkaOptions, KafkaProducer, KafkaRunnerConfig, KafkaWorker, initialize_topics};
@@ -8,10 +8,10 @@ use {{crate_module}}::{handler::ApplicationHandler, events, WORKER_NAME, write_c
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
+    if matches!(config::optional::<String>("FORKLAUNCH_MODE")?.as_deref(), Some("openapi" | "contract")) {
         write_contract_artifacts(
-            env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/contract.json").to_owned()),
-            env::var("FORKLAUNCH_OPENAPI_OUTPUT").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/openapi.json").to_owned()),
+            config::required::<String>("FORKLAUNCH_CONTRACT_OUTPUT")?,
+            config::required::<String>("FORKLAUNCH_OPENAPI_OUTPUT")?,
         )?;
         return Ok(());
     }
@@ -40,25 +40,26 @@ async fn run() -> Result<(), Box<dyn Error>> {
     }
     if args.first().map(String::as_str) == Some("--signal") { signals::publish(&args[1]).await?; return Ok(()); }
     let mut options = KafkaOptions::new(
-        env::var("KAFKA_BROKERS").map_err(|_| "KAFKA_BROKERS is required")?,
-        env::var("WORKER_NAMESPACE").map_err(|_| "WORKER_NAMESPACE is required")?,
-        TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?,
-        env::var("WORKER_QUEUE").unwrap_or_else(|_| WORKER_NAME.to_owned()),
-        if args.is_empty() { env::var("KAFKA_TRANSACTIONAL_ID").map_err(|_| "KAFKA_TRANSACTIONAL_ID is required for each worker replica")? }
-        else if args[0] == "--enqueue" { env::var("KAFKA_PUBLISHER_ID").map_err(|_| "KAFKA_PUBLISHER_ID is required for each independent publisher")? }
+        config::required::<String>("KAFKA_BROKERS")?,
+        config::required::<String>("WORKER_NAMESPACE")?,
+        TenantContext::new(config::required::<String>("TENANT_ID")?)?,
+        config::required::<String>("WORKER_QUEUE")?,
+        if args.is_empty() { config::required::<String>("KAFKA_TRANSACTIONAL_ID")? }
+        else if args[0] == "--enqueue" { config::required::<String>("KAFKA_PUBLISHER_ID")? }
         else { "inspection".to_owned() },
     );
-    options.group = env::var("KAFKA_GROUP_ID").unwrap_or_else(|_| "workers".to_owned());
-    options.operation_timeout = Duration::from_millis(number("KAFKA_OPERATION_TIMEOUT_MS", 5000)?);
-    options.session_timeout = Duration::from_millis(number("KAFKA_SESSION_TIMEOUT_MS", 10000)?);
-    options.max_payload_bytes = usize::try_from(number("WORKER_MAX_PAYLOAD_BYTES", 1048576)?)?;
-    if let Ok(value) = env::var("KAFKA_CLIENT_PROPERTIES") {
+    options.group = config::required("KAFKA_GROUP_ID")?;
+    options.operation_timeout = Duration::from_millis(config::required("KAFKA_OPERATION_TIMEOUT_MS")?);
+    options.session_timeout = Duration::from_millis(config::required("KAFKA_SESSION_TIMEOUT_MS")?);
+    options.max_payload_bytes = config::required("WORKER_MAX_PAYLOAD_BYTES")?;
+    // Optional librdkafka properties (for example SASL); unset uses none.
+    if let Some(value) = config::optional::<String>("KAFKA_CLIENT_PROPERTIES")? {
         options.properties = serde_json::from_str(&value).map_err(|_| "KAFKA_CLIENT_PROPERTIES must be a JSON object of string properties")?;
     }
     events::transport_policy()?.kafka(&options.brokers, &options.properties)?;
     options.validate()?;
     match args.first().map(String::as_str) {
-        Some("--migrate") => initialize_topics(&options, i32::try_from(number("KAFKA_PARTITIONS", 3)?)?, i32::try_from(number("KAFKA_REPLICATION_FACTOR", 1)?)?).await?,
+        Some("--migrate") => initialize_topics(&options, config::required("KAFKA_PARTITIONS")?, config::required("KAFKA_REPLICATION_FACTOR")?).await?,
         Some("--enqueue") => {
             let queue = options.queue.clone();
             KafkaProducer::connect(options).await?.enqueue(Job::new(&args[1], queue, events::seal(&args[1], &args[2])?)).await?;
@@ -74,9 +75,9 @@ async fn run() -> Result<(), Box<dyn Error>> {
         }
         None => {
             let config = KafkaRunnerConfig {
-                retry: RetryPolicy::new(u32::try_from(number("WORKER_MAX_ATTEMPTS", 3)?)?, number("WORKER_BACKOFF_SECONDS", 30)?),
-                handler_timeout: Duration::from_millis(number("WORKER_HANDLER_TIMEOUT_MS", 300000)?),
-                drain_timeout: Duration::from_millis(number("WORKER_DRAIN_MS", 30000)?),
+                retry: RetryPolicy::new(config::required("WORKER_MAX_ATTEMPTS")?, config::required("WORKER_BACKOFF_SECONDS")?),
+                handler_timeout: Duration::from_millis(config::required("WORKER_HANDLER_TIMEOUT_MS")?),
+                drain_timeout: Duration::from_millis(config::required("WORKER_DRAIN_MS")?),
             };
             config.validate()?;
             let http = http_config()?;
@@ -90,18 +91,15 @@ async fn run() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn number(name: &str, default: u64) -> Result<u64, Box<dyn Error>> {
-    match env::var(name) { Ok(value) => Ok(value.parse()?), Err(env::VarError::NotPresent) => Ok(default), Err(error) => Err(error.into()) }
-}
-
 fn http_config() -> Result<Option<HttpConfig>, Box<dyn Error>> {
-    let address = match env::var("WORKER_HTTP_ADDR") { Ok(value) => Some(value.parse()?), Err(env::VarError::NotPresent) => None, Err(error) => return Err(error.into()) };
-    let control_token = match env::var("WORKER_CONTROL_TOKEN") { Ok(value) => Some(value), Err(env::VarError::NotPresent) => None, Err(error) => return Err(error.into()) };
-    let Some(address) = address else {
+    let control_token: Option<String> = config::optional("WORKER_CONTROL_TOKEN")?;
+    let Some(address) = config::optional("WORKER_HTTP_ADDR")? else {
         if control_token.is_some() { return Err("WORKER_CONTROL_TOKEN requires WORKER_HTTP_ADDR".into()); }
         return Ok(None);
     };
-    let config = HttpConfig { address, control_token }; config.validate()?; Ok(Some(config))
+    let config = HttpConfig { address, control_token };
+    config.validate()?;
+    Ok(Some(config))
 }
 
 async fn shutdown() {

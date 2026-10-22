@@ -2,11 +2,11 @@
 use crate::{domain::services::PostgresEcommerceStore, error::Result};
 use forklaunch_worker_database::postgres::PostgresWorkerQueue;
 use sqlx::{PgPool, postgres::PgPoolOptions};
-use std::env;
+use forklaunch_core::config;
 
 /// Connect with the restricted runtime role; privileged roles are rejected by the stores.
 pub async fn connect() -> Result<PgPool> {
-    let url = env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required")?;
+    let url: String = config::required("DATABASE_URL")?;
     Ok(PgPoolOptions::new().max_connections(10).connect(&url).await.map_err(|_| "Unable to connect to PostgreSQL")?)
 }
 

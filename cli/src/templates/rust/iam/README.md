@@ -39,7 +39,7 @@ The `/user`, `/role`, `/permission`, and `/organization` families expose the con
 
 The tenant comes from server configuration, never client headers. This scaffold serves one configured tenant. Review the configured role/access policies for your application. The optional OIDC browser flow is described below. Verification/reset flows, account-linking UI and Better Auth client compatibility remain separate work.
 
-HTTP health and Streamable HTTP MCP share the configured listener. MCP is served at `/mcp` by default, and tools retain HTTP route authentication. Set `MCP_ENABLED=false` to disable it, or configure `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.
+HTTP health and Streamable HTTP MCP share the configured listener. MCP is served at `/mcp` by default, and tools retain HTTP route authentication. `MCP_ENABLED` (true or false) is required; optionally configure `MCP_PATH`, `MCP_ALLOWED_HOSTS` and `MCP_ALLOWED_ORIGINS` for deployment.
 
 
 Enable browser sessions with `SESSION_COOKIE_ORIGIN=https://app.example.com`, an

@@ -1,7 +1,8 @@
 //! SQL remains service-owned. Framework policies enforce tenant, encryption and audited disclosure boundaries.
-use std::{sync::Arc, env};
+use std::sync::Arc;
 use uuid::Uuid;
-use forklaunch_core::encryption::{EnvelopeKey, EnvelopeProfile};
+use forklaunch_core::config;
+use forklaunch_core::encryption::{EnvelopeError, EnvelopeKey, EnvelopeProfile};
 use forklaunch_core::persistence::{TenantContext, begin_tenant_transaction, connect_runtime_postgres,
     protected::{ProtectedContext, ProtectedField}};
 use crate::{error::{AppError, Result}, persistence::{database::DatabaseConfig, compliance_schema::StoredRecord}};
@@ -17,9 +18,12 @@ pub struct PostgresRepository {
 fn unavailable() -> AppError { AppError::Storage("Protected record storage unavailable".into()) }
 impl PostgresRepository {
     pub async fn connect(config: DatabaseConfig) -> Result<Self> {
-        let namespace = env::var("STORAGE_ENCRYPTION_NAMESPACE").map_err(|_| unavailable())?;
+        let namespace: String = config::required("STORAGE_ENCRYPTION_NAMESPACE")?;
         let profile = EnvelopeProfile::new(&namespace).map_err(|_| unavailable())?;
-        let key = EnvelopeKey::from_env(profile).map_err(|_| unavailable())?;
+        let key = EnvelopeKey::from_env(profile).map_err(|error| match error {
+            EnvelopeError::Configuration(error) => error.into(),
+            _ => unavailable(),
+        })?;
         let context = TenantContext::new(config.tenant.to_string()).map_err(|_| unavailable())?;
         let pool = connect_runtime_postgres(&config.url, config.policy).await.map_err(|_| unavailable())?;
         let repository = Self { pool, tenant: config.tenant, context, key: Arc::new(key) };

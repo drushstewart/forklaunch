@@ -1,5 +1,5 @@
 use crate::error::{AppError, Result};
-use std::env;
+use forklaunch_core::config;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceConfig {
@@ -8,50 +8,40 @@ pub struct ServiceConfig {
     pub host: String,
     pub port: u16,
     pub public_origin: Option<String>,
+    pub version: String,
     pub docs_path: String,
     pub docs_server_urls: Vec<String>,
     pub docs_server_descriptions: Vec<String>,
-    pub database_url: String,
 }
 
 impl ServiceConfig {
-    #[must_use]
-    pub fn from_env() -> Self {
-        let name = env::var("SERVICE_NAME").unwrap_or_else(|_| "{{{name}}}".to_string());
-        let protocol = env::var("PROTOCOL").unwrap_or_else(|_| "http".to_string());
-        let host = env::var("SERVICE_HOST")
-            .or_else(|_| env::var("HOST"))
-            .unwrap_or_else(|_| "127.0.0.1".to_string());
-        let port = env::var("SERVICE_PORT")
-            .or_else(|_| env::var("PORT"))
-            .ok()
-            .and_then(|value| value.parse().ok())
-            .unwrap_or(8080);
-        let docs_path = env::var("DOCS_PATH").unwrap_or_else(|_| "/docs".to_string());
-        let docs_server_urls = env::var("DOCS_SERVER_URLS")
-            .ok()
+    /// Reads the service settings. Each is required at startup; a missing or
+    /// malformed variable is an error naming it. `PUBLIC_ORIGIN` and
+    /// `DOCS_SERVER_URLS`/`DOCS_SERVER_DESCRIPTIONS` are optional: without them
+    /// the service is reached at, and documents, its own listener address.
+    pub fn from_env() -> Result<Self> {
+        let protocol: String = config::required("PROTOCOL")?;
+        let host: String = config::required("HOST")?;
+        let port: u16 = config::required("PORT")?;
+        let docs_server_urls = config::optional::<String>("DOCS_SERVER_URLS")?
             .map(|value| csv_values(&value))
             .filter(|values| !values.is_empty())
             .unwrap_or_else(|| vec![format!("{protocol}://{host}:{port}")]);
-        let docs_server_descriptions = env::var("DOCS_SERVER_DESCRIPTIONS")
-            .ok()
+        let docs_server_descriptions = config::optional::<String>("DOCS_SERVER_DESCRIPTIONS")?
             .map(|value| csv_values(&value))
-            .filter(|values| !values.is_empty())
-            .unwrap_or_else(|| vec!["Main Server".to_string()]);
-        let database_url = env::var("DATABASE_URL")
-            .unwrap_or_else(|_| "postgres://localhost/forklaunch".to_string());
+            .unwrap_or_default();
 
-        Self {
-            name,
+        Ok(Self {
+            name: "{{{name}}}".to_string(),
             protocol,
             host,
             port,
-            public_origin: env::var("PUBLIC_ORIGIN").ok(),
-            docs_path,
+            public_origin: config::optional("PUBLIC_ORIGIN")?,
+            version: config::required("VERSION")?,
+            docs_path: config::required("DOCS_PATH")?,
             docs_server_urls,
             docs_server_descriptions,
-            database_url,
-        }
+        })
     }
 
     #[must_use]
@@ -105,6 +95,7 @@ impl ServiceConfig {
     }
 }
 
+/// A fixed configuration for tests; processes use [`ServiceConfig::from_env`].
 impl Default for ServiceConfig {
     fn default() -> Self {
         Self {
@@ -113,10 +104,10 @@ impl Default for ServiceConfig {
             host: "127.0.0.1".to_string(),
             port: 8080,
             public_origin: None,
+            version: "v1".to_string(),
             docs_path: "/docs".to_string(),
             docs_server_urls: vec!["http://127.0.0.1:8080".to_string()],
             docs_server_descriptions: vec!["Main Server".to_string()],
-            database_url: "postgres://localhost/forklaunch".to_string(),
         }
     }
 }

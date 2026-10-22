@@ -1,7 +1,7 @@
-use std::{env, fs, path::Path, error::Error, io};
+use std::{fs, path::Path, error::Error, io};
 
 use {{crate_module}}::{build_state, config::ServiceConfig, router, write_contract_artifacts};
-use forklaunch_core::telemetry::otlp::TelemetryRuntime;
+use forklaunch_core::{config, telemetry::otlp::TelemetryRuntime};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -21,7 +21,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 }
 
 async fn run() -> Result<(), Box<dyn Error>> {
-    let config = ServiceConfig::from_env();
+    let config = ServiceConfig::from_env()?;
     let listener = TcpListener::bind(config.bind_addr()).await?;
     let state = build_state(config)?;
     println!("{} listening on http://{}", {{crate_module}}::SERVICE_NAME, listener.local_addr()?);
@@ -43,16 +43,16 @@ async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
 }
 
+/// The CLI's contract export: `FORKLAUNCH_MODE` selects it and both output
+/// locations are then required.
 fn export_contract_artifacts() -> io::Result<bool> {
-    let mode = env::var("FORKLAUNCH_MODE").unwrap_or_default();
-    if mode != "openapi" && mode != "contract" {
+    let mode: Option<String> = config::optional("FORKLAUNCH_MODE")?;
+    if !matches!(mode.as_deref(), Some("openapi" | "contract")) {
         return Ok(false);
     }
 
-    let contract_output = env::var("FORKLAUNCH_CONTRACT_OUTPUT")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/contract.json").to_string());
-    let openapi_output = env::var("FORKLAUNCH_OPENAPI_OUTPUT")
-        .unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/openapi.json").to_string());
+    let contract_output: String = config::required("FORKLAUNCH_CONTRACT_OUTPUT")?;
+    let openapi_output: String = config::required("FORKLAUNCH_OPENAPI_OUTPUT")?;
 
     if let Some(parent) = Path::new(&openapi_output).parent() {
         fs::create_dir_all(parent)?;

@@ -17,7 +17,7 @@ const tag = [...images][0] ?? `forklaunch-ci/${dockerfile.toLowerCase().replace(
 execFileSync('docker', ['build', '--progress=plain', '-f', dockerfile, '-t', tag, '.'], {stdio: 'inherit'});
 for (const image of images) if (image !== tag) docker('tag', tag, image);
 
-const HTTP_SETTINGS = ['HOST', 'PORT', 'SERVICE_HOST', 'SERVICE_PORT', 'PROTOCOL', 'VERSION',
+const HTTP_SETTINGS = ['HOST', 'PORT', 'PROTOCOL', 'VERSION', 'RUST_LOG',
   'PUBLIC_ORIGIN', 'DOCS_PATH', 'MCP_ENABLED', 'MCP_LISTENER'];
 const processes = services.filter(([, service]) => images.has(service.image) &&
   service.environment?.PORT !== undefined && Array.isArray(service.command) &&

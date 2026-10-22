@@ -1799,6 +1799,9 @@ fn generate_rust_project(matches: &ArgMatches, kind: RustProjectKind) -> Result<
         worker::mark(&app_root, &name, backend)?;
         worker::compose(&app_root, &name, backend)?;
     }
+    if !dryrun && kind != RustProjectKind::Library {
+        ensure_rust_local_env(&app_root, &crate_dir, &name)?;
+    }
     if kind == RustProjectKind::Service
         && let Some(desired) = crate::infra::native_local::requested(matches)
     {
@@ -2451,6 +2454,48 @@ fn ensure_rust_docker_compose_project(
         .with_context(|| format!("Failed to update {}", compose_path.display()))
 }
 
+/// Local `cargo run` settings for a project's HTTP listener, matching its
+/// Compose port. Settings are required at startup, so they are written out;
+/// existing values are kept and the file stays git-ignored.
+fn ensure_rust_local_env(app_root: &Path, crate_dir: &Path, name: &str) -> Result<()> {
+    let compose = read_or_create_rust_docker_compose(&app_root.join("docker-compose.yaml"))?;
+    let Some(port) = [name.to_owned(), format!("{name}-server")]
+        .iter()
+        .filter_map(|service| compose.services.get(service))
+        .flat_map(|service| service.ports.as_deref().unwrap_or_default())
+        .find_map(|port| crate::core::docker::compose_host_port(port))
+    else {
+        return Ok(());
+    };
+    let path = crate_dir.join(".env.local");
+    let existing = read_to_string(&path).unwrap_or_default();
+    let mut content = existing.clone();
+    if !content.is_empty() && !content.ends_with('\n') {
+        content.push('\n');
+    }
+    let port = port.to_string();
+    for (key, value) in [
+        ("HOST", "127.0.0.1"),
+        ("PORT", port.as_str()),
+        ("PROTOCOL", "http"),
+        ("VERSION", "v1"),
+        ("DOCS_PATH", "/docs"),
+        ("RUST_LOG", "info"),
+        ("MCP_ENABLED", "true"),
+    ] {
+        let present = existing
+            .lines()
+            .any(|line| line.split_once('=').is_some_and(|(existing, _)| existing.trim() == key));
+        if !present {
+            content.push_str(&format!("{key}={value}\n"));
+        }
+    }
+    if content != existing {
+        write(&path, content).with_context(|| format!("Failed to update {}", path.display()))?;
+    }
+    Ok(())
+}
+
 fn remove_rust_docker_compose_project(app_root: &Path, name: &str) -> Result<()> {
     let compose_path = app_root.join("docker-compose.yaml");
     if !compose_path.exists() {
@@ -2502,6 +2547,7 @@ fn rust_docker_service(
     environment.insert("RUST_LOG".to_string(), "info".to_string());
     if let Some(port) = port {
         environment.insert("PORT".to_string(), port.to_string());
+        environment.insert("MCP_ENABLED".to_string(), "true".to_string());
         environment.insert(
             "PUBLIC_ORIGIN".to_string(),
             format!("http://localhost:{port}"),
@@ -4038,5 +4084,44 @@ mod compliance_artifact_tests {
             migrate_compliance_artifact(root.path()).unwrap();
             assert_eq!(read_to_string(root.path().join("build.rs")).unwrap(), custom);
         }
+    }
+}
+
+#[cfg(test)]
+mod local_env_tests {
+    use super::*;
+
+    #[test]
+    fn http_processes_get_their_required_settings_and_keep_existing_values() {
+        let root = tempfile::tempdir().unwrap();
+        let mut compose = DockerCompose::default();
+        compose.services.insert("api".into(), rust_docker_service("app", "api", RustProjectKind::Service, Some(8004)));
+        let worker = rust_docker_service("app", "jobs", RustProjectKind::Worker, None);
+        assert!(!worker.environment.as_ref().unwrap().contains_key("MCP_ENABLED"));
+        compose.services.insert("jobs".into(), worker);
+        let mut producer = rust_docker_service("app", "jobs-server", RustProjectKind::Worker, None);
+        producer.ports = Some(vec!["127.0.0.1:8005:3000".into()]);
+        compose.services.insert("jobs-server".into(), producer);
+        write(root.path().join("docker-compose.yaml"), yaml_to_string(&compose).unwrap()).unwrap();
+        assert_eq!(compose.services["api"].environment.as_ref().unwrap()["MCP_ENABLED"], "true");
+
+        let api = root.path().join("api");
+        create_dir_all(&api).unwrap();
+        write(api.join(".env.local"), "PORT=9999\nREDIS_URL=redis://localhost:6379").unwrap();
+        ensure_rust_local_env(root.path(), &api, "api").unwrap();
+        assert_eq!(
+            read_to_string(api.join(".env.local")).unwrap(),
+            "PORT=9999\nREDIS_URL=redis://localhost:6379\nHOST=127.0.0.1\nPROTOCOL=http\nVERSION=v1\nDOCS_PATH=/docs\nRUST_LOG=info\nMCP_ENABLED=true\n"
+        );
+
+        let jobs = root.path().join("jobs");
+        create_dir_all(&jobs).unwrap();
+        ensure_rust_local_env(root.path(), &jobs, "jobs").unwrap();
+        assert!(read_to_string(jobs.join(".env.local")).unwrap().contains("PORT=8005\n"));
+
+        let consumer = root.path().join("consumer");
+        create_dir_all(&consumer).unwrap();
+        ensure_rust_local_env(root.path(), &consumer, "consumer").unwrap();
+        assert!(!consumer.join(".env.local").exists());
     }
 }

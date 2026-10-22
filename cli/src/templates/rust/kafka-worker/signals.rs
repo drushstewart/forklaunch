@@ -1,6 +1,6 @@
 // Optional scoped Pub/Sub control. Disconnects drain; restarts begin running.
-use std::{env, future::{self, Future}, sync::Arc, error};
-use forklaunch_core::persistence::TenantContext;
+use std::{future::{self, Future}, sync::Arc, error};
+use forklaunch_core::{config, persistence::TenantContext};
 use forklaunch_worker_database::{
     control::{WorkerControl, forward_signals},
     http::{self, HttpConfig, SignalPublisher},
@@ -14,16 +14,13 @@ use forklaunch_worker_kafka::client::{KafkaRunReport, KafkaRunnerConfig, KafkaWo
 type Error = Box<dyn error::Error>;
 
 fn configuration() -> Result<Option<(String, String, TenantContext, String)>, Error> {
-    let url = match env::var("WORKER_SIGNAL_REDIS_URL") {
-        Ok(value) => value,
-        Err(env::VarError::NotPresent) => return Ok(None),
-        Err(error) => return Err(error.into()),
+    let Some(url) = config::optional::<String>("WORKER_SIGNAL_REDIS_URL")? else {
+        return Ok(None);
     };
     events::transport_policy()?.redis(&url)?;
-    let namespace = env::var("WORKER_SIGNAL_NAMESPACE")
-        .map_err(|_| "WORKER_SIGNAL_NAMESPACE is required with WORKER_SIGNAL_REDIS_URL")?;
-    let tenant = TenantContext::new(env::var("TENANT_ID").map_err(|_| "TENANT_ID is required")?)?;
-    let queue = env::var("WORKER_QUEUE").unwrap_or_else(|_| super::WORKER_NAME.to_owned());
+    let namespace = config::required("WORKER_SIGNAL_NAMESPACE")?;
+    let tenant = TenantContext::new(config::required::<String>("TENANT_ID")?)?;
+    let queue = config::required("WORKER_QUEUE")?;
     Ok(Some((url, namespace, tenant, queue)))
 }
 

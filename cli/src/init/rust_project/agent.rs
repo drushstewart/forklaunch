@@ -279,7 +279,7 @@ pub(super) fn sources(
         insert_after(
             source,
             "let state = registrations::register(config)?;\n",
-            "    // Fail fast on missing JWKS settings or tool-name collisions.\n    state.agent.check().await?;\n",
+            "    // Fail fast on tool-name collisions.\n    state.agent.check().await?;\n",
             "bootstrapper.rs",
         )
     })?;

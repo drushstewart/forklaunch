@@ -336,18 +336,20 @@ pub(super) fn flatten(
                     source[entry..runtime].replace("start_runtime()", "crate::worker::run()");
                 let runtime =
                     source[runtime..].replacen("async fn start_runtime()", "pub async fn run()", 1);
-                let std_imports = if lifecycle.contains("dyn Error") {
-                    "use std::{env, error::Error};"
-                } else {
-                    "use std::env;"
+                let std_imports = match (lifecycle.contains("env::"), lifecycle.contains("dyn Error")) {
+                    (true, true) => "use std::{env, error::Error};\n",
+                    (true, false) => "use std::env;\n",
+                    (false, true) => "use std::error::Error;\n",
+                    (false, false) => "",
                 };
-                let telemetry = if lifecycle.contains("TelemetryRuntime::") {
-                    "use forklaunch_core::telemetry::otlp::TelemetryRuntime;\n"
-                } else {
-                    ""
+                let core = match (lifecycle.contains("config::"), lifecycle.contains("TelemetryRuntime::")) {
+                    (true, true) => "use forklaunch_core::{config, telemetry::otlp::TelemetryRuntime};\n",
+                    (true, false) => "use forklaunch_core::config;\n",
+                    (false, true) => "use forklaunch_core::telemetry::otlp::TelemetryRuntime;\n",
+                    (false, false) => "",
                 };
                 output[index].content = format!(
-                    "{std_imports}\n{telemetry}use crate::{{WORKER_NAME, write_contract_artifacts}};\n{lifecycle}"
+                    "{std_imports}{core}use crate::{{WORKER_NAME, write_contract_artifacts}};\n{lifecycle}"
                 );
                 let worker_index = output
                     .iter()
