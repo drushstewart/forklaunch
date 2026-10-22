@@ -57,6 +57,7 @@ try:
     command('init', 'service', 'runtime-host', '--language', 'rust', '-D', 'SDK runtime fixture')
     app.rename(root / 'relocated')
     app = root / 'relocated'
+    run('python3', fixtures / 'local_crates_patch.py', app, repo)
     run('python3', fixtures / 'rust_ecommerce_compose.py', 'prepare')
     source = app / 'src/spare-shop'
     with (source / 'lib.rs').open('a') as file:
@@ -94,7 +95,7 @@ try:
         run('cargo', 'test', '--manifest-path', consumer, '--test', 'runtime', '--no-run')
     for name in ['ecommerce', 'spare-shop']:
         artifact = json.loads(contract_artifact(app, name).read_text())
-        assert len(artifact['routes']) == 32, (name, len(artifact['routes']))
+        assert len(artifact['routes']) == 33, (name, len(artifact['routes']))
     run('cargo', 'run', '-p', 'ecommerce', '--', '--migrate', extra={'DATABASE_URL': env['FORKLAUNCH_TEST_POSTGRES_URL']})
     examples = app / 'src/ecommerce/examples'
     examples.mkdir(exist_ok=True)

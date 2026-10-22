@@ -12,7 +12,7 @@ async function call(path,{method='GET',body}={}){
  const response=await fetch(base+path,{method,body:raw,headers:{authorization:sign(path,method,raw),...(raw===undefined?{}:{'content-type':'application/json'})}});
  assert.equal(response.status,200,await response.clone().text());return response.json();
 }
-assert.equal((await probeMcp(base,['createProduct','checkout','handleStripeWebhook','handlePaypalWebhook'])).length,32);
+assert.equal((await probeMcp(base,['createProduct','checkout','handleStripeWebhook','handlePaypalWebhook','createInventory'])).length,33);
 assert.equal((await fetch(base+'/product')).status,401);
 await call('/catalog-import',{method:'POST',body:{products:[{externalId:'container',handle:'container-product',title:'Container product',variants:[{externalId:'container-variant',title:'Box',priceCents:100,initialStock:10}]}]}});
 const product=await call('/product/handle/container-product'),variant=(await call(`/variant/product/${product.id}`))[0];

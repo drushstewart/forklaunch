@@ -4,6 +4,10 @@
 use crate::registrations::AppState;
 use forklaunch_ecommerce_stripe::http::Handler;
 
+pub fn create_inventory(state: &AppState) -> Handler {
+    state.ecommerce.handler("createInventory")
+}
+
 pub fn get_inventory(state: &AppState) -> Handler {
     state.ecommerce.handler("getInventory")
 }

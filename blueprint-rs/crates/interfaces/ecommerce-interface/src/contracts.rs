@@ -1,7 +1,7 @@
 //! Ecommerce HTTP contracts for the catalog/cart/order/payment module.
 use crate::{
     AddCartItemDto, AdjustStockDto, CartDto, CreateCartDto, CreateOrderDto, CreateProductDto,
-    CreateVariantDto, InventoryDto, OrderDto, PaymentDto, ProductDto, ProductSearchDto,
+    CreateInventoryDto, CreateVariantDto, InventoryDto, OrderDto, PaymentDto, ProductDto, ProductSearchDto,
     StockCheckDto, StockCheckResultDto, UpdateProductDto, UpdateVariantDto, VariantDto,
     catalog::{CatalogPage, CatalogQuery},
     module::{CreateProviderPayment, CreatedPayment, OrderTransition},
@@ -160,6 +160,16 @@ pub fn registry() -> ContractRegistry {
             "id",
         )
         .with_response(200, Some(text())),
+    );
+    registry.register(
+        route!(
+            post,
+            "Create Inventory",
+            "/inventory/",
+            InventoryDto,
+            "Inventory"
+        )
+        .with_request_body(json::<CreateInventoryDto>("CreateInventory")),
     );
     registry.register(param(
         route!(
