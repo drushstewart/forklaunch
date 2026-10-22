@@ -92,7 +92,7 @@ def initialize(*, destination=None, modules_path='src', dryrun=False, cwd=None):
         options.append('--dryrun')
     # Language and SDK targets belong to projects, not application initialization.
     command('init', 'application', 'lifecycle-proof', '--database', 'postgresql',
-            '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+            '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
             '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
             '-D', 'Lifecycle proof', '-A', 'ForkLaunch', '-L', 'MIT', *options,
             path=destination or app, cwd=cwd)

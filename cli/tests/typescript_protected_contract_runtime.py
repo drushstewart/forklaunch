@@ -6,7 +6,7 @@ def run(args,cwd=root):
  return p.stdout
 def cmd(*args):return run([str(cli),*args,'--path',str(app)])
 try:
- cmd('init','application','protected-proof','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter','eslint','--http-framework','express','--runtime','node','--test-framework','vitest','-m','iam-base','-D','Portable auth proof','-A','ForkLaunch','-L','MIT')
+ cmd('init','application','protected-proof','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter', 'oxlint','--http-framework','express','--runtime','node','--test-framework','vitest','-m','iam-base','-D','Portable auth proof','-A','ForkLaunch','-L','MIT')
  cmd('init','service','records','--language','typescript','-d','postgresql','-D','Protected records')
  service=app/'modules/records'
  for file in ['bootstrapper.ts','server.ts']:

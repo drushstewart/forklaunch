@@ -31,7 +31,7 @@ def command(*args, path=None):
 
 try:
     command('init', 'application', 'fields-app', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'Fields', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'fields', '--language', 'rust', '-D', 'Fields')
     relocated = root / 'relocated'

@@ -12,7 +12,7 @@ def run(args,cwd=root,check=True):
 def command(*args,check=True):return run([str(cli),*args,'--path',str(app)],check=check)
 def tree():return {str(p.relative_to(app)):hashlib.sha256(p.read_bytes()).hexdigest() for p in app.rglob('*') if p.is_file()}
 try:
- command('init','application','runtime-migration','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter','eslint','--http-framework','express','--runtime','node','--test-framework','vitest','-D','Runtime migration','-A','ForkLaunch','-L','MIT')
+ command('init','application','runtime-migration','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter', 'oxlint','--http-framework','express','--runtime','node','--test-framework','vitest','-D','Runtime migration','-A','ForkLaunch','-L','MIT')
  command('init','service','api','--language','typescript','-d','postgresql','-D','API')
  command('init','library','models','--language','rust','-D','Native')
  metadata=tomllib.loads((app/'.forklaunch/manifest.toml').read_text());native=app/next(p['metadata']['cratePath'] for p in metadata['projects'] if p['name']=='models');saved={p:p.read_bytes() for p in native.rglob('*') if p.is_file()}

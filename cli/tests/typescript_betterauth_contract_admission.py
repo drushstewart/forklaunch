@@ -19,7 +19,7 @@ def run(args, cwd=root):
 try:
     run([str(cli), 'init', 'application', 'auth-proof', '--path', str(app), '--language', 'typescript',
          '--modules-path', 'modules', '--database', 'postgresql', '--validator', 'zod', '--formatter',
-         'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+         'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
          '--test-framework', 'vitest', '-m', 'iam-better-auth', '-D', 'Auth admission proof', '-A', 'ForkLaunch', '-L', 'MIT'])
     for relative in ['server.ts', 'bootstrapper.ts', 'auth.ts']:
         file = app/'modules/iam'/relative

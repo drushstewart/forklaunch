@@ -120,7 +120,7 @@ def assert_dependency_manifests(expected):
 
 try:
     source_options = [] if args.default_source else ['--framework-version', versions['forklaunch-core']]
-    command('init', 'application', 'registry-proof', *source_options, '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Registry proof', '-A', 'ForkLaunch', '-L', 'MIT')
+    command('init', 'application', 'registry-proof', *source_options, '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Registry proof', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'notes', '--language', 'rust', '--mappers', '--infrastructure', 'redis', 's3', '-D', 'Registry service')
     command('init', 'worker', 'jobs', '--language', 'rust', '--type', 'database', '--database', 'postgresql', '--runtime', 'apalis', '-D', 'Registry worker')
     if args.mixed:

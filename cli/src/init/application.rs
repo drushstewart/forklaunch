@@ -23,6 +23,7 @@ use crate::{
         ERROR_FAILED_TO_CREATE_GITIGNORE, ERROR_FAILED_TO_CREATE_LICENSE,
         ERROR_FAILED_TO_GENERATE_BUNFIG, ERROR_FAILED_TO_GENERATE_PNPM_WORKSPACE,
         ERROR_FAILED_TO_PARSE_DOCKER_COMPOSE, Formatter, HttpFramework, License, Linter, Module,
+        SELECTABLE_LINTERS, ensure_selectable_linter, linter_value_parser,
         Runtime, TestFramework, Validator, get_client_sdk_module_description,
         get_core_module_description, get_monitoring_module_description, get_service_module_cache,
         get_service_module_description, get_service_module_name, ensure_module_offered, module_value_parser, offered_modules,
@@ -61,7 +62,7 @@ use crate::{
                 GLOBALS_VERSION, HUSKY_VERSION, HYPER_EXPRESS_VERSION, JEST_TYPES_VERSION,
                 JEST_VERSION, LINT_STAGED_VERSION, MIKRO_ORM_CORE_VERSION,
                 MIKRO_ORM_DATABASE_VERSION, MIKRO_ORM_MIGRATIONS_VERSION, NODE_GYP_VERSION,
-                OXLINT_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT, PROJECT_DOCS_SCRIPT,
+                OXLINT_VERSION, OXLINT_TSGOLINT_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT, PROJECT_DOCS_SCRIPT,
                 SORT_PACKAGE_JSON_VERSION, SQLITE3_VERSION, TS_JEST_VERSION, TS_NODE_VERSION,
                 TSX_VERSION, TYPEBOX_VERSION, TYPES_BUILD_SCRIPT,
                 TYPES_EXPRESS_SERVE_STATIC_CORE_VERSION, TYPES_EXPRESS_VERSION, TYPES_NODE_VERSION,
@@ -198,6 +199,11 @@ fn generate_application_package_json(
             },
             oxlint: if data.is_oxlint {
                 Some(OXLINT_VERSION.to_string())
+            } else {
+                None
+            },
+            oxlint_tsgolint: if data.is_oxlint {
+                Some(OXLINT_TSGOLINT_VERSION.to_string())
             } else {
                 None
             },
@@ -412,7 +418,7 @@ impl CliCommand for ApplicationCommand {
                     .short('l')
                     .long("linter")
                     .help("The linter to use")
-                    .value_parser(Linter::VARIANTS),
+                    .value_parser(linter_value_parser()),
             )
             .arg(
                 Arg::new("http-framework")
@@ -589,10 +595,11 @@ impl CliCommand for ApplicationCommand {
             "linter",
             matches,
             "linter",
-            Some(&Linter::VARIANTS),
+            Some(&SELECTABLE_LINTERS),
             |input| Linter::VARIANTS.contains(&input),
             |_| "Invalid linter type. Please try again".to_string(),
-        )?
+        )
+        .and_then(|linter| ensure_selectable_linter(&linter).map(|()| linter))?
         .parse()?;
 
         let http_framework: HttpFramework = if runtime == Runtime::Bun {

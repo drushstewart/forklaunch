@@ -41,7 +41,7 @@ print(f'RUN {runtime} mixed dev: CLI {binary} SHA-256 {hashlib.sha256(binary.rea
 def cli(*args):
     return subprocess.run([str(binary), *args, '--path', str(app)], cwd=root, env=env, check=True, timeout=180)
 cli('init', 'application', name,
-    '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+    '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
     '--http-framework', 'express', '--runtime', runtime, '--test-framework', 'vitest',
     '-D', 'Mixed development', '-A', 'ForkLaunch', '-L', 'MIT')
 cli('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API')

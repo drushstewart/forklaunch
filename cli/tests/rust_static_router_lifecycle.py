@@ -16,7 +16,7 @@ def check(names, package='api'):
     manifest = json.loads((app / f'src/{package}/sdk/typescript/bindings.json').read_text())
     assert sorted(item['member'] for item in manifest['declarations']) == sorted(names), manifest
 try:
-    command('init', 'application', 'router-proof', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Router proof', '-A', 'ForkLaunch', '-L', 'MIT')
+    command('init', 'application', 'router-proof', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Router proof', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'api', '--language', 'rust', '-D', 'API')
     service = app / 'src/api'
     assert (app / 'src/api/.forklaunch/contracts/lib.rs').is_file()

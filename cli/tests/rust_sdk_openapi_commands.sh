@@ -55,7 +55,7 @@ def digest(directory):
 
 try:
     command('init', 'application', 'rust-contracts', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'SDK command fixture', '-A', 'ForkLaunch', '-L', 'MIT')
     for service, router in [('accounts', 'users'), ('billing', 'invoices')]:
         command('init', 'service', service, '--language', 'rust', '-D', service)

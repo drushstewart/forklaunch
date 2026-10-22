@@ -100,7 +100,7 @@ module-name/
 ├── server.ts          # HTTP server configuration
 ├── package.json       # Dependencies and scripts
 ├── mikro-orm.config.ts # Database ORM configuration
-└── eslint.config.mjs   # ESLint configuration
+└── .oxlint.config.json # oxlint configuration
 ```
 
 ### Module Features

@@ -71,7 +71,7 @@ def live(rust, consumer, label):
 
 try:
     command('init', 'application', 'versions-app', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'Versions', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'versions', '--language', 'rust', '-D', 'Versions')
     relocated = root / 'relocated'

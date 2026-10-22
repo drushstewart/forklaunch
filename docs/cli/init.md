@@ -28,7 +28,7 @@ forklaunch init application [OPTIONS] [name]
 | `-d, --database` | Database type | `postgresql`, `mysql`, `mariadb`, `mssql`, `mongodb`, `libsql`, `sqlite`, `better-sqlite` |
 | `-v, --validator` | Schema validator | `zod`, `typebox` |
 | `-f, --formatter` | Code formatter | `prettier`, `biome` |
-| `-l, --linter` | Linter | `eslint`, `oxlint` |
+| `-l, --linter` | Linter | `oxlint` (`eslint` is not selectable: typescript-eslint does not support TypeScript 7) |
 | `-F, --http-framework` | HTTP framework | `express`, `hyper-express` |
 | `-r, --runtime` | Runtime environment | `node`, `bun` |
 | `-t, --test-framework` | Testing framework | `vitest`, `jest` |
@@ -123,7 +123,7 @@ forklaunch init application my-app \
   --http-framework express \
   --runtime node \
   --formatter prettier \
-  --linter eslint \
+  --linter oxlint \
   --test-framework vitest
 
 # Create application with high-performance setup

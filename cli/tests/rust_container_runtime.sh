@@ -24,7 +24,7 @@ if [ -n "${FORKLAUNCH_RUST_CONTAINER_APP:-}" ]; then
 else
     mkdir -p "$SCRIPT_DIR/output/rust-container-runtime"
     RUN_ROOT="$(mktemp -d "$SCRIPT_DIR/output/rust-container-runtime/run.XXXXXX")"
-    run_cli init application container-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Container runtime' -A ForkLaunch -L MIT
+    run_cli init application container-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter oxlint --http-framework express --runtime node --test-framework vitest -D 'Container runtime' -A ForkLaunch -L MIT
     run_cli init service accounts --path "$RUN_ROOT/app" --language rust -D Accounts
     cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
     APP_ROOT="$RUN_ROOT/relocated-app"

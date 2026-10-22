@@ -12,7 +12,7 @@ def command(app, *args):
 try:
     for case in ('rust-first', 'typescript-first', 'legacy-rust-first'):
         app = root / case
-        options = ['--language', 'rust'] if case == 'legacy-rust-first' else ['--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest']
+        options = ['--language', 'rust'] if case == 'legacy-rust-first' else ['--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest']
         command(app, 'init', 'application', 'workspace-proof', *options, '-D', 'Raw workspace proof', '-A', 'ForkLaunch', '-L', 'MIT')
         manifest = tomllib.loads((app / '.forklaunch/manifest.toml').read_text())
         assert manifest['modules_path'] == 'src', manifest

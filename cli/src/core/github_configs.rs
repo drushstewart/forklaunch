@@ -409,7 +409,7 @@ mod tests {
     }
 
     const MANIFEST: &str = "app_name = 'app'\nmodules_path = 'src'\nruntime = 'node'\n";
-    const TS_SCRIPTS: &str = r#"{"packageManager":"pnpm@11.1.0","scripts":{"build":"pnpm -r build","lint":"eslint .","test":"vitest"}}"#;
+    const TS_SCRIPTS: &str = r#"{"packageManager":"pnpm@11.1.0","scripts":{"build":"pnpm -r build","lint":"oxlint --config .oxlint.config.json","test":"vitest"}}"#;
 
     #[test]
     fn typescript_applications_install_and_run_scripts_in_the_modules_workspace() {

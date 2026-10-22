@@ -20,7 +20,7 @@ from universal_sdk_source import copy_universal_sdk  # noqa: E402
 def raw_application(run, cli, application, name, *, database='postgresql', runtime='node', dryrun=False):
     arguments = [cli, 'init', 'application', name, '--path', application,
                  '--database', database, '--validator', 'zod', '--formatter', 'prettier',
-                 '--linter', 'eslint', '--http-framework', 'express', '--runtime', runtime,
+                 '--linter', 'oxlint', '--http-framework', 'express', '--runtime', runtime,
                  '--test-framework', 'vitest', '-D', name, '-A', 'ForkLaunch', '-L', 'MIT']
     if dryrun:
         arguments.append('--dryrun')

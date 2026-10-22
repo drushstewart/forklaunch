@@ -37,7 +37,7 @@ cleanup() {
     if [ "$PASSED" = true ] && [ "${FORKLAUNCH_KEEP_FIXTURE:-0}" != 1 ]; then rm -rf "$RUN_ROOT"; fi
 }
 trap cleanup EXIT
-run_cli init application container-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Kafka container runtime' -A ForkLaunch -L MIT
+run_cli init application container-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter oxlint --http-framework express --runtime node --test-framework vitest -D 'Kafka container runtime' -A ForkLaunch -L MIT
 run_cli init worker jobs --path "$RUN_ROOT/app" --language rust --consumer-only -t kafka -D Jobs
 cp "$SCRIPT_DIR/fixtures/rust_kafka_container_handler.rs" "$RUN_ROOT/app/src/jobs/domain/services/handler.rs"
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"

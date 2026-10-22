@@ -177,7 +177,7 @@ Use these lessons when repairing or planning generated ForkLaunch Studio apps:
 | `--validator` | Yes | `zod`, `typebox` |
 | `--http-framework` | Yes | `express`, `hyper-express` |
 | `--formatter` | Yes | `prettier`, `biome` |
-| `--linter` | Yes | `eslint`, `oxlint` |
+| `--linter` | Yes | `oxlint` (`eslint` rejected: no TypeScript 7 support) |
 | `--test-framework` | Yes | `vitest`, `jest` |
 | `--license` | Yes | `MIT`, `Apache-2.0`, `none`, etc. |
 | `--author` | Yes | Author name string |
@@ -390,7 +390,7 @@ forklaunch init app <app_name>
 --http-framework <type>  # express, hyper-express (bun forces express)
 --test-framework <type>  # vitest, jest
 --formatter <type>       # prettier, biome
---linter <type>          # eslint, oxlint
+--linter <type>          # oxlint
 --modules <module>       # billing-base, billing-stripe, iam-base, iam-better-auth,
                          # ecommerce-stripe, cac-base
 --path <path>            # REQUIRED in practice — see below
@@ -494,7 +494,7 @@ forklaunch change application [--path <app_root>]
 --runtime bun|node
 --http-framework express|hyper-express
 --formatter prettier|biome
---linter eslint|oxlint
+--linter oxlint
 --test-framework vitest|jest
 --validator zod|typebox
 -N <name>                # Rename the application
@@ -1403,7 +1403,7 @@ forklaunch change application
 --runtime bun|node
 --http-framework express|hyper-express
 --formatter prettier|biome
---linter eslint|oxlint
+--linter oxlint
 --test-framework vitest|jest
 --validator zod|typebox
 --dry-run              # Preview changes without applying
