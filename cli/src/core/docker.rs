@@ -855,6 +855,171 @@ impl<'de> Deserialize<'de> for DockerNetwork {
     }
 }
 
+pub(crate) const MINIO_INIT: &str = "minio-init";
+
+/// Buckets the generated `minio-init` job creates.
+pub(crate) fn minio_buckets(docker_compose: &DockerCompose) -> Vec<String> {
+    let Some(Command::Simple(entrypoint)) = docker_compose
+        .services
+        .get(MINIO_INIT)
+        .and_then(|service| service.entrypoint.as_ref())
+    else {
+        return vec![];
+    };
+    entrypoint
+        .split_whitespace()
+        .filter_map(|word| word.trim_matches('"').strip_prefix("local/"))
+        .map(str::to_owned)
+        .collect()
+}
+
+/// The one-shot MinIO job creates every bucket the stack needs (telemetry and
+/// each service's `S3_BUCKET`), so object stores never have to create their own.
+pub(crate) fn ensure_minio_buckets(docker_compose: &mut DockerCompose, app_name: &str, buckets: &[&str]) {
+    let mut all = minio_buckets(docker_compose);
+    for bucket in buckets {
+        if !bucket.is_empty() && !all.iter().any(|existing| existing == bucket) {
+            all.push((*bucket).to_owned());
+        }
+    }
+    all.sort();
+    let create: Vec<String> = all
+        .iter()
+        .map(|bucket| format!("mc mb --ignore-existing local/{bucket}"))
+        .collect();
+    let mut service = docker_compose.services.get(MINIO_INIT).cloned().unwrap_or_else(|| DockerService {
+        image: Some(MINIO_IMAGE.to_string()),
+        networks: Some(vec![format!("{}-network", app_name)]),
+        depends_on: Some(IndexMap::from([(
+            "minio".to_string(),
+            DependsOn {
+                condition: DependencyCondition::ServiceHealthy,
+                ..Default::default()
+            },
+        )])),
+        ..Default::default()
+    });
+    service.entrypoint = Some(Command::Simple(format!(
+        "/bin/sh -c \"mc alias set local http://minio:9000 minioadmin minioadmin && {}\"",
+        create.join(" && ")
+    )));
+    docker_compose.services.insert(MINIO_INIT.to_string(), service);
+}
+
+/// Local PostgreSQL shared by every project. Per-project roles and databases are
+/// provisioned by the generated `postgresql-provision` job.
+pub(crate) fn postgresql_service(app_name: &str) -> DockerService {
+    DockerService {
+        image: Some("postgres:latest".to_string()),
+        container_name: Some(format!("{}-postgresql", app_name)),
+        hostname: Some("postgresql".to_string()),
+        restart: Some(Restart::UnlessStopped),
+        ports: Some(vec!["127.0.0.1:5432:5432".to_string()]),
+        environment: Some(IndexMap::from([
+            ("POSTGRES_USER".to_string(), "postgresql".to_string()),
+            ("POSTGRES_PASSWORD".to_string(), "postgresql".to_string()),
+            ("POSTGRES_HOST_AUTH_METHOD".to_string(), "trust".to_string()),
+        ])),
+        networks: Some(vec![format!("{}-network", app_name)]),
+        volumes: Some(vec![format!(
+            "{}-postgresql-data:/var/lib/postgresql",
+            app_name
+        )]),
+        healthcheck: Some(Healthcheck {
+            test: HealthTest::List(vec![
+                "CMD-SHELL".to_string(),
+                "pg_isready -U postgresql -h localhost".to_string(),
+            ]),
+            interval: "10s".to_string(),
+            timeout: "5s".to_string(),
+            retries: 5,
+            start_period: "30s".to_string(),
+            additional_properties: HashMap::new(),
+        }),
+        ..Default::default()
+    }
+}
+
+/// Add the shared PostgreSQL service and its data volume when absent.
+pub(crate) fn ensure_postgresql_service(docker_compose: &mut DockerCompose, app_name: &str) {
+    if docker_compose.services.contains_key("postgresql") {
+        return;
+    }
+    docker_compose
+        .services
+        .insert("postgresql".to_string(), postgresql_service(app_name));
+    docker_compose
+        .volumes
+        .entry(format!("{}-postgresql-data", app_name))
+        .or_insert_with(|| DockerVolume {
+            driver: "local".to_string(),
+            ..Default::default()
+        });
+}
+
+/// Containers reach the broker at `kafka:29092`; host processes at `127.0.0.1:9092`.
+pub(crate) const KAFKA_INTERNAL_BROKERS: &str = "kafka:29092";
+pub(crate) const KAFKA_HOST_BROKERS: &str = "127.0.0.1:9092";
+
+/// Single-node KRaft Kafka (no ZooKeeper), shared by every Kafka project.
+pub(crate) fn kafka_service(app_name: &str) -> DockerService {
+    // Deterministic cluster ID based on app name using UUID v5
+    let cluster_id = Uuid::new_v5(
+        &Uuid::NAMESPACE_DNS,
+        format!("{}-kafka-cluster", app_name).as_bytes(),
+    )
+    .to_string();
+    DockerService {
+        image: Some("confluentinc/cp-kafka:latest".to_string()),
+        hostname: Some("kafka".to_string()),
+        container_name: Some(format!("{}-kafka", app_name)),
+        ports: Some(vec!["127.0.0.1:9092:9092".to_string(), "127.0.0.1:29092:29092".to_string()]),
+        environment: Some(IndexMap::from([
+            ("KAFKA_BROKER_ID".to_string(), "1".to_string()),
+            ("KAFKA_NODE_ID".to_string(), "1".to_string()),
+            (
+                "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP".to_string(),
+                "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT".to_string(),
+            ),
+            (
+                "KAFKA_LISTENERS".to_string(),
+                "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092".to_string(),
+            ),
+            (
+                // IPv4 literal: macOS resolves `localhost` to ::1 first.
+                "KAFKA_ADVERTISED_LISTENERS".to_string(),
+                "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://127.0.0.1:9092".to_string(),
+            ),
+            ("KAFKA_INTER_BROKER_LISTENER_NAME".to_string(), "PLAINTEXT".to_string()),
+            ("KAFKA_CONTROLLER_LISTENER_NAMES".to_string(), "CONTROLLER".to_string()),
+            ("KAFKA_PROCESS_ROLES".to_string(), "broker,controller".to_string()),
+            ("KAFKA_CONTROLLER_QUORUM_VOTERS".to_string(), "1@localhost:9093".to_string()),
+            ("KAFKA_CLUSTER_ID".to_string(), cluster_id),
+            ("KAFKA_LOG_DIRS".to_string(), "/tmp/kraft-combined-logs".to_string()),
+            ("KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR".to_string(), "1".to_string()),
+            ("KAFKA_TRANSACTION_STATE_LOG_MIN_ISR".to_string(), "1".to_string()),
+            ("KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR".to_string(), "1".to_string()),
+            ("KAFKA_NUM_PARTITIONS".to_string(), "1".to_string()),
+            ("KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS".to_string(), "0".to_string()),
+            ("KAFKA_AUTO_CREATE_TOPICS_ENABLE".to_string(), "true".to_string()),
+        ])),
+        networks: Some(vec![format!("{}-network", app_name)]),
+        healthcheck: Some(Healthcheck {
+            test: HealthTest::List(vec![
+                "CMD-SHELL".to_string(),
+                "kafka-topics --bootstrap-server kafka:29092 --list >/dev/null 2>&1 || exit 1"
+                    .to_string(),
+            ]),
+            interval: "15s".to_string(),
+            timeout: "12s".to_string(),
+            retries: 5,
+            start_period: "30s".to_string(),
+            additional_properties: HashMap::new(),
+        }),
+        ..Default::default()
+    }
+}
+
 pub(crate) fn add_otel_to_docker_compose<'a>(
     app_name: &str,
     docker_compose: &'a mut DockerCompose,
@@ -900,7 +1065,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 container_name: Some(format!("{}-minio", app_name)),
                 restart: Some(Restart::Always),
                 environment: Some(minio_environment),
-                ports: Some(vec!["9000:9000".to_string(), "9001:9001".to_string()]),
+                ports: Some(vec!["127.0.0.1:9000:9000".to_string(), "127.0.0.1:9001:9001".to_string()]),
                 networks: Some(vec![format!("{}-network", app_name)]),
                 volumes: Some(vec!["minio-data:/data".to_string()]),
                 command: Some(Command::Simple(
@@ -934,25 +1099,8 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
         );
     }
 
-    // MinIO init (create telemetry bucket)
-    docker_compose.services.insert(
-        "minio-init".to_string(),
-        DockerService {
-            image: Some(MINIO_IMAGE.to_string()),
-            networks: Some(vec![format!("{}-network", app_name)]),
-            depends_on: Some(IndexMap::from([(
-                "minio".to_string(),
-                DependsOn {
-                    condition: DependencyCondition::ServiceHealthy,
-                    ..Default::default()
-                },
-            )])),
-            entrypoint: Some(Command::Simple(
-                "/bin/sh -c \"mc alias set local http://minio:9000 minioadmin minioadmin && mc mb --ignore-existing local/forklaunch-telemetry\"".to_string(),
-            )),
-            ..Default::default()
-        },
-    );
+    // MinIO init (create telemetry bucket, keeping any service buckets)
+    ensure_minio_buckets(docker_compose, app_name, &["forklaunch-telemetry"]);
 
     // Tempo (distributed tracing backend)
     docker_compose.services.insert(
@@ -965,7 +1113,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
             // Host port 4317 is deliberately not published: the OTel collector
             // is the only front door for OTLP and reaches Tempo over the
             // compose network.
-            ports: Some(vec!["3200:3200".to_string()]),
+            ports: Some(vec!["127.0.0.1:3200:3200".to_string()]),
             volumes: Some(vec![
                 format!(
                     "{}/monitoring/tempo.yaml:/etc/tempo.yaml",
@@ -1008,7 +1156,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
             command: Some(Command::Simple(
                 "-config.file=/etc/loki/local-config.yaml".to_string(),
             )),
-            ports: Some(vec!["3100:3100".to_string()]),
+            ports: Some(vec!["127.0.0.1:3100:3100".to_string()]),
             volumes: Some(vec![
                 format!(
                     "{}/monitoring/loki.yaml:/etc/loki/local-config.yaml",
@@ -1067,7 +1215,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
         "mimir".to_string(),
         DockerService {
             image: Some("grafana/mimir:3.2.0".to_string()),
-            ports: Some(vec!["9090:9090".to_string()]),
+            ports: Some(vec!["127.0.0.1:9090:9090".to_string()]),
             volumes: Some(vec![
                 format!(
                     "{}/monitoring/mimir.yaml:/etc/mimir/mimir.yaml",
@@ -1131,7 +1279,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
         "grafana".to_string(),
         DockerService {
             image: Some("grafana/grafana:12.3.1".to_string()),
-            ports: Some(vec!["3000:3000".to_string()]),
+            ports: Some(vec!["127.0.0.1:3000:3000".to_string()]),
             volumes: Some(vec![
                 format!("{}/monitoring/grafana-provisioning/datasources:/etc/grafana/provisioning/datasources", context_path.to_string_lossy()),
                 format!("{}/monitoring/grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards", context_path.to_string_lossy())
@@ -1170,9 +1318,9 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 "--config=/etc/otel-collector-config.yaml".to_string(),
             )),
             ports: Some(vec![
-                "4317:4317".to_string(),
-                "4318:4318".to_string(),
-                "13133:13133".to_string(),
+                "127.0.0.1:4317:4317".to_string(),
+                "127.0.0.1:4318:4318".to_string(),
+                "127.0.0.1:13133:13133".to_string(),
             ]),
             volumes: Some(vec![format!(
                 "{}/monitoring/otel-collector-config.yaml:/etc/otel-collector-config.yaml",
@@ -1254,7 +1402,7 @@ pub(crate) fn add_redis_to_docker_compose<'a>(
                 image: Some("redis/redis-stack-server:latest".to_string()),
                 container_name: Some(format!("{}-redis", app_name)),
                 restart: Some(Restart::Always),
-                ports: Some(vec!["6379:6379".to_string()]),
+                ports: Some(vec!["127.0.0.1:6379:6379".to_string()]),
                 networks: Some(vec![format!("{}-network", app_name)]),
                 healthcheck: Some(Healthcheck {
                     test: HealthTest::List(vec![
@@ -1325,7 +1473,7 @@ pub(crate) fn add_s3_to_docker_compose<'a>(
                 container_name: Some(format!("{}-minio", app_name)),
                 restart: Some(Restart::Always),
                 environment: Some(minio_environment),
-                ports: Some(vec!["9000:9000".to_string(), "9001:9001".to_string()]),
+                ports: Some(vec!["127.0.0.1:9000:9000".to_string(), "127.0.0.1:9001:9001".to_string()]),
                 networks: Some(vec![format!("{}-network", app_name)]),
                 volumes: Some(vec!["minio-data:/data".to_string()]),
                 command: Some(Command::Simple(
@@ -1438,95 +1586,9 @@ pub(crate) fn add_kafka_to_docker_compose<'a>(
         format!("{}-kafka-group", app_name),
     );
 
-    // Generate a deterministic cluster ID based on app name using UUID v5
-    let cluster_id = Uuid::new_v5(
-        &Uuid::NAMESPACE_DNS,
-        format!("{}-kafka-cluster", app_name).as_bytes(),
-    )
-    .to_string();
-
-    // KRaft mode (Kafka without Zookeeper)
-    docker_compose.services.insert(
-        "kafka".to_string(),
-        DockerService {
-            image: Some("confluentinc/cp-kafka:latest".to_string()),
-            hostname: Some("kafka".to_string()),
-            container_name: Some(format!("{}-kafka", app_name)),
-            ports: Some(vec!["9092:9092".to_string(), "29092:29092".to_string(), "9093:9093".to_string()]),
-            environment: Some(IndexMap::from([
-                ("KAFKA_BROKER_ID".to_string(), "1".to_string()),
-                ("KAFKA_NODE_ID".to_string(), "1".to_string()),
-                (
-                    "KAFKA_LISTENER_SECURITY_PROTOCOL_MAP".to_string(),
-                    "PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT,CONTROLLER:PLAINTEXT".to_string(),
-                ),
-                (
-                    "KAFKA_LISTENERS".to_string(),
-                    "PLAINTEXT://0.0.0.0:29092,CONTROLLER://0.0.0.0:9093,PLAINTEXT_HOST://0.0.0.0:9092".to_string(),
-                ),
-                (
-                    "KAFKA_ADVERTISED_LISTENERS".to_string(),
-                    "PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092".to_string(),
-                ),
-                (
-                    "KAFKA_INTER_BROKER_LISTENER_NAME".to_string(),
-                    "PLAINTEXT".to_string(),
-                ),
-                (
-                    "KAFKA_CONTROLLER_LISTENER_NAMES".to_string(),
-                    "CONTROLLER".to_string(),
-                ),
-                (
-                    "KAFKA_PROCESS_ROLES".to_string(),
-                    "broker,controller".to_string(),
-                ),
-                (
-                    "KAFKA_CONTROLLER_QUORUM_VOTERS".to_string(),
-                    "1@localhost:9093".to_string(),
-                ),
-                ("KAFKA_CLUSTER_ID".to_string(), cluster_id),
-                (
-                    "KAFKA_LOG_DIRS".to_string(),
-                    "/tmp/kraft-combined-logs".to_string(),
-                ),
-                (
-                    "KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "KAFKA_TRANSACTION_STATE_LOG_MIN_ISR".to_string(),
-                    "1".to_string(),
-                ),
-                (
-                    "KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR".to_string(),
-                    "1".to_string(),
-                ),
-                ("KAFKA_NUM_PARTITIONS".to_string(), "1".to_string()),
-                (
-                    "KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS".to_string(),
-                    "0".to_string(),
-                ),
-                (
-                    "KAFKA_AUTO_CREATE_TOPICS_ENABLE".to_string(),
-                    "true".to_string(),
-                ),
-            ])),
-            networks: Some(vec![format!("{}-network", app_name)]),
-            healthcheck: Some(Healthcheck {
-                test: HealthTest::List(vec![
-                    "CMD-SHELL".to_string(),
-                    "kafka-topics --bootstrap-server kafka:29092 --list >/dev/null 2>&1 || exit 1"
-                        .to_string(),
-                ]),
-                interval: "15s".to_string(),
-                timeout: "12s".to_string(),
-                retries: 5,
-                start_period: "30s".to_string(),
-                additional_properties: HashMap::new(),
-            }),
-            ..Default::default()
-        },
-    );
+    docker_compose
+        .services
+        .insert("kafka".to_string(), kafka_service(app_name));
 
     environment.insert(
         "QUEUE_NAME".to_string(),
@@ -1630,38 +1692,9 @@ pub(crate) fn add_database_to_docker_compose(
     if !active_databases.contains(&database.as_str()) {
         match database.parse()? {
             Database::PostgreSQL => {
-                docker_compose.services.insert(
-                    "postgresql".to_string(),
-                    DockerService {
-                        image: Some("postgres:latest".to_string()),
-                        container_name: Some(format!("{}-postgresql", app_name)),
-                        hostname: Some("postgresql".to_string()),
-                        restart: Some(Restart::UnlessStopped),
-                        ports: Some(vec!["5432:5432".to_string()]),
-                        environment: Some(IndexMap::from([
-                            ("POSTGRES_USER".to_string(), "postgresql".to_string()),
-                            ("POSTGRES_PASSWORD".to_string(), "postgresql".to_string()),
-                            ("POSTGRES_HOST_AUTH_METHOD".to_string(), "trust".to_string()),
-                        ])),
-                        networks: Some(vec![format!("{}-network", app_name)]),
-                        volumes: Some(vec![format!(
-                            "{}-postgresql-data:/var/lib/postgresql",
-                            app_name
-                        )]),
-                        healthcheck: Some(Healthcheck {
-                            test: HealthTest::List(vec![
-                                "CMD-SHELL".to_string(),
-                                "pg_isready -U postgresql -h localhost".to_string(),
-                            ]),
-                            interval: "10s".to_string(),
-                            timeout: "5s".to_string(),
-                            retries: 5,
-                            start_period: "30s".to_string(),
-                            additional_properties: HashMap::new(),
-                        }),
-                        ..Default::default()
-                    },
-                );
+                docker_compose
+                    .services
+                    .insert("postgresql".to_string(), postgresql_service(app_name));
                 environment.insert("DB_NAME".to_string(), format!("{}-{}-dev", app_name, name));
                 environment.insert("DB_HOST".to_string(), "postgresql".to_string());
                 environment.insert("DB_USER".to_string(), "postgresql".to_string());
@@ -1693,7 +1726,7 @@ pub(crate) fn add_database_to_docker_compose(
                             "MONGO_INITDB_DATABASE".to_string(),
                             format!("{}-dev", app_name),
                         )])),
-                        ports: Some(vec!["27017:27017".to_string()]),
+                        ports: Some(vec!["127.0.0.1:27017:27017".to_string()]),
                         networks: Some(vec![format!("{}-network", app_name)]),
                         volumes: Some(vec![format!("{}-mongodb-data:/data/db", app_name)]),
                         healthcheck: Some(Healthcheck {
