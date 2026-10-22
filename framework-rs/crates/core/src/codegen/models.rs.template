@@ -31,8 +31,35 @@ pub enum {{name}} {
     }
 }
 {{/has_default}}
-{{/union}}
-{{^union}}
+{{/union}}{{#string_enum}}
+#[derive(::std::fmt::Debug, ::std::clone::Clone, ::std::marker::Copy, ::std::default::Default, ::std::cmp::PartialEq, ::std::cmp::Eq, ::std::hash::Hash, ::std::cmp::PartialOrd, ::std::cmp::Ord, ::serde::Serialize, ::serde::Deserialize)]
+pub enum {{name}} {
+{{#enum_variants}}
+    {{#first}}#[default]
+    {{/first}}#[serde(rename = {{{wire_name_literal}}})]
+    {{name}},
+{{/enum_variants}}
+}
+
+impl {{name}} {
+    /// The exact wire value.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+{{#enum_variants}}
+            Self::{{name}} => {{{wire_name_literal}}},
+{{/enum_variants}}
+        }
+    }
+}
+
+impl ::std::fmt::Display for {{name}} {
+    fn fmt(&self, formatter: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+{{/string_enum}}
+{{^union}}{{^string_enum}}
 {{^sequence}}
 #[derive(::std::fmt::Debug, ::std::clone::Clone{{#has_default}}, ::std::default::Default{{/has_default}}, ::std::cmp::PartialEq, ::serde::Serialize, ::serde::Deserialize)]
 {{#deny_unknown_fields}}#[serde(deny_unknown_fields)]{{/deny_unknown_fields}}{{#transparent}}#[serde(transparent)]{{/transparent}}
@@ -44,7 +71,7 @@ pub struct {{name}} {
     pub {{field_name}}: {{{field_type}}},
 {{/fields}}
 }
-{{/sequence}}
+{{/sequence}}{{/string_enum}}
 {{/union}}
 
 {{#sequence}}

@@ -45,6 +45,18 @@
 //! }
 //! let _ = AuthorizedBinding::<operations::Callback, _, _>::new((), ());
 //! ```
+//! An operation type cannot reuse a name already imported into the module
+//! (`create_item` generates `CreateItem`); the macro reports the collision:
+//! ```compile_fail
+//! use forklaunch_core::contract::{endpoint::{Endpoint, NoBody, TextBody}, HttpMethod};
+//! pub struct CreateItem;
+//! #[forklaunch_core::contract::api]
+//! mod operations {
+//!     use super::*;
+//!     use super::CreateItem;
+//!     pub fn create_item() -> Endpoint<NoBody, TextBody> { Endpoint::new("create", "create", HttpMethod::Post, "/items", 201).unwrap() }
+//! }
+//! ```
 //! Static protected bindings require the authorization marker:
 //! ```compile_fail
 //! use forklaunch_core::contract::{endpoint::{Endpoint, NoBody, TextBody}, HttpMethod};
@@ -84,8 +96,20 @@ pub trait PublicEndpointDefinition: EndpointDefinition {}
 /// Explicit implementation obligation: authenticate original request bytes and
 /// atomically reject replay before exposing a typed body to the handler.
 /// This marker is not a proof of application policy correctness.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot bind an `#[access(Internal)]` endpoint",
+    label = "this policy is not marked as verifying signed original bytes",
+    note = "an internal endpoint needs a policy with `const CAPABILITIES: PolicyCapabilities = PolicyCapabilities::SignedInternal` that verifies the request HMAC over the original bytes in `authorize_body` and claims its nonce",
+    note = "then mark it: `impl forklaunch_core::contract::bindings::OriginalBodySignedPolicy for {Self} {{}}`"
+)]
 pub trait OriginalBodySignedPolicy {}
 /// Explicit implementation obligation: enforce declared permissions, roles or scope.
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot bind an `#[access(Protected)]` endpoint",
+    label = "this policy is not marked as enforcing authorization",
+    note = "a protected endpoint needs a policy with `PolicyCapabilities::Authorized` that enforces the declared permissions, roles or scope",
+    note = "then mark it: `impl forklaunch_core::contract::bindings::AuthorizationPolicy for {Self} {{}}`"
+)]
 pub trait AuthorizationPolicy {}
 /// Generated operation-specific admission for policy types. Static internal and
 /// protected tags implement this only for the corresponding policy marker.

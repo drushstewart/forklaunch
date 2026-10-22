@@ -12,8 +12,10 @@ pub use responses::{
 };
 pub use versions::VersionedEndpoint;
 
-pub(super) const FRAMEWORK_FAILURE_STATUSES: [u16; 10] =
-    [400, 401, 403, 404, 408, 409, 413, 415, 500, 503];
+/// Includes 429 and 502, which `EndpointError::TooManyRequests` / `BadGateway`
+/// emit, so generated SDKs return typed failures instead of rejecting the status.
+pub(super) const FRAMEWORK_FAILURE_STATUSES: [u16; 12] =
+    [400, 401, 403, 404, 408, 409, 413, 415, 429, 500, 502, 503];
 
 // Every native endpoint publishes the framework failures its admission layers can emit.
 fn include_framework_failures(mut route: RouteContract) -> Result<RouteContract, &'static str> {
@@ -477,7 +479,7 @@ mod failure_projection_tests {
             .with_response(200, Some(BodyContract::json_type::<String>()))
             .with_response(400, Some(BodyContract::json_type::<String>()));
         let route = include_framework_failures(route).unwrap();
-        assert_eq!(route.responses.len(), 11);
+        assert_eq!(route.responses.len(), 13);
         let failure = route
             .responses
             .iter()
