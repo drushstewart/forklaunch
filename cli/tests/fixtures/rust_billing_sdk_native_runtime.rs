@@ -64,7 +64,18 @@ async fn generated_rust_sdk_calls_persistent_billing_and_portal() {
         })
         .await
         .unwrap();
-    assert!(matches!(response, CreatePaymentLinkResponses::Status200(_)));
+    let CreatePaymentLinkResponses::Status200(link) = response else {
+        panic!("signed payment link creation failed")
+    };
+    // Leave no record behind for the next service sharing the fixture tenant.
+    let response = signed
+        .expire_payment_link(ExpirePaymentLinkRequest {
+            params: ExpirePaymentLinkParams { id: link.id },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(matches!(response, ExpirePaymentLinkResponses::Status200(_)));
     let response = client
         .get_billing_portal_session(GetBillingPortalSessionRequest {
             params: GetBillingPortalSessionParams {

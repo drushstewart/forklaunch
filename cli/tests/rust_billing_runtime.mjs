@@ -83,7 +83,8 @@ try{
   const providerFields=stripe?{stripeFields:{}}:{providerFields:{private:'private-provider-value'}};
   const planBody={name:'prod_fixture',price:1999,cadence:stripe?'month':'MONTHLY',currency:'USD',externalId:randomUUID(),billingProvider:stripe?'stripe':'none',active:true,...providerFields};
   // Deprecated router-relative signatures are rejected unless explicitly enabled.
-  await call(base,'/plan','POST',planBody,403,hmac('/','POST',JSON.stringify(planBody)));
+  // (configured Stripe answers 403 "Invalid Authorization signature."; the native base 401).
+  await call(base,'/plan','POST',planBody,stripe?403:401,hmac('/','POST',JSON.stringify(planBody)));
   await call(base,'/plan','POST',{...planBody,currency:'INVALID'},400);
   const supplied=await call(base,'/plan','POST',{...planBody,externalId:randomUUID(),id:'must-not-be-a-local-id',undeclaredField:'must-be-stripped'});
   assert.notEqual(supplied.id,'must-not-be-a-local-id');assert.equal(Object.hasOwn(supplied,'undeclaredField'),false);
@@ -102,15 +103,18 @@ try{
   const checkoutBody={customerId:'cus_fixture',paymentMethods:[stripe?'card':'credit_card'],currency:'USD',uri:'https://provider.example/initial',expiresAt:new Date().toISOString(),status:'PENDING',...providerFields};
   for(const suffix of ['expire','success','failure']){const checkout=await call(base,'/checkout-session','POST',checkoutBody);await call(base,`/checkout-session/${checkout.id}`);await call(base,`/checkout-session/${checkout.id}/${suffix}`);await removedCachedRecord(base,`/checkout-session/${checkout.id}`,stripe);}
   const linkBody={amount:299,paymentMethods:checkoutBody.paymentMethods,currency:'USD',status:'PENDING',...(stripe?{stripeFields:{line_items:[{price:'price_fixture',quantity:1}]}}:providerFields)};
+  if(stripe){const {stripeFields,...missingOptions}=linkBody;await call(base,'/payment-link','POST',missingOptions,400);await call(base,'/payment-link','POST',{...linkBody,stripeFields:{}},400);}
+  for(const suffix of ['expire','success','failure']){const link=await call(base,'/payment-link','POST',linkBody);await call(base,`/payment-link/${link.id}`);await call(base,`/payment-link/${link.id}`,'PUT',{id:link.id,amount:0});await call(base,'/payment-link');await call(base,`/payment-link/${link.id}`+(suffix==='expire'?'':'/'+suffix),suffix==='expire'?'DELETE':'GET');await removedCachedRecord(base,`/payment-link/${link.id}`,stripe);}
   // The TypeScript SDK signs each request itself (fresh nonce, full wire path).
   const signed=await sdk.universalSdk({host:base,registryOptions:{raw:await openApiDocument(service)},hmac:{secretKey:secret}});
   for(let attempt=0;attempt<2;attempt++)assert.equal((await signed.plan.getPlan({params:{id:plan.id}})).code,200);
   const signedLink=await signed.paymentLink.createPaymentLink({body:linkBody});assert.equal(signedLink.code,200,JSON.stringify(signedLink.response));
   assert.equal((await signed.paymentLink.getPaymentLink({params:{id:signedLink.response.id}})).code,200);
+  assert.equal((await signed.paymentLink.expirePaymentLink({params:{id:signedLink.response.id}})).code,200);
   const unsigned=await sdk.universalSdk({host:base,registryOptions:{raw:await openApiDocument(service)},hmac:{secretKey:'not-the-billing-secret'}});
-  assert.equal((await unsigned.plan.getPlan({params:{id:plan.id}})).code,403);
-  if(stripe){const {stripeFields,...missingOptions}=linkBody;await call(base,'/payment-link','POST',missingOptions,400);await call(base,'/payment-link','POST',{...linkBody,stripeFields:{}},400);}
-  for(const suffix of ['expire','success','failure']){const link=await call(base,'/payment-link','POST',linkBody);await call(base,`/payment-link/${link.id}`);await call(base,`/payment-link/${link.id}`,'PUT',{id:link.id,amount:0});await call(base,'/payment-link');await call(base,`/payment-link/${link.id}`+(suffix==='expire'?'':'/'+suffix),suffix==='expire'?'DELETE':'GET');await removedCachedRecord(base,`/payment-link/${link.id}`,stripe);}
+  // Configured Stripe declares its 403; the native base route leaves its 401 undeclared.
+  if(stripe)assert.equal((await unsigned.plan.getPlan({params:{id:plan.id}})).code,403);
+  else await assert.rejects(()=>unsigned.plan.getPlan({params:{id:plan.id}}),/Undeclared response status/);
   await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},403,jwt(['viewer']));
   const portal=await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},200,jwt());await call(base,`/billing-portal/${portal.id}`,'GET',undefined,200,jwt());const updated=await call(base,`/billing-portal/${portal.id}`,'PUT',{id:portal.id,customerId:'must-not-reassign',...providerFields},200,jwt());assert.equal(updated.id,portal.id);assert.equal(updated.customerId,portal.customerId);
   if(stripe){
@@ -166,5 +170,5 @@ try{
  for(const config of [{MCP_ENABLED:'false'},{MCP_ENABLED:'true',MCP_PATH:'/tools'}]){const info=await start(baseBinary,'a',config);assert.equal((await fetch(info.base+'/health')).status,200);assert.equal((await fetch(info.base+'/mcp',{method:'POST'})).status,404);if(config.MCP_ENABLED==='true')await probeMcp(info.base,[],config.MCP_PATH);await stop(info);}
  assert.ok(providerCalls>20);
  console.log('PASS generated base/Stripe billing: all five service families over HTTP, authenticated MCP tools, both SDKs, JWT roles, configured party lookups, verified webhooks/platform events, keyless managed gateway calls, supplied keys taking precedence over the gateway, configuration failures, encrypted persistence, tenant isolation, restart, MCP settings and graceful shutdown');
-}finally{// Cleanup must not mask the failure that left a process running.
+}catch(error){if(process.env.FORKLAUNCH_DEBUG_BILLING)for(const info of children)console.error('SERVICE STDERR:',info.errors().slice(-6000));throw error;}finally{// Cleanup must not mask the failure that left a process running.
  for(const info of children)if(info.child.exitCode===null&&info.child.signalCode===null){info.child.kill('SIGKILL');await info.exit;}await Promise.all([jwks,provider].map(server=>new Promise(resolve=>server.close(resolve))));}
