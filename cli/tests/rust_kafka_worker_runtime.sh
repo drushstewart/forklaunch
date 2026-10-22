@@ -80,7 +80,7 @@ run_cli init worker jobs --path . --language rust --consumer-only -t kafka -D Jo
 grep -q USER_OWNED_MARKER src/jobs/domain/services/handler.rs
 grep -q 'variant = "worker-kafka"' .forklaunch/manifest.toml
 grep -q 'queue = "kafka"' .forklaunch/manifest.toml
-grep -q WORKER_KAFKA_BROKERS docker-compose.yaml
+grep -q JOBS_KAFKA_BROKERS docker-compose.yaml
 cargo build --workspace
 run_cli openapi export --path .
 assert_no_http_sdk .
