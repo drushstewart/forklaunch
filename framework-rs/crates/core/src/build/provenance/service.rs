@@ -23,11 +23,13 @@ impl ServiceBuild {
     pub fn capture(additional: &[InputScope]) -> Result<Self> {
         let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?);
         let result = Self::for_manifest(&manifest, BuildContext::cargo()?, additional)?;
+        // Cargo treats a watched path that does not exist as always changed, so
+        // absent optional inputs would rerun every build script on every build.
         for scope in &result.inputs.scopes {
-            println!(
-                "cargo:rerun-if-changed={}",
-                result.root.join(&scope.path).display()
-            );
+            let path = result.root.join(&scope.path);
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
         }
         Ok(result)
     }
@@ -141,10 +143,10 @@ impl ServiceBuild {
         }
         self.inputs = InputSnapshot::capture(&self.root, &unique)?;
         for scope in &self.inputs.scopes {
-            println!(
-                "cargo:rerun-if-changed={}",
-                self.root.join(&scope.path).display()
-            );
+            let path = self.root.join(&scope.path);
+            if path.exists() {
+                println!("cargo:rerun-if-changed={}", path.display());
+            }
         }
         Ok(self)
     }
