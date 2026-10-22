@@ -12,7 +12,8 @@
 //! password) are written to the git-ignored root `.env` by `local_runtime`.
 use base64::Engine;
 use indexmap::IndexMap;
-use rsa::pkcs8::{EncodePrivateKey, LineEnding};
+use aws_lc_rs::encoding::{AsDer, Pkcs8V1Der};
+use aws_lc_rs::rsa::{KeyPair, KeySize};
 
 use super::*;
 
@@ -155,10 +156,18 @@ pub(super) fn local_value(name: &str, app: &str) -> Option<String> {
     }
 }
 
-/// A 2048-bit RSA PKCS#8 key, base64-encoded so it fits one `.env` line.
+/// A 2048-bit RSA PKCS#8 key as PEM, base64-encoded so it fits one `.env` line.
+/// Generated with aws-lc-rs (the crypto backend the CLI already links).
 fn development_key() -> String {
-    let key = rsa::RsaPrivateKey::new(&mut rsa::rand_core::OsRng, 2048).expect("Failed to generate an RSA key");
-    let pem = key.to_pkcs8_pem(LineEnding::LF).expect("Failed to encode the RSA key");
+    let key = KeyPair::generate(KeySize::Rsa2048).expect("Failed to generate an RSA key");
+    let der: Pkcs8V1Der<'static> = key.as_der().expect("Failed to encode the RSA key");
+    let body = base64::engine::general_purpose::STANDARD.encode(der.as_ref());
+    let mut pem = String::from("-----BEGIN PRIVATE KEY-----\n");
+    for line in body.as_bytes().chunks(64) {
+        pem.push_str(std::str::from_utf8(line).expect("base64 is ASCII"));
+        pem.push('\n');
+    }
+    pem.push_str("-----END PRIVATE KEY-----\n");
     base64::engine::general_purpose::STANDARD.encode(pem.as_bytes())
 }
 
@@ -235,7 +244,13 @@ mod tests {
         let key = local_value("IAM_SESSION_JWT_PRIVATE_KEY_PEM", "app").unwrap();
         assert!(!key.contains('\n'));
         let pem = String::from_utf8(base64::engine::general_purpose::STANDARD.decode(&key).unwrap()).unwrap();
-        assert!(pem.starts_with("-----BEGIN PRIVATE KEY-----"));
+        assert!(pem.starts_with("-----BEGIN PRIVATE KEY-----\n"));
+        assert!(pem.ends_with("-----END PRIVATE KEY-----\n"));
+        assert!(pem.lines().all(|line| line.len() <= 64));
+        // The PEM body is the PKCS#8 DER aws-lc-rs (and so jsonwebtoken) parses back.
+        let body: String = pem.lines().filter(|line| !line.starts_with("-----")).collect();
+        let der = base64::engine::general_purpose::STANDARD.decode(body).unwrap();
+        assert!(KeyPair::from_pkcs8(&der).is_ok());
         assert_ne!(local_value("IAM_SESSION_JWT_PRIVATE_KEY_PEM", "app").unwrap(), key);
         assert_eq!(local_value("IAM_SESSION_JWT_KEY_ID", "app").as_deref(), Some("app-dev-1"));
         assert_eq!(local_value("JWT_ISSUER", "app").as_deref(), Some("app-iam"));
