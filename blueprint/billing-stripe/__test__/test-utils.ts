@@ -40,6 +40,8 @@ export const setupTestDatabase = async (): Promise<TestSetupResult> => {
     useMigrations: false,
     needsRedis: true,
     customEnvVars: {
+      // registrations.ts requires IAM_URL; the tests never call IAM.
+      IAM_URL: 'http://localhost:8000',
       STRIPE_API_KEY: getEnvVar('STRIPE_API_KEY'),
       STRIPE_WEBHOOK_SECRET: getEnvVar('STRIPE_WEBHOOK_SECRET')
     },
