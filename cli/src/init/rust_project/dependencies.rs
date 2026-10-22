@@ -53,24 +53,22 @@ fn default_configuration() -> toml::Table {
     config
 }
 
+/// Switch an existing application between published crates and a local
+/// framework checkout, rewriting manifests and the generated Docker inputs.
+pub(crate) fn change(root: &Path, matches: &ArgMatches) -> Result<String> {
+    configure(root, matches)?;
+    super::language_images::reconcile(root)?;
+    Ok(match forklaunch_state::framework(root).and_then(|config| config.get("path").and_then(Value::as_str).map(str::to_owned)) {
+        Some(path) => format!("local framework checkout {path}"),
+        None => format!("published framework {}", forklaunch_state::framework(root).and_then(|c| c.get("version").and_then(Value::as_str).map(str::to_owned)).unwrap_or_default()),
+    })
+}
+
 /// Record the selection and rewrite already generated manifests to it.
 pub(crate) fn configure(root: &Path, matches: &ArgMatches) -> Result<()> {
     let config = configuration(matches)?;
     forklaunch_state::write_framework(root, &config)?;
     rewrite_tree(root, root)
-}
-
-/// Host-local dependencies need an explicitly application-owned container integration.
-pub(super) fn preflight_mixed_image(root: &Path) -> Result<()> {
-    let Some(config) = forklaunch_state::framework(root) else { return Ok(()); };
-    if config.get("path").and_then(Value::as_str).is_none() { return Ok(()); }
-    let path = root.join("Dockerfile.rust");
-    let template = render_static_rust_template("rust/application/Dockerfile");
-    let marked = crate::core::watermark::apply_watermark(&RenderedTemplate { path: path.clone(), content: template.clone(), context: None })?;
-    let custom = read_to_string(&path).is_ok_and(|source| source.trim_end() != template.trim_end() && source.trim_end() != marked.trim_end());
-    anyhow::ensure!(custom && forklaunch_state::file_stamped(&path).is_none(),
-        "Local --framework-path dependencies are a host-development override outside the generated Docker build context. Before adding Rust to this workspace, provide an application-owned Dockerfile.rust integrating that local source, or use the published default for the managed image. No project files were generated.");
-    Ok(())
 }
 
 /// Select the published release when the application has no selection, and
@@ -155,7 +153,61 @@ fn rewrite_in_place(root: &Path, source: &str) -> Result<Option<String>> {
     let Ok(mut document) = source.parse::<toml_edit::DocumentMut>() else { return Ok(None) };
     let mut changed = false;
     rewrite_item(document.as_item_mut(), &config, &mut changed);
+    // Published crates switched to a local checkout: registry specs become paths.
+    if let Some(path) = config.get("path").and_then(Value::as_str) {
+        let index = local_crates(Path::new(path));
+        localize_item(document.as_item_mut(), &index, &mut changed);
+    }
     Ok(changed.then(|| document.to_string()))
+}
+
+/// Package name → crate directory for a local framework checkout and its
+/// sibling blueprint-rs.
+fn local_crates(framework: &Path) -> std::collections::BTreeMap<String, PathBuf> {
+    fn walk(directory: &Path, index: &mut std::collections::BTreeMap<String, PathBuf>, depth: usize) {
+        let Ok(entries) = std::fs::read_dir(directory) else { return };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() || path.file_name().is_some_and(|name| name == "target" || name == "node_modules") {
+                continue;
+            }
+            if let Ok(source) = read_to_string(path.join("Cargo.toml"))
+                && let Ok(manifest) = toml::from_str::<Value>(&source)
+                && let Some(name) = manifest.get("package").and_then(|package| package.get("name")).and_then(Value::as_str)
+            {
+                index.insert(name.to_owned(), path.clone());
+            }
+            if depth < 4 {
+                walk(&path, index, depth + 1);
+            }
+        }
+    }
+    let mut index = std::collections::BTreeMap::new();
+    walk(&framework.join("crates"), &mut index, 0);
+    let blueprint = local_blueprint(&framework.to_string_lossy());
+    if blueprint.is_dir() {
+        walk(&blueprint, &mut index, 0);
+    }
+    index
+}
+
+fn localize_item(item: &mut toml_edit::Item, index: &std::collections::BTreeMap<String, PathBuf>, changed: &mut bool) {
+    let Some(table) = item.as_table_like_mut() else { return };
+    let keys: Vec<String> = table.iter().map(|(key, _)| key.to_owned()).collect();
+    for key in keys {
+        let Some(child) = table.get_mut(&key) else { continue };
+        let Some(spec) = child.as_table_like_mut() else { continue };
+        let package = spec.get("package").and_then(toml_edit::Item::as_str).unwrap_or(&key).to_owned();
+        if spec.contains_key("version") && !spec.contains_key("path") && package.starts_with("forklaunch-")
+            && let Some(directory) = index.get(&package)
+        {
+            spec.remove("version");
+            spec.insert("path", toml_edit::value(directory.to_string_lossy().into_owned()));
+            *changed = true;
+            continue;
+        }
+        localize_item(child, index, changed);
+    }
 }
 
 fn rewrite_item(item: &mut toml_edit::Item, config: &Value, changed: &mut bool) {
@@ -266,6 +318,26 @@ mod tests {
         assert_eq!(value["dependencies"]["worker"]["version"].as_str(), Some("=0.1.0"));
         assert_eq!(value["dependencies"]["local"]["path"].as_str(), Some("../local"));
         assert!(rewrite_in_place(root.path(), "# mine\n[dependencies]\nlocal = { path = '../local' }\n").unwrap().is_none());
+    }
+
+    #[test]
+    fn published_crates_switch_to_a_local_checkout_by_package_name() {
+        let checkout = tempfile::tempdir().unwrap();
+        for (path, name) in [("framework-rs/crates/core", "forklaunch-core"), ("blueprint-rs/crates/interfaces/worker-interface", "forklaunch-worker-interface")] {
+            create_dir_all(checkout.path().join(path)).unwrap();
+            write(checkout.path().join(path).join("Cargo.toml"), format!("[package]\nname = '{name}'\n")).unwrap();
+        }
+        let root = tempfile::tempdir().unwrap();
+        create_dir_all(root.path().join(".forklaunch")).unwrap();
+        let framework = checkout.path().join("framework-rs");
+        write(root.path().join(".forklaunch/manifest.toml"), format!("[framework]\npath = '{}'\n", framework.display())).unwrap();
+        let source = "[dependencies]\ncore = { package = 'forklaunch-core', version = '=0.2.0', features = ['build'] }\nforklaunch-worker-interface = { version = '=0.2.0' }\nserde = { version = '1' }\n";
+        let value: Value = toml::from_str(&rewrite_in_place(root.path(), source).unwrap().unwrap()).unwrap();
+        assert_eq!(value["dependencies"]["core"]["path"].as_str(), Some(framework.join("crates/core").to_str().unwrap()));
+        assert_eq!(value["dependencies"]["core"]["features"][0].as_str(), Some("build"));
+        assert!(value["dependencies"]["core"].get("version").is_none());
+        assert!(value["dependencies"]["forklaunch-worker-interface"]["path"].as_str().unwrap().ends_with("blueprint-rs/crates/interfaces/worker-interface"));
+        assert_eq!(value["dependencies"]["serde"]["version"].as_str(), Some("1"));
     }
 
     #[test]

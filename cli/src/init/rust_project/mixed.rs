@@ -130,7 +130,7 @@ fn plan_typescript_sibling(
             continue;
         }
         if destination.exists() && read_to_string(&destination)?.trim_end() != actual.trim_end() {
-            bail!("TypeScript sibling Dockerfile conflicts with the generated source; reconcile it before adding Rust projects");
+            bail!("TypeScript sibling Dockerfile conflicts with the generated source; reconcile it before adding projects");
         }
         return Ok(Some((source, destination, actual)));
     }
@@ -146,7 +146,6 @@ pub(super) fn ensure_workspace(root: &Path, dryrun: bool) -> Result<()> {
     ) {
         return Ok(());
     }
-    dependencies::preflight_mixed_image(root)?;
     // Project manifest views accept both spellings; emit only one canonical key.
     let application = manifest
         .as_table_mut()

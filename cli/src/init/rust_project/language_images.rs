@@ -48,7 +48,19 @@ fn dependencies(value: &Value) -> Vec<(&str, &Value)> {
     result
 }
 
+/// A local framework checkout (`[framework] path`) reaches the image through
+/// named build contexts, so its crates are provided rather than copied from
+/// the application. Anything else outside the application is refused.
+fn provided(external: &[PathBuf], path: &Path) -> bool {
+    path.canonicalize().is_ok_and(|path| external.iter().any(|context| path.starts_with(context)))
+}
+
 pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
+    let framework = super::local_runtime::framework_contexts(root);
+    let external: Vec<PathBuf> = framework
+        .iter()
+        .flat_map(|(_, contexts)| contexts.iter().filter_map(|(_, path)| path.canonicalize().ok()))
+        .collect();
     let root = root.canonicalize()?;
     let cargo: Value = toml::from_str(&read_to_string(root.join("Cargo.toml"))?)?;
     let members = cargo
@@ -137,6 +149,9 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
         for registry in patches.values().filter_map(Value::as_table) {
             for dependency in registry.values() {
                 if let Some(path) = dependency.get("path").and_then(Value::as_str) {
+                    if provided(&external, &root.join(path)) {
+                        continue;
+                    }
                     pending.push_back(contained(&root, &root.join(path))?);
                 }
             }
@@ -149,6 +164,10 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
         "Cargo.lock".to_owned(),
         ".forklaunch/manifest.toml".to_owned(),
     ]);
+    // Workspace Cargo settings (for example SQLX_OFFLINE) apply to image builds too.
+    if root.join(".cargo/config.toml").is_file() {
+        files.insert(".cargo/config.toml".to_owned());
+    }
     while let Some(directory) = pending.pop_front() {
         if !directories.insert(directory.clone()) {
             continue;
@@ -180,6 +199,9 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
                     (&directory, dependency)
                 };
             if let Some(path) = dependency.get("path").and_then(Value::as_str) {
+                if provided(&external, &base.join(path)) {
+                    continue;
+                }
                 pending.push_back(contained(&root, &base.join(path))?);
             }
         }
@@ -227,14 +249,33 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
             "Unsupported Docker binary name"
         );
     }
-    let mut docker = "# Generated shared Rust image. Run cargo generate-lockfile before the first image build.\nFROM rust:1.98-slim-bookworm AS builder\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev libcurl4-openssl-dev ca-certificates cmake make g++ perl && rm -rf /var/lib/apt/lists/*\n".to_owned();
+    let mut docker = "# Generated shared Rust image. Run cargo generate-lockfile before the first image build.\n".to_owned();
+    if let Some((_, contexts)) = &framework {
+        // docker-compose.yaml passes the checkout as these named contexts.
+        for (name, _) in contexts {
+            docker.push_str(&format!("FROM scratch AS {name}\n"));
+        }
+    }
+    docker.push_str("FROM rust:1.98-slim-bookworm AS builder\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev libcurl4-openssl-dev ca-certificates cmake make g++ perl && rm -rf /var/lib/apt/lists/*\n");
+    if let Some((_, contexts)) = &framework {
+        // The checkout is recreated at its host path, which the Cargo manifests
+        // reference; only workspace manifests and crates/ are transferred.
+        for (name, path) in contexts {
+            let path = path.to_string_lossy();
+            docker.push_str(&format!(
+                "COPY --from={name} {}\nCOPY --from={name} {}\n",
+                serde_json::to_string(&vec!["Cargo.tom[l]".to_owned(), "Cargo.loc[k]".to_owned(), format!("{path}/")])?,
+                serde_json::to_string(&vec!["crates".to_owned(), format!("{path}/crates")])?,
+            ));
+        }
+    }
     for input in &inputs {
         docker.push_str(&format!(
             "COPY {}\n",
             serde_json::to_string(&vec![input.clone(), format!("/app/{input}")])?
         ));
     }
-    docker.push_str("ARG CARGO_BUILD_JOBS=2\nRUN cargo build --locked --release --workspace --bins");
+    docker.push_str("ENV SQLX_OFFLINE=true\nARG CARGO_BUILD_JOBS=2\nRUN cargo build --locked --release --workspace --bins");
     docker.push_str("\nFROM debian:bookworm-slim AS runtime\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*\n");
     // Deployed PostgreSQL URLs verify the server against the AWS RDS CA bundle.
     docker.push_str(&format!("ADD --chmod=0644 {RDS_CA_BUNDLE_URL} {RDS_CA_BUNDLE_PATH}\n"));
@@ -283,6 +324,8 @@ pub(super) fn preflight(root: &Path) -> Result<()> {
 }
 
 pub(super) fn reconcile(root: &Path) -> Result<()> {
+    // Workspace Cargo settings are an image input; create them before planning.
+    super::local_runtime::ensure_cargo_config(root)?;
     reconcile_images(root)?;
     super::local_runtime::reconcile(root)
 }
@@ -466,6 +509,26 @@ mod tests {
             edited
         );
     }
+    #[test]
+    fn local_framework_checkout_is_a_named_build_context_not_an_escape() {
+        let root = fixture();
+        let checkout = tempfile::tempdir().unwrap();
+        let framework = checkout.path().join("framework-rs");
+        create_dir_all(framework.join("crates/core")).unwrap();
+        write(framework.join("Cargo.toml"), "[workspace]\nmembers=['crates/core']\n").unwrap();
+        write(framework.join("crates/core/Cargo.toml"), "[package]\nname='forklaunch-core'\nversion='0.2.0'\n").unwrap();
+        write(root.path().join(".forklaunch/manifest.toml"), format!("language='mixed'\napp_name='demo'\n[framework]\npath='{}'\n", framework.display())).unwrap();
+        write(root.path().join("src/api/Cargo.toml"), format!("[package]\nname='api'\nversion='0.1.0'\n[[bin]]\nname='api'\npath='main.rs'\n[dependencies]\nforklaunch-core={{path='{}'}}\n", framework.join("crates/core").display())).unwrap();
+        let (docker, inputs, _) = plan(root.path()).unwrap();
+        assert!(docker.contains("FROM scratch AS framework\n"), "{docker}");
+        assert!(docker.contains(&format!("COPY --from=framework [\"crates\",\"{}/crates\"]", framework.display())), "{docker}");
+        assert!(!inputs.iter().any(|input| input.contains("framework-rs")));
+        super::super::local_runtime::reconcile(root.path()).unwrap();
+        let compose = read_or_create_rust_docker_compose(&root.path().join("docker-compose.yaml")).unwrap();
+        let build = compose.services["api"].build.as_ref().unwrap();
+        assert_eq!(build.additional_properties["additional_contexts"]["framework"].as_str(), Some(framework.to_str().unwrap()));
+    }
+
     #[test]
     fn application_rename_retags_every_process_of_the_shared_image() {
         let root = fixture();

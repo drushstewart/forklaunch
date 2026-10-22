@@ -1615,6 +1615,22 @@ impl CliCommand for ApplicationCommand {
                     .help("Explicitly change only this project's CLI version pin (noninteractive)"),
             )
             .arg(
+                Arg::new("framework-path")
+                    .long("framework-path")
+                    .value_name("FRAMEWORK_RS")
+                    .conflicts_with_all(["framework-version", "cli-version"])
+                    .help("Rust: build against a local framework-rs checkout in place (and its sibling blueprint-rs)"),
+            )
+            .arg(
+                Arg::new("framework-version")
+                    .long("framework-version")
+                    .value_name("X.Y.Z")
+                    .num_args(0..=1)
+                    .default_missing_value(crate::core::cargo_toml::FRAMEWORK_VERSION)
+                    .conflicts_with("cli-version")
+                    .help("Rust: use the published framework crates (this exact version, default the CLI's release)"),
+            )
+            .arg(
                 Arg::new("name")
                     .short('N')
                     .help("The name of the application"),
@@ -1706,6 +1722,12 @@ impl CliCommand for ApplicationCommand {
 
         let (app_root_path, _) = find_app_root_path(matches, RequiredLocation::Application)?;
         let manifest_path = app_root_path.join(".forklaunch").join("manifest.toml");
+        if matches.contains_id("framework-path") || matches.contains_id("framework-version") {
+            anyhow::ensure!(!matches.get_flag("dryrun"), "--dryrun is not supported when changing the framework source");
+            let selected = crate::init::rust_project::dependencies::change(&app_root_path, matches)?;
+            log_ok!(stdout, "Rust crates now use the {}", selected);
+            return Ok(());
+        }
         crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
         let current_manifest: toml::Value = toml::from_str(&read_to_string(&manifest_path)?)?;
