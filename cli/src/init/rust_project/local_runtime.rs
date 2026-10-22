@@ -777,6 +777,41 @@ pub(super) fn wire_framework_contexts(root: &Path, compose: &mut DockerCompose, 
     }
 }
 
+/// Drop generated `<service>-migrate` jobs whose service was deleted or renamed;
+/// reconcile regenerates them under the current names.
+pub(super) fn prune_stale_migrations(root: &Path) -> Result<()> {
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let compose_path = root.join(
+        manifest.get("docker_compose_path").and_then(Value::as_str).unwrap_or("docker-compose.yaml"),
+    );
+    if !compose_path.is_file() {
+        return Ok(());
+    }
+    let mut compose = read_or_create_rust_docker_compose(&compose_path)?;
+    let stale: Vec<String> = compose
+        .services
+        .iter()
+        .filter(|(name, service)| {
+            let generated = matches!(&service.command, Some(DockerCommand::Multiple(command)) if command.last().map(String::as_str) == Some("--migrate"));
+            generated && name.strip_suffix("-migrate").is_some_and(|base| !compose.services.contains_key(base))
+        })
+        .map(|(name, _)| name.clone())
+        .collect();
+    if stale.is_empty() {
+        return Ok(());
+    }
+    for name in &stale {
+        compose.services.shift_remove(name);
+    }
+    for service in compose.services.values_mut() {
+        if let Some(depends) = service.depends_on.as_mut() {
+            depends.retain(|name, _| !stale.contains(name));
+        }
+    }
+    write(&compose_path, yaml_to_string(&compose)?)?;
+    Ok(())
+}
+
 pub(super) fn reconcile(root: &Path) -> Result<()> {
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     let compose_path = root.join(

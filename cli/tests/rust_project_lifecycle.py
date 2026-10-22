@@ -189,6 +189,7 @@ def assert_removed(name, kind):
         processes = rust_image()['processes']
         assert name not in processes
         assert name + '-server' not in processes
+        assert name + '-migrate' not in processes
 
 
 def clone(source_name, destination_name, kind='service'):
@@ -298,7 +299,8 @@ def check_init():
     assert '#[forklaunch_core::contract::api]' in (project('accounts') / 'api/controllers/users.rs').read_text()
     assert 'controller_contract!(users' in (project('accounts') / '.forklaunch/contracts/lib.rs').read_text()
     assert all((app / filename).is_file() for filename in ['Dockerfile.rust', 'Dockerfile.typescript'])
-    assert set(rust_image()['processes']) == {'accounts', 'jobs', 'jobs-server'}
+    # The PostgreSQL worker also gets its one-shot migration job from the shared image.
+    assert set(rust_image()['processes']) == {'accounts', 'jobs', 'jobs-server', 'jobs-migrate'}, set(rust_image()['processes'])
 
     owned = {path: path.read_bytes() for name in ['accounts', 'jobs'] for path in project(name).rglob('*.rs')}
     service()

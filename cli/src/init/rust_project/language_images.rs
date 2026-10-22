@@ -326,6 +326,7 @@ pub(super) fn preflight(root: &Path) -> Result<()> {
 pub(super) fn reconcile(root: &Path) -> Result<()> {
     // Workspace Cargo settings are an image input; create them before planning.
     super::local_runtime::ensure_cargo_config(root)?;
+    super::local_runtime::prune_stale_migrations(root)?;
     reconcile_images(root)?;
     super::local_runtime::reconcile(root)
 }

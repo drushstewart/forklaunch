@@ -2509,9 +2509,16 @@ fn remove_rust_docker_compose_project(app_root: &Path, name: &str) -> Result<()>
     }
     let mut compose = read_or_create_rust_docker_compose(&compose_path)?;
     compose.services.shift_remove(name);
+    // The project's one-shot migration job goes with it.
+    compose.services.shift_remove(&format!("{name}-migrate"));
     compose
         .services
         .retain(|_, service| modules::ecommerce_worker_owner(service) != Some(name) && worker::producer_owner(service) != Some(name));
+    for service in compose.services.values_mut() {
+        if let Some(depends) = service.depends_on.as_mut() {
+            depends.shift_remove(&format!("{name}-migrate"));
+        }
+    }
     write(&compose_path, yaml_to_string(&compose)?)
         .with_context(|| format!("Failed to update {}", compose_path.display()))
 }
