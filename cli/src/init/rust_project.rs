@@ -2505,6 +2505,10 @@ fn remove_rust_docker_compose_project(app_root: &Path, name: &str) -> Result<()>
     compose
         .services
         .retain(|_, service| modules::ecommerce_worker_owner(service) != Some(name) && worker::producer_owner(service) != Some(name));
+    let seed = format!("{name}-seed");
+    if compose.services.get(&seed).is_some_and(|service| modules::is_seed_job(service, name)) {
+        compose.services.shift_remove(&seed);
+    }
     write(&compose_path, yaml_to_string(&compose)?)
         .with_context(|| format!("Failed to update {}", compose_path.display()))
 }
