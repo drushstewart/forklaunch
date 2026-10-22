@@ -278,7 +278,7 @@ pub fn mount(router:ContractRouter<AppState>)->Result<ContractRouter<AppState>,S
         &dir.join("domain/services/mod.rs"),
         "\npub mod replay;\n",
     )?;
-    files.push(RenderedTemplate {path:dir.join("domain/services/replay.rs"),context:None,content:replay_store(apalis, backend).into()});
+    files.push(RenderedTemplate {path:dir.join("domain/services/replay.rs"),context:None,content:replay_store(apalis, backend)});
     replay_wiring(files, dir, apalis, backend)?;
     append(
         files,
