@@ -8,6 +8,9 @@ pub struct ServiceConfig {
     pub host: String,
     pub port: u16,
     pub public_origin: Option<String>,
+    /// Exact browser origins allowed to call cross-origin (`CORS_ORIGINS`,
+    /// comma-separated). Others, and `*`, are refused.
+    pub cors_origins: Vec<String>,
     pub version: String,
     pub docs_path: String,
     pub docs_server_urls: Vec<String>,
@@ -16,7 +19,7 @@ pub struct ServiceConfig {
 
 impl ServiceConfig {
     /// Reads the service settings. Each is required at startup; a missing or
-    /// malformed variable is an error naming it. `PUBLIC_ORIGIN` and
+    /// malformed variable is an error naming it. `PUBLIC_ORIGIN`, `CORS_ORIGINS` and
     /// `DOCS_SERVER_URLS`/`DOCS_SERVER_DESCRIPTIONS` are optional: without them
     /// the service is reached at, and documents, its own listener address.
     pub fn from_env() -> Result<Self> {
@@ -37,6 +40,9 @@ impl ServiceConfig {
             host,
             port,
             public_origin: config::optional("PUBLIC_ORIGIN")?,
+            cors_origins: config::optional::<String>("CORS_ORIGINS")?
+                .map(|value| csv_values(&value))
+                .unwrap_or_default(),
             version: config::required("VERSION")?,
             docs_path: config::required("DOCS_PATH")?,
             docs_server_urls,
@@ -104,6 +110,7 @@ impl Default for ServiceConfig {
             host: "127.0.0.1".to_string(),
             port: 8080,
             public_origin: None,
+            cors_origins: Vec::new(),
             version: "v1".to_string(),
             docs_path: "/docs".to_string(),
             docs_server_urls: vec!["http://127.0.0.1:8080".to_string()],

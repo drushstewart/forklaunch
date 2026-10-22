@@ -58,6 +58,19 @@ impl NativeApplication {
             telemetry,
         })
     }
+    /// Allow these exact browser origins to call the HTTP routes cross-origin
+    /// (see [`NativeHttpPolicy::with_cors_origins`]). Other origins stay denied.
+    ///
+    /// # Errors
+    /// Rejects wildcards and malformed origins.
+    pub fn with_cors_origins<I, O>(mut self, origins: I) -> ApplicationResult<Self>
+    where
+        I: IntoIterator<Item = O>,
+        O: AsRef<str>,
+    {
+        self.policy = self.policy.with_cors_origins(origins)?;
+        Ok(self)
+    }
     /// Build an in-process router with MCP mounted using its default options.
     /// Executable MCP environment settings are interpreted by [`Self::serve`].
     ///

@@ -295,7 +295,10 @@ pub mod contracts {
         for mut route in registry().routes().iter().cloned() {
             if route.auth.is_some() {
                 route.auth = Some(AuthConfig::bearer());
-                route = route.with_response(401, Some(session_error_body()));
+                // Reads of another user, and listings, need `platform:read`.
+                route = route
+                    .with_response(401, Some(session_error_body()))
+                    .with_response(403, Some(session_error_body()));
             }
             // The session adapter and its authenticator return the framework's
             // JSON error envelope, including for errors inherited from registry().
@@ -354,6 +357,7 @@ mod tests {
                 let kind = match response.status_code {
                     400 => ErrorKind::Validation,
                     401 => ErrorKind::Unauthorized,
+                    403 => ErrorKind::Forbidden,
                     404 => ErrorKind::NotFound,
                     500 => ErrorKind::Internal,
                     status => panic!("unexpected session error status {status}"),

@@ -5,7 +5,7 @@
 pub mod browser;
 pub mod directory;
 use axum::{
-    Json,
+    Extension, Json,
     extract::{
         Path, Query,
         rejection::{JsonRejection, QueryRejection},
@@ -26,6 +26,10 @@ use forklaunch_core::http::ErrorKind;
 use forklaunch_core::http::ErrorResponse;
 use forklaunch_iam_interface::{AsyncIamSessions, Credentials, module_contracts};
 use std::{collections::HashMap, sync::Arc};
+
+/// The permission that lets a session read users other than itself and list
+/// users/organizations. Matches the TypeScript IAM directory read permission.
+pub const ADMIN_READ_PERMISSION: &str = "platform:read";
 
 use crate::directory::{compliance::DirectoryCompliance, postgres::PostgresDirectoryStore};
 pub use directory::DirectoryAuthorizationMode;
@@ -53,6 +57,8 @@ pub struct IamHttp<S> {
     auth: Arc<HmacJwksAuth>,
     mode: DirectoryAuthorizationMode,
     service: ServiceInfo,
+    jwks: Option<Arc<serde_json::Value>>,
+    cors_origins: Vec<axum::http::HeaderValue>,
 }
 
 impl<S> Clone for IamHttp<S> {
@@ -64,6 +70,8 @@ impl<S> Clone for IamHttp<S> {
             auth: Arc::clone(&self.auth),
             mode: self.mode,
             service: self.service.clone(),
+            jwks: self.jwks.clone(),
+            cors_origins: self.cors_origins.clone(),
         }
     }
 }
@@ -92,7 +100,56 @@ impl<S: AsyncIamSessions + 'static> IamHttp<S> {
             auth: Arc::new(auth),
             mode,
             service,
+            jwks: None,
+            cors_origins: Vec::new(),
         }
+    }
+
+    /// Publish this public JWK set at `GET /api/auth/jwks`, the URL every
+    /// generated `JWKS_PUBLIC_KEY_URL` points at. Pass the session signer's
+    /// [`RsaJwtSessionIssuer::jwks`](crate::jwt_sessions::RsaJwtSessionIssuer::jwks);
+    /// without one no key endpoint is mounted.
+    #[must_use]
+    pub fn with_jwks(mut self, jwks: serde_json::Value) -> Self {
+        self.jwks = Some(Arc::new(jwks));
+        self
+    }
+
+    /// Exact browser origins allowed to call IAM cross-origin, with
+    /// credentials (TypeScript `CORS_ORIGINS`). Responses echo the origin and
+    /// never `*`; with no origins no CORS headers are sent, so browsers on
+    /// other origins are refused.
+    ///
+    /// # Errors
+    /// Rejects `*`, empty values and origins with a path, query or credentials.
+    pub fn with_cors_origins<I, O>(mut self, origins: I) -> Result<Self, BlueprintError>
+    where
+        I: IntoIterator<Item = O>,
+        O: AsRef<str>,
+    {
+        for origin in origins {
+            let origin = origin.as_ref().trim();
+            let valid = (origin.starts_with("https://") || origin.starts_with("http://"))
+                && !origin.contains('*')
+                && !origin.contains('@')
+                && origin
+                    .split("://")
+                    .nth(1)
+                    .is_some_and(|rest| !rest.is_empty() && !rest.contains(['/', '?', '#']));
+            let value = axum::http::HeaderValue::from_str(origin)
+                .ok()
+                .filter(|_| valid)
+                .ok_or_else(|| {
+                    BlueprintError::new(
+                        "iam_cors_origin_invalid",
+                        "CORS_ORIGINS entries must be exact http(s) origins",
+                    )
+                })?;
+            if !self.cors_origins.contains(&value) {
+                self.cors_origins.push(value);
+            }
+        }
+        Ok(self)
     }
 
     /// Use application-owned compliance classifications for export and erasure.
@@ -136,20 +193,56 @@ impl<S: AsyncIamSessions + 'static> IamHttp<S> {
             "logout" => {
                 any(move |headers: HeaderMap| logout_handler(Arc::clone(&service), headers))
             }
-            "getSessionUser" => any(move |headers: HeaderMap, Path(id): Path<String>| {
-                user_handler(Arc::clone(&service), headers, id)
-            }),
-            "listUsers" => any(
-                move |headers: HeaderMap, query: Result<Query<PageQuery>, QueryRejection>| {
-                    users_handler(Arc::clone(&service), headers, query)
+            "getSessionUser" => any(
+                move |Extension(session): Extension<AuthenticatedSession>,
+                      headers: HeaderMap,
+                      Path(id): Path<String>| {
+                    let service = Arc::clone(&service);
+                    async move {
+                        if !may_read_user(&session, &id) {
+                            return forbidden(&headers);
+                        }
+                        user_handler(service, headers, id).await
+                    }
                 },
             ),
-            "listUserPermissions" => any(move |headers: HeaderMap, Path(id): Path<String>| {
-                permissions_handler(Arc::clone(&service), headers, id)
-            }),
+            "listUsers" => any(
+                move |Extension(session): Extension<AuthenticatedSession>,
+                      headers: HeaderMap,
+                      query: Result<Query<PageQuery>, QueryRejection>| {
+                    let service = Arc::clone(&service);
+                    async move {
+                        if !is_admin_reader(&session) {
+                            return forbidden(&headers);
+                        }
+                        users_handler(service, headers, query).await
+                    }
+                },
+            ),
+            "listUserPermissions" => any(
+                move |Extension(session): Extension<AuthenticatedSession>,
+                      headers: HeaderMap,
+                      Path(id): Path<String>| {
+                    let service = Arc::clone(&service);
+                    async move {
+                        if !may_read_user(&session, &id) {
+                            return forbidden(&headers);
+                        }
+                        permissions_handler(service, headers, id).await
+                    }
+                },
+            ),
             _ => any(
-                move |headers: HeaderMap, query: Result<Query<PageQuery>, QueryRejection>| {
-                    organizations_handler(Arc::clone(&service), headers, query)
+                move |Extension(session): Extension<AuthenticatedSession>,
+                      headers: HeaderMap,
+                      query: Result<Query<PageQuery>, QueryRejection>| {
+                    let service = Arc::clone(&service);
+                    async move {
+                        if !is_admin_reader(&session) {
+                            return forbidden(&headers);
+                        }
+                        organizations_handler(service, headers, query).await
+                    }
                 },
             ),
         }
@@ -199,8 +292,65 @@ impl<S: AsyncIamSessions + 'static> IamRoutes<S> {
                 router = router.route(contract(&operation), handler);
             }
         }
-        router.with_config(directory::router_config(&self.http))
+        let mut config = directory::router_config(&self.http);
+        config.cors = Some(cors_layer(&self.http.cors_origins));
+        let mut router = router.with_config(config);
+        if let Some(jwks) = self.http.jwks.clone() {
+            router = router.nest_internal(
+                "/api/auth",
+                axum::Router::new().route(
+                    "/jwks",
+                    axum::routing::get(move || {
+                        let jwks = Arc::clone(&jwks);
+                        async move {
+                            (
+                                [(axum::http::header::CACHE_CONTROL, "public, max-age=300")],
+                                Json(jwks.as_ref().clone()),
+                            )
+                        }
+                    }),
+                ),
+            );
+        }
+        router
     }
+}
+
+/// Allow-listed origins only, with credentials; no origins sends no CORS headers.
+fn cors_layer(origins: &[axum::http::HeaderValue]) -> tower_http::cors::CorsLayer {
+    use axum::http::Method;
+    use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
+    if origins.is_empty() {
+        return CorsLayer::new();
+    }
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::list(origins.iter().cloned()))
+        .allow_credentials(true)
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
+        .allow_headers(AllowHeaders::mirror_request())
+}
+
+fn is_admin_reader(session: &AuthenticatedSession) -> bool {
+    session
+        .principal
+        .permissions
+        .iter()
+        .any(|permission| permission == ADMIN_READ_PERMISSION)
+}
+
+/// A session reads itself; reading anyone else needs [`ADMIN_READ_PERMISSION`].
+fn may_read_user(session: &AuthenticatedSession, id: &str) -> bool {
+    session.principal.subject == id || is_admin_reader(session)
+}
+
+fn forbidden(headers: &HeaderMap) -> Response {
+    response_error(ErrorKind::Forbidden, "forbidden", headers)
 }
 
 /// The combined session and directory contract for `operation`.

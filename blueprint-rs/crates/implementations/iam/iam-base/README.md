@@ -1,5 +1,15 @@
 # Base IAM identity integration
 
+## Sessions, key publication, seeding and CORS
+
+`RsaJwtSessionIssuer::from_env` reads `SESSION_JWT_PRIVATE_KEY_PEM` (PEM verbatim or base64 of the PEM on one line), `SESSION_JWT_KEY_ID`, `SESSION_JWT_ISSUER` and `SESSION_JWT_AUDIENCE`. `RsaJwtSessionIssuer::jwks()` returns the public JWK set (`n`, `e`, `kid`, `alg: RS256`, `use: sig`); `IamHttp::with_jwks` serves it at `GET /api/auth/jwks`, the URL generated `JWKS_PUBLIC_KEY_URL` settings point at.
+
+The legacy bearer routes `GET /users/:id` and `/users/:id/permissions` return only the caller's own record unless the session holds `platform:read` (`http::ADMIN_READ_PERMISSION`); `GET /users` and `GET /organizations` always need it. Other callers get 403.
+
+`IamHttp::with_cors_origins` admits exact browser origins with credentials; without origins no CORS headers are sent and `*` is never emitted.
+
+The `seed` feature adds `seed::SeedConfig`: roles and login users from TOML, applied idempotently through `AsyncIamRepository` with passwords read from the variables each user names. Directory `createUser` keeps ignoring passwords, as the TypeScript iam-base mapper does.
+
 Directory CRUD and credential/provider users remain independent unless an authorized administrator explicitly links existing identities. `PostgresDirectoryStore::bind_auth_identity(directory_id, auth_user_id)` creates a tenant-local, one-to-one association and an actor/correlation audit in one transaction. Repeating the same pair is idempotent. Email, profile fields, passwords, organizations and grants are never copied or used to infer a link. Directory create/update mappers continue to ignore passwords.
 
 `PostgresIamService::directory_user_for_session(token)` accepts the **complete issued session token**, including the complete JWT when RS256 issuance is configured. It hashes the token and requires a current persisted session, an enabled credential user and a current directory binding in the same tenant. A user ID, JWT subject, arbitrary session ID or independently signed JWT is insufficient. Expired, revoked, disabled and foreign-tenant sessions return `None`. This lookup supplies an identity association; applications must still authorize directory operations and resolve current directory grants.

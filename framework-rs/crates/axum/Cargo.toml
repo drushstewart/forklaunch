@@ -11,7 +11,9 @@ repository.workspace = true
 native-server = ["native", "forklaunch-core/rmcp-server", "forklaunch-core/otlp"]
 native-streams = ["native", "axum/ws", "dep:forklaunch-ws", "forklaunch-ws/typed-schema", "dep:futures-util"]
 # Agent routes (`/api/v1/agent`) bound on the native contract router.
-agent = ["native-streams", "forklaunch-core/agent", "forklaunch-core/remote-jwks"]
+agent = ["native-streams", "native-jwt", "forklaunch-core/agent"]
+# Bearer-JWT session policy over a remote JWKS for plain native services.
+native-jwt = ["native", "forklaunch-core/remote-jwks"]
 native = ["dep:schemars", "axum/multipart", "dep:serde_urlencoded", "forklaunch-core/typed-schema", "forklaunch-core/schema-validation", "dep:bytes", "dep:http-body", "dep:axum", "dep:tokio", "dep:tower", "dep:tower-http", "dep:uuid", "tokio/sync", "tokio/signal", "tokio/time"]
 typescript-routing = ["adapter", "forklaunch-common/zod-regex"]
 zod-regex = ["dep:forklaunch-validator", "forklaunch-validator/zod-regex", "forklaunch-core/zod-regex", "forklaunch-ws?/zod-regex"]

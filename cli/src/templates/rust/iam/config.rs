@@ -21,6 +21,9 @@ pub struct ServiceConfig {
     pub jwks_url: String,
     pub jwt_issuer: Option<String>,
     pub jwt_audience: Option<String>,
+    /// Exact browser origins allowed to call cross-origin (`CORS_ORIGINS`,
+    /// comma-separated); empty sends no CORS headers.
+    pub cors_origins: Vec<String>,
 }
 
 /// The single operator-configured OIDC provider for browser login.
@@ -72,6 +75,9 @@ impl ServiceConfig {
             jwks_url: config::required("JWKS_PUBLIC_KEY_URL")?,
             jwt_issuer: config::optional("JWT_ISSUER")?,
             jwt_audience: config::optional("JWT_AUDIENCE")?,
+            cors_origins: config::optional::<String>("CORS_ORIGINS")?
+                .map(|value| value.split(',').map(str::trim).filter(|o| !o.is_empty()).map(str::to_owned).collect())
+                .unwrap_or_default(),
         })
     }
 

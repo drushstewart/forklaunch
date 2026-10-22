@@ -260,7 +260,8 @@ impl Verifier {
                         );
                         Ok(value)
                     }
-                    (Value::Router(router), "with_state") => {
+                    // Neither changes which routes are assembled.
+                    (Value::Router(router), "with_state" | "with_cors_origins") => {
                         ensure!(
                             !call
                                 .args

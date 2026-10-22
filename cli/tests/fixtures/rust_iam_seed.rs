@@ -70,8 +70,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 async fn seed<S: AsyncIamRepository>(service: &S, label: &str, password: &str) -> Result<(), Box<dyn std::error::Error>> {
     service.create_user(User::new("user-1", "member@example.com").with_display_name(label).with_role("member"), password.to_owned()).await?;
-    service.create_user(User::new("user-2", "other@example.com"), password.to_owned()).await?;
+    // user-2 administers the tenant: `platform:read` lets it read other users.
+    service.create_user(User::new("user-2", "other@example.com").with_display_name(format!("{label} admin")).with_role("admin"), password.to_owned()).await?;
     service.put_role(Role::new("member").with_permission(Permission::new("users", "read"))).await?;
+    service.put_role(Role::new("admin").with_permission(Permission::new("platform", "read"))).await?;
     service.create_organization(Organization::new("org-1", label, "org")).await?;
     Ok(())
 }

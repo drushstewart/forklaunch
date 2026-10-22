@@ -15,6 +15,8 @@ pub mod http;
 pub mod jwt_sessions;
 #[cfg(feature = "postgres")]
 pub mod postgres;
+#[cfg(feature = "seed")]
+pub mod seed;
 
 use forklaunch_core::domain::BlueprintResult;
 use forklaunch_core::domain::Page;

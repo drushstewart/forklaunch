@@ -7,11 +7,13 @@ use jsonwebtoken::{Algorithm, EncodingKey, Header};
 use serde::Serialize;
 
 /// Server-owned signing configuration; deliberately does not implement Debug.
-/// Publish the matching public key through the application's trusted JWKS service.
+/// [`Self::jwks`] derives the public JWK set that `IamHttp` serves at
+/// `/api/auth/jwks`, the URL other services' `JWKS_PUBLIC_KEY_URL` points at.
 /// The private key is never exported by this type. Existing stored sessions are
 /// not implicitly revoked when the configuration changes.
 pub struct RsaJwtSessionIssuer {
     key: EncodingKey,
+    jwks: serde_json::Value,
     key_id: String,
     issuer: String,
     audience: String,
@@ -60,8 +62,19 @@ impl RsaJwtSessionIssuer {
         {
             return Err(invalid());
         }
+        let key = EncodingKey::from_rsa_pem(private_key_pem).map_err(|_| invalid())?;
+        let mut jwk = serde_json::to_value(
+            jsonwebtoken::jwk::Jwk::from_encoding_key(&key, Algorithm::RS256)
+                .map_err(|_| invalid())?,
+        )
+        .map_err(|_| invalid())?;
+        let public = jwk.as_object_mut().ok_or_else(invalid)?;
+        public.insert("kid".into(), key_id.clone().into());
+        public.insert("use".into(), "sig".into());
+        public.insert("alg".into(), "RS256".into());
         let value = Self {
-            key: EncodingKey::from_rsa_pem(private_key_pem).map_err(|_| invalid())?,
+            key,
+            jwks: serde_json::json!({ "keys": [jwk] }),
             key_id,
             issuer,
             audience,
@@ -76,8 +89,18 @@ impl RsaJwtSessionIssuer {
         Ok(value)
     }
 
+    /// The public JWK set (`{"keys":[...]}`) for this signing key: RSA `n`/`e`,
+    /// `kid`, `use: sig` and `alg: RS256`. Never contains private material.
+    #[must_use]
+    pub fn jwks(&self) -> &serde_json::Value {
+        &self.jwks
+    }
+
     /// Reads an optional, complete signing configuration from process variables.
     /// No variables selects opaque sessions. Partial configuration is an error.
+    /// `SESSION_JWT_PRIVATE_KEY_PEM` holds the PKCS#8/PKCS#1 PEM either verbatim
+    /// (multi-line) or base64-encoded on one line, the form `forklaunch init
+    /// module iam-base` writes to `.env` so it survives dotenv and Compose.
     ///
     /// # Errors
     /// Rejects non-Unicode/partial settings or invalid signing configuration.
@@ -97,10 +120,15 @@ impl RsaJwtSessionIssuer {
         match (key?, key_id?, issuer?, audience?) {
             (None, None, None, None) => Ok(None),
             (Some(key), Some(key_id), Some(issuer), Some(audience)) => {
-                Self::new(key.as_bytes(), key_id, issuer, audience).map(Some)
+                Self::new(&decode_pem(&key)?, key_id, issuer, audience).map(Some)
             }
             _ => Err(invalid()),
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn key_id(&self) -> &str {
+        &self.key_id
     }
 
     pub(crate) fn issue(
@@ -133,6 +161,27 @@ impl RsaJwtSessionIssuer {
         }
         Ok(token)
     }
+}
+
+/// A PEM given verbatim, or base64 (standard or URL-safe, padded or not) of one.
+fn decode_pem(value: &str) -> BlueprintResult<Vec<u8>> {
+    use base64::Engine;
+    let trimmed = value.trim();
+    if trimmed.starts_with("-----BEGIN") {
+        return Ok(trimmed.as_bytes().to_vec());
+    }
+    let compact: String = trimmed.chars().filter(|c| !c.is_whitespace()).collect();
+    let engines = [
+        base64::engine::general_purpose::STANDARD,
+        base64::engine::general_purpose::STANDARD_NO_PAD,
+        base64::engine::general_purpose::URL_SAFE,
+        base64::engine::general_purpose::URL_SAFE_NO_PAD,
+    ];
+    engines
+        .iter()
+        .find_map(|engine| engine.decode(&compact).ok())
+        .filter(|pem| pem.starts_with(b"-----BEGIN"))
+        .ok_or_else(invalid)
 }
 
 #[cfg(test)]
@@ -194,6 +243,31 @@ pub(crate) mod tests {
         assert_eq!(claims["exp"], now + 3600);
         assert!(uuid::Uuid::parse_str(claims["jti"].as_str().unwrap()).is_ok());
         assert!(!claims.to_string().contains("private@example.test"));
+    }
+
+    #[test]
+    fn jwks_publishes_only_the_public_key_and_base64_pem_is_accepted() {
+        use base64::Engine;
+        let issuer = issuer();
+        assert_eq!(issuer.key_id(), "fixture-key");
+        let keys = issuer.jwks()["keys"].as_array().unwrap();
+        assert_eq!(keys.len(), 1);
+        assert_eq!(keys[0]["kty"], "RSA");
+        assert_eq!(keys[0]["n"], MODULUS);
+        assert_eq!(keys[0]["e"], "AQAB");
+        assert_eq!(keys[0]["kid"], "fixture-key");
+        assert_eq!(keys[0]["alg"], "RS256");
+        assert_eq!(keys[0]["use"], "sig");
+        assert!(keys[0].get("d").is_none() && keys[0].get("p").is_none());
+        let encoded = base64::engine::general_purpose::STANDARD.encode(PRIVATE_KEY);
+        assert_eq!(decode_pem(&encoded).unwrap(), PRIVATE_KEY);
+        assert_eq!(
+            decode_pem(std::str::from_utf8(PRIVATE_KEY).unwrap()).unwrap(),
+            std::str::from_utf8(PRIVATE_KEY).unwrap().trim().as_bytes()
+        );
+        let not_pem = base64::engine::general_purpose::STANDARD.encode(b"PRIVATE-SENTINEL");
+        assert!(decode_pem(&not_pem).is_err());
+        assert!(decode_pem("PRIVATE-SENTINEL").is_err());
     }
 
     #[test]

@@ -169,6 +169,16 @@ try:
     shutil.copy2(repo / 'cli/tests/fixtures' / seed, service / 'examples/seed.rs')
     role_created = True
     run('cargo', 'run', '-p', 'iam', '--example', 'seed')
+    if not better_auth:
+        # `iam --seed` (generated seed.toml) is idempotent under the restricted runtime role.
+        from urllib.parse import urlsplit, urlunsplit
+        owner = urlsplit(env['FORKLAUNCH_TEST_POSTGRES_URL'])
+        runtime_url = urlunsplit(owner._replace(netloc=f"{env['FORKLAUNCH_TEST_ROLE']}:parity-test-only@{owner.hostname}:{owner.port or 5432}"))
+        seed_env = {'DATABASE_URL': runtime_url, 'TENANT_ID': env['FORKLAUNCH_TEST_ROLE'] + '-a', 'IAM_SEED_ADMIN_PASSWORD': 'seed-admin-password'}
+        assert 'name = "admin"' in (service / 'seed.toml').read_text()
+        run('cargo', 'run', '-p', 'iam', '--', '--seed', extra_env=seed_env)
+        run('cargo', 'run', '-p', 'iam', '--', '--seed', extra_env=seed_env)
+        run('cargo', 'run', '-p', 'iam', '--', '--seed', failure=True, extra_env={**seed_env, 'IAM_SEED_ADMIN_PASSWORD': ''})
     binary = Path(env['CARGO_TARGET_DIR']) / 'debug/iam'
     script = 'rust_better_auth_runtime.mjs' if better_auth else 'rust_iam_runtime.mjs'
     run('node', repo / 'cli/tests' / script, binary, entry, consumer)
