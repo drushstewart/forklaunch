@@ -433,11 +433,11 @@ fn ensure_ecommerce_compose(root: &Path, name: &str, dryrun: bool) -> Result<()>
         ),
         (
             "STRIPE_API_KEY",
-            "${STRIPE_API_KEY:?Configure Stripe payment creation}",
+            "${STRIPE_API_KEY:-}",
         ),
         (
             "STRIPE_WEBHOOK_SECRET",
-            "${STRIPE_WEBHOOK_SECRET:?Configure Stripe webhook verification}",
+            "${STRIPE_WEBHOOK_SECRET:-}",
         ),
         ("WORKER_MAX_ATTEMPTS", "3"),
         ("WORKER_BACKOFF_SECONDS", "30"),

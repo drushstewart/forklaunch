@@ -393,6 +393,7 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
             ("REDIS_URL", format!("${{{owner}_REDIS_URL:?Configure Redis}}"), backend == Backend::Redis),
             ("KAFKA_BROKERS", format!("${{{owner}_KAFKA_BROKERS:?Configure Kafka brokers}}"), backend == Backend::Kafka),
             ("KAFKA_TRANSACTIONAL_ID", format!("${{{owner}_KAFKA_TRANSACTIONAL_ID:?Configure a stable unique identity for {name}}}"), backend == Backend::Kafka),
+            ("KAFKA_PUBLISHER_ID", format!("${{{owner}_KAFKA_PUBLISHER_ID:?Configure a stable publisher identity for {name}}}"), backend == Backend::Kafka),
             ("REDIS_KEY_PREFIX", format!("${{{owner}_REDIS_KEY_PREFIX:?Configure the application Redis ACL namespace}}"), false),
         ] {
             if !keep && env.get(key) == Some(&expected) { env.shift_remove(key); }
@@ -418,6 +419,8 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
             env.entry("WORKER_NAMESPACE".into())
                 .or_insert_with(|| format!("${{{prefix}_NAMESPACE:?Configure a worker namespace}}"));
             env.entry("KAFKA_TRANSACTIONAL_ID".into()).or_insert_with(|| format!("${{{prefix}_KAFKA_TRANSACTIONAL_ID:?Configure a stable unique identity for {name}}}"));
+            // The producer (`POST /jobs`, `--enqueue`) publishes under its own identity.
+            env.entry("KAFKA_PUBLISHER_ID".into()).or_insert_with(|| format!("${{{prefix}_KAFKA_PUBLISHER_ID:?Configure a stable publisher identity for {name}}}"));
         }
         Backend::Redis => {
             env.entry("REDIS_URL".into())
