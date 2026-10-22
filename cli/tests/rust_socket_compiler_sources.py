@@ -43,11 +43,11 @@ try:
     run('init', 'application', 'socket-compiler', '--database', 'postgresql', '--validator', 'zod',
         '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
         '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Published socket compiler',
-        '-A', 'ForkLaunch', '-L', 'MIT', '--framework-version', '0.1.0')
+        '-A', 'ForkLaunch', '-L', 'MIT', '--framework-version', '0.1.3')
     run('init', 'service', 'chat', '--language', 'rust')
     for source, fixture, relative in [
-        ('socket-contract', 'rust_socket_contract.json', '.forklaunch/socket-contracts/chat/socket-contract.json'),
-        ('asyncapi', 'rust_asyncapi_socket.json', '.forklaunch/asyncapi/chat/asyncapi.json'),
+        ('socket-contract', 'rust_socket_contract.json', 'src/chat/sdk/typescript/socket-contract.json'),
+        ('asyncapi', 'rust_asyncapi_socket.json', 'src/chat/sdk/typescript/asyncapi.json'),
     ]:
         artifact = app / relative
         artifact.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +56,7 @@ try:
             run('sdk', 'generate', 'all', '--from', source, '--service', 'chat', overrides=overrides)
             assert (app / 'src/client-sdk/typescript-websocket/chat/index.ts').is_file()
             cargo = (app / 'src/client-sdk/rust/chat-websocket-sdk/Cargo.toml').read_text()
-            assert '=0.1.0' in cargo and 'vendor/framework' not in cargo
+            assert '=0.1.3' in cargo and 'vendor/framework' not in cargo
             assert not (app / 'vendor/framework').exists()
             assert not (app / '.forklaunch/framework-rs').exists()
             before = snapshot()
@@ -68,7 +68,7 @@ try:
                        overrides={'FORKLAUNCH_SDK_ZOD_CHECKS': 'true'}, success=False)
         assert 'must be unset, 0 or 1' in rejected.stdout + rejected.stderr
         assert snapshot() == before, 'Invalid compiler option changed application files'
-    print('PASS both socket sources with published0.1.0 dependencies, default and opted-in compiler, and read-only checks', flush=True)
+    print('PASS both socket sources with published 0.1.3 dependencies, default and opted-in compiler, and read-only checks', flush=True)
 finally:
     if env.get('FORKLAUNCH_KEEP_FIXTURE'):
         print('Socket compiler fixture evidence:', root, flush=True)

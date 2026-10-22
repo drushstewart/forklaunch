@@ -8,8 +8,8 @@ import sys
 cli = sys.argv[1]
 manifest = Path('.forklaunch/manifest.toml')
 fixture = Path('src/realtime/api/controllers/socket_contract_fixture.json')
-artifact = Path('.forklaunch/socket-contracts/realtime/socket-contract.json')
-marker = artifact.with_name('registry-export.json')
+artifact = Path('src/realtime/sdk/typescript/socket-contract.json')
+marker = artifact.with_name('socket-registry-export.json')
 custom = Path('custom/registry-sockets.json')
 original_manifest = manifest.read_text()
 original_fixture = fixture.read_bytes()

@@ -19,6 +19,3 @@ language = "{{{language}}}"
 applicationLanguage = "{{{language}}}"
 sdkTargets = [{{{sdk_targets}}}]
 cargoWorkspace = "Cargo.toml"
-contractArtifactPath = ".forklaunch/contracts"
-openapiPath = ".forklaunch/openapi"
-asyncapiPath = ".forklaunch/asyncapi"

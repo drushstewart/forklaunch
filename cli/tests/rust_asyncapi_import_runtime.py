@@ -20,7 +20,6 @@ print('CLI SHA256:', digest, flush=True)
 app = root / 'original'
 env = dict(os.environ)
 registry = env.get('FORKLAUNCH_TEST_REGISTRY_SOCKET') == '1'
-if registry:
 cross = env.get('FORKLAUNCH_TEST_ASYNCAPI_CROSS_CHANNEL') == '1'
 resources = env.get('FORKLAUNCH_TEST_ASYNCAPI_RESOURCES') == '1'
 passed = False
@@ -47,7 +46,7 @@ try:
     if registry:
         assert not (app / 'vendor/framework').exists()
         assert not (app / 'vendor/serde_json').exists()
-    artifact = app / '.forklaunch/asyncapi/realtime/asyncapi.json'
+    artifact = app / 'src/realtime/sdk/typescript/asyncapi.json'
     artifact.parent.mkdir(parents=True, exist_ok=True)
     document = json.loads((fixtures / 'rust_asyncapi_socket.json').read_text())
     if resources:

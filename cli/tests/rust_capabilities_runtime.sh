@@ -14,9 +14,9 @@ FORKLAUNCH_CLI="${FORKLAUNCH_CLI:-$REPO_ROOT/cli/target/debug/forklaunch}"
 mkdir -p "$SCRIPT_DIR/output/rust-capabilities-runtime"
 RUN_ROOT="$(mktemp -d "$SCRIPT_DIR/output/rust-capabilities-runtime/run.XXXXXX")"
 trap 'rm -rf "$RUN_ROOT"' EXIT
-# Capability edits are stateless: besides `openapi export` output, the
-# manifest is all .forklaunch/ holds.
-manifest_only() { python3 -c 'import pathlib,sys;s=sorted(str(p) for p in pathlib.Path(".forklaunch").rglob("*") if p.is_file() and not p.is_relative_to(".forklaunch/openapi"));sys.exit(0 if s==[".forklaunch/manifest.toml"] else f"unexpected .forklaunch state: {s}")'; }
+# Capability edits are stateless and `openapi export` writes each service's SDK
+# folder: the manifest is all .forklaunch/ holds.
+manifest_only() { python3 -c 'import pathlib,sys;s=sorted(str(p) for p in pathlib.Path(".forklaunch").rglob("*"));sys.exit(0 if s==[".forklaunch/manifest.toml"] else f"unexpected .forklaunch state: {s}")'; }
 "$FORKLAUNCH_CLI" init application capability-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D Capabilities -A ForkLaunch -L MIT
 "$FORKLAUNCH_CLI" init service messages --path "$RUN_ROOT/app" --language rust -D Messages
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"

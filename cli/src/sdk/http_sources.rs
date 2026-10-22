@@ -6,7 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::core::forklaunch_state::MANIFEST;
+use crate::core::{
+    artifact_paths::{self, Artifact},
+    forklaunch_state::MANIFEST,
+};
 
 use anyhow::{Context, Result, bail};
 
@@ -121,31 +124,16 @@ pub(super) fn artifact(
         .and_then(|metadata| metadata.get("contractArtifactPath"))
         .and_then(toml::Value::as_str)
         .is_some();
-    let (source, metadata_key, directory, filename) =
+    let (source, artifact) =
         if source == "openapi" || (is_typescript(project) && !explicit_contract) {
-            ("openapi", "openapiPath", "openapi", "openapi.json")
+            ("openapi", Artifact::OpenApi)
         } else {
-            (
-                "contract",
-                "contractArtifactPath",
-                "contracts",
-                "contract.json",
-            )
+            ("contract", Artifact::Contract)
         };
     let root = root.canonicalize()?;
-    let path = project
-        .get("metadata")
-        .and_then(|metadata| metadata.get(metadata_key))
-        .and_then(toml::Value::as_str)
-        .map_or_else(
-            || {
-                root.join(".forklaunch")
-                    .join(directory)
-                    .join(name)
-                    .join(filename)
-            },
-            |path| root.join(path),
-        );
+    let path = root.join(
+        artifact_paths::project_path(project, artifact).context("SDK service name is required")?,
+    );
     let mut ancestor = path.as_path();
     while !ancestor.exists() {
         if fs::symlink_metadata(ancestor).is_ok() {

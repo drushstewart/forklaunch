@@ -1313,11 +1313,41 @@ fn collect_routes_from_openapi(app_root: &Path, modules_path: &str) -> (Vec<Rout
         app_root.join("docs").join("openapi.json"),
     ];
 
-    // Specs written by `forklaunch openapi export` (default output directory):
-    // .forklaunch/openapi/<service>/openapi.json
+    // Specs written by `forklaunch openapi export`: each service's registered
+    // OpenAPI artifact (its SDK folder), else the legacy
+    // .forklaunch/openapi/<service>/openapi.json location.
+    let mut registered = std::collections::BTreeSet::new();
+    if let Some(manifest) = fs::read_to_string(app_root.join(".forklaunch/manifest.toml"))
+        .ok()
+        .and_then(|content| toml::from_str::<toml::Value>(&content).ok())
+    {
+        for project in manifest
+            .get("projects")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            let (Some(name), Some(path)) = (
+                project.get("name").and_then(toml::Value::as_str),
+                crate::core::artifact_paths::project_path(
+                    project,
+                    crate::core::artifact_paths::Artifact::OpenApi,
+                ),
+            ) else {
+                continue;
+            };
+            let path = app_root.join(path);
+            if path.is_file() {
+                registered.insert(name.to_owned());
+                spec_paths.push(path);
+            }
+        }
+    }
     if let Ok(entries) = fs::read_dir(app_root.join(".forklaunch").join("openapi")) {
         for entry in entries.flatten() {
-            spec_paths.push(entry.path().join("openapi.json"));
+            if !registered.contains(entry.file_name().to_string_lossy().as_ref()) {
+                spec_paths.push(entry.path().join("openapi.json"));
+            }
         }
     }
 

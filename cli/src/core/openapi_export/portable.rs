@@ -5,8 +5,16 @@ use forklaunch_core::{
     typescript::{TypeScriptHttpSdkOptions, generate_typescript_operation_descriptors},
 };
 use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub(super) fn enrich(document: &mut Value, artifact: &Value, service: &str) -> Result<()> {
+    forklaunch_core::openapi::attach_portable_operation_descriptors(
+        document,
+        &descriptors(artifact, service)?,
+    )
+}
+
+fn descriptors(artifact: &Value, service: &str) -> Result<BTreeMap<String, Value>> {
     let mut public = artifact.clone();
     public["routes"]
         .as_array_mut()
@@ -16,9 +24,7 @@ pub(super) fn enrich(document: &mut Value, artifact: &Value, service: &str) -> R
         SdkTarget::TypeScript,
         &serde_json::to_string(&public)?,
     )?;
-    let descriptors =
-        generate_typescript_operation_descriptors(&plan, &TypeScriptHttpSdkOptions::new(service))?;
-    forklaunch_core::openapi::attach_portable_operation_descriptors(document, &descriptors)
+    generate_typescript_operation_descriptors(&plan, &TypeScriptHttpSdkOptions::new(service))
 }
 
 /// Custom TypeScript exporters share the ordinary build compiler's schema and
@@ -28,11 +34,42 @@ pub(super) fn enrich_imported(document: &mut Value, service: &str) -> Result<()>
         &serde_json::to_string(document)?,
         service,
     )?;
-    enrich(
-        document,
-        &serde_json::from_str(&imported.contract)?,
-        service,
-    )
+    let artifact: Value = serde_json::from_str(&imported.contract)?;
+    let mut descriptors = descriptors(&artifact, service)?;
+    // Importing normalizes framework operation ids such as `legacy.legacyGet`
+    // into SDK identifiers; the document keeps its own ids, so key each
+    // descriptor by the id of the operation at the same method and path.
+    for route in artifact["routes"].as_array().into_iter().flatten() {
+        let (Some(method), Some(path), Some(name)) = (
+            route["method"].as_str(),
+            route["path"].as_str(),
+            route["operationName"].as_str(),
+        ) else {
+            continue;
+        };
+        let templated = path
+            .split('/')
+            .map(|segment| match segment.strip_prefix(':') {
+                Some(parameter) => format!("{{{parameter}}}"),
+                None => segment.to_owned(),
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+        let Some(id) = [path, templated.as_str()]
+            .into_iter()
+            .find_map(|path| document["paths"].get(path))
+            .and_then(|item| item.get(method.to_ascii_lowercase()))
+            .and_then(|operation| operation["operationId"].as_str())
+        else {
+            continue;
+        };
+        if id != name
+            && let Some(descriptor) = descriptors.get(name).cloned()
+        {
+            descriptors.entry(id.to_owned()).or_insert(descriptor);
+        }
+    }
+    forklaunch_core::openapi::attach_portable_operation_descriptors(document, &descriptors)
 }
 
 #[cfg(test)]
@@ -68,6 +105,25 @@ mod tests {
         document["paths"]["/notes/{id}"]["get"]["x-forklaunch-operation"]["path"] =
             "/forged".into();
         assert!(enrich_imported(&mut document, "notes").is_err());
+    }
+
+    #[test]
+    fn framework_operation_ids_keep_their_names_and_receive_checked_descriptors() {
+        let mut document = serde_json::json!({
+            "openapi":"3.1.0", "info":{"title":"Legacy","version":"1.0.0"},
+            "paths":{"/legacy/{id}":{"get":{
+                "operationId":"legacy.legacyGet", "tags":["legacy"],
+                "parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string"}}],
+                "responses":{"200":{"description":"OK","content":{"text/plain":{"schema":{"type":"string"}}}}}
+            }}}
+        });
+        enrich_imported(&mut document, "legacy").unwrap();
+        let operation = &document["paths"]["/legacy/{id}"]["get"];
+        assert_eq!(operation["operationId"], "legacy.legacyGet");
+        assert_eq!(operation["x-forklaunch-operation"]["method"], "GET");
+        let once = document.clone();
+        enrich_imported(&mut document, "legacy").unwrap();
+        assert_eq!(document, once);
     }
 
     #[test]

@@ -87,7 +87,7 @@ pub fn binding_manifest() -> Result<Vec<forklaunch_core::contract::assembly::Bin
     run('cargo', 'build', '--workspace')
     command('openapi', 'export')
     expected = json.loads(declaration.with_name('socket_contract_fixture.json').read_text())
-    artifact = json.loads((app / '.forklaunch/socket-contracts/realtime/socket-contract.json').read_text())
+    artifact = json.loads((service / 'sdk/typescript/socket-contract.json').read_text())
     contract = json.loads((service / 'sdk/typescript/contract.json').read_text())
     for socket in expected['sockets'].values():
         socket.setdefault('clientMessages', {})

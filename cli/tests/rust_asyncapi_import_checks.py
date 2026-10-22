@@ -23,9 +23,16 @@ def generate(name='realtime'):
 
 
 def snapshot():
-    roots = [Path('src/client-sdk'), Path('.forklaunch/socket-sdk-outputs')]
+    roots = [Path('src/client-sdk')]
     return {str(p): p.read_bytes() for root in roots for p in root.rglob('*')
             if p.is_file() and not p.is_symlink() and 'node_modules' not in p.parts}
+
+
+def receipt(service, target):
+    """Generated socket package ownership records sit beside each package."""
+    if target == 'rust':
+        return Path(f'src/client-sdk/rust/.{service}-websocket-sdk.forklaunch.json')
+    return Path(f'src/client-sdk/typescript-websocket/.{service}.forklaunch.json')
 
 
 def wait_for(predicate, output):
@@ -43,19 +50,20 @@ if '--delete' in sys.argv:
     original = custom.read_bytes()
     run(['delete', 'service', 'stream-events', '--path', '.', '--continue'])
     assert custom.read_bytes() == original
-    assert not Path('.forklaunch/socket-sdk-outputs/stream-events').exists()
+    assert not receipt('stream-events', 'rust').exists() and not receipt('stream-events', 'typescript').exists()
+    assert sorted(str(p) for p in Path('.forklaunch').rglob('*')) == ['.forklaunch/manifest.toml']
     assert not Path('src/client-sdk/rust/stream-events-websocket-sdk/socket_chat.rs').exists()
     assert not Path('src/client-sdk/typescript-websocket/stream-events/socket_chat.ts').exists()
     assert Path('src/client-sdk/rust/realtime-websocket-sdk/socket_chat.rs').read_bytes().endswith(b'// preserved user edits\n')
     assert 'src/client-sdk/rust/stream-events-websocket-sdk' not in tomllib.loads(Path('Cargo.toml').read_text())['workspace']['members']
     print('PASS imported service deletion removes owned SDKs and preserves custom inputs and edited old files')
 elif '--rename' not in sys.argv:
-    artifact = Path('.forklaunch/asyncapi/realtime/asyncapi.json')
+    artifact = Path('src/realtime/sdk/typescript/asyncapi.json')
     original = artifact.read_bytes()
     before = snapshot()
-    assert not Path('.forklaunch/socket-sdk-outputs/realtime/asyncapi.json').exists()
+    assert not Path('src/realtime/sdk/typescript/socket-sdk-asyncapi.json').exists()
     for target in ['rust', 'typescript']:
-        marker = Path(f'.forklaunch/socket-sdk-outputs/realtime/{target}.json')
+        marker = receipt('realtime', target)
         assert json.loads(marker.read_text())['source'] == 'asyncapi'
     # Schema pointers must use literal separators in the checked profile.
     for reference in ['#%2Fcomponents/schemas/Request', '#/components%2Fschemas/Request']:
@@ -94,7 +102,7 @@ elif '--rename' not in sys.argv:
             artifact.write_bytes(original)
     # Regenerating one language from native metadata must protect the other
     # language's imported document, including the shared default input path.
-    socket = Path('.forklaunch/socket-contracts/realtime/socket-contract.json')
+    socket = Path('src/realtime/sdk/typescript/socket-contract.json')
     socket.parent.mkdir(parents=True, exist_ok=True)
     socket.write_text(json.dumps({'formatVersion': 1, 'title': 'Native', 'version': '1.0.0', 'sockets': {
         'chat': {'path': '/chat', 'clientMessages': {'request': {'shape': {'type': 'object'}}},
@@ -124,6 +132,7 @@ elif '--rename' not in sys.argv:
         artifact.write_bytes(original)
         other.unlink()
         other.parent.rmdir()
+        other.parent.parent.rmdir()
     # A valid input placed at a generated destination must never be overwritten.
     package = Path('src/client-sdk/typescript-websocket/realtime/package.json')
     original_package = package.read_bytes()
@@ -142,7 +151,7 @@ elif '--rename' not in sys.argv:
     custom.write_bytes(original)
     manifest.write_text(manifest.read_text().replace('[projects.metadata]\n', '[projects.metadata]\nasyncapiArtifactPath = "custom/server-asyncapi.json"\n'))
     run(generate())
-    marker = Path('.forklaunch/socket-sdk-outputs/realtime/rust.json')
+    marker = receipt('realtime', 'rust')
     initial = marker.read_bytes()
     with tempfile.TemporaryFile(mode='w+') as output:
         watch = subprocess.Popen([cli, 'sdk', 'watch', '--path', '.', '--from', 'asyncapi', '--target', 'all', '--service', 'realtime', '--interval-ms', '100'], stdout=output, stderr=output)
@@ -175,13 +184,13 @@ elif '--rename' not in sys.argv:
     run(generate() + ['--check'])
     print('PASS imported AsyncAPI input preservation, all-service staging, configured watch and invalid-edit recovery')
 else:
-    artifact = Path('.forklaunch/asyncapi/realtime/asyncapi.json')
+    artifact = Path('src/realtime/sdk/typescript/asyncapi.json')
     original = artifact.read_bytes()
     config = Path('src/client-sdk/typescript-websocket/realtime/tsconfig.json').read_bytes()
     edited = Path('src/client-sdk/rust/realtime-websocket-sdk/socket_chat.rs')
     edited.write_bytes(edited.read_bytes() + b'\n// preserved user edits\n')
     run(['change', 'service', '--path', 'src/realtime', '-N', 'live-events', '--confirm'])
-    assert Path('.forklaunch/asyncapi/live-events/asyncapi.json').read_bytes() == original
+    assert Path('src/live-events/sdk/typescript/asyncapi.json').read_bytes() == original
     assert not artifact.exists()
     assert edited.read_bytes().endswith(b'// preserved user edits\n')
     assert Path('src/client-sdk/typescript-websocket/live-events/tsconfig.json').read_bytes() == config

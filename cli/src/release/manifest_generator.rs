@@ -1412,9 +1412,9 @@ mod tests {
             application_language: Some("rust".to_string()),
             sdk_targets: vec!["typescript".to_string(), "rust".to_string()],
             cargo_workspace: Some("Cargo.toml".to_string()),
-            contract_artifact_path: Some(".forklaunch/contracts".to_string()),
-            openapi_path: Some(".forklaunch/openapi".to_string()),
-            asyncapi_path: Some(".forklaunch/asyncapi".to_string()),
+            contract_artifact_path: None,
+            openapi_path: None,
+            asyncapi_path: None,
             projects: vec![
                 ProjectEntry {
                     r#type: ProjectType::Service,
@@ -1435,7 +1435,9 @@ mod tests {
                         language: Some("rust".to_string()),
                         crate_name: Some("accounts".to_string()),
                         crate_path: Some("crates/accounts".to_string()),
-                        openapi_path: Some(".forklaunch/openapi/accounts/openapi.json".to_string()),
+                        openapi_path: Some(
+                            "crates/accounts/sdk/typescript/openapi.json".to_string(),
+                        ),
                         ..ProjectMetadata::default()
                     }),
                 },
@@ -1460,7 +1462,7 @@ mod tests {
                         crate_path: Some("crates/email-worker".to_string()),
                         worker_type: Some("database".to_string()),
                         openapi_path: Some(
-                            ".forklaunch/openapi/email-worker/openapi.json".to_string(),
+                            "crates/email-worker/sdk/typescript/openapi.json".to_string(),
                         ),
                         ..ProjectMetadata::default()
                     }),

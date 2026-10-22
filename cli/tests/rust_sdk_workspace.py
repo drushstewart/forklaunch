@@ -64,7 +64,7 @@ for runtime in os.environ.get('FORKLAUNCH_TEST_WORKSPACE_RUNTIMES', 'node,bun').
     (app / 'package.json').write_text(json.dumps({'private': True, 'scripts': {'owned': 'echo application-owned'}}))
     (app / 'pnpm-workspace.yaml').write_text("packages: ['tools/*']\nminimumReleaseAge: 1440\n")
     if socket:
-        artifact = app / '.forklaunch/socket-contracts/native-api/socket-contract.json'
+        artifact = app / modules / 'native-api/sdk/typescript/socket-contract.json'
         artifact.parent.mkdir(parents=True, exist_ok=True)
         artifact.write_bytes((repo / 'cli/tests/fixtures/rust_socket_contract.json').read_bytes())
         cli('sdk', 'generate', '--target', 'typescript', '--from', socket_source, '--service', 'native-api')

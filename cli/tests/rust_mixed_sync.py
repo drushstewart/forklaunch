@@ -136,9 +136,10 @@ try:
     assert (app / 'modules/native-api/Cargo.toml').is_file()
     assert not (app / 'modules/native-models').exists()
     assert (app / 'modules/native-api/sdk/typescript/contract.json').is_file()
-    assert (app / '.forklaunch/openapi/legacy-api/openapi.json').is_file()
+    # Sync refreshes each service's registered document; no shared export folder.
+    assert not (app / '.forklaunch/openapi').exists()
     for name in ['legacy-api', 'native-api']:
-        assert (app / f'schemas/{name}.json').read_bytes() == (app / f'.forklaunch/openapi/{name}/openapi.json').read_bytes()
+        assert json.loads((app / f'schemas/{name}.json').read_text())['paths']
     sdk = (app / 'modules/client-sdk/clientSdk.ts').read_text()
     assert (app / 'modules/native-api/sdk/typescript/sdk.ts').is_file()
     assert (app / 'modules/native-api/sdk/rust/Cargo.toml').is_file()

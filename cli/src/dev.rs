@@ -479,6 +479,20 @@ fn metadata_watch_ignores(
             continue;
         }
         let metadata = project.get("metadata");
+        let table = metadata.and_then(toml::Value::as_table);
+        let Some(name) = project.get("name").and_then(toml::Value::as_str) else {
+            continue;
+        };
+        // Socket exports and their bookkeeping share the service's SDK folder.
+        use crate::core::artifact_paths::{self as paths, Artifact};
+        for relative in [
+            paths::path(name, table, Artifact::AsyncApi),
+            paths::path(name, table, Artifact::SocketContract),
+            paths::socket_registry_marker(name, table).to_string_lossy().into_owned(),
+            paths::socket_receipt(name, table, "asyncapi").to_string_lossy().into_owned(),
+        ] {
+            outputs.insert(contracts::resolved_output(&output_path(root, Path::new(&relative))?)?);
+        }
         for (field, alias) in [
             ("contractArtifactPath", "contract_artifact_path"),
             ("openapiPath", "openapi_path"),

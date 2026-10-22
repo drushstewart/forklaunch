@@ -565,7 +565,7 @@ impl CliCommand for CreateCommand {
         let exported_services = if prebuilt.is_some() {
             super::prebuilt::validate_specs(&openapi_path, &manifest)?
         } else {
-            export_all_services(&app_root, &manifest, &openapi_path)?
+            export_all_services(&app_root, &manifest, Some(&openapi_path))?
         };
 
         log_ok!(

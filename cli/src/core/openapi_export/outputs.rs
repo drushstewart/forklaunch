@@ -47,9 +47,12 @@ fn identity(path: &Path) -> Result<PathBuf> {
 }
 
 impl Outputs {
+    /// `directory` is an explicitly requested export folder (`<dir>/<name>/openapi.json`).
+    /// Without one, each service exports straight to its registered artifact,
+    /// or to the legacy `.forklaunch/openapi/<name>/openapi.json` when it has none.
     pub(super) fn plan<'a>(
         root: &Path,
-        directory: &Path,
+        directory: Option<&Path>,
         projects: impl IntoIterator<Item = (&'a str, Option<&'a str>)>,
     ) -> Result<Self> {
         let canonical_root = root.canonicalize()?;
@@ -63,7 +66,7 @@ impl Outputs {
             {
                 bail!("OpenAPI service name must be one path component");
             }
-            let exported = directory.join(name).join("openapi.json");
+            let requested = directory.map(|directory| directory.join(name).join("openapi.json"));
             let registered = if let Some(configured) = configured {
                 let path = Path::new(configured);
                 let relative = if path.is_absolute() {
@@ -74,9 +77,18 @@ impl Outputs {
                     path
                 };
                 output_path(root, relative)?
+            } else if let Some(requested) = &requested {
+                requested.clone()
             } else {
-                exported.clone()
+                output_path(
+                    root,
+                    Path::new(&crate::core::artifact_paths::legacy(
+                        name,
+                        crate::core::artifact_paths::Artifact::OpenApi,
+                    )),
+                )?
             };
+            let exported = requested.unwrap_or_else(|| registered.clone());
             for path in [&exported, &registered] {
                 if path.exists() && !path.is_file() {
                     bail!("OpenAPI output must be a file: {}", path.display());
@@ -91,6 +103,11 @@ impl Outputs {
             outputs.insert(name.to_owned(), (exported, registered));
         }
         Ok(Self(outputs))
+    }
+
+    /// Where the exporter writes `name`'s document before registered copies refresh.
+    pub(super) fn exported(&self, name: &str) -> Result<&Path> {
+        Ok(&self.0.get(name).context("Missing OpenAPI output plan")?.0)
     }
 
     pub(super) fn refresh(&self, name: &str) -> Result<()> {
@@ -114,7 +131,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join("release-openapi");
         let registered = root.path().join("schemas/api.json");
-        let plan = Outputs::plan(root.path(), &directory, [("api", registered.to_str())]).unwrap();
+        let plan = Outputs::plan(root.path(), Some(&directory), [("api", registered.to_str())]).unwrap();
         fs::create_dir_all(directory.join("api")).unwrap();
         let fresh = serde_json::json!({"openapi":"3.1.0","info":{"title":"fresh"}});
         fs::write(directory.join("api/openapi.json"), fresh.to_string()).unwrap();
@@ -133,6 +150,24 @@ mod tests {
             serde_json::from_slice::<serde_json::Value>(&fs::read(registered).unwrap()).unwrap(),
             fresh
         );
+    }
+
+    #[test]
+    fn default_export_writes_registered_artifacts_and_legacy_only_without_one() {
+        let root = tempfile::tempdir().unwrap();
+        let plan = Outputs::plan(
+            root.path(),
+            None,
+            [("api", Some("src/api/sdk/typescript/openapi.json")), ("legacy", None)],
+        )
+        .unwrap();
+        let api = plan.exported("api").unwrap();
+        assert!(api.ends_with("src/api/sdk/typescript/openapi.json"));
+        assert!(plan.exported("legacy").unwrap().ends_with(".forklaunch/openapi/legacy/openapi.json"));
+        fs::create_dir_all(api.parent().unwrap()).unwrap();
+        fs::write(api, "{}").unwrap();
+        plan.refresh("api").unwrap();
+        assert!(!root.path().join(".forklaunch").exists());
     }
 
     #[test]
@@ -196,7 +231,7 @@ mod tests {
         });
         let output = root.path().join("exports");
         let plan =
-            Outputs::plan(root.path(), &output, [("items", Some("sdk/openapi.json"))]).unwrap();
+            Outputs::plan(root.path(), Some(&output), [("items", Some("sdk/openapi.json"))]).unwrap();
         let mut openapi: serde_json::Value = serde_json::from_slice(&original[1].0).unwrap();
         write_json(&output.join("items/openapi.json"), &openapi).unwrap();
         write_json(&contract_path, &contract).unwrap();
@@ -242,12 +277,12 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let directory = root.path().join(".forklaunch/openapi");
         for path in ["../outside.json", "new/../../outside.json", ""] {
-            assert!(Outputs::plan(root.path(), &directory, [("api", Some(path))]).is_err());
+            assert!(Outputs::plan(root.path(), Some(&directory), [("api", Some(path))]).is_err());
         }
         assert!(
             Outputs::plan(
                 root.path(),
-                &directory,
+                Some(&directory),
                 [("api", Some("same.json")), ("other", Some("same.json"))]
             )
             .is_err()
@@ -255,7 +290,7 @@ mod tests {
         assert!(
             Outputs::plan(
                 root.path(),
-                &directory,
+                Some(&directory),
                 [
                     ("api", Some(".forklaunch/openapi/other/openapi.json")),
                     ("other", None)
@@ -263,7 +298,7 @@ mod tests {
             )
             .is_err()
         );
-        assert!(Outputs::plan(root.path(), &directory, [("../api", None)]).is_err());
+        assert!(Outputs::plan(root.path(), Some(&directory), [("../api", None)]).is_err());
         assert!(!directory.exists());
     }
 
@@ -277,13 +312,13 @@ mod tests {
         symlink(external.path(), root.path().join("outside")).unwrap();
         symlink(root.path().join("missing"), root.path().join("dangling")).unwrap();
         for path in ["outside/api.json", "dangling"] {
-            assert!(Outputs::plan(root.path(), &directory, [("api", Some(path))]).is_err());
+            assert!(Outputs::plan(root.path(), Some(&directory), [("api", Some(path))]).is_err());
         }
         fs::create_dir_all(directory.join("api")).unwrap();
         let exported = directory.join("api/openapi.json");
         fs::write(&exported, "original").unwrap();
         symlink(&exported, root.path().join("alias.json")).unwrap();
-        let plan = Outputs::plan(root.path(), &directory, [("api", Some("alias.json"))]).unwrap();
+        let plan = Outputs::plan(root.path(), Some(&directory), [("api", Some("alias.json"))]).unwrap();
         plan.refresh("api").unwrap();
         assert_eq!(fs::read_to_string(exported).unwrap(), "original");
     }

@@ -11,7 +11,11 @@ use anyhow::{Context, Result, ensure};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::core::{application_output::output_path, openapi_export::export_registered_sockets};
+use crate::core::{
+    application_output::output_path,
+    artifact_paths::{self, Artifact},
+    openapi_export::export_registered_sockets,
+};
 
 struct Service {
     name: String,
@@ -88,19 +92,21 @@ impl Exports {
                     &root,
                     metadata.as_ref(),
                     "contractArtifactPath",
-                    format!(".forklaunch/contracts/{name}/contract.json"),
+                    artifact_paths::default_path(name, metadata.as_ref(), Artifact::Contract),
                 )?;
                 let socket = destination(
                     &root,
                     metadata.as_ref(),
                     "socketContractArtifactPath",
-                    format!(".forklaunch/socket-contracts/{name}/socket-contract.json"),
+                    artifact_paths::default_path(name, metadata.as_ref(), Artifact::SocketContract),
                 )?;
                 let marker = destination(
                     &root,
                     None,
                     "marker",
-                    format!(".forklaunch/socket-contracts/{name}/registry-export.json"),
+                    artifact_paths::socket_registry_marker(name, metadata.as_ref())
+                        .to_string_lossy()
+                        .into_owned(),
                 )?;
                 for (kind, path) in [
                     ("contract", contract.clone()),
@@ -110,7 +116,7 @@ impl Exports {
                             &root,
                             metadata.as_ref(),
                             "openapiPath",
-                            format!(".forklaunch/openapi/{name}/openapi.json"),
+                            artifact_paths::default_path(name, metadata.as_ref(), Artifact::OpenApi),
                         )?,
                     ),
                     ("socket", socket.clone()),

@@ -13,7 +13,12 @@ use sha2::{Digest, Sha256};
 use termcolor::{ColorChoice, StandardStream, WriteColor};
 
 use crate::{
-    CliCommand, core::command::command, init::rust_project,
+    CliCommand,
+    core::{
+        artifact_paths::{self, Artifact},
+        command::command,
+    },
+    init::rust_project,
     sdk::generate::generate_sdk_outputs_while_watching,
 };
 
@@ -274,8 +279,8 @@ fn socket_artifact_fingerprint(
         if selected.is_some_and(|selected| selected != name) {
             continue;
         }
-        let configured = project
-            .get("metadata")
+        let metadata = project.get("metadata").and_then(toml::Value::as_table);
+        let configured = metadata
             .and_then(|metadata| {
                 metadata.get(if source == "asyncapi" {
                     "asyncapiArtifactPath"
@@ -286,28 +291,23 @@ fn socket_artifact_fingerprint(
             .and_then(toml::Value::as_str);
         paths.push(root.join(configured.map_or_else(
             || {
-                if source == "asyncapi" {
-                    format!(".forklaunch/asyncapi/{name}/asyncapi.json")
-                } else {
-                    format!(".forklaunch/socket-contracts/{name}/socket-contract.json")
-                }
+                artifact_paths::path(
+                    name,
+                    metadata,
+                    if source == "asyncapi" {
+                        Artifact::AsyncApi
+                    } else {
+                        Artifact::SocketContract
+                    },
+                )
             },
             str::to_owned,
         )));
         if source == "asyncapi" {
             continue;
         }
-        paths.push(root.join(format!(
-            ".forklaunch/socket-contracts/{name}/registry-export.json"
-        )));
-        let contract = project
-            .get("metadata")
-            .and_then(|metadata| metadata.get("contractArtifactPath"))
-            .and_then(toml::Value::as_str)
-            .map_or_else(
-                || format!(".forklaunch/contracts/{name}/contract.json"),
-                str::to_owned,
-            );
+        paths.push(root.join(artifact_paths::socket_registry_marker(name, metadata)));
+        let contract = artifact_paths::path(name, metadata, Artifact::Contract);
         crate::core::application_output::output_path(&root, Path::new(&contract))?;
         paths.push(root.join(contract));
     }

@@ -11,7 +11,7 @@ const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const {statics:v,validator,load}=actualValidator(root,(spec,file,load)=>spec==='@forklaunch/core/ws'?load(path.join(root,'framework/core/src/ws/webSocketLike.ts')):undefined);
 const {ForklaunchWebSocketServer}=load(path.join(root,'framework/ws/src/webSocketServer.ts'));
 const require=createRequire(path.join(process.env.FORKLAUNCH_TEST_VALIDATOR_DEPENDENCIES,'package.json')),{Parser}=require(process.env.ASYNCAPI_PARSER_PATH??'@asyncapi/parser');
-const document=JSON.parse(await readFile(path.join(app,'.forklaunch/asyncapi/realtime/asyncapi.json')));
+const document=JSON.parse(await readFile(path.join(app,'src/realtime/sdk/typescript/asyncapi.json')));
 assert.equal(document.asyncapi,'3.0.0');
 const parsed=await new Parser().parse(JSON.stringify(document));
 assert.deepEqual(parsed.diagnostics.filter(item=>item.severity===0),[],JSON.stringify(parsed.diagnostics));
