@@ -140,6 +140,31 @@ const { models: allowed, tokensUsedThisMonth, monthlyTokenBudget } = await model
 
 The request and response follow the OpenAI chat completions shape. `models()` lists the models you may call and where the monthly budget stands.
 
+## Send from Your Own Domain (Pro)
+
+On the Pro and Enterprise plans, managed-gateway email can go out as `"Display Name" <local@your-domain>` instead of the platform's default sender. Your code does not change: `email.send(...)` is the same call, and the platform picks the from address.
+
+| | regular deployment (per application × environment) | managed instance |
+|---|---|---|
+| default sender | `no-reply@<app label>.<platform sending domain>` | `no-reply@<host prefix>.<platform sending domain>` |
+| domain | the application's custom domain (`forklaunch app domain set` first), or one to three labels in front of it (`--subdomain`) | any domain under a public suffix that your organization controls, named on the command |
+| set | `forklaunch app domain email set -e <env> [--from <local-part>] [--name "<display name>"] [--subdomain <sub>]` | `forklaunch managed instance email set --id <id> --domain <domain> [--from <local-part>] [--name "<display name>"]` |
+| check | `forklaunch app domain email status [-e <env>] [--json]` | `forklaunch managed instance email status --id <id> [--json]` |
+| undo | `forklaunch app domain email remove -e <env> [-y]` | `forklaunch managed instance email remove --id <id> [-y]` |
+| who | editors set and remove | editors set and remove, viewers read |
+
+How it behaves:
+
+- **Sends never fail because of it.** Until Amazon SES verifies the domain, whenever SES refuses it, and while the plan lacks custom domains, mail goes from the default sender. A custom domain never makes a send answer 503. An instance's `status` shows `in use: yes/no` (`active`) for which address is used right now.
+- **DNS.** The answer lists three DKIM `CNAME` records (required) and an advisory `_dmarc` `TXT` (`v=DMARC1; p=none;`, `required: false`). When the domain is a delegated custom domain of the same organization, the platform writes the CNAMEs itself (`dnsRecordsWritten: true`); otherwise publish them at your DNS host. SES gives up after 72 hours (`status: failed`): fix the records and run `set` again.
+- **An environment not yet deployed with email**: `set` saves the sender as `pending_verification`, with an `errorMessage` that says so and no DNS records. The environment's next deploy sets it up, and `status` then lists the records.
+- **Rules checked before the request**: `--from` is lowercase `a-z 0-9 . _ + -`, not starting or ending with a dot, at most 64 characters (default `no-reply`); `--name` is one line, at most 64 characters, without `<`, `>` or `"` (other alphabets are fine); `--subdomain` is one to three DNS labels; `--domain` is dot-separated DNS labels.
+- **Plan changes**: without the plan, `set` and `remove` answer `403 Custom email senders require a Pro or Enterprise plan`. Reading is not gated: a sender whose plan lapsed shows `status: failed` with that message, and mail goes back to the default sender. The setting is kept, so upgrading again restores it.
+- **Other errors**: 400 with a validation message (the application has no custom domain; for an instance, a domain not under a public suffix or the platform's own sending domain); 409 (instances) a domain another organization sends from or holds as a custom domain; 502/503 the mail provider or the ownership check is unavailable, try again.
+- **Reading and removing**: an app's `status` reads an array, empty when nothing is set or the application has no custom domain. `remove` on an environment with no sender says so (the platform answers 404). Removing the sender, deleting the custom domain or the environment, or destroying the instance returns mail to the default sender.
+
+See the [domain command](/docs/cli/domain.md) and the ForkLaunch platform docs (Managed gateway page, *Send from your own domain*).
+
 ## Local Development
 
 There is no platform on your machine, so `infra add` puts the gateway mock in `docker-compose.yaml`. It ships with `@forklaunch/core` (`forklaunch-gateway-mock`), serves every capability's routes, checks your signatures the way the platform does, and sends signed events back to your service.
@@ -251,5 +276,6 @@ For a HIPAA app (the application's or environment's compliance standards include
 ## Related
 
 - [Infra command](/docs/cli/infra.md)
+- [Domain command](/docs/cli/domain.md)
 - [Deploy command](/docs/cli/deploy.md)
 - [Infrastructure overview](/docs/infrastructure/overview.md)
