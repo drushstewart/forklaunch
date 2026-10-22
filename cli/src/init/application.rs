@@ -311,6 +311,10 @@ fn display_path(path: &Path) -> String {
 /// Nothing said so at the one moment the user is guaranteed to be looking: the
 /// end of `init`. Saying it once here is cheaper than every user rediscovering
 /// it, and cheaper than the support answer.
+/// Skills are opt-in; init only says how to add them for the user's coding agent.
+pub(crate) const CONTEXT_HINT: &str =
+    "  forklaunch context      add ForkLaunch skills for your coding agent (Claude Code, Codex, Cursor, ...)";
+
 fn next_steps(app_root: &Path, workspace_root: &Path, runtime: &str) -> String {
     let package_manager = if runtime == "bun" { "bun" } else { "pnpm" };
     let app = display_path(app_root);
@@ -320,7 +324,7 @@ fn next_steps(app_root: &Path, workspace_root: &Path, runtime: &str) -> String {
     // warn about — do not invent a distinction the user does not have.
     if app == workspace {
         return format!(
-            "\nNext steps\n  cd {app}\n  {package_manager} install\n  forklaunch score --offline\n"
+            "\nNext steps\n  cd {app}\n  {package_manager} install\n  forklaunch score --offline\n{CONTEXT_HINT}\n"
         );
     }
 
@@ -329,7 +333,7 @@ fn next_steps(app_root: &Path, workspace_root: &Path, runtime: &str) -> String {
          \n  {app:<width$}  forklaunch commands run here (.forklaunch/manifest.toml)\
          \n  {workspace:<width$}  {package_manager} commands run here (package.json, workspace root)\
          \n\
-         \nNext steps\n  cd {workspace} && {package_manager} install\n  cd {app} && forklaunch score --offline\n\
+         \nNext steps\n  cd {workspace} && {package_manager} install\n  cd {app} && forklaunch score --offline\n{CONTEXT_HINT}\n\
          \n`{package_manager} install` at {app} fails with a \"no package.json\" error.\n\
          That is the wrong directory, not a broken scaffold.\n",
         width = app.len().max(workspace.len())
