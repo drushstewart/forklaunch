@@ -62,7 +62,8 @@ def project_metadata(name, **updates):
 def start(*args):
     child = subprocess.Popen([str(arg) for arg in args], cwd=app,
         env={**{key: value for key, value in env.items() if not key.startswith(('MCP_', 'OTEL_'))},
-             'SERVICE_HOST': '127.0.0.1', 'HOST': '127.0.0.1', 'SERVICE_PORT': '0'},
+             'HOST': '127.0.0.1', 'PORT': '0', 'PROTOCOL': 'http', 'VERSION': 'v1',
+             'DOCS_PATH': '/docs', 'RUST_LOG': 'info', 'MCP_ENABLED': 'true'},
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
     children.append(child)
     deadline = time.monotonic() + 20

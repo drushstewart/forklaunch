@@ -23,9 +23,9 @@ try {
       Array.isArray(service.command) && service.command[0] === `/app/bin/${binary}`);
     assert.ok(service, `Generated Compose command missing for ${binary}`);
     const environment = service.environment;
-    const port = Number(environment.SERVICE_PORT ?? environment.PORT);
+    const port = Number(environment.PORT);
     assert.ok(Number.isInteger(port) && port > 0 && port <= 65535);
-    const httpEnvironment = ['HOST', 'PORT', 'SERVICE_HOST', 'SERVICE_PORT', 'PROTOCOL',
+    const httpEnvironment = ['HOST', 'PORT', 'PROTOCOL', 'VERSION', 'RUST_LOG',
       'PUBLIC_ORIGIN', 'DOCS_PATH', 'MCP_ENABLED', 'MCP_LISTENER'].flatMap(key =>
       environment[key] === undefined ? [] : ['--env', `${key}=${environment[key]}`]);
     container = docker('run', '--detach', '--label', 'forklaunch.test=registry-proof',

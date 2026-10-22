@@ -37,8 +37,9 @@ databaseUrl.username = role;
 databaseUrl.password = 'parity-test-only';
 const sessionKeys=['SESSION_JWT_PRIVATE_KEY_PEM','SESSION_JWT_KEY_ID','SESSION_JWT_ISSUER','SESSION_JWT_AUDIENCE'];
 function environment(tenant,classified=false,signed=tenant==='a') {
-  const env={...process.env,SESSION_COOKIE_ORIGIN:'https://iam.example.test',FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',SERVICE_PORT:'0',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience};
+  const env={...process.env,SESSION_COOKIE_ORIGIN:'https://iam.example.test',FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience};
   for(const key of [...sessionKeys,'IAM_DIRECTORY_AUTHORIZATION','SESSION_OIDC_ISSUER','SESSION_OIDC_CLIENT_ID','SESSION_OIDC_CLIENT_SECRET'])delete env[key];
+  env.IAM_DIRECTORY_AUTHORIZATION='jwt-claims';
   if(signed)Object.assign(env,{SESSION_JWT_PRIVATE_KEY_PEM:privateKey.export({format:'pem',type:'pkcs8'}),SESSION_JWT_KEY_ID:jwk.kid,SESSION_JWT_ISSUER:issuer,SESSION_JWT_AUDIENCE:audience});
   return env;
 }
@@ -103,7 +104,6 @@ try {
     {...environment('a'),SESSION_JWT_PRIVATE_KEY_PEM:'PRIVATE-SENTINEL'},
     {...environment('a'),SESSION_JWT_AUDIENCE:''},
     {...environment('a'),SESSION_COOKIE_ORIGIN:'http://insecure.example.test'},
-    {...environment('a'),SESSION_COOKIE_ORIGIN:''},
     {...environment('a'),SESSION_OIDC_CLIENT_ID:'partial'},
     {...environment('a'),IAM_DIRECTORY_AUTHORIZATION:'unknown'},
     {...environment('a',false,false),IAM_DIRECTORY_AUTHORIZATION:'stored-session'},

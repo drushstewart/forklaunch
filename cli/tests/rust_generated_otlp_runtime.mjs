@@ -14,7 +14,7 @@ await new Promise(resolve => receiver.listen(0, '127.0.0.1', resolve));
 let child;
 try {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('OTEL_') && !key.startsWith('MCP_'))),
-    HOST: '127.0.0.1', SERVICE_PORT: '0', RUST_LOG: 'debug', OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
+    HOST: '127.0.0.1', PORT: '0', RUST_LOG: 'info', MCP_ENABLED: 'true', PROTOCOL: 'http', VERSION: 'v1', DOCS_PATH: '/docs', RUST_LOG: 'debug', OTEL_EXPORTER_OTLP_PROTOCOL: 'http/json',
     OTEL_EXPORTER_OTLP_ENDPOINT: `http://127.0.0.1:${receiver.address().port}`,
     OTEL_BSP_SCHEDULE_DELAY: '600000', OTEL_BLRP_SCHEDULE_DELAY: '600000', OTEL_METRIC_EXPORT_INTERVAL: '600000' };
   child = spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });

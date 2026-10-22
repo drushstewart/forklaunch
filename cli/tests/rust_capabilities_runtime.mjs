@@ -13,7 +13,7 @@ const {createHmacToken}=load(path.join(root,'framework/core/src/http/createHmacT
 const reserve=createServer();reserve.listen(0,'127.0.0.1');await once(reserve,'listening');
 const port=reserve.address().port;await new Promise(resolve=>reserve.close(resolve));
 const key='native-capabilities-fixture-key',base=`http://127.0.0.1:${port}`;
-const service=spawn(process.argv[2],[],{env:{...process.env,SERVICE_HOST:'127.0.0.1',SERVICE_PORT:String(port),INSTANCE_HMAC_KEY:key,OTEL_EXPORTER_OTLP_ENDPOINT:'',MCP_ENABLED:'true',MCP_PATH:'/mcp'},stdio:['ignore','pipe','pipe']});
+const service=spawn(process.argv[2],[],{env:{...process.env,HOST:'127.0.0.1',PORT:String(port),RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs',INSTANCE_HMAC_KEY:key,OTEL_EXPORTER_OTLP_ENDPOINT:'',MCP_PATH:'/mcp'},stdio:['ignore','pipe','pipe']});
 let output='';for(const stream of [service.stdout,service.stderr])stream.on('data',chunk=>output+=chunk);
 function signed(feature,body,options={}){
  const route=`/platform-events/${feature}`,timestamp=new Date(options.timestamp??Date.now()),nonce=options.nonce??randomUUID();

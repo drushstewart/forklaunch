@@ -6,8 +6,8 @@ import {probeMcp} from './rust_mcp_probe.mjs';
 const [binary,...options]=process.argv.slice(2);assert.ok(binary);
 assert.ok(options.every(option=>option==='--verify-sdk-discovery'),'Unknown startup probe option');
 const verifyDiscovery=options.includes('--verify-sdk-discovery');
-for(const config of [{MCP_ENABLED:'true'},{MCP_ENABLED:'false'},{MCP_ENABLED:'true',MCP_PATH:'/tools'},{MCP_ENABLED:'true',MCP_LISTENER:'separate',MCP_PORT:'0'},{MCP_ENABLED:'true',MCP_LISTENER:'separate',MCP_PATH:'/tools',SERVICE_PORT:String(await freePortPair())},{MCP_ENABLED:'true',MCP_PORT:'0',MCP_HOST:'localhost'}]) {
-  const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_'))),HOST:'127.0.0.1',SERVICE_HOST:'127.0.0.1',SERVICE_PORT:'0',...config};
+for(const config of [{MCP_ENABLED:'true'},{MCP_ENABLED:'false'},{MCP_ENABLED:'true',MCP_PATH:'/tools'},{MCP_ENABLED:'true',MCP_LISTENER:'separate',MCP_PORT:'0'},{MCP_ENABLED:'true',MCP_LISTENER:'separate',MCP_PATH:'/tools',PORT:String(await freePortPair())},{MCP_ENABLED:'true',MCP_PORT:'0',MCP_HOST:'localhost'}]) {
+  const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_'))),HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs',...config};
   const child=spawn(binary,[],{env,stdio:['ignore','pipe','pipe']});let output='',errors='',closed=false;
   child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>errors+=d);const exit=new Promise(resolve=>child.once('close',code=>{closed=true;resolve(code);}));
   try {
@@ -73,7 +73,7 @@ async function freePortPair(){
 }
 
 async function rejectedStartup(config){
-  const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_'))),HOST:'127.0.0.1',SERVICE_HOST:'127.0.0.1',SERVICE_PORT:'0',...config};
+  const env={...Object.fromEntries(Object.entries(process.env).filter(([key])=>!key.startsWith('OTEL_')&&!key.startsWith('MCP_'))),HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs',...config};
   const child=spawn(binary,[],{env,stdio:['ignore','pipe','pipe']});let output='',errors='';
   child.stdout.on('data',d=>output+=d);child.stderr.on('data',d=>errors+=d);
   const exit=new Promise(resolve=>child.once('close',resolve)),timer=setTimeout(()=>child.kill('SIGKILL'),5000);

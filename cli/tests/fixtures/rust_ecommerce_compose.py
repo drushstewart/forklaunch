@@ -31,7 +31,7 @@ else:
         source = Path('docker-compose.yaml').read_text()
         section = re.search(r'(?ms)^  spare-shop-inventory-worker:\n.*?(?=^  \S|\Z)', source)
         assert section
-        updated = section[0].replace('  spare-shop-inventory-worker:\n', '  spare-shop-inventory-worker:\n    x-user-worker-marker: preserved\n', 1).replace('    environment:\n', '    environment:\n      WORKER_BATCH_SIZE: "2"\n', 1)
+        updated = section[0].replace('  spare-shop-inventory-worker:\n', '  spare-shop-inventory-worker:\n    x-user-worker-marker: preserved\n', 1).replace("      WORKER_BATCH_SIZE: '1'\n", '      WORKER_BATCH_SIZE: "2"\n', 1)
         Path('docker-compose.yaml').write_text(source[:section.start()] + updated + source[section.end():])
     else:
         assert worker['x-user-worker-marker'] == 'preserved'

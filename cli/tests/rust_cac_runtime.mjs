@@ -17,7 +17,7 @@ await new Promise(resolve => jwks.listen(0, '127.0.0.1', resolve));
 let child;
 try {
   const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('OTEL_'))),
-    HOST: '127.0.0.1', SERVICE_PORT: '0', HMAC_SECRET_KEY: secret,
+    HOST: '127.0.0.1', PORT: '0', RUST_LOG: 'info', MCP_ENABLED: 'true', PROTOCOL: 'http', VERSION: 'v1', DOCS_PATH: '/docs', HMAC_SECRET_KEY: secret,
     JWKS_PUBLIC_KEY_URL: `http://127.0.0.1:${jwks.address().port}/jwks`, JWT_ISSUER: issuer, JWT_AUDIENCE: audience };
   child = spawn(binary, [], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '', stderr = '', closed = false;

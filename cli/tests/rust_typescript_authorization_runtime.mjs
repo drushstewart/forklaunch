@@ -11,7 +11,7 @@ async function readBody(response){
 }
 const encode=value=>Buffer.from(JSON.stringify(value)).toString('base64url');
 function token(claims){const payload=`${encode({alg:'HS256',typ:'JWT'})}.${encode({sub:'fixture-subject',exp:Math.floor(Date.now()/1000)+300,...claims})}`;return `${payload}.${createHmac('sha256','fixture-only-session-authorization-key').update(payload).digest('base64url')}`;}
-const server=spawn(process.argv[2],[],{env:{...process.env,HOST:'127.0.0.1',SERVICE_HOST:'127.0.0.1',SERVICE_PORT:'0'},stdio:['ignore','pipe','pipe']});
+const server=spawn(process.argv[2],[],{env:{...process.env,HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs'},stdio:['ignore','pipe','pipe']});
 const exited=once(server,'exit');exited.catch(()=>{});
 let errors='';server.stderr.on('data',chunk=>errors+=chunk);
 const timer=setTimeout(()=>server.kill('SIGKILL'),60000);

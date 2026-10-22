@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { readFile } from 'node:fs/promises';
 const [binary, sdkPath, consumerManifest, publicRuntime, openapiPath] = process.argv.slice(2);
-const child = spawn(binary, [], { env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('OTEL_'))), HOST:'127.0.0.1', SERVICE_PORT:'0', HMAC_SECRET_KEY:'method-parity-owned-test-secret', JWKS_PUBLIC_KEY_URL:'http://127.0.0.1:9/unused' }, stdio:['ignore','pipe','pipe'] });
+const child = spawn(binary, [], { env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('OTEL_'))), HOST:'127.0.0.1', PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs', HMAC_SECRET_KEY:'method-parity-owned-test-secret', JWKS_PUBLIC_KEY_URL:'http://127.0.0.1:9/unused' }, stdio:['ignore','pipe','pipe'] });
 let output = '', errors = '', closed = false;
 child.stdout.on('data', data => { output += data; });
 child.stderr.on('data', data => { errors += data; });

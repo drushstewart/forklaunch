@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {mcpRpc} from './rust_mcp_probe.mjs';
 const [binary]=process.argv.slice(2);
-const child=spawn(binary,[],{env:{...process.env,SERVICE_HOST:'127.0.0.1',SERVICE_PORT:'0',MCP_ENABLED:'true'},stdio:['ignore','pipe','pipe']});
+const child=spawn(binary,[],{env:{...process.env,HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs'},stdio:['ignore','pipe','pipe']});
 let output='',errors='';
 child.stdout.on('data',chunk=>output+=chunk);child.stderr.on('data',chunk=>errors+=chunk);
 const closed=new Promise(resolve=>child.once('close',resolve));

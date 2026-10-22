@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# Generated workers have no configuration defaults.
+export RUST_LOG=info ENCRYPTION_KEY_ID=primary ENCRYPTION_LEGACY_KEY_HEX=disabled
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 if [ "${FORKLAUNCH_WORKER_RUNTIME_LOCKED:-}" != 1 ]; then

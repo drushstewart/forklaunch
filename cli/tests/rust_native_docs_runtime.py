@@ -53,10 +53,16 @@ try:
         application.write_text(authored)
         run(cli, 'init', 'service', 'docs-api', '--language', 'rust', '--path', app, cwd=root)
         assert application.read_text() == authored, 'Reinitialization replaced application composition'
+        if mode != 'snapshot':
+            # Generated configuration reads forklaunch_core::config, added in
+            # framework 0.2.0; the 0.1.0 selection is checked at the source level.
+            print('PASS', mode, 'generated helper selection and source preservation', flush=True)
+            continue
         run('cargo', 'build', '-p', 'docs-api', cwd=app)
         runtime_env = {key: value for key, value in env.items()
                        if not key.startswith(('MCP_', 'OTEL_'))}
-        runtime_env.update(SERVICE_HOST='127.0.0.1', HOST='127.0.0.1', SERVICE_PORT='0', MCP_ENABLED='false')
+        runtime_env.update(HOST='127.0.0.1', PORT='0', PROTOCOL='http', VERSION='v1', DOCS_PATH='/docs',
+                           RUST_LOG='info', MCP_ENABLED='false')
         child = subprocess.Popen([str(Path(env['CARGO_TARGET_DIR']) / 'debug/docs-api')],
             cwd=app, env=runtime_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
         try:

@@ -14,7 +14,7 @@ for (const item of cases) {
   assert.equal(result.ok, item.valid);
   if (result.ok) assert.deepEqual(JSON.parse(JSON.stringify(result.value)), item.normalized);
 }
-const service = spawn(process.argv[2], [], { env: { ...process.env, HOST: '127.0.0.1', SERVICE_HOST: '127.0.0.1', SERVICE_PORT: '0' }, stdio: ['ignore', 'pipe', 'pipe'] });
+const service = spawn(process.argv[2], [], { env: { ...process.env, HOST: '127.0.0.1', PORT: '0', RUST_LOG: 'info', MCP_ENABLED: 'true', PROTOCOL: 'http', VERSION: 'v1', DOCS_PATH: '/docs' }, stdio: ['ignore', 'pipe', 'pipe'] });
 const exited = once(service, 'exit'); exited.catch(() => {});
 let errors = ''; service.stderr.on('data', chunk => errors += chunk);
 const timer = setTimeout(() => service.kill('SIGKILL'), 60000);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {spawn} from 'node:child_process';
 import {once} from 'node:events';
 import {probeMcp,mcpRpc} from './rust_mcp_probe.mjs';
-const server=spawn(process.argv[2],[],{env:{...process.env,HOST:'127.0.0.1',SERVICE_HOST:'127.0.0.1',SERVICE_PORT:'0'},stdio:['ignore','pipe','pipe']});
+const server=spawn(process.argv[2],[],{env:{...process.env,HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs'},stdio:['ignore','pipe','pipe']});
 const exited=once(server,'exit');exited.catch(()=>{});
 let errors='';server.stderr.on('data',chunk=>errors+=chunk);
 const timer=setTimeout(()=>server.kill('SIGKILL'),45000);

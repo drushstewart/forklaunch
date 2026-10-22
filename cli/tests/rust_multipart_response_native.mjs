@@ -7,7 +7,7 @@ const {createForkLaunchSdk}=await import(pathToFileURL(process.argv[5]));
 const children = [];
 async function startServer(program, args = []) {
   const process = spawn(program, args, {
-    env: { ...globalThis.process.env, HOST: '127.0.0.1', SERVICE_HOST: '127.0.0.1', SERVICE_PORT: '0' },
+    env: { ...globalThis.process.env, HOST: '127.0.0.1', PORT: '0', RUST_LOG: 'info', MCP_ENABLED: 'true', PROTOCOL: 'http', VERSION: 'v1', DOCS_PATH: '/docs' },
     stdio: ['ignore', 'pipe', 'pipe']
   });
   const exited = once(process, 'exit');

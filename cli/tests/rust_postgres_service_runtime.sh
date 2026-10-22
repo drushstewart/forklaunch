@@ -163,6 +163,7 @@ export ENCRYPTION_KEY_HEX=111111111111111111111111111111111111111111111111111111
 export ENCRYPTION_KEY_ID=fixture
 export STORAGE_ENCRYPTION_NAMESPACE=fixture-records
 export ENCRYPTION_LEGACY_KEY_HEX=disabled
+export DATABASE_ALLOW_PLAINTEXT_DEVELOPMENT=false RUST_LOG=info
 "$RUN_ROOT/records-api" --migrate
 "$RUN_ROOT/records-api" --migrate
 docker exec -i "$CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d service <<'SQL'
