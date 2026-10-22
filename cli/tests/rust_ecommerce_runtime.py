@@ -75,9 +75,9 @@ try:
     run('cargo', 'build', '--workspace')
     # Blueprint crates are published; their tests run in the blueprint workspace.
     blueprint = repo / 'blueprint-rs/Cargo.toml'
-    run('cargo', 'test', '--manifest-path', blueprint, '-p', 'forklaunch-ecommerce-stripe', '--test', 'provider')
+    run('cargo', 'test', '--manifest-path', blueprint, '-p', 'forklaunch-ecommerce-stripe', '--test', 'provider', cwd=repo)
     database.start()
-    run('cargo', 'test', '--manifest-path', blueprint, '-p', 'forklaunch-ecommerce-base', '--all-features', '--test', 'reconciliation', '--', '--include-ignored')
+    run('cargo', 'test', '--manifest-path', blueprint, '-p', 'forklaunch-ecommerce-base', '--all-features', '--test', 'reconciliation', '--', '--include-ignored', cwd=repo)
     run(cli, 'openapi', 'export', '--path', app,
         extra={'OTEL_EXPORTER_OTLP_ENDPOINT': 'invalid', 'OTEL_EXPORTER_OTLP_PROTOCOL': 'invalid'})
     runtime = root / 'public-runtime'
