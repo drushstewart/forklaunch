@@ -10,7 +10,7 @@ use std::{
 
 use forklaunch_common::{JsonField, json_array, json_object, json_string};
 use forklaunch_core::contract::{
-    AuthConfig, BodyContract, BodyKind, ContractRegistry, FieldContract, HttpMethod,
+    AccessLevel, AuthConfig, BodyContract, BodyKind, ContractRegistry, FieldContract, HttpMethod,
     ResponseContract, RouteContract, SchemaRef,
 };
 
@@ -259,7 +259,33 @@ pub fn generate_portable_openapi_json_with_options(
     let mut document: serde_json::Value =
         serde_json::from_str(&generate_openapi_json_with_options(&public, options))?;
     attach_portable_operation_descriptors(&mut document, &descriptors)?;
+    mark_internal_operations(&mut document, &public);
     Ok(crate::codegen::canonical_json(document).to_string())
+}
+
+/// Marks `access: internal` operations with `x-forklaunch-access: "internal"`
+/// so discovery consumers (the agent's service tools) can skip
+/// service-to-service routes even when they declare no `security` scheme.
+fn mark_internal_operations(document: &mut serde_json::Value, registry: &ContractRegistry) {
+    for route in registry.routes() {
+        if route.access != AccessLevel::Internal || !route.method.is_openapi_standard() {
+            continue;
+        }
+        let pointer = format!(
+            "/paths/{}/{}",
+            route.openapi_path.replace('~', "~0").replace('/', "~1"),
+            route.method.as_str().to_ascii_lowercase()
+        );
+        if let Some(operation) = document
+            .pointer_mut(&pointer)
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            operation.insert(
+                "x-forklaunch-access".to_owned(),
+                serde_json::Value::String("internal".to_owned()),
+            );
+        }
+    }
 }
 
 /// Attach checked compiler operations to a standard `OpenAPI` document.
@@ -982,6 +1008,33 @@ fn security_schemes_json(routes: &[&RouteContract]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn portable_documents_mark_internal_operations() {
+        let mut registry = ContractRegistry::for_service(ServiceContract::new("notes", "1.2.3"));
+        registry.register(
+            RouteContract::post("Sync", "Sync notes", "/internal/notes/:id/sync")
+                .with_param(FieldContract::required("id", "String"))
+                .with_access(AccessLevel::Internal)
+                .with_response(204, None),
+        );
+        registry.register(
+            RouteContract::get("Read", "Read note", "/notes/:id")
+                .with_param(FieldContract::required("id", "String"))
+                .with_response(200, None),
+        );
+        let portable: serde_json::Value =
+            serde_json::from_str(&generate_portable_openapi_json(&registry).unwrap()).unwrap();
+        assert_eq!(
+            portable["paths"]["/internal/notes/{id}/sync"]["post"]["x-forklaunch-access"],
+            "internal"
+        );
+        assert!(
+            portable["paths"]["/notes/{id}"]["get"]
+                .get("x-forklaunch-access")
+                .is_none()
+        );
+    }
+
     #[test]
     fn portable_document_options_preserve_standard_metadata_and_error_policy() {
         let mut registry = ContractRegistry::for_service(ServiceContract::new("notes", "1.2.3"));

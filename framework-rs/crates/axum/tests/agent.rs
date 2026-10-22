@@ -110,7 +110,22 @@ async fn notes_service() -> String {
         .unwrap()
         .finish()
         .unwrap();
-    let router = with_openapi(router, &registry, "/openapi.json", "v1").unwrap();
+    // A service-to-service route is published in the API description but must
+    // never become an agent tool (a user's token cannot call it).
+    let mut documented = registry.clone();
+    documented.register(
+        Endpoint::<JsonBody<Status>, JsonBody<Status>>::new(
+            "Sync Notes",
+            "Sync notes from a worker",
+            HttpMethod::Post,
+            "/internal/notes/sync",
+            202,
+        )
+        .unwrap()
+        .with_access(AccessLevel::Internal)
+        .contract(),
+    );
+    let router = with_openapi(router, &documented, "/openapi.json", "v1").unwrap();
     let mut options = McpServerOptions::new("notes", "1.0.0");
     options.authorize = Arc::new(Gate);
     serve(mount_http(router, &registry, options).unwrap()).await
@@ -297,6 +312,23 @@ async fn agent_routes_list_tools_run_tasks_and_stream_events() {
     assert_eq!(status["annotations"], json!({"openWorldHint": true}));
     assert_eq!(status["requiresApproval"], true);
     assert!(tools.iter().all(|tool| tool["available"] == true));
+    assert!(
+        tools.iter().all(|tool| tool["name"] != "notes__sync_notes"),
+        "internal operations are not agent tools"
+    );
+    let described: Value = http
+        .get(format!("{notes}/api/v1/openapi"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let described = described.get("latest").unwrap_or(&described);
+    assert_eq!(
+        described["paths"]["/internal/notes/sync"]["post"]["x-forklaunch-access"],
+        "internal"
+    );
 
     // A service tool runs with the caller's own Authorization; an MCP tool waits for approval.
     model.responses.lock().unwrap().extend([
@@ -522,4 +554,44 @@ async fn jwt_policy_rejects_missing_and_unverifiable_tokens() {
         .await
         .unwrap();
     assert_eq!(forged.status(), 401);
+}
+
+#[tokio::test]
+async fn agent_without_a_model_answers_503_on_both_task_routes() {
+    // No `.model(..)`; the test environment does not set AGENT_MODEL.
+    let agent = Agent::builder("assistant")
+        .continuation_secret("agent-secret")
+        .model_backend(Arc::new(FakeModel::default()))
+        .build()
+        .unwrap();
+    let mut registry = ContractRegistry::for_service(ServiceContract::new("assistant", "1.0.0"));
+    contract::register(&mut registry);
+    let options = StreamOptions::new(
+        Shutdown::new(),
+        512 * 1024,
+        Duration::from_secs(30),
+        Duration::from_secs(5),
+    )
+    .unwrap();
+    let router = mount_agent(
+        ContractRouter::<()>::new(registry),
+        agent,
+        session_policy(),
+        options,
+    )
+    .unwrap()
+    .finish()
+    .unwrap();
+    let base = serve(router).await;
+    let http = reqwest::Client::new();
+    for path in ["/api/v1/agent/tasks", "/api/v1/agent/tasks/stream"] {
+        let response = http
+            .post(format!("{base}{path}"))
+            .bearer_auth("user-token")
+            .json(&json!({"task": "hi"}))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(response.status(), 503, "{path}");
+    }
 }

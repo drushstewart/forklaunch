@@ -51,6 +51,11 @@ async fn run() -> Result<(), Box<dyn Error>> {
     options.group = config::required("KAFKA_GROUP_ID")?;
     options.operation_timeout = Duration::from_millis(config::required("KAFKA_OPERATION_TIMEOUT_MS")?);
     options.session_timeout = Duration::from_millis(config::required("KAFKA_SESSION_TIMEOUT_MS")?);
+    // Optional: how long startup retries a broker that is still starting or the first
+    // transactional initialization on a fresh broker. Unset keeps the 60 s default.
+    if let Some(value) = config::optional::<u64>("KAFKA_STARTUP_TIMEOUT_MS")? {
+        options.startup_timeout = Duration::from_millis(value);
+    }
     options.max_payload_bytes = config::required("WORKER_MAX_PAYLOAD_BYTES")?;
     // Optional librdkafka properties (for example SASL); unset uses none.
     if let Some(value) = config::optional::<String>("KAFKA_CLIENT_PROPERTIES")? {

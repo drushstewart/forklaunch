@@ -9,7 +9,7 @@ repository.workspace = true
 
 [features]
 default = []
-kafka-client = ["dep:rdkafka", "dep:tokio", "dep:serde", "dep:serde_json", "dep:sha2", "forklaunch-core/http", "dep:forklaunch-worker-database"]
+kafka-client = ["dep:rdkafka", "dep:tokio", "dep:serde", "dep:serde_json", "dep:sha2", "forklaunch-core/http", "dep:forklaunch-worker-database", "dep:tracing"]
 
 [dependencies]
 forklaunch-worker-interface = { version = "=0.2.0", path = "../../../interfaces/worker-interface" }
@@ -22,6 +22,7 @@ sha2 = { version = "0.11", optional = true }
 forklaunch-core = { version = "=0.2.0", path = "../../../../../framework-rs/crates/core", features = ["domain"] }
 forklaunch-worker-database = { version = "=0.2.0", path = "../worker-database", features = ["runtime"], optional = true }
 base16ct = { version = "1", features = ["alloc"] }
+tracing = { version = "0.1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync"] }

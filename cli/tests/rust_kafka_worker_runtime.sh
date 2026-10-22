@@ -30,6 +30,7 @@ assert_no_http_sdk() {
 }
 mkdir -p "$SCRIPT_DIR/output/rust-kafka-worker-runtime"
 RUN_ROOT="$(mktemp -d "$SCRIPT_DIR/output/rust-kafka-worker-runtime/run.XXXXXX")"
+REDPANDA_IMAGE=redpandadata/redpanda@sha256:218469e5d088757bb2c3ff4c5e272f7eebdc4e94c933e6e15aff10b845cbcd07
 KAFKA_CONTAINER="forklaunch-rust-kafka-worker-test-$$"
 REDIS_CONTAINER="forklaunch-rust-kafka-signals-test-$$"
 OWN_KAFKA=false
@@ -53,7 +54,7 @@ PYTHON
     docker run --detach --name "$KAFKA_CONTAINER" --memory 1536m --cpus 2 \
         --publish "127.0.0.1:$TASK_KAFKA_PORT:9092" \
         --tmpfs /var/lib/redpanda/data:rw,size=512m,mode=1777 \
-        redpandadata/redpanda@sha256:218469e5d088757bb2c3ff4c5e272f7eebdc4e94c933e6e15aff10b845cbcd07 \
+        "$REDPANDA_IMAGE" \
         redpanda start --overprovisioned --smp 1 --memory 768M --reserve-memory 0M \
         --node-id 0 --check=false --kafka-addr 0.0.0.0:9092 \
         --advertise-kafka-addr "$FORKLAUNCH_TEST_KAFKA_BROKERS"
@@ -78,6 +79,7 @@ run_cli init worker dry-worker --path "$RUN_ROOT/app" --language rust --consumer
 test ! -d "$RUN_ROOT/app/src/dry-worker"
 test ! -d "$RUN_ROOT/app/.forklaunch/blueprint-rs"
 run_cli init worker jobs --path "$RUN_ROOT/app" --language rust --consumer-only -t kafka -D Jobs
+python3 "$SCRIPT_DIR/fixtures/local_crates_patch.py" "$RUN_ROOT/app" "$REPO_ROOT"
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 cd "$RUN_ROOT/relocated-app"
 printf '\npub const USER_OWNED_MARKER: &str = "preserved";\n' >> src/jobs/domain/services/handler.rs
@@ -124,6 +126,7 @@ BUILD_TARGET="$(cargo metadata --no-deps --format-version 1 | node -e 'let s="";
 cp "$BUILD_TARGET/debug/jobs" "$RUN_ROOT/jobs-runtime"
 BINARY="$RUN_ROOT/jobs-runtime"
 node "$SCRIPT_DIR/rust_kafka_worker_runtime.mjs" "$BINARY" runtime
+node "$SCRIPT_DIR/rust_kafka_worker_restart.mjs" "$BINARY" "$REDPANDA_IMAGE"
 cp -R "$RUN_ROOT/relocated-app" "$RUN_ROOT/lifecycle-app"
 run_cli change worker --path "$RUN_ROOT/lifecycle-app/src/jobs" -N email-jobs --confirm
 grep -q USER_OWNED_MARKER "$RUN_ROOT/lifecycle-app/src/email-jobs/domain/services/handler.rs"

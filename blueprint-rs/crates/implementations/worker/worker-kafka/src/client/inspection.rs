@@ -1,4 +1,4 @@
-use super::{DeadEnvelope, Envelope, KafkaOptions, QuietContext, invalid, storage};
+use super::{DeadEnvelope, Envelope, KafkaOptions, LoggingContext, invalid, storage};
 use forklaunch_core::domain::BlueprintError;
 use forklaunch_core::domain::BlueprintResult;
 use forklaunch_worker_interface::Job;
@@ -26,9 +26,9 @@ pub async fn initialize_topics(
     if !(1..=128).contains(&partitions) || !(1..=16).contains(&replication) {
         return Err(invalid());
     }
-    let admin: AdminClient<QuietContext> = options
+    let admin: AdminClient<LoggingContext> = options
         .config()
-        .create_with_context(QuietContext::default())
+        .create_with_context(LoggingContext::default())
         .map_err(|_| invalid())?;
     let topic = options.topic();
     let dead = options.dead_letter_topic();
@@ -132,7 +132,7 @@ fn read_records(options: &KafkaOptions, dead: bool, limit: usize) -> BlueprintRe
     } else {
         options.topic()
     };
-    let consumer: BaseConsumer<QuietContext> = options
+    let consumer: BaseConsumer<LoggingContext> = options
         .config()
         .set("group.id", options.group_id())
         .set("enable.auto.commit", "false")
@@ -140,7 +140,7 @@ fn read_records(options: &KafkaOptions, dead: bool, limit: usize) -> BlueprintRe
         .set("isolation.level", "read_committed")
         .set("enable.partition.eof", "true")
         .set("queued.max.messages.kbytes", "8192")
-        .create_with_context(QuietContext::default())
+        .create_with_context(LoggingContext::default())
         .map_err(|_| invalid())?;
     let metadata = consumer
         .fetch_metadata(Some(&topic), remaining(deadline)?)

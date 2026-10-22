@@ -23,7 +23,8 @@ use forklaunch_ecommerce_base::{
     BaseEcommerceService, CartCache, postgres::PostgresEcommerceStore,
 };
 use forklaunch_ecommerce_interface::{
-    AddCartItemDto, AdjustStockDto, CartService, CreateCartDto, CreateOrderDto, CreatePaymentDto,
+    AddCartItemDto, AdjustStockDto, CartService, CreateCartDto, CreateInventoryDto, CreateOrderDto,
+    CreatePaymentDto,
     CreateProductDto, CreateVariantDto, InventoryService, OrderService, PaymentService,
     ProductService, RemoveCartItemDto, StockCheckDto, TransitionOrderDto, UpdateProductDto,
     UpdateVariantDto, VariantService, contracts,
@@ -210,7 +211,7 @@ macro_rules! service {
 pub type Handler = MethodRouter;
 
 /// Operations in their mounted order.
-const OPERATIONS: [&str; 32] = [
+const OPERATIONS: [&str; 33] = [
     "handleStripeWebhook",
     "handlePaypalWebhook",
     "checkout",
@@ -228,6 +229,7 @@ const OPERATIONS: [&str; 32] = [
     "getVariant",
     "updateVariant",
     "deleteVariant",
+    "createInventory",
     "getInventory",
     "adjustStock",
     "checkStock",
@@ -312,6 +314,7 @@ impl EcommerceHttp {
             "getVariant" => any(handler!(get_variant, input:Path<String>)),
             "updateVariant" => any(handler!(update_variant, input:CheckedJson<UpdateVariantDto>)),
             "deleteVariant" => any(handler!(delete_variant, input:Path<String>)),
+            "createInventory" => any(handler!(create_inventory, input:CheckedJson<CreateInventoryDto>)),
             "getInventory" => any(handler!(get_inventory, input:Path<String>)),
             "adjustStock" => any(handler!(adjust_stock, input:CheckedJson<AdjustStockDto>)),
             "checkStock" => any(handler!(check_stock, input:CheckedJson<StockCheckDto>)),
@@ -474,6 +477,14 @@ async fn update_variant(
     CheckedJson(Json(input)): CheckedJson<UpdateVariantDto>,
 ) -> Response {
     response(service!(backend, session).update_variant(input).await)
+}
+
+async fn create_inventory(
+    Extension(backend): Extension<Arc<EcommerceBackend>>,
+    Extension(session): Extension<AuthenticatedSession>,
+    CheckedJson(Json(input)): CheckedJson<CreateInventoryDto>,
+) -> Response {
+    response(service!(backend, session).create_inventory(input).await)
 }
 
 async fn adjust_stock(

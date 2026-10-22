@@ -193,7 +193,7 @@ fn producer(
         .unwrap_or_else(|| contracts_layout::new_host_directory(dir));
     let data = rust_crate_template_data(name, "Worker contracts", true);
     let jobs = render_rust_template("rust/leased-worker/event_contract.rs", &data)
-        + "\n#[forklaunch_core::contract::schema]\npub struct AcceptedJob { pub operation_id: String }\n";
+        + "\n/// `operation_id` identifies the accepted job on every side: it is the queue job id\n/// (the apalis task id, the leased job id, or the Kafka record key) and the\n/// `context.operationId` the consumer sees after opening the sealed event.\n#[forklaunch_core::contract::schema]\npub struct AcceptedJob { pub operation_id: String }\n";
     files.push(RenderedTemplate {
         path: job_source(dir, &host),
         content: jobs,
@@ -300,11 +300,13 @@ pub async fn enqueue(_state:State<AppState>,tenant:Uuid,input:WorkInput)->Result
         "\npub mod producer;\n",
     )?;
     let (imports, submit) = if apalis {
-        ("use apalis_core::backend::TaskSink;\nuse apalis_postgres::{Config,PostgresStorage};\nuse forklaunch_worker_interface::SealedEvent;\nuse crate::consumer::registrations;", r#"
+        ("use apalis_core::backend::TaskSink;\nuse apalis_core::task::{builder::TaskBuilder,task_id::TaskId};\nuse apalis_postgres::{Config,PostgresStorage};\nuse forklaunch_worker_interface::SealedEvent;\nuse crate::consumer::registrations;", r#"
     let pool=registrations::pool(false).await.map_err(|_|EndpointError::Unavailable)?;
     let mut queue=PostgresStorage::<SealedEvent>::new(&pool)
         .with_config(Config::default().queue(env!("CARGO_PKG_NAME")));
-    let result=queue.push(event).await.map_err(|_|EndpointError::Unavailable);
+    // The apalis task id is the operation id, so AcceptedJob correlates with the queue row.
+    let task=TaskBuilder::new(event).task_id(TaskId::from_string(operation.to_string())).build();
+    let result=queue.push_task(task).await.map_err(|_|EndpointError::Unavailable);
     pool.close().await;
     result?;
 "#)
@@ -478,7 +480,7 @@ mod tests {
         assert!(source("worker.rs").contains("consumer::bootstrapper::run"));
         assert!(source("main.rs").contains("bootstrapper::run"));
         assert!(source("api/controllers/enqueue.rs").contains("Err(EndpointError::Unauthorized)"));
-        assert!(source("domain/services/producer.rs").contains("queue.push(event)"));
+        assert!(source("domain/services/producer.rs").contains("queue.push_task(task)"));
         assert!(source("consumer/worker_hooks.rs").contains("crate::consumer::worker") == false);
         assert!(source("consumer/bootstrapper.rs").contains("crate::consumer::worker::run"));
         assert!(source("domain/mod.rs").contains("contracts::jobs"));
