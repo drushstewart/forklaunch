@@ -272,7 +272,12 @@ pub(super) fn sources(
     patch(&dir.join("lib.rs"), |source| insert_before_line(source, "pub mod api;", "pub mod agent;\n", "lib.rs"))?;
     patch(&dir.join("registrations.rs"), |source| {
         let source = insert_after(source, "pub struct AppState {\n", "    pub agent: AgentRuntime,\n", "registrations.rs")?;
-        let source = insert_after(&source, "Ok(AppState {\n", "        agent: AgentRuntime::from_env()?,\n", "registrations.rs")?;
+        // The service template builds its state on one line or across several.
+        let source = if source.contains("Ok(AppState {\n") {
+            insert_after(&source, "Ok(AppState {\n", "        agent: AgentRuntime::from_env()?,\n", "registrations.rs")?
+        } else {
+            insert_after(&source, "Ok(AppState { ", "agent: AgentRuntime::from_env()?, ", "registrations.rs")?
+        };
         insert_before_line(&source, "use ", "use crate::agent::AgentRuntime;\n", "registrations.rs")
     })?;
     patch(&dir.join("bootstrapper.rs"), |source| {
