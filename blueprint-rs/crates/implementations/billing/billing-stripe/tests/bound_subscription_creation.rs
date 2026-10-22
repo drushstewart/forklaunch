@@ -134,7 +134,7 @@ async fn bound_subscription_native_wire_matrix() {
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
         .run_until(async move {
-            tokio::task::spawn_local(async move { matrix(&run, false).await }).await
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run, false)).await }).await
         })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;
@@ -574,7 +574,7 @@ async fn bound_subscription_created_read_matrix() {
     let run = f.clone();
     let result = tokio::task::LocalSet::new()
         .run_until(async move {
-            tokio::task::spawn_local(async move { matrix(&run, true).await }).await
+            tokio::task::spawn_local(async move { Box::pin(matrix(&run, true)).await }).await
         })
         .await;
     Arc::try_unwrap(f).ok().unwrap().cleanup().await;

@@ -288,7 +288,7 @@ async fn matrix(f: &Fixture) {
     assert_eq!(p.posts.load(Ordering::SeqCst), 1);
     assert_eq!(f.count("checkout_dependency_claims").await, 0);
     authority(f, op).await;
-    read_created(f, &p, &service, &record.id).await;
+    Box::pin(read_created(f, &p, &service, &record.id)).await;
     // Pending claims prevent current/OLD-tenant relation changes during provider I/O.
     p.pause.store(1, Ordering::SeqCst);
     let op = Uuid::new_v4();
