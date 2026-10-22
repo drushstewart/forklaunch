@@ -256,7 +256,7 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
             docker.push_str(&format!("FROM scratch AS {name}\n"));
         }
     }
-    docker.push_str("FROM rust:1.98-slim-bookworm AS builder\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev libcurl4-openssl-dev ca-certificates cmake make g++ perl && rm -rf /var/lib/apt/lists/*\n");
+    docker.push_str("FROM rust:1.98.0-slim-bookworm AS builder\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev libcurl4-openssl-dev ca-certificates cmake make g++ perl && rm -rf /var/lib/apt/lists/*\n");
     if let Some((_, contexts)) = &framework {
         // The checkout is recreated at its host path, which the Cargo manifests
         // reference; only workspace manifests and crates/ are transferred.

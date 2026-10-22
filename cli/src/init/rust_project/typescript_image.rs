@@ -831,7 +831,7 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     let native_stage = "native-sdk-compiler";
     if !native_sdks.is_empty() {
         let (_, native_inputs, _) = super::language_images::plan(&root)?;
-        let mut generation = String::from("FROM rust:1.98-slim-bookworm AS native-sdk-compiler\nWORKDIR /app\nARG CARGO_BUILD_JOBS=2\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*\n");
+        let mut generation = String::from("FROM rust:1.98.0-slim-bookworm AS native-sdk-compiler\nWORKDIR /app\nARG CARGO_BUILD_JOBS=2\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*\n");
         for input in native_inputs {
             generation.push_str(&format!(
                 "COPY {}\n",

@@ -378,7 +378,7 @@ finally:
         ids = subprocess.check_output(['docker', resource, 'ls', '--filter', f'label=com.docker.compose.project={name}', '--format', '{{.ID}}' if resource == 'network' else '{{.Name}}'], text=True).split()
         if ids:
             subprocess.run(['docker', resource, 'rm', *ids], check=True)
-    images = {f'forklaunch-dev-{name}-native-api:local'}
+    images = {f'forklaunch-dev-{name}-native:local'}
     if not replay_ready:
         images.update(typescript_images)
         images.add(configuration['services']['legacy-api']['image'])

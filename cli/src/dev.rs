@@ -34,6 +34,19 @@ pub(crate) struct DevCommand;
 /// any native process starts.
 const NATIVE_BUILD: &str = "forklaunch-native-build";
 
+/// Every native process compiles with the same scrubbed environment: Cargo
+/// fingerprints include environment a build script or macro reads, so service
+/// settings (PORT, DATABASE_URL, ...) would otherwise make each container
+/// rebuild what the warm-up and the other containers just built.
+const NATIVE_BUILD_SCRIPT: &str = r#"COPY --chmod=0755 <<'SCRIPT' /usr/local/bin/forklaunch-native-build
+#!/bin/sh
+exec env -i HOME=/root PATH="$PATH" CARGO_HOME="$CARGO_HOME" RUSTUP_HOME="$RUSTUP_HOME" \
+  CARGO_TARGET_DIR=/app/target SQLX_OFFLINE=true \
+  ${CARGO_BUILD_JOBS:+CARGO_BUILD_JOBS="$CARGO_BUILD_JOBS"} ${CARGO_INCREMENTAL:+CARGO_INCREMENTAL="$CARGO_INCREMENTAL"} \
+  cargo build "$@"
+SCRIPT
+"#;
+
 impl CliCommand for DevCommand {
     fn command(&self) -> Command {
         command(
@@ -755,7 +768,10 @@ fn plan(
         .next()
         .context("Native builder template missing source-copy boundary")?
         .replace("pkg-config libssl-dev", "pkg-config curl libssl-dev")
-        + "\nENV SQLX_OFFLINE=true\n";
+        + "\nENV SQLX_OFFLINE=true\n"
+        + NATIVE_BUILD_SCRIPT;
+    // Compose interpolates the inline Dockerfile; keep the script's `$` literal.
+    let dockerfile = dockerfile.replace('$', "$$");
     // Host checkout of a `[framework] path` application, mounted read-only at
     // the same absolute path its Cargo manifests reference.
     let framework_mounts: Vec<Value> = crate::init::rust_project::framework_mounts(root)
@@ -794,7 +810,7 @@ fn plan(
         }
     }
     let packages: BTreeSet<&String> = selection.iter().map(|(package, _)| package).collect();
-    let mut build_command = String::from("cargo build");
+    let mut build_command = String::from("forklaunch-native-build");
     for package in &packages {
         build_command.push_str(&format!(" --package {package}"));
     }
@@ -1075,7 +1091,7 @@ mod tests {
         compose["services"]["native-api"]["healthcheck"] = json!({"test":["CMD","true"],"start_period":"40s"});
         let (planned, changes) = plan(root.path(), &manifest, compose, &[], true).unwrap();
         let services = &planned["services"];
-        let build = "cargo build --package native-core --bin events-consumer --bin native-api";
+        let build = "forklaunch-native-build --package native-core --bin events-consumer --bin native-api";
         assert_eq!(services[NATIVE_BUILD]["entrypoint"][2], build);
         assert_eq!(services[NATIVE_BUILD]["environment"]["SQLX_OFFLINE"], "true");
         for name in ["native-api", "native-outbox"] {
@@ -1089,7 +1105,7 @@ mod tests {
         }
         assert_eq!(services["native-api"]["healthcheck"]["start_period"], "900s");
         assert!(changes.get(NATIVE_BUILD).is_none());
-        assert!(!services[NATIVE_BUILD]["build"]["dockerfile_inline"].as_str().unwrap().contains("COPY"));
+        assert!(!services[NATIVE_BUILD]["build"]["dockerfile_inline"].as_str().unwrap().contains("COPY . ."));
     }
 
     #[test]
@@ -1108,7 +1124,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             planned["services"]["native-outbox"]["entrypoint"][2],
-            "cargo build --package native-core --bin events-consumer && exec \"$@\""
+            "forklaunch-native-build --package native-core --bin events-consumer && exec \"$@\""
         );
         assert_eq!(
             planned["services"]["native-outbox"]["command"][0],
@@ -1284,7 +1300,7 @@ mod tests {
         );
         assert_eq!(
             planned["services"]["native-api"]["entrypoint"][2],
-            "cargo build --package native-core --bin native-api && exec \"$@\""
+            "forklaunch-native-build --package native-core --bin native-api && exec \"$@\""
         );
         assert_eq!(
             planned["services"]["native-api"]["environment"]["PORT"],

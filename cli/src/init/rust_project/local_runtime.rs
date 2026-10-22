@@ -235,7 +235,8 @@ fn local_value(name: &str, context: &mut LocalContext<'_>) -> Option<String> {
         return Some(kebab(prefix));
     }
     match name {
-        "ENCRYPTION_KEY_HEX" => Some(random(32).iter().map(|b| format!("{b:02x}")).collect()),
+        // The internal service key is 64 hex characters (the producer policy requires at least 32 bytes).
+        "ENCRYPTION_KEY_HEX" | INTERNAL_HMAC => Some(random(32).iter().map(|b| format!("{b:02x}")).collect()),
         _ if name.ends_with("ENCRYPTION_KEY") || name.ends_with("HMAC_SECRET_KEY") => {
             Some(base64::engine::general_purpose::STANDARD.encode(random(32)))
         }
@@ -402,7 +403,9 @@ fn ensure_infrastructure(compose: &mut DockerCompose, app: &str, groups: &[Datab
     let names: Vec<String> = compose.services.keys().cloned().collect();
     for name in names {
         let service = &compose.services[&name];
-        let redis = env(service, "REDIS_URL").is_some_and(|url| url.contains("//redis:"));
+        // A literal local URL, or a required per-project URL `.env` points at local Redis.
+        let redis = env(service, "REDIS_URL")
+            .is_some_and(|url| url.contains("//redis:") || required_prefix(url, "_REDIS_URL").is_some());
         let bucket = env(service, "S3_BUCKET").is_some_and(|_| env(service, "S3_URL").is_some_and(|url| url.contains("//minio:")));
         if redis && compose.services.contains_key("redis") && name != "redis" {
             depends_ready(compose, &name, "redis");
@@ -916,7 +919,7 @@ mod tests {
         assert_eq!(local_value("AUDIT_NAMESPACE", &mut context).unwrap(), "notes-app-audit");
         assert_eq!(local_value("AUDIT_KAFKA_TRANSACTIONAL_ID", &mut context).unwrap(), "notes-app-audit-1");
         assert_eq!(local_value("AUDIT_KAFKA_PUBLISHER_ID", &mut context).unwrap(), "notes-app-audit-publisher-1");
-        assert_eq!(local_value("INTERNAL_HMAC_SECRET_KEY", &mut context).unwrap().len(), 44);
+        assert_eq!(local_value("INTERNAL_HMAC_SECRET_KEY", &mut context).unwrap().len(), 64);
     }
 
     #[test]

@@ -5,7 +5,7 @@
 FROM scratch AS framework
 FROM scratch AS blueprint
 
-FROM rust:1.98-slim-bookworm AS builder
+FROM rust:1.98.0-slim-bookworm AS builder
 
 ARG FRAMEWORK_ROOT=/forklaunch
 WORKDIR /app
