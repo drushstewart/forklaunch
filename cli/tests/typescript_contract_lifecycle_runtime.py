@@ -22,7 +22,7 @@ def run(*args, path=APP, check=True):
 
 try:
     run('init', 'application', 'lifecycle-proof', '--language', 'typescript', '--modules-path', 'modules',
-        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
         '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
         '-D', 'Lifecycle proof', '-A', 'ForkLaunch', '-L', 'MIT')
     for kind, name in [('service', 'records'), ('worker', 'jobs')]:

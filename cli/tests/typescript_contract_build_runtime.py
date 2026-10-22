@@ -31,7 +31,7 @@ def sdks(*names):
 
 try:
     cli('init', 'application', 'contract-proof', '--language', 'typescript', '--modules-path', 'modules',
-        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
         '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
         '-D', 'Contract proof', '-A', 'ForkLaunch', '-L', 'MIT')
     # Contract builds exist for Rust consumers; a TypeScript-only app keeps tsc -b.

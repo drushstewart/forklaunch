@@ -25,7 +25,7 @@ cargo run -p accounts
 
 The application command prompts for shared tooling settings; it does not require a
 language or SDK target. In scripts, pass `--database postgresql --validator zod
---formatter prettier --linter eslint --http-framework express --runtime node
+--formatter prettier --linter oxlint --http-framework express --runtime node
 --test-framework vitest` to supply those settings explicitly.
 
 The root `Cargo.toml` is the workspace. Each service or worker owns its Cargo
@@ -100,7 +100,7 @@ pnpm build
 
 The first TypeScript service, worker, library or module uses the configured
 modules directory (`src` by default), beside native projects, with Node, Express,
-Zod, Prettier, ESLint and Vitest. Application settings switch
+Zod, Prettier, oxlint and Vitest. Application settings switch
 to those JavaScript tools and mark the app mixed; native projects retain their
 Cargo paths and sources. The root package workspace includes both TypeScript
 projects and existing SDK packages. Existing scripts and dependency versions are

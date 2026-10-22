@@ -21,7 +21,7 @@ def command(*args):
     run(str(cli), *args, '--path', str(app))
 
 try:
-    command('init', 'application', 'sdk-proof', '-d', 'postgresql', '-v', 'zod', '-f', 'prettier', '-l', 'eslint', '-F', 'express', '-r', 'node', '-t', 'vitest', '-D', 'Local SDK proof', '-A', 'ForkLaunch', '-L', 'MIT')
+    command('init', 'application', 'sdk-proof', '-d', 'postgresql', '-v', 'zod', '-f', 'prettier', '-l', 'oxlint', '-F', 'express', '-r', 'node', '-t', 'vitest', '-D', 'Local SDK proof', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'api', '--language', 'rust', '-D', 'API')
     command('init', 'library', 'client', '--language', 'rust', '--sdk-services', 'api', '-D', 'Client exports')
     local = app / 'src/api/sdk/rust'

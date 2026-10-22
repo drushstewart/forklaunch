@@ -19,6 +19,8 @@ export function validateProviderReference(value: unknown): void {
     typeof value !== 'string' ||
     !value.trim() ||
     Buffer.byteLength(value, 'utf8') > 1024 ||
+    // Control characters are exactly what this check rejects.
+    // eslint-disable-next-line no-control-regex
     /[\u0000-\u001f\u007f-\u009f]/u.test(value)
   ) {
     throw new Error('Invalid Stripe billing response');

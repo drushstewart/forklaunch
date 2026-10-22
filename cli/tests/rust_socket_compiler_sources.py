@@ -41,7 +41,7 @@ def snapshot():
 
 try:
     run('init', 'application', 'socket-compiler', '--database', 'postgresql', '--validator', 'zod',
-        '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
+        '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express',
         '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Published socket compiler',
         '-A', 'ForkLaunch', '-L', 'MIT', '--framework-version', '0.1.3')
     run('init', 'service', 'chat', '--language', 'rust')

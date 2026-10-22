@@ -52,7 +52,7 @@ def manifest():
 
 
 run('init', 'application', 'mixed-lifecycle', '--modules-path', 'modules',
-    '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+    '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
     '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
     '-D', 'Mixed lifecycle', '-A', 'ForkLaunch', '-L', 'MIT')
 for kind, name, extra in [('service', 'typescript-api', ['-d', 'postgresql']),

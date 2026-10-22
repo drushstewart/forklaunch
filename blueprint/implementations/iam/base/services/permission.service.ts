@@ -174,7 +174,7 @@ export class BasePermissionService<
     );
 
     if (em) {
-      await em.persist([permission, ...roles]);
+      em.persist([permission, ...roles]);
     } else {
       await this.em.persist([permission, ...roles]).flush();
     }
@@ -237,7 +237,7 @@ export class BasePermissionService<
     const entities = [...permissions, ...Object.values(rolesCache)];
 
     if (em) {
-      await em.persist(entities);
+      em.persist(entities);
     } else {
       await this.em.persist(entities).flush();
     }
@@ -343,7 +343,7 @@ export class BasePermissionService<
     const entities = await (em ?? this.em).upsertMany([permission, ...roles]);
 
     if (em) {
-      await em.persist(entities);
+      em.persist(entities);
     } else {
       await this.em.persist(entities).flush();
     }

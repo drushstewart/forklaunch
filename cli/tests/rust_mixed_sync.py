@@ -35,7 +35,7 @@ def run(*args):
 
 try:
     run('init', 'application', 'mixed-sync', '--modules-path', 'modules',
-        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
         '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
         '-D', 'Mixed sync', '-A', 'ForkLaunch', '-L', 'MIT')
     run('init', 'service', 'legacy-api', '--language', 'typescript', '-d', 'postgresql', '-D', 'Legacy API')

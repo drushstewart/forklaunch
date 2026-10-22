@@ -17,7 +17,9 @@ pub(crate) const TYPES_NODE_VERSION: &str = "^26.6.5";
 // jest
 pub(crate) const JEST_VERSION: &str = "^30.5.2";
 // oxlint
-pub(crate) const OXLINT_VERSION: &str = "^0.16.6";
+pub(crate) const OXLINT_VERSION: &str = "^1.89.0";
+// oxlint-tsgolint
+pub(crate) const OXLINT_TSGOLINT_VERSION: &str = "^7.0.2004";
 // prettier
 pub(crate) const PRETTIER_VERSION: &str = "^3.9.10";
 // ts-jest

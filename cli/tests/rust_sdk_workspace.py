@@ -38,7 +38,7 @@ for runtime in os.environ.get('FORKLAUNCH_TEST_WORKSPACE_RUNTIMES', 'node,bun').
     def cli(*args):
         subprocess.run([str(binary), *args, '--path', str(app)], cwd=root, env=env, check=True, timeout=180)
     cli('init', 'application', runtime + '-workspace', '--modules-path', modules,
-        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
         '--http-framework', 'express', '--runtime', runtime, '--test-framework', 'vitest',
         '-D', 'SDK workspace fixture', '-A', 'ForkLaunch', '-L', 'MIT')
     cli('init', 'service', 'legacy-api', '--language', 'typescript', '-d', 'postgresql', '-D', 'Legacy API')

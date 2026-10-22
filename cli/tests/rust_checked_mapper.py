@@ -16,7 +16,7 @@ def command(*args):
 def cargo(*args):
     run([sys.executable, str(repo / 'cli/tests/fixtures/worker_runtime_lock.py'), '-c', shlex.join(['cargo', '+stable', *args, '--manifest-path', str(app / 'Cargo.toml')])])
 try:
-    command('init', 'application', 'mapper-proof', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Mapper proof', '-A', 'ForkLaunch', '-L', 'MIT')
+    command('init', 'application', 'mapper-proof', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Mapper proof', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'mapped', '--language', 'rust', '--mappers', '-D', 'Mapped')
     command('init', 'service', 'direct', '--language', 'rust', '-D', 'Direct')
     command('init', 'service', 'stored', '--language', 'rust', '--database', 'postgresql', '--mappers', '-D', 'Stored')

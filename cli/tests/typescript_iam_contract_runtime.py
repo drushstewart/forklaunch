@@ -26,7 +26,7 @@ try:
     run([str(cli), 'init', 'application', 'iam-proof', '--path', str(app),
          '--language', 'typescript', '--modules-path', 'modules', '--database', 'postgresql',
          '--validator', os.environ.get('FORKLAUNCH_IAM_VALIDATOR', 'zod'), '--formatter', 'prettier',
-         '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+         '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
          '--test-framework', 'vitest', '-m', 'iam-base', '-D', 'IAM contract proof',
          '-A', 'ForkLaunch', '-L', 'MIT'])
     service = app/'modules/iam'

@@ -73,7 +73,7 @@ try:
         return run(binary, *args, '--path', path or app, cwd=root)
 
     cli('init', 'application', 'release-app', '--database', 'postgresql', '--validator', 'zod',
-        '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
+        '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express',
         '--runtime', 'node', '--test-framework', 'vitest',
         '-D', 'Real release', '-A', 'ForkLaunch', '-L', 'MIT')
     cli('init', 'service', 'rust-api', '--language', 'rust', '-d', 'postgresql', '-D', 'Rust API')

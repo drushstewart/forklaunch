@@ -161,6 +161,8 @@ pub(crate) struct ApplicationDevDependencies {
     pub(crate) node_gyp: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) oxlint: Option<String>,
+    #[serde(rename = "oxlint-tsgolint", skip_serializing_if = "Option::is_none")]
+    pub(crate) oxlint_tsgolint: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) prettier: Option<String>,
     #[serde(rename = "sort-package-json", skip_serializing_if = "Option::is_none")]
@@ -223,6 +225,7 @@ impl<'de> Deserialize<'de> for ApplicationDevDependencies {
                     lint_staged: None,
                     node_gyp: None,
                     oxlint: None,
+                    oxlint_tsgolint: None,
                     prettier: None,
                     sort_package_json: None,
                     sqlite3: None,
@@ -251,6 +254,7 @@ impl<'de> Deserialize<'de> for ApplicationDevDependencies {
                         "lint-staged" => deps.lint_staged = Some(value),
                         "node-gyp" => deps.node_gyp = Some(value),
                         "oxlint" => deps.oxlint = Some(value),
+                        "oxlint-tsgolint" => deps.oxlint_tsgolint = Some(value),
                         "prettier" => deps.prettier = Some(value),
                         "sort-package-json" => deps.sort_package_json = Some(value),
                         "sqlite3" => deps.sqlite3 = Some(value),

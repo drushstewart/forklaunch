@@ -57,7 +57,7 @@ def rejected(*args, path, message):
 
 try:
     # Applications stay language-neutral; language belongs to individual projects.
-    command('init', 'application', 'change-proof', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Changes', '-A', 'ForkLaunch', '-L', 'MIT')
+    command('init', 'application', 'change-proof', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Changes', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'accounts', '--language', 'rust', '-D', 'Accounts')
     command('init', 'worker', 'jobs', '--language', 'rust', '-t', 'database', '-d', 'postgresql', '--runtime', 'apalis', '-D', 'Original worker')
     command('init', 'library', 'shared', '--language', 'rust', '-D', 'Original library')

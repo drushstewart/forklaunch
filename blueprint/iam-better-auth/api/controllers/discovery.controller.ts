@@ -1,5 +1,5 @@
 import { discoveryContract } from '../contracts/discovery.contract';
-import { handlers, schemaValidator, string } from '@forklaunch/blueprint-core';
+import { handlers, schemaValidator } from '@forklaunch/blueprint-core';
 import { BetterAuth } from '../../auth';
 import { ci, tokens } from '../../bootstrapper';
 

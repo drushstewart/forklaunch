@@ -20,7 +20,7 @@ cleanup() {
     if [ "${FORKLAUNCH_KEEP_FIXTURE:-0}" != 1 ]; then rm -rf "$RUN_ROOT"; fi
 }
 trap cleanup EXIT
-run_cli init application telemetry-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Generated telemetry' -A ForkLaunch -L MIT
+run_cli init application telemetry-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter oxlint --http-framework express --runtime node --test-framework vitest -D 'Generated telemetry' -A ForkLaunch -L MIT
 run_cli init service accounts --path "$RUN_ROOT/app" --language rust -D Accounts
 run_cli init worker starter --path "$RUN_ROOT/app" --language rust --consumer-only --type database --database postgresql -D Starter
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"

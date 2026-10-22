@@ -454,7 +454,7 @@ pub(super) fn attach_if_needed(matches: &ArgMatches) -> Result<bool> {
         "--formatter",
         "prettier",
         "--linter",
-        "eslint",
+        "oxlint",
         "--http-framework",
         "express",
         "--runtime",

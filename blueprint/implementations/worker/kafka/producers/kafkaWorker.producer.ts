@@ -17,7 +17,7 @@ export class KafkaWorkerProducer<
       brokers: this.options.brokers
     });
     this.producer = kafka.producer();
-    this.producer.connect();
+    void this.producer.connect();
   }
 
   async enqueueJob(event: EventEntity): Promise<void> {

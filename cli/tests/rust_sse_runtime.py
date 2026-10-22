@@ -79,7 +79,7 @@ def live(driver, rust, label, cross=True):
 
 try:
     command('init', 'application', 'streams-app', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'Streams', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'streams', '--language', 'rust', '-D', 'Streams')
     relocated = root / 'relocated'

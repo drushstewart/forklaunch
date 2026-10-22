@@ -61,7 +61,7 @@ use crate::{
                 INFRASTRUCTURE_S3_VERSION, INTERNAL_VERSION, IOREDIS_VERSION, JOSE_VERSION,
                 MIKRO_ORM_CLI_VERSION, MIKRO_ORM_CORE_VERSION, MIKRO_ORM_DATABASE_VERSION,
                 MIKRO_ORM_MIGRATIONS_VERSION,
-                MIKRO_ORM_SEEDER_VERSION, OPENTELEMETRY_API_VERSION, OXLINT_VERSION, PINO_VERSION,
+                MIKRO_ORM_SEEDER_VERSION, OPENTELEMETRY_API_VERSION, OXLINT_VERSION, OXLINT_TSGOLINT_VERSION, PINO_VERSION,
                 PRETTIER_VERSION, PROJECT_BUILD_SCRIPT, PROJECT_DOCS_SCRIPT, PROJECT_SEED_SCRIPT,
                 SQLITE3_VERSION, STRIPE_VERSION, TESTING_VERSION, TSX_VERSION, TYPEBOX_VERSION,
                 TYPEDOC_VERSION, TYPES_EXPRESS_SERVE_STATIC_CORE_VERSION, TYPES_EXPRESS_VERSION,
@@ -666,6 +666,11 @@ pub(crate) fn generate_service_package_json(
                 mikro_orm_cli: Some(MIKRO_ORM_CLI_VERSION.to_string()),
                 oxlint: if manifest_data.is_oxlint {
                     Some(OXLINT_VERSION.to_string())
+                } else {
+                    None
+                },
+                oxlint_tsgolint: if manifest_data.is_oxlint {
+                    Some(OXLINT_TSGOLINT_VERSION.to_string())
                 } else {
                     None
                 },

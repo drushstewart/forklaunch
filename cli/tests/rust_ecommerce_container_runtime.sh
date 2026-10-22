@@ -35,7 +35,7 @@ cleanup() {
     if [ "$PASSED" = true ] && [ "${FORKLAUNCH_KEEP_FIXTURE:-0}" != 1 ]; then rm -rf "$RUN_ROOT"; fi
 }
 trap cleanup EXIT
-run_cli init application container-shop --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Ecommerce container' -A ForkLaunch -L MIT
+run_cli init application container-shop --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter oxlint --http-framework express --runtime node --test-framework vitest -D 'Ecommerce container' -A ForkLaunch -L MIT
 run_cli init module ecommerce --path "$RUN_ROOT/app" --language rust -m ecommerce-stripe
 cp -R "$RUN_ROOT/app" "$RUN_ROOT/relocated-app"
 APP_ROOT="$RUN_ROOT/relocated-app"

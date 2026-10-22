@@ -81,7 +81,7 @@ def start(*args):
 
 try:
     cli('init', 'application', 'mixed-sdk', '--database', 'postgresql', '--validator', 'zod',
-        '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
+        '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express',
         '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Mixed SDK', '-A', 'ForkLaunch', '-L', 'MIT')
     cli('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API')
     refused = subprocess.run([str(binary), 'sdk', 'mode', '-t', 'live', '--path', str(app)], cwd=root, env=env, capture_output=True, text=True, timeout=30)

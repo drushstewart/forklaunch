@@ -49,7 +49,7 @@ for case, runtime, modules, native in [
         assert (result.returncode == 0) == success, result.stdout + result.stderr
         return result
     args = ['init', 'application', 'capture-app', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express',
             '--runtime', runtime, '--test-framework', 'vitest',
             '-D', 'Captured storefront', '-A', 'ForkLaunch', '-L', 'MIT']
     if modules != 'src':

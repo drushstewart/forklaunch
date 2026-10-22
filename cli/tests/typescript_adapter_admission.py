@@ -12,7 +12,7 @@ def command(app, *args, check=True):
 try:
     for runtime in ('node', 'bun'):
         app = root / runtime
-        command(app, 'init', 'application', 'admission', '--language', 'typescript', '--modules-path', 'modules', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', runtime, '--test-framework', 'vitest', '-D', 'Admission', '-A', 'ForkLaunch', '-L', 'MIT')
+        command(app, 'init', 'application', 'admission', '--language', 'typescript', '--modules-path', 'modules', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', runtime, '--test-framework', 'vitest', '-D', 'Admission', '-A', 'ForkLaunch', '-L', 'MIT')
         command(app, 'init', 'service', 'api', '--language', 'typescript', '-d', 'postgresql', '-D', 'API')
         if runtime == 'node':
             package_path = app / 'modules/package.json'

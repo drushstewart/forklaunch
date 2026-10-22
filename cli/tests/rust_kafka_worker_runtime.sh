@@ -73,7 +73,7 @@ if [ -z "${FORKLAUNCH_TEST_REDIS_URL:-}" ]; then
     export FORKLAUNCH_TEST_REDIS_URL="redis://$(docker port "$REDIS_CONTAINER" 6379/tcp)/"
 fi
 export FORKLAUNCH_TEST_WORKER_NAMESPACE="fl_kafka_$(date +%s)_$$"
-run_cli init application worker-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Kafka worker runtime' -A ForkLaunch -L MIT
+run_cli init application worker-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter oxlint --http-framework express --runtime node --test-framework vitest -D 'Kafka worker runtime' -A ForkLaunch -L MIT
 run_cli init worker dry-worker --path "$RUN_ROOT/app" --language rust --consumer-only -t kafka --dryrun
 test ! -d "$RUN_ROOT/app/src/dry-worker"
 test ! -d "$RUN_ROOT/app/.forklaunch/blueprint-rs"

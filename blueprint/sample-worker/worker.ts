@@ -26,7 +26,7 @@ const processEvents: (
         openTelemetryCollector.info(
           `Processing worker message from ${name}`
         );
-        s3.putObject({
+        await s3.putObject({
           key: event.id,
           value: event
         });
