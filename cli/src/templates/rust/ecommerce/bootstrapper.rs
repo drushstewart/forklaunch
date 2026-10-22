@@ -15,8 +15,8 @@ use tokio::net::TcpListener;
 pub async fn run() -> Result<()> {
     if matches!(env::var("FORKLAUNCH_MODE").as_deref(), Ok("openapi" | "contract")) {
         write_contract_artifacts(
-            env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| ".forklaunch/contracts/contract.json".to_owned()),
-            env::var("FORKLAUNCH_OPENAPI_OUTPUT").unwrap_or_else(|_| ".forklaunch/openapi/openapi.json".to_owned()),
+            env::var("FORKLAUNCH_CONTRACT_OUTPUT").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/contract.json").to_owned()),
+            env::var("FORKLAUNCH_OPENAPI_OUTPUT").unwrap_or_else(|_| concat!(env!("CARGO_MANIFEST_DIR"), "/sdk/typescript/openapi.json").to_owned()),
         )?;
         return Ok(());
     }
