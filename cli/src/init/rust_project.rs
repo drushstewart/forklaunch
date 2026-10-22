@@ -133,6 +133,14 @@ pub(crate) fn adopt_typescript_image(root: &Path) -> Result<()> {
 }
 
 /// The generated TypeScript image (see `typescript_image::managed_image`).
+/// Host framework workspaces a `[framework] path` application builds from;
+/// empty for published crates.
+pub(crate) fn framework_mounts(root: &Path) -> Vec<PathBuf> {
+    local_runtime::framework_contexts(root)
+        .map(|(_, contexts)| contexts.into_iter().map(|(_, path)| path).collect())
+        .unwrap_or_default()
+}
+
 pub(crate) fn managed_typescript_image(root: &Path) -> Option<(PathBuf, bool)> {
     typescript_image::managed_image(root)
 }

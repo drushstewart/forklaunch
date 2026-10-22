@@ -30,6 +30,10 @@ mod typescript;
 
 pub(crate) struct DevCommand;
 
+/// One-shot service that compiles every selected native binary once before
+/// any native process starts.
+const NATIVE_BUILD: &str = "forklaunch-native-build";
+
 impl CliCommand for DevCommand {
     fn command(&self) -> Command {
         command(
@@ -740,11 +744,24 @@ fn plan(
         .and_then(Value::as_str)
         .unwrap_or("forklaunch")
         .to_case(Case::Kebab);
-    let dockerfile = include_str!("templates/rust/application/Dockerfile")
-        .split_once("COPY . .")
+    // The toolchain stage only: sources (and a local framework checkout) are
+    // bind-mounted, never copied into the development image.
+    let template = include_str!("templates/rust/application/Dockerfile");
+    let toolchain = template
+        .find("FROM rust:")
+        .context("Native builder template missing toolchain stage")?;
+    let dockerfile = template[toolchain..]
+        .split("\nCOPY ")
+        .next()
         .context("Native builder template missing source-copy boundary")?
-        .0
-        .replace("pkg-config libssl-dev", "pkg-config curl libssl-dev");
+        .replace("pkg-config libssl-dev", "pkg-config curl libssl-dev")
+        + "\nENV SQLX_OFFLINE=true\n";
+    // Host checkout of a `[framework] path` application, mounted read-only at
+    // the same absolute path its Cargo manifests reference.
+    let framework_mounts: Vec<Value> = crate::init::rust_project::framework_mounts(root)
+        .into_iter()
+        .map(|path| json!({"type":"bind","source":path,"target":path,"read_only":true}))
+        .collect();
     let mut cache_names = Vec::new();
     for suffix in ["target", "registry", "git"] {
         let base = format!("forklaunch-native-{suffix}");
@@ -760,6 +777,31 @@ fn plan(
         }
         cache_names.push(name);
     }
+    // Every native process builds the same package and binary set, so Cargo
+    // resolves features identically: after one warm-up build each start (and
+    // each watch restart that changed nothing it uses) is a no-op.
+    let mut selection = BTreeSet::new();
+    for service in compose["services"].as_object().unwrap().iter().filter(|(name, _)| active.contains(*name)).map(|(_, s)| s) {
+        let binary = service
+            .get("command")
+            .and_then(Value::as_array)
+            .and_then(|args| args.first())
+            .and_then(Value::as_str)
+            .and_then(|path| Path::new(path).file_name())
+            .and_then(|name| name.to_str());
+        if let Some((binary, package)) = binary.and_then(|binary| native.get(binary).map(|package| (binary, package))) {
+            selection.insert((package.clone(), binary.to_owned()));
+        }
+    }
+    let packages: BTreeSet<&String> = selection.iter().map(|(package, _)| package).collect();
+    let mut build_command = String::from("cargo build");
+    for package in &packages {
+        build_command.push_str(&format!(" --package {package}"));
+    }
+    for (_, binary) in &selection {
+        build_command.push_str(&format!(" --bin {binary}"));
+    }
+    let image = format!("forklaunch-dev-{project}-native:local");
     let mut changes = serde_json::Map::new();
     let services = compose["services"].as_object_mut().unwrap();
     for (name, service) in services.iter_mut() {
@@ -813,11 +855,12 @@ fn plan(
             .as_object_mut()
             .context("Development settings must be an object")?
             .insert("watch".into(), json!(watch));
+        let _ = package;
         let settings = json!({
-            "image":format!("forklaunch-dev-{project}-{}:local", name.to_case(Case::Kebab)),
+            "image":image,
             "build":{"context":root,"dockerfile_inline":dockerfile},
             "working_dir":"/app",
-            "entrypoint":["sh","-c",format!("cargo build --package {package} --bin {binary} && exec \"$@\""),"--"],
+            "entrypoint":["sh","-c",format!("{build_command} && exec \"$@\""),"--"],
             "develop":develop
         });
         let object = service
@@ -836,7 +879,10 @@ fn plan(
             json!({"type":"volume","source":cache_names[0],"target":"/app/target"}),
             json!({"type":"volume","source":cache_names[1],"target":"/usr/local/cargo/registry"}),
             json!({"type":"volume","source":cache_names[2],"target":"/usr/local/cargo/git"}),
-        ] {
+        ]
+        .into_iter()
+        .chain(framework_mounts.iter().cloned())
+        {
             volumes.retain(|existing| existing.get("target") != volume.get("target"));
             volumes.push(volume);
         }
@@ -846,12 +892,59 @@ fn plan(
             .as_object_mut()
             .context("Resolved Compose environment must be an object")?;
         environment.insert("CARGO_TARGET_DIR".into(), json!("/app/target"));
-        environment.entry("CARGO_INCREMENTAL").or_insert(json!("0"));
+        // The container builds with DATABASE_URL set; keep sqlx macros offline.
+        environment.insert("SQLX_OFFLINE".into(), json!("true"));
+        // Debug builds stay incremental, so a watch restart recompiles only
+        // what changed; set CARGO_INCREMENTAL in Compose to override.
+        // Healthchecks start counting once the binary runs: a (re)build can
+        // take minutes, and failures during the start period are ignored.
+        if let Some(healthcheck) = object.get_mut("healthcheck").and_then(Value::as_object_mut)
+            && !healthcheck.get("disable").and_then(Value::as_bool).unwrap_or(false)
+        {
+            healthcheck.insert("start_period".into(), json!("900s"));
+            healthcheck.insert("start_interval".into(), json!("2s"));
+        }
+        let environment = object["environment"].clone();
         let mut settings = settings;
         settings["command"] = object["command"].clone();
         settings["volumes"] = object["volumes"].clone();
-        settings["environment"] = json!({"CARGO_TARGET_DIR":"/app/target", "CARGO_INCREMENTAL":object["environment"]["CARGO_INCREMENTAL"]});
+        settings["environment"] = json!({"CARGO_TARGET_DIR":"/app/target","SQLX_OFFLINE":"true"});
+        if let Some(incremental) = environment.get("CARGO_INCREMENTAL") {
+            settings["environment"]["CARGO_INCREMENTAL"] = incremental.clone();
+        }
         changes.insert(name.clone(), settings);
+    }
+    // One warm-up build before any native process starts: processes would
+    // otherwise all compile at once against one registry volume and race.
+    if !changes.is_empty() {
+        let mut volumes = vec![
+            json!({"type":"bind","source":root,"target":"/app"}),
+            json!({"type":"volume","source":cache_names[0],"target":"/app/target"}),
+            json!({"type":"volume","source":cache_names[1],"target":"/usr/local/cargo/registry"}),
+            json!({"type":"volume","source":cache_names[2],"target":"/usr/local/cargo/git"}),
+        ];
+        volumes.extend(framework_mounts.iter().cloned());
+        let builder = json!({
+            "image":image,
+            "build":{"context":root,"dockerfile_inline":dockerfile},
+            "working_dir":"/app",
+            "entrypoint":["sh","-c",build_command],
+            "environment":{"CARGO_TARGET_DIR":"/app/target","SQLX_OFFLINE":"true"},
+            "volumes":volumes,
+            "restart":"no",
+        });
+        let services = compose["services"].as_object_mut().unwrap();
+        for name in changes.keys() {
+            let depends = services[name]
+                .as_object_mut()
+                .unwrap()
+                .entry("depends_on")
+                .or_insert(json!({}));
+            if let Some(depends) = depends.as_object_mut() {
+                depends.insert(NATIVE_BUILD.into(), json!({"condition":"service_completed_successfully","required":true}));
+            }
+        }
+        services.insert(NATIVE_BUILD.into(), builder);
     }
     if !changes.is_empty() {
         let volumes = compose
@@ -971,6 +1064,32 @@ mod tests {
             vec!["api"]
         );
         assert!(shared_image_builders(&compose, &["auth".into()]).is_empty());
+    }
+
+    #[test]
+    fn native_processes_share_one_image_and_wait_for_one_warm_up_build() {
+        let (root, manifest, mut compose) = fixture();
+        fs::write(root.path().join("services/native-api/Cargo.toml"),
+            "[package]\nname='native-core'\n[[bin]]\nname='native-api'\n[[bin]]\nname='events-consumer'\n").unwrap();
+        compose["services"]["native-outbox"]["command"] = json!(["./target/release/events-consumer"]);
+        compose["services"]["native-api"]["healthcheck"] = json!({"test":["CMD","true"],"start_period":"40s"});
+        let (planned, changes) = plan(root.path(), &manifest, compose, &[], true).unwrap();
+        let services = &planned["services"];
+        let build = "cargo build --package native-core --bin events-consumer --bin native-api";
+        assert_eq!(services[NATIVE_BUILD]["entrypoint"][2], build);
+        assert_eq!(services[NATIVE_BUILD]["environment"]["SQLX_OFFLINE"], "true");
+        for name in ["native-api", "native-outbox"] {
+            // Identical Cargo invocations resolve features identically, so each
+            // start after the warm-up is a no-op instead of a racing compile.
+            assert_eq!(services[name]["entrypoint"][2], format!("{build} && exec \"$@\""));
+            assert_eq!(services[name]["image"], "forklaunch-dev-test-app-native:local");
+            assert_eq!(services[name]["depends_on"][NATIVE_BUILD]["condition"], "service_completed_successfully");
+            assert_eq!(services[name]["environment"]["SQLX_OFFLINE"], "true");
+            assert!(services[name]["environment"].get("CARGO_INCREMENTAL").is_none());
+        }
+        assert_eq!(services["native-api"]["healthcheck"]["start_period"], "900s");
+        assert!(changes.get(NATIVE_BUILD).is_none());
+        assert!(!services[NATIVE_BUILD]["build"]["dockerfile_inline"].as_str().unwrap().contains("COPY"));
     }
 
     #[test]
