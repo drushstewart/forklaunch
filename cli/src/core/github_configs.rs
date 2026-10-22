@@ -12,11 +12,10 @@ use ramhorns::{Content, Template};
 use serde_json::Value as JsonValue;
 
 use super::{template::get_file_contents, watermark::generate_watermark};
+use crate::constants::BUN_VERSION;
 
 const OWNERSHIP: &str = "forklaunch-sha256:";
 const DEFAULT_RUST_TOOLCHAIN: &str = "1.98.0";
-use crate::constants::BUN_VERSION;
-
 const NODE_VERSION: &str = "22";
 const SMOKE_SCRIPT: &str = ".github/scripts/container-smoke.mjs";
 

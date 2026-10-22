@@ -131,29 +131,27 @@ pub(crate) fn application_migrate_script<'a>(
     let package_manager = get_package_manager(runtime);
     let db_init = get_db_init(databases);
 
-    let sleep = if migration_suffix == "init" {
-        "sleep 5 && "
-    } else {
-        ""
-    };
-
     let mut databases = databases
         .iter()
         .filter(|db| !is_in_memory_database(db))
         .map(|db| db.to_string())
         .collect::<Vec<String>>();
-    if let Some(db_init) = db_init {
-        databases.push(db_init);
+    databases.sort();
+    if databases.is_empty() {
+        return format!("docker compose up && {package_manager} run migrate:{migration_suffix}");
     }
 
-    format!(
-        "docker compose up{}{} && {}{} run migrate:{}",
-        if databases.len() > 0 { " -d " } else { "" },
-        databases.join(" -d "),
-        sleep,
-        package_manager,
-        migration_suffix
-    )
+    // Every generated database service carries a compose healthcheck, so
+    // `--wait` blocks until the database accepts connections instead of
+    // guessing with a fixed sleep (which lost the race on slow hosts and failed
+    // migrate:init with "Connection terminated unexpectedly").
+    let mut up = format!("docker compose up -d --wait {}", databases.join(" "));
+    if let Some(db_init) = db_init {
+        // A one-shot initializer exits when done, which `--wait` reports as a
+        // failure; run it attached so the migration starts after it finishes.
+        up.push_str(&format!(" && docker compose up {db_init}"));
+    }
+    format!("{up} && {package_manager} run migrate:{migration_suffix}")
 }
 
 pub(crate) fn application_seed_script<'a>(
@@ -550,6 +548,27 @@ pub(crate) const BETTER_SQLITE_POSTINSTALL_SCRIPT: &str =
     "cd node_modules/better-sqlite3 && node-gyp configure && node-gyp build";
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn migrate_scripts_wait_for_database_health_instead_of_sleeping() {
+        let postgres = HashSet::from([Database::PostgreSQL]);
+        assert_eq!(
+            application_migrate_script(&Runtime::Bun, &postgres, "init"),
+            "docker compose up -d --wait postgresql && bun --filter='*' run migrate:init"
+        );
+        assert_eq!(
+            application_migrate_script(&Runtime::Node, &postgres, "up"),
+            "docker compose up -d --wait postgresql && pnpm -r --no-bail run migrate:up"
+        );
+        let mongo = HashSet::from([Database::MongoDB]);
+        assert_eq!(
+            application_migrate_script(&Runtime::Bun, &mongo, "init"),
+            "docker compose up -d --wait mongodb && docker compose up mongo-init && bun --filter='*' run migrate:init"
+        );
+        for databases in [&postgres, &mongo] {
+            assert!(!application_migrate_script(&Runtime::Node, databases, "init").contains("sleep"));
+        }
+    }
+
     #[test]
     fn test_scripts_use_selected_runtime_and_runner_at_every_level() {
         for (framework, runner) in [
