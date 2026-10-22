@@ -512,8 +512,26 @@ pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
             )?;
         }
     }
+    // The generated queue name follows the worker; explicit names stay.
+    let example = directory.join(".env.example");
+    if example.is_file() {
+        let source = read_to_string(&example)?;
+        let renamed = source.replace(&format!("\nWORKER_QUEUE={old}\n"), &format!("\nWORKER_QUEUE={new}\n"));
+        if renamed != source {
+            write(&example, renamed)?;
+        }
+    }
     let path = root.join("docker-compose.yaml");
     let mut compose = read_or_create_rust_docker_compose(&path)?;
+    for service in [old.to_owned(), format!("{old}-server")] {
+        if let Some(queue) = compose.services.get_mut(&service)
+            .and_then(|service| service.environment.as_mut())
+            .and_then(|env| env.get_mut("WORKER_QUEUE"))
+            .filter(|queue| queue.as_str() == old)
+        {
+            *queue = new.to_owned();
+        }
+    }
     if let Some(mut producer) = compose.services.shift_remove(&format!("{old}-server")) {
         if producer_owner(&producer) == Some(old) {
             producer.hostname = Some(format!("{new}-server"));
