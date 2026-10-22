@@ -136,7 +136,8 @@ where
 }
 
 /// Binds `GET /api/v1/agent/tools`, `POST /api/v1/agent/tasks` and
-/// `POST /api/v1/agent/tasks/stream` with the app's `policy`. Stream failures
+/// `POST /api/v1/agent/tasks/stream` with the app's `policy`. The stream route
+/// answers 503 before streaming when the agent has no model; later failures
 /// arrive as `error` events after a 200. `POST /tasks` answers 400 (invalid
 /// task, expired or foreign continuation), 401/403 (policy), 429 (model
 /// allowance), 502 (model call failed or interrupted) and 503 (not connected
@@ -193,10 +194,14 @@ where
             move |State(state): State<S>,
                   context: StreamContext<AgentContext<P::Context>>,
                   request| {
+                let agent = agent.agent(&state);
+                // Answer 503 up front, like `POST /tasks`, instead of a 200
+                // followed by an `error` event.
                 let receiver = agent
-                    .agent(&state)
-                    .spawn_stream(request, context.initial().caller.clone());
+                    .check_ready()
+                    .map(|()| agent.spawn_stream(request, context.initial().caller.clone()));
                 async move {
+                    let receiver = receiver.map_err(|error| endpoint_error(&error))?;
                     Ok(stream::unfold(receiver, |mut receiver| async move {
                         let event: AgentEvent = receiver.recv().await?;
                         Some((Ok(ServerEvent::new(event)), receiver))

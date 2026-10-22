@@ -120,6 +120,12 @@ pub fn service_url_setting(service: &str) -> String {
 /// Exposes an app service's routes as tools, read from its `OpenAPI` document
 /// and called over its normal HTTP port with the caller's `Authorization`
 /// header, so the service's own auth and roles apply.
+///
+/// Never exposed, whatever [`ServiceTools::include`] says: `access: internal`
+/// and HMAC-signed routes (a forwarded user token can never call them), and
+/// routes whose request or success response is not JSON (SSE streams,
+/// downloads, multipart uploads). Use [`ServiceTools::include`] as an
+/// allowlist and [`ServiceTools::read_only`] to drop writes.
 #[must_use]
 pub fn service_tools(service: impl Into<String>) -> ServiceTools {
     ServiceTools {
@@ -128,6 +134,7 @@ pub fn service_tools(service: impl Into<String>) -> ServiceTools {
         version: None,
         include: None,
         exclude: BTreeSet::new(),
+        read_only: false,
         http: http_client(),
         cache: Arc::new(Cache::new()),
     }
@@ -148,6 +155,7 @@ pub struct ServiceTools {
     version: Option<String>,
     include: Option<BTreeSet<String>>,
     exclude: BTreeSet<String>,
+    read_only: bool,
     http: Client,
     cache: Arc<Cache<Vec<Tool>>>,
 }
@@ -181,6 +189,13 @@ impl ServiceTools {
     #[must_use]
     pub fn exclude<I: IntoIterator<Item = S>, S: Into<String>>(mut self, ids: I) -> Self {
         self.exclude.extend(ids.into_iter().map(Into::into));
+        self
+    }
+    /// Only read-only operations: GET/HEAD, or an `x-mcp-annotations`
+    /// `readOnlyHint` of true. Applies on top of [`Self::include`].
+    #[must_use]
+    pub const fn read_only(mut self) -> Self {
+        self.read_only = true;
         self
     }
 
@@ -252,6 +267,19 @@ impl ServiceTools {
         tools
     }
 
+    /// The allowlist/denylist, then the defaults no list can override: no
+    /// service-only operations and only JSON request and success bodies.
+    fn admits(&self, document: &Value, id: &String, operation: &Value) -> bool {
+        if self.include.as_ref().is_some_and(|ids| !ids.contains(id)) || self.exclude.contains(id) {
+            return false;
+        }
+        let json_request = operation
+            .pointer("/requestBody/content")
+            .and_then(Value::as_object)
+            .is_none_or(|content| content.is_empty() || content.contains_key("application/json"));
+        json_request && json_success(operation) && !service_only(document, operation)
+    }
+
     fn tool(
         &self,
         document: &Value,
@@ -264,18 +292,12 @@ impl ServiceTools {
             .get("operationId")
             .and_then(Value::as_str)
             .map_or_else(|| format!("{method}_{path}"), str::to_owned);
-        if self.include.as_ref().is_some_and(|ids| !ids.contains(&id)) || self.exclude.contains(&id)
-        {
+        if !self.admits(document, &id, operation) {
             return None;
         }
         let content = operation
             .pointer("/requestBody/content")
             .and_then(Value::as_object);
-        if content
-            .is_some_and(|content| !content.is_empty() && !content.contains_key("application/json"))
-        {
-            return None;
-        }
         let parameters = operation
             .get("parameters")
             .and_then(Value::as_array)
@@ -341,6 +363,9 @@ impl ServiceTools {
             .get("x-mcp-annotations")
             .and_then(|value| serde_json::from_value::<ToolAnnotations>(value.clone()).ok())
             .unwrap_or_else(|| method_annotations(method));
+        if self.read_only && annotations.read_only_hint != Some(true) {
+            return None;
+        }
         let call = ServiceCall {
             http: self.http.clone(),
             base: base.to_owned(),
@@ -398,6 +423,66 @@ pub fn method_annotations(method: &str) -> ToolAnnotations {
         _ => {}
     }
     annotations
+}
+
+/// `access: internal` (`x-forklaunch-access`) or HMAC-secured operations are
+/// service-to-service only; a user's forwarded token can never call them.
+fn service_only(document: &Value, operation: &Value) -> bool {
+    if operation.get("x-forklaunch-access").and_then(Value::as_str) == Some("internal") {
+        return true;
+    }
+    let hmac_schemes: BTreeSet<&str> = document
+        .pointer("/components/securitySchemes")
+        .and_then(Value::as_object)
+        .map(|schemes| {
+            schemes
+                .iter()
+                .filter(|(name, scheme)| {
+                    name.as_str() == "hmacAuth"
+                        || scheme
+                            .get("scheme")
+                            .and_then(Value::as_str)
+                            .is_some_and(|value| value.eq_ignore_ascii_case("hmac"))
+                })
+                .map(|(name, _)| name.as_str())
+                .collect()
+        })
+        .unwrap_or_default();
+    operation
+        .get("security")
+        .and_then(Value::as_array)
+        .is_some_and(|requirements| {
+            !requirements.is_empty()
+                && requirements.iter().all(|requirement| {
+                    requirement.as_object().is_some_and(|names| {
+                        names
+                            .keys()
+                            .any(|name| name == "hmacAuth" || hmac_schemes.contains(name.as_str()))
+                    })
+                })
+        })
+}
+
+/// Every success response either has no body or offers `application/json`.
+/// Streams (SSE) and binary downloads cannot be returned to a model as JSON.
+fn json_success(operation: &Value) -> bool {
+    let Some(responses) = operation.get("responses").and_then(Value::as_object) else {
+        return true;
+    };
+    responses
+        .iter()
+        .filter(|(status, _)| status.starts_with('2'))
+        .all(|(_, response)| {
+            response
+                .get("content")
+                .and_then(Value::as_object)
+                .is_none_or(|content| {
+                    content.is_empty()
+                        || content
+                            .keys()
+                            .any(|media| media.starts_with("application/json"))
+                })
+        })
 }
 
 /// Health, docs, `OpenAPI`, compliance, MCP and agent routes are never tools.
