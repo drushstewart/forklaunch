@@ -521,11 +521,21 @@ fn print_summary(card: &Value) {
 /// Built as a string rather than printed directly so the rendering rules below
 /// — which are the whole point of this command's default output — can be
 /// asserted rather than eyeballed.
+/// A 0-100 score as the card stores it: a whole number or a decimal (a
+/// category averages its items, e.g. 83.3). Rounded for display; `None` when
+/// absent or not a number.
+fn score_of(value: Option<&Value>) -> Option<u64> {
+    value
+        .and_then(Value::as_f64)
+        .filter(|score| score.is_finite())
+        .map(|score| score.clamp(0.0, 100.0).round() as u64)
+}
+
 fn render_summary(card: &Value) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
 
-    let overall = card.get("overall").and_then(Value::as_u64).unwrap_or(0);
+    let overall = score_of(card.get("overall")).unwrap_or(0);
     let _ = writeln!(out);
     let _ = writeln!(out, "  {}  {}/100", bold("Enterprise Readiness"), overall);
     if let Some(headline) = card.get("headline").and_then(Value::as_str) {
@@ -546,12 +556,18 @@ fn render_summary(card: &Value) -> String {
                 }
             };
 
-            if rail.get("pending").and_then(Value::as_bool).unwrap_or(false) {
-                let _ = writeln!(out, "  {:<16} {}", label, dim("not assessed"));
-                continue;
-            }
-
-            let score = rail.get("score").and_then(Value::as_u64).unwrap_or(0);
+            // `pending` marks a category with items still undecided. It can
+            // still carry a score from the items that were decided (93.8);
+            // a pending category whose score is missing or the 0 placeholder
+            // was not assessed at all.
+            let pending = rail.get("pending").and_then(Value::as_bool).unwrap_or(false);
+            let score = match score_of(rail.get("score")) {
+                Some(score) if !(pending && score == 0) => score,
+                _ => {
+                    let _ = writeln!(out, "  {:<16} {}", label, dim("not assessed"));
+                    continue;
+                }
+            };
             let items = rail.get("items").and_then(Value::as_array);
 
             // A rail can score 100 and still have unmet items: only findings
@@ -663,6 +679,23 @@ fn dim(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn summary_shows_decimal_scores_and_scores_of_incomplete_categories() {
+        let card = serde_json::json!({
+            "overall": 93,
+            "dimensions": {
+                "governance": { "score": 83.3, "pending": false, "items": [] },
+                "compliance": { "score": 93.8, "pending": true, "items": [] },
+                "security": { "pending": true, "items": [] }
+            }
+        });
+        let text = render_summary(&card);
+        assert!(text.contains("83/100"), "{text}");
+        assert!(text.contains("94/100"), "{text}");
+        assert!(!text.contains(" 0/100"), "{text}");
+        assert!(text.contains("not assessed"), "{text}");
+    }
 
     #[test]
     fn gateway_errors_are_transient_and_handler_errors_are_not() {
