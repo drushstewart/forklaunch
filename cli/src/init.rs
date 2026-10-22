@@ -16,7 +16,6 @@ pub(crate) mod library;
 pub(crate) mod module;
 pub(crate) mod relay;
 pub(crate) mod router;
-mod rust_source;
 pub(crate) mod rust_project;
 pub(crate) mod service;
 pub(crate) mod storefront;

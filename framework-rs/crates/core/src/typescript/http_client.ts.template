@@ -298,7 +298,7 @@ function decodeVersionMultipart(bytes:Uint8Array, contentType:string):Record<str
 async function portableVersionWireBody(body:unknown, headers:Headers):Promise<unknown> {
   if(!(body instanceof FormData))return body;
   let count=0,total=0;const names=new Set<string>();
-  for(const [name,value]of body){if(++count>128||!name||!/^[\x20-\x7e]+$/.test(name)||names.has(name))throw new TypeError('Nonportable multipart fields');names.add(name);const size=typeof value==='string'?new TextEncoder().encode(value).length:value.size;if(size>1048576||(total+=size)>2097152)throw new TypeError('Version multipart field limit');}
+  body.forEach((value,name)=>{if(++count>128||!name||!/^[\x20-\x7e]+$/.test(name)||names.has(name))throw new TypeError('Nonportable multipart fields');names.add(name);const size=typeof value==='string'?new TextEncoder().encode(value).length:value.size;if(size>1048576||(total+=size)>2097152)throw new TypeError('Version multipart field limit');});
   const request=new Request('http://sdk.invalid/',{method:'POST',body});
   const bytes=new Uint8Array(await request.arrayBuffer());
   const type=request.headers.get('content-type')!;

@@ -47,7 +47,7 @@ describe('portable authentication policy', () => {
             jwt: { signatureKey: 'hidden' }
           }
         } as never,
-        { signatureKey: 'private' }
+        { signatureKey: 'private' } as never
       )
     ).toThrow();
   });

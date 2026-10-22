@@ -340,9 +340,6 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         dependencies::configure(&root_path, matches)?;
     }
     ensure_embedded_framework(&root_path, dryrun)?;
-    if !dryrun {
-        super::rust_source::write_rust_guidance(&root_path)?;
-    }
     for module in modules {
         let kind =
             modules::BuiltinModule::from_variant(module).context("Unsupported Rust module")?;
@@ -357,6 +354,7 @@ pub(crate) fn generate_rust_application(matches: &ArgMatches) -> Result<()> {
         language,
         root_path.display()
     );
+    writeln!(stdout, "{}", super::application::CONTEXT_HINT)?;
 
     Ok(())
 }
