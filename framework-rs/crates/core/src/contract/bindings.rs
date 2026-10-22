@@ -81,14 +81,60 @@ pub trait EndpointDefinition: Sized + 'static {
 /// Protected definitions omit this capability and cannot use public bindings.
 pub trait PublicEndpointDefinition: EndpointDefinition {}
 
-/// Explicit implementation obligation: authenticate original request bytes and
-/// atomically reject replay before exposing a typed body to the handler.
-/// This marker is not a proof of application policy correctness.
+/// Marker a policy implements to bind `#[access(Internal)]` (HMAC, service to
+/// service) operations. Implementing it is a promise that the policy's
+/// `authorize_body` authenticates the **original request bytes** (for example
+/// with `forklaunch_core::auth::request_hmac::HmacAuthorization::verify_at`) and
+/// atomically rejects a replayed nonce before any typed body reaches the handler.
+/// The marker is not a proof of policy correctness.
+///
+/// ```ignore
+/// #[derive(Clone)]
+/// pub struct ServicePolicy;
+/// impl forklaunch_core::contract::bindings::OriginalBodySignedPolicy for ServicePolicy {}
+/// impl EndpointPolicy<AppState> for ServicePolicy {
+///     const CAPABILITIES: PolicyCapabilities = PolicyCapabilities::SignedInternal;
+///     // authorize: parse the header; authorize_body: verify bytes, claim nonce
+/// #   type Context = ();
+/// }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot bind an `#[access(Internal)]` operation: it does not implement `OriginalBodySignedPolicy`",
+    label = "this policy is not marked as verifying signed original request bytes",
+    note = "add `impl forklaunch_core::contract::bindings::OriginalBodySignedPolicy for {Self} {{}}` once its `authorize_body` verifies the request HMAC over the original bytes and rejects replayed nonces",
+    note = "the policy also needs `const CAPABILITIES: PolicyCapabilities = PolicyCapabilities::SignedInternal`"
+)]
 pub trait OriginalBodySignedPolicy {}
-/// Explicit implementation obligation: enforce declared permissions, roles or scope.
+/// Marker a policy implements to bind `#[access(Protected)]` operations.
+/// Implementing it is a promise that the policy authenticates the caller and
+/// enforces the operation's declared permissions, roles or scope.
+/// `forklaunch_axum::native::SessionPolicy` (for example from
+/// `forklaunch_axum::native::jwt_policy_from_env`) already implements it; a
+/// wrapper policy delegating to one must implement it too:
+///
+/// ```ignore
+/// #[derive(Clone)]
+/// pub struct UserPolicy;
+/// impl forklaunch_core::contract::bindings::AuthorizationPolicy for UserPolicy {}
+/// impl EndpointPolicy<AppState> for UserPolicy {
+///     const CAPABILITIES: PolicyCapabilities = PolicyCapabilities::Authorized;
+///     type Context = AuthenticatedSession;
+///     // authorize: state.auth.authorize(parts, state, route).await
+/// }
+/// ```
+#[diagnostic::on_unimplemented(
+    message = "`{Self}` cannot bind an `#[access(Protected)]` operation: it does not implement `AuthorizationPolicy`",
+    label = "this policy is not marked as enforcing authentication and authorization",
+    note = "add `impl forklaunch_core::contract::bindings::AuthorizationPolicy for {Self} {{}}` once the policy verifies the caller and enforces the declared permissions/roles, or bind with `forklaunch_axum::native::SessionPolicy` (e.g. `jwt_policy_from_env()`)",
+    note = "the policy also needs `const CAPABILITIES: PolicyCapabilities = PolicyCapabilities::Authorized`"
+)]
 pub trait AuthorizationPolicy {}
 /// Generated operation-specific admission for policy types. Static internal and
 /// protected tags implement this only for the corresponding policy marker.
+#[diagnostic::on_unimplemented(
+    message = "policy `{P}` cannot bind operation `{Self}`",
+    note = "`#[access(Protected)]` operations need a policy implementing `AuthorizationPolicy`; `#[access(Internal)]` operations need one implementing `OriginalBodySignedPolicy`; public operations use `bind` without a policy"
+)]
 pub trait EndpointPolicyFor<P>: EndpointDefinition {}
 
 mod sealed {

@@ -126,6 +126,44 @@ make wrong-policy binding construction a compiler error, including direct
 `CAPABILITIES` declaration is still required: dynamic registrations do not have
 static tags. Neither marker implements authentication or replaces runtime checks.
 
+A wrapper policy that delegates to a `SessionPolicy` held in application state
+implements the marker itself:
+
+```rust,ignore
+#[derive(Clone)]
+pub struct UserPolicy;
+impl forklaunch_core::contract::bindings::AuthorizationPolicy for UserPolicy {}
+impl EndpointPolicy<AppState> for UserPolicy {
+    const CAPABILITIES: PolicyCapabilities = PolicyCapabilities::Authorized;
+    type Context = AuthenticatedSession;
+    async fn authorize(&self, parts: &mut Parts, state: &AppState, route: &RouteContract)
+        -> Result<AuthenticatedSession, EndpointError> {
+        state.auth.authorize(parts, state, route).await
+    }
+}
+```
+
+Binding with a policy that lacks the marker fails with a message naming the
+missing marker and the `CAPABILITIES` value to declare.
+
+### IAM session JWTs (`native-jwt`)
+
+`jwt_policy_from_env()` builds a `SessionPolicy` that verifies bearer JWTs
+against `JWKS_PUBLIC_KEY_URL` (asymmetric algorithms only, optional
+`JWT_ISSUER`/`JWT_AUDIENCE`). `optional_jwt_policy_from_env()` does the same
+but, when `JWKS_PUBLIC_KEY_URL` is unset, rejects every protected request with
+401 so a service without an identity provider still starts. Both need only the
+`native-jwt` feature; `agent` re-exports them.
+
+### Cross-origin browsers (`CORS_ORIGINS`)
+
+The boundary admits browser requests from `PUBLIC_ORIGIN` only. Add exact
+frontend origins with `NativeHttpPolicy::with_cors_origins` or
+`NativeApplication::with_cors_origins` (generated services read the
+comma-separated `CORS_ORIGINS`). Preflights from a listed origin get `204` with
+the requested headers allowed; responses echo the origin with credentials and
+`Vary: Origin`. `*` is rejected, and any other origin still gets `403`.
+
 ### Reusing managed session authentication
 
 `SessionPolicy::new(authenticator, authorizer)` accepts the same trusted
