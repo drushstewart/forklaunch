@@ -493,19 +493,8 @@ pub(crate) fn build_rust_type(
             .collect::<Vec<_>>();
         return build_rust_union(type_name, &alternatives, models);
     }
-    if let Some(values) = string_enum_values(schema) {
-        return build_rust_string_enum(type_name, &values, models);
-    }
-    if let Some(value) = schema.get("const") {
-        return match value {
-            JsonValue::Null => "()",
-            JsonValue::Bool(_) => "bool",
-            JsonValue::Number(number) if number.is_i64() => "i64",
-            JsonValue::Number(_) => "f64",
-            JsonValue::String(_) => "::std::string::String",
-            _ => "::serde_json::Value",
-        }
-        .into();
+    if let Some(literal) = literal_rust_type(type_name, schema, models) {
+        return literal;
     }
 
     match schema_type(schema) {
@@ -574,6 +563,29 @@ fn integer_rust_type(schema: &JsonValue) -> &'static str {
         Some("uint" | "uint8" | "uint16" | "uint32" | "uint64" | "uint128") => "u64",
         _ => "i64",
     }
+}
+
+/// Closed value sets: a string `enum` becomes a Rust enum, a `const` its scalar type.
+fn literal_rust_type(
+    type_name: &str,
+    schema: &JsonValue,
+    models: &mut BTreeMap<String, RustModelTemplate>,
+) -> Option<String> {
+    if let Some(values) = string_enum_values(schema) {
+        return Some(build_rust_string_enum(type_name, &values, models));
+    }
+    let value = schema.get("const")?;
+    Some(
+        match value {
+            JsonValue::Null => "()",
+            JsonValue::Bool(_) => "bool",
+            JsonValue::Number(number) if number.is_i64() => "i64",
+            JsonValue::Number(_) => "f64",
+            JsonValue::String(_) => "::std::string::String",
+            _ => "::serde_json::Value",
+        }
+        .into(),
+    )
 }
 
 /// String values of a closed `enum` (`type: string` or untyped), if every member is a string.
@@ -807,22 +819,10 @@ pub(crate) fn rust_model_from_schema(
                 .ok()
                 .flatten()
                 .map_or_else(String::new, |(_, name)| name),
-            name: model_name.clone(),
             fields,
-            union: false,
-            sequence: false,
-            sequence_len: 0,
-            sequence_min: 0,
-            sequence_max: 0,
-            sequence_rest: false,
-            sequence_rest_type: String::new(),
             deny_unknown_fields: schema.get("additionalProperties")
                 == Some(&JsonValue::Bool(false)),
-            transparent: false,
-            has_default: true,
-            variants: vec![],
-            string_enum: false,
-            enum_variants: vec![],
+            ..empty_model(&model_name)
         },
     );
     model_name

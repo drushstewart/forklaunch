@@ -28,15 +28,15 @@ impl MultipartPayload for MultipartForm {
 pub enum SdkAuth {
     Bearer(String),
     Basic { username: String, password: String },
-    /// A fixed header value. A ForkLaunch HMAC credential covers one request's
+    /// A fixed header value. A request HMAC credential covers one request's
     /// method, path, body, timestamp and nonce, so a fixed value verifies at most
     /// once. Prefer [`SdkAuth::Hmac`] for service-to-service calls.
     HmacHeader { header_name: String, value: String },
-    /// Sign every request with the ForkLaunch request HMAC (see [`HmacSigner`]).
+    /// Sign every request with the request HMAC (see [`HmacSigner`]).
     Hmac(HmacSigner),
 }
 
-/// Per-request ForkLaunch HMAC signing, compatible with the TypeScript
+/// Per-request HMAC signing, compatible with the TypeScript
 /// `createHmacToken` / `generateHmacAuthHeaders` profile and the Rust verifiers:
 /// `HMAC keyId=<id> ts=<ISO-8601 ms> nonce=<random> signature=<base64>` over
 /// `METHOD\n<path>\n<body + "\n" | "undefined"><ts>\n<nonce>`.
@@ -250,7 +250,7 @@ impl<M: MultipartPayload> UniversalSdk<M> {
         });
         self
     }
-    /// Send one fixed `authorization` value. A ForkLaunch HMAC credential is valid
+    /// Send one fixed `authorization` value. A request HMAC credential is valid
     /// for a single request; use [`Self::with_hmac_secret`] to sign every call.
     #[must_use]
     pub fn with_hmac_authorization(mut self, value: impl Into<String>) -> Self {
@@ -260,7 +260,7 @@ impl<M: MultipartPayload> UniversalSdk<M> {
         });
         self
     }
-    /// Sign every request with the ForkLaunch request HMAC under the `default` key.
+    /// Sign every request with the request HMAC under the `default` key.
     /// Signing happens last, over the final method, URL path and body bytes,
     /// after defaults and the request hook have run.
     #[must_use]
