@@ -302,6 +302,14 @@ impl CliCommand for RouterCommand {
         if rust_project::uses_rust_generation(matches) {
             return rust_project::generate_rust_router(matches);
         }
+        // Without an explicit language, a router follows the project it is added to.
+        if matches.value_source("language") != Some(clap::parser::ValueSource::CommandLine)
+            && let Ok((app_root, project)) = find_app_root_path(matches, RequiredLocation::Project)
+            && let Some(project) = project
+            && rust_project::is_rust_project(&app_root, &project)?
+        {
+            return rust_project::generate_rust_router(matches);
+        }
 
         let mut line_editor = Editor::<ArrayCompleter, DefaultHistory>::new()?;
         let mut stdout = StandardStream::stdout(ColorChoice::Always);
