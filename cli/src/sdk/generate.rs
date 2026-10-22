@@ -1532,16 +1532,52 @@ fn local_typescript_aggregate(
     }
     let mut index = String::new();
     let mut fields = String::new();
+    let mut factories = String::new();
     for (service, package_name) in &packages {
         let client = format!("{}SdkClient", service.to_case(Case::Pascal));
+        let camel = service.to_case(Case::Camel);
         index.push_str(&format!("export type {{ {client} }} from '{package_name}';\n"));
-        fields.push_str(&format!("  {}: import('{package_name}').{client};\n", service.to_case(Case::Camel)));
+        fields.push_str(&format!("  {camel}: import('{package_name}').{client};\n"));
+        factories.push_str(&format!(
+            "/** Connect to `{service}`. Internal routes need `hmac: {{ secretKey }}` with its HMAC key. */\nexport const {camel}SdkClient = (options: ServiceClientOptions) =>\n  connectService<ForkLaunchSdk['{camel}']>(options);\n"
+        ));
     }
     index.push_str(&if fields.is_empty() {
         "\nexport type ForkLaunchSdk = Record<string, never>;\n".to_owned()
     } else {
         format!("\nexport type ForkLaunchSdk = {{\n{fields}}};\n")
     });
+    if !factories.is_empty() {
+        index.insert_str(0, "import { universalSdk, type UniversalSdkOptions } from '@forklaunch/universal-sdk';\n\n");
+        index.push_str(&format!(r#"
+/** One service's base URL, its registry (defaults to the native `/openapi.json`),
+ * and transport options. `hmac: {{ secretKey }}` signs every request for internal routes. */
+export type ServiceClientOptions = Omit<UniversalSdkOptions, 'host' | 'registryOptions'> & {{
+  host: string;
+  registryOptions?: UniversalSdkOptions['registryOptions'];
+}};
+
+function connectService<T>({{ host, registryOptions, ...options }}: ServiceClientOptions): Promise<T> {{
+  const base = host.replace(/\/+$/, '');
+  return universalSdk<T>({{ ...options, host: base, registryOptions: registryOptions ?? {{ url: `${{base}}/openapi.json` }} }});
+}}
+
+{factories}
+const factories = {{
+{}
+}} as {{ [K in keyof ForkLaunchSdk]: (options: ServiceClientOptions) => Promise<ForkLaunchSdk[K]> }};
+
+/** Connect several services at once: `createForkLaunchSdk({{ billing: {{ host, hmac }} }})`. */
+export async function createForkLaunchSdk<const S extends keyof ForkLaunchSdk>(
+  services: {{ [K in S]: ServiceClientOptions }}
+): Promise<Pick<ForkLaunchSdk, S>> {{
+  const entries = await Promise.all(
+    (Object.keys(services) as S[]).map(async (name) => [name, await factories[name](services[name])] as const)
+  );
+  return Object.fromEntries(entries) as Pick<ForkLaunchSdk, S>;
+}}
+"#, packages.keys().map(|service| {{ let camel = service.to_case(Case::Camel); format!("  {camel}: {camel}SdkClient,") }}).collect::<Vec<_>>().join("\n")));
+    }
     let source_dir = super::layout::source(app_root, &sdk_root)?;
     super::write_if_changed(source_dir.join("index.ts"), index)?;
     let dependencies = package
@@ -1551,6 +1587,11 @@ fn local_typescript_aggregate(
         .or_insert_with(|| json!({}));
     for package_name in packages.values() {
         dependencies[package_name] = json!("workspace:*");
+    }
+    if !packages.is_empty() && dependencies.get("@forklaunch/universal-sdk").is_none() {
+        // The runtime factories need the shared SDK runtime.
+        dependencies["@forklaunch/universal-sdk"] =
+            json!(crate::core::package_json::package_json_constants::UNIVERSAL_SDK_VERSION);
     }
     let updated = serde_json::to_string_pretty(&package)? + "\n";
     if updated.trim_end() != source.trim_end() {
@@ -2168,6 +2209,8 @@ fn generate_rust_sdks(app_root: &Path, services: &[SdkService]) -> Result<()> {
         }
     }
     if shared.len() != services.len() {
+        // The generated `clients` aggregate re-exports every service-local SDK.
+        crate::init::rust_project::reconcile_rust_client_aggregate(app_root)?;
         return generate_rust_sdks(app_root, &shared);
     }
 

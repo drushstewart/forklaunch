@@ -290,6 +290,16 @@ fn generate_local_aggregate(
         if !validate_name(service) || !seen.insert(service) {
             bail!("Invalid or duplicate SDK service name");
         }
+    }
+    // `--sdk-services` names the services the caller needs now; the aggregate
+    // re-exports every service-local SDK and is kept complete as services change.
+    let mut services = services.to_vec();
+    for service in local_sdk_services(root, manifest) {
+        if !services.contains(&service) {
+            services.push(service);
+        }
+    }
+    for service in &services {
         let path = service_sdk_path(root, manifest, service)
             .context("Local SDK service is not registered")?;
         let alias = service.to_case(Case::Snake);
@@ -477,10 +487,131 @@ pub(super) fn rename_local_artifacts(root: &Path, old: &str, new: &str) -> Resul
 
 /// A generated consumer is application-owned. Do not silently leave its host
 /// contract dependency dangling, or discard customized consumer APIs on delete.
+/// Services whose SDK is a service-local Rust crate, in manifest order.
+fn local_sdk_services(root: &Path, manifest: &Value) -> Vec<String> {
+    manifest
+        .get("projects")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|project| project.get("name").and_then(Value::as_str))
+        .filter(|name| {
+            service_sdk_path(root, manifest, name)
+                .is_some_and(|path| path.join("Cargo.toml").is_file())
+        })
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Keep the generated Rust client aggregate (`clients`) re-exporting every
+/// service-local SDK: new services are added, edits to existing entries and the
+/// extension module are preserved. Hand-written (v1) consumers are left alone.
+pub(crate) fn reconcile_local_aggregate(root: &Path) -> Result<()> {
+    let dir = aggregate_directory(root)?;
+    let Ok(marker) = read_to_string(dir.join(".forklaunch-sdk-consumer")) else {
+        return Ok(());
+    };
+    if marker != "forklaunch.sdk.consumer.v2\n" {
+        return Ok(());
+    }
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let cargo_path = dir.join("Cargo.toml");
+    let source = read_to_string(&cargo_path)?;
+    let mut cargo: toml_edit::DocumentMut = source.parse()?;
+    let lib_path = dir.join("lib.rs");
+    let mut exports = read_to_string(&lib_path)?;
+    let original_exports = exports.clone();
+    for service in local_sdk_services(root, &manifest) {
+        let alias = service.to_case(Case::Snake);
+        let package = format!("{service}-sdk");
+        let present = cargo
+            .get("dependencies")
+            .and_then(toml_edit::Item::as_table_like)
+            .is_some_and(|deps| {
+                deps.iter().any(|(name, dep)| {
+                    name == alias || dep.get("package").and_then(toml_edit::Item::as_str) == Some(&package)
+                })
+            });
+        if present {
+            continue;
+        }
+        let path = service_sdk_path(root, &manifest, &service).context("Local SDK path")?;
+        cargo["dependencies"][&alias]["package"] = toml_edit::value(&package);
+        cargo["dependencies"][&alias]["path"] = toml_edit::value(
+            pathdiff::diff_paths(&path, &dir)
+                .context("Local SDK path")?
+                .to_string_lossy()
+                .as_ref(),
+        );
+        if !exports.contains(&format!("pub use {alias};")) {
+            exports = format!("{}\npub use {alias};\n", exports.trim_end());
+        }
+    }
+    if cargo.to_string() != source {
+        write(&cargo_path, cargo.to_string())?;
+    }
+    if exports != original_exports {
+        write(&lib_path, native_layout::format_source(&lib_path, &exports))?;
+    }
+    Ok(())
+}
+
+fn remove_from_local_aggregate(root: &Path, dir: &Path, service_path: &str) -> Result<()> {
+    let Ok(local) = root.join(service_path).join("sdk/rust").canonicalize() else {
+        return Ok(());
+    };
+    let cargo_path = dir.join("Cargo.toml");
+    let mut cargo: toml_edit::DocumentMut = read_to_string(&cargo_path)?.parse()?;
+    let Some(dependencies) = cargo
+        .get_mut("dependencies")
+        .and_then(toml_edit::Item::as_table_like_mut)
+    else {
+        return Ok(());
+    };
+    let aliases = dependencies
+        .iter()
+        .filter(|(_, dep)| {
+            dep.get("path")
+                .and_then(toml_edit::Item::as_str)
+                .is_some_and(|path| dir.join(path).canonicalize().is_ok_and(|path| path == local))
+        })
+        .map(|(name, _)| name.to_owned())
+        .collect::<Vec<_>>();
+    if aliases.is_empty() {
+        return Ok(());
+    }
+    for alias in &aliases {
+        dependencies.remove(alias);
+    }
+    write(&cargo_path, cargo.to_string())?;
+    let lib_path = dir.join("lib.rs");
+    let exports = read_to_string(&lib_path)?;
+    let kept = exports
+        .lines()
+        .filter(|line| {
+            !aliases.iter().any(|alias| {
+                let line = line.trim();
+                line == format!("pub use {alias};") || line == format!("pub use {alias}::*;")
+            })
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n";
+    if kept != exports {
+        write(&lib_path, kept)?;
+    }
+    Ok(())
+}
+
 pub(super) fn ensure_service_deletable(root: &Path, service_path: &str) -> Result<()> {
     let dir = aggregate_directory(root)?;
     if !dir.join(".forklaunch-sdk-consumer").is_file() {
         return Ok(());
+    }
+    if read_to_string(dir.join(".forklaunch-sdk-consumer"))? == "forklaunch.sdk.consumer.v2\n" {
+        // The re-export aggregate is generated from the service list; deleting a
+        // service removes its re-export rather than blocking on it.
+        return remove_from_local_aggregate(root, &dir, service_path);
     }
     let cargo: Value = toml::from_str(&read_to_string(dir.join("Cargo.toml"))?)?;
     let local = root.join(service_path).join("sdk/rust");
