@@ -358,7 +358,6 @@ jobs:
           bash cli/tests/rust_infrastructure_runtime.sh
       - name: PostgreSQL routers, restricted-role tenant isolation and audited protected fields
         if: startsWith(matrix.suite, 'postgres-service')
-        env:
         run: bash cli/tests/rust_postgres_service_runtime.sh
       - name: Generated optimized builds and unsupported shared-image release guard
         if: matrix.suite == 'release-guard'
