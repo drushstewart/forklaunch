@@ -58,6 +58,13 @@ pub(crate) fn is_dev_build() -> bool {
 // 1.2.0) must land before this bump ships.
 pub(crate) const RELEASE_MANIFEST_SCHEMA_VERSION: &str = "1.2.0";
 
+// The Bun release generated images (`oven/bun:<BUN_VERSION>`) and generated CI
+// (`setup-bun`) use. A bun.lock written by a newer Bun can be unreadable by an
+// older one ("Unknown lockfile version"), so the image, CI and the developer's
+// local Bun must move together. `.github/workflows/e2e_tests.yml` pins the same
+// release; a unit test in core::github_configs keeps the two in step.
+pub(crate) const BUN_VERSION: &str = "1.4.2";
+
 pub(crate) fn get_platform_management_api_url() -> String {
     std::env::var("FORKLAUNCH_PLATFORM_MANAGEMENT_API_URL").unwrap_or_else(|_| {
         if is_dev_build() {

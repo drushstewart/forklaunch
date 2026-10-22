@@ -12,6 +12,7 @@ use ramhorns::{Content, Template};
 use serde_json::Value as JsonValue;
 
 use super::{template::get_file_contents, watermark::generate_watermark};
+use crate::constants::BUN_VERSION;
 
 const OWNERSHIP: &str = "forklaunch-sha256:";
 const DEFAULT_RUST_TOOLCHAIN: &str = "1.98.0";
@@ -214,7 +215,11 @@ fn render_ci(shape: &Shape) -> String {
                 ("pnpm install --frozen-lockfile", "pnpm run")
             }
             Runtime::Bun => {
-                ci.push_str("      - uses: oven-sh/setup-bun@v2\n");
+                // Same Bun as the generated image, so the frozen install in CI
+                // and in the Docker build read the lockfile identically.
+                ci.push_str(&format!(
+                    "      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version: {BUN_VERSION}\n"
+                ));
                 ("bun install --frozen-lockfile", "bun run")
             }
         };
@@ -425,6 +430,33 @@ mod tests {
         assert!(dependabot.contains("directory: \"/src\"") && !dependabot.contains("cargo"));
         serde_yml::from_str::<serde_yml::Value>(&ci).unwrap();
         serde_yml::from_str::<serde_yml::Value>(&dependabot).unwrap();
+    }
+
+    #[test]
+    fn bun_applications_install_with_the_generated_image_bun() {
+        let manifest = MANIFEST.replace("runtime = 'node'", "runtime = 'bun'");
+        let scripts = r#"{"scripts":{"build":"bun run --filter '*' build"}}"#;
+        let root = app(&[(".forklaunch/manifest.toml", &manifest), ("src/package.json", scripts), ("Dockerfile", "FROM oven/bun")]);
+        reconcile_github_configs(root.path()).unwrap();
+        let ci = fs::read_to_string(root.path().join(".github/workflows/ci.yml")).unwrap();
+        assert!(ci.contains(&format!("      - uses: oven-sh/setup-bun@v2\n        with:\n          bun-version: {BUN_VERSION}\n")), "{ci}");
+        assert!(ci.contains("run: bun install --frozen-lockfile"));
+        serde_yml::from_str::<serde_yml::Value>(&ci).unwrap();
+    }
+
+    /// The repository's own e2e workflow installs the Bun the generated images
+    /// use; a bun.lock from any other release may not survive the frozen install.
+    #[test]
+    fn repository_e2e_workflow_pins_the_generated_image_bun() {
+        let workflow = include_str!("../../../.github/workflows/e2e_tests.yml");
+        let pins: Vec<_> = workflow
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("bun-version:"))
+            .map(str::trim)
+            .collect();
+        let setups = workflow.matches("oven-sh/setup-bun@").count();
+        assert!(!pins.is_empty() && pins.len() == setups, "every setup-bun step pins bun-version");
+        assert!(pins.iter().all(|pin| *pin == BUN_VERSION), "{pins:?} != {BUN_VERSION}");
     }
 
     #[test]
