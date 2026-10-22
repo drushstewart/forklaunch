@@ -192,14 +192,16 @@ try {
   console.log('PASS session user reads: self only, cross-user/list reads need platform:read (HTTP and MCP)');
   const page = await sdk.users.listUsers({ query: { limit: 1 } });
   assert.equal(page.code, 200);
-  assert.equal(page.response.items[0].display_name, 'First');
-  assert.equal(page.response.next_cursor, 'user-1');
+  assert.equal(page.response.items.length, 1);
+  assert.equal(page.response.next_cursor, page.response.items[0].id);
   const mcpPage=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{limit:1}}},{authorization:`Bearer ${adminToken}`});assert.equal(mcpPage.isError,false,JSON.stringify(mcpPage));assert.deepEqual(JSON.parse(mcpPage.content[0].text),page.response);
   const deniedMcp=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}});assert.equal(deniedMcp.isError,true);
   const wrongTenantMcp=await mcpRpc(second.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${adminToken}`});assert.equal(wrongTenantMcp.isError,true);
-  const next = await sdk.users.listUsers({ query: { limit: 1, cursor: page.response.next_cursor } });
-  assert.equal(next.response.items[0].id, 'user-2');
-  assert.equal(next.response.next_cursor, null);
+  // Cursor pages cover every user once (fixture users plus the seeded admin).
+  const listed=[...page.response.items];let cursor=page.response.next_cursor;
+  while(cursor!==null){const next=await sdk.users.listUsers({query:{limit:1,cursor}});assert.equal(next.code,200);listed.push(...next.response.items);cursor=next.response.next_cursor;assert.ok(listed.length<=3);}
+  assert.deepEqual(listed.map(user=>user.id).sort(),['seed-admin','user-1','user-2']);
+  assert.equal(listed.find(user=>user.id==='user-1').display_name,'First');
   const wrongTenant = await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: second.baseUrl, headers: { authorization: `Bearer ${adminToken}` } })).users.listUsers({query:{}});
   assert.equal(wrongTenant.code, 401);
   assert.equal((await publicSdk.users.listUsers({query:{}})).code, 401);
