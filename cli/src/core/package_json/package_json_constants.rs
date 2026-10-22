@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 
 use crate::{
     constants::{Database, Formatter, Linter, Runtime, TestFramework},
@@ -17,7 +17,9 @@ pub(crate) const TYPES_NODE_VERSION: &str = "^26.6.5";
 // jest
 pub(crate) const JEST_VERSION: &str = "^30.5.2";
 // oxlint
-pub(crate) const OXLINT_VERSION: &str = "^0.16.6";
+pub(crate) const OXLINT_VERSION: &str = "^1.89.0";
+// oxlint-tsgolint
+pub(crate) const OXLINT_TSGOLINT_VERSION: &str = "^7.0.2004";
 // prettier
 pub(crate) const PRETTIER_VERSION: &str = "^3.9.10";
 // ts-jest
@@ -123,35 +125,81 @@ fn get_db_init(databases: &HashSet<Database>) -> Option<String> {
     }
 }
 
+/// The `docker compose up ...` prefix of a generated database script.
+///
+/// Every generated database service carries a compose healthcheck, so `--wait`
+/// blocks until it accepts connections instead of guessing with a fixed sleep
+/// (which lost the race on slow hosts and failed migrate:init with "Connection
+/// terminated unexpectedly"). One-shot initializers (`*-init`, e.g. MongoDB's
+/// replica-set setup) exit when done, which `--wait` reports as a failure, so
+/// they run attached afterwards and the next command starts once they finish.
+pub(crate) fn compose_up_command<S: AsRef<str>>(services: &[S]) -> String {
+    let mut ready = BTreeSet::new();
+    let mut initializers = BTreeSet::new();
+    for service in services {
+        let service = service.as_ref();
+        if service.ends_with("-init") {
+            initializers.insert(service);
+        } else {
+            ready.insert(service);
+        }
+    }
+    let mut commands = Vec::new();
+    if !ready.is_empty() {
+        commands.push(format!(
+            "docker compose up -d --wait {}",
+            ready.into_iter().collect::<Vec<_>>().join(" ")
+        ));
+    }
+    commands.extend(initializers.into_iter().map(|init| format!("docker compose up {init}")));
+    if commands.is_empty() {
+        commands.push("docker compose up".to_string());
+    }
+    commands.join(" && ")
+}
+
+/// Split a generated database script into the compose services its prefix
+/// starts and the command that follows. Understands the current
+/// [`compose_up_command`] shape and the older `docker compose up -d a -d b &&
+/// sleep 5 && ...` one, so existing applications are rewritten in place.
+pub(crate) fn split_compose_up_command(script: &str) -> (Vec<String>, String) {
+    let mut services = Vec::new();
+    let mut segments = script.split("&&").map(str::trim).peekable();
+    while let Some(segment) = segments.peek() {
+        if let Some(arguments) = segment.strip_prefix("docker compose up") {
+            services.extend(
+                arguments
+                    .split_whitespace()
+                    .filter(|argument| !argument.starts_with('-'))
+                    .map(str::to_string),
+            );
+        } else if !segment.starts_with("sleep ") {
+            break;
+        }
+        segments.next();
+    }
+    (services, segments.collect::<Vec<_>>().join(" && "))
+}
+
+fn compose_services(databases: &HashSet<Database>) -> Vec<String> {
+    let mut services = databases
+        .iter()
+        .filter(|db| !is_in_memory_database(db))
+        .map(|db| db.to_string())
+        .collect::<Vec<String>>();
+    services.extend(get_db_init(databases));
+    services
+}
+
 pub(crate) fn application_migrate_script<'a>(
     runtime: &Runtime,
     databases: &HashSet<Database>,
     migration_suffix: &'a str,
 ) -> String {
-    let package_manager = get_package_manager(runtime);
-    let db_init = get_db_init(databases);
-
-    let sleep = if migration_suffix == "init" {
-        "sleep 5 && "
-    } else {
-        ""
-    };
-
-    let mut databases = databases
-        .iter()
-        .filter(|db| !is_in_memory_database(db))
-        .map(|db| db.to_string())
-        .collect::<Vec<String>>();
-    if let Some(db_init) = db_init {
-        databases.push(db_init);
-    }
-
     format!(
-        "docker compose up{}{} && {}{} run migrate:{}",
-        if databases.len() > 0 { " -d " } else { "" },
-        databases.join(" -d "),
-        sleep,
-        package_manager,
+        "{} && {} run migrate:{}",
+        compose_up_command(&compose_services(databases)),
+        get_package_manager(runtime),
         migration_suffix
     )
 }
@@ -160,21 +208,10 @@ pub(crate) fn application_seed_script<'a>(
     runtime: &Runtime,
     databases: &HashSet<Database>,
 ) -> String {
-    let package_manager = get_package_manager(runtime);
-    let db_init = get_db_init(databases);
-
-    let mut databases = databases
-        .iter()
-        .map(|db| db.to_string())
-        .collect::<Vec<String>>();
-    if let Some(db_init) = db_init {
-        databases.push(db_init);
-    }
-
     format!(
-        "docker compose up -d {} && {} run seed",
-        databases.join(" -d "),
-        package_manager
+        "{} && {} run seed",
+        compose_up_command(&compose_services(databases)),
+        get_package_manager(runtime)
     )
 }
 
@@ -550,6 +587,50 @@ pub(crate) const BETTER_SQLITE_POSTINSTALL_SCRIPT: &str =
     "cd node_modules/better-sqlite3 && node-gyp configure && node-gyp build";
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn migrate_scripts_wait_for_database_health_instead_of_sleeping() {
+        let postgres = HashSet::from([Database::PostgreSQL]);
+        assert_eq!(
+            application_migrate_script(&Runtime::Bun, &postgres, "init"),
+            "docker compose up -d --wait postgresql && bun --filter='*' run migrate:init"
+        );
+        assert_eq!(
+            application_migrate_script(&Runtime::Node, &postgres, "up"),
+            "docker compose up -d --wait postgresql && pnpm -r --no-bail run migrate:up"
+        );
+        let mongo = HashSet::from([Database::MongoDB]);
+        assert_eq!(
+            application_migrate_script(&Runtime::Bun, &mongo, "init"),
+            "docker compose up -d --wait mongodb && docker compose up mongo-init && bun --filter='*' run migrate:init"
+        );
+        for databases in [&postgres, &mongo] {
+            assert!(!application_migrate_script(&Runtime::Node, databases, "init").contains("sleep"));
+        }
+        assert_eq!(
+            application_seed_script(&Runtime::Node, &postgres),
+            "docker compose up -d --wait postgresql && pnpm -r --no-bail run seed"
+        );
+    }
+
+    #[test]
+    fn compose_prefixes_round_trip_and_upgrade_the_sleep_form() {
+        let current = "docker compose up -d --wait mongodb postgresql && docker compose up mongo-init && bun --filter='*' run migrate:init";
+        let (services, rest) = split_compose_up_command(current);
+        assert_eq!(services, ["mongodb", "postgresql", "mongo-init"]);
+        assert_eq!(rest, "bun --filter='*' run migrate:init");
+        assert_eq!(format!("{} && {rest}", compose_up_command(&services)), current);
+
+        let legacy = "docker compose up -d postgresql -d mongodb -d mongo-init && sleep 5 && pnpm -r --no-bail run migrate:init";
+        let (services, rest) = split_compose_up_command(legacy);
+        assert_eq!(services, ["postgresql", "mongodb", "mongo-init"]);
+        assert_eq!(rest, "pnpm -r --no-bail run migrate:init");
+        assert_eq!(
+            compose_up_command(&services),
+            "docker compose up -d --wait mongodb postgresql && docker compose up mongo-init"
+        );
+        assert_eq!(compose_up_command::<&str>(&[]), "docker compose up");
+    }
+
     #[test]
     fn test_scripts_use_selected_runtime_and_runner_at_every_level() {
         for (framework, runner) in [

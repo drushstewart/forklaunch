@@ -68,7 +68,7 @@ def client_example(directory, source, name):
 
 try:
     command('init', 'application', 'runtime-app', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'HTTP runtime', '-A', 'ForkLaunch', '-L', 'MIT')
     # This protocol fixture uses the generated in-memory service. PostgreSQL
     # persistence/encryption is exercised by dedicated database/runtime gates.

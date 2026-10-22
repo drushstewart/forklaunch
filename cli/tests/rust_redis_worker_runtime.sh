@@ -49,7 +49,7 @@ if [ -z "${FORKLAUNCH_TEST_REDIS_URL:-}" ]; then
     done
     export FORKLAUNCH_TEST_REDIS_URL="redis://$(docker port "$REDIS_CONTAINER" 6379/tcp)/"
 fi
-run_cli init application worker-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Worker runtime' -A ForkLaunch -L MIT
+run_cli init application worker-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter oxlint --http-framework express --runtime node --test-framework vitest -D 'Worker runtime' -A ForkLaunch -L MIT
 run_cli init worker dry-worker --path "$RUN_ROOT/app" --language rust --consumer-only -t redis --dryrun
 test ! -d "$RUN_ROOT/app/src/dry-worker"
 test ! -d "$RUN_ROOT/app/.forklaunch/blueprint-rs"

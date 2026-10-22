@@ -95,7 +95,7 @@ try:
     for runtime in ['node', 'bun']:
         app = root / runtime
         run('init', 'application', runtime + '-mixed', '--modules-path', 'modules',
-            '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+            '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
             '--http-framework', 'express', '--runtime', runtime, '--test-framework', 'vitest',
             '-D', 'Attach native backend', '-A', 'ForkLaunch', '-L', 'MIT')
         run('init', 'service', 'legacy-api', '--language', 'typescript', '-d', 'postgresql', '-D', 'Legacy API')

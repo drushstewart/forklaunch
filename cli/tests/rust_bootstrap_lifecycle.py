@@ -28,7 +28,7 @@ def command(*args):
     run([str(cli), *args, '--path', str(app)])
 
 try:
-    command('init', 'application', 'notes-app', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Bootstrap proof', '-A', 'ForkLaunch', '-L', 'MIT')
+    command('init', 'application', 'notes-app', '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Bootstrap proof', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'probe', '--language', 'rust', '-D', 'Startup probe')
     command('init', 'service', 'notes', '--language', 'rust', '--database', 'postgresql', '--mappers', '-D', 'Notes service')
     command('init', 'worker', 'insights', '--language', 'rust', '--type', 'database', '--database', 'postgresql', '--runtime', 'apalis', '-D', 'Note insights producer and consumer')

@@ -58,6 +58,13 @@ pub(crate) fn is_dev_build() -> bool {
 // 1.2.0) must land before this bump ships.
 pub(crate) const RELEASE_MANIFEST_SCHEMA_VERSION: &str = "1.2.0";
 
+// The Bun release generated images (`oven/bun:<BUN_VERSION>`) and generated CI
+// (`setup-bun`) use. A bun.lock written by a newer Bun can be unreadable by an
+// older one ("Unknown lockfile version"), so the image, CI and the developer's
+// local Bun must move together. `.github/workflows/e2e_tests.yml` pins the same
+// release; a unit test in core::github_configs keeps the two in step.
+pub(crate) const BUN_VERSION: &str = "1.4.2";
+
 pub(crate) fn get_platform_management_api_url() -> String {
     std::env::var("FORKLAUNCH_PLATFORM_MANAGEMENT_API_URL").unwrap_or_else(|_| {
         if is_dev_build() {
@@ -725,4 +732,56 @@ pub(crate) fn get_studio_orchestrator_api_url() -> String {
         }
         .to_string()
     })
+}
+
+/// Linters a new application may select. Generated TypeScript apps compile
+/// with TypeScript 7, and typescript-eslint cannot load under TypeScript 7 (it
+/// throws "typescript-eslint does not support TS 7.0" until upstream ships
+/// support, tracked in typescript-eslint#10940). ESLint stays a parseable
+/// manifest value so existing applications keep working, but it is no longer
+/// offered for new selections.
+pub(crate) const SELECTABLE_LINTERS: [&str; 1] = ["oxlint"];
+
+/// Accepts every linter id so a retired choice reaches
+/// `ensure_selectable_linter` and its explanation, but lists only the
+/// selectable ones in `--help`.
+pub(crate) fn linter_value_parser() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(Linter::VARIANTS.map(|linter| {
+        clap::builder::PossibleValue::new(linter).hide(!SELECTABLE_LINTERS.contains(&linter))
+    }))
+}
+
+/// Reject a linter that cannot lint a TypeScript 7 application, with a message
+/// that says why and what to use instead.
+pub(crate) fn ensure_selectable_linter(linter: &str) -> anyhow::Result<()> {
+    if SELECTABLE_LINTERS.contains(&linter) {
+        return Ok(());
+    }
+    anyhow::bail!(
+        "The '{linter}' linter cannot lint TypeScript 7 applications: typescript-eslint \
+         does not support TypeScript 7 yet (https://github.com/typescript-eslint/typescript-eslint/issues/10940). \
+         Use --linter oxlint, which runs type-aware rules on TypeScript 7 through oxlint-tsgolint."
+    )
+}
+
+#[cfg(test)]
+mod selectable_linter_tests {
+    use super::{Linter, SELECTABLE_LINTERS, ensure_selectable_linter};
+
+    #[test]
+    fn oxlint_is_the_only_selectable_linter() {
+        assert_eq!(SELECTABLE_LINTERS, ["oxlint"]);
+        assert!(ensure_selectable_linter("oxlint").is_ok());
+    }
+
+    #[test]
+    fn eslint_is_rejected_with_the_typescript_7_reason_but_still_parses() {
+        let error = ensure_selectable_linter("eslint").unwrap_err().to_string();
+        assert!(
+            error.contains("TypeScript 7") && error.contains("--linter oxlint"),
+            "{error}"
+        );
+        // Existing manifests that recorded eslint must keep loading.
+        assert!("eslint".parse::<Linter>().is_ok());
+    }
 }

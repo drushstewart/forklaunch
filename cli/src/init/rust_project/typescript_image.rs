@@ -2,6 +2,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::*;
+use crate::constants::BUN_VERSION;
 use crate::core::forklaunch_state;
 
 /// Where the generated image writes the production bundler and its plan.
@@ -825,7 +826,7 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     let mut docker = "# Generated shared TypeScript production image. Install once to commit pnpm-lock.yaml.\nFROM node:22-bookworm-slim AS builder\nRUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates && rm -rf /var/lib/apt/lists/*\nRUN corepack enable && corepack prepare pnpm@11.28.7 --activate\nWORKDIR /app\n".to_owned();
     docker = docker.replace("pnpm@11.28.7", &pnpm_pin);
     if bun {
-        docker = "# Generated shared Bun production image. Commit bun.lock before building.\nFROM oven/bun:1.2.19 AS builder\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\n".into();
+        docker = format!("# Generated shared Bun production image. Commit bun.lock before building.\nFROM oven/bun:{BUN_VERSION} AS builder\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\n");
     }
     let native_stage = "native-sdk-compiler";
     if !native_sdks.is_empty() {
@@ -913,7 +914,7 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         docker.push_str("RUN mkdir -p /out/.certs && cp core/certs/aws-rds-global-bundle.pem /out/.certs/aws-rds-global-bundle.pem\n");
     }
     if bun {
-        docker.push_str("FROM oven/bun:1.2.19 AS runtime\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\nCOPY --from=builder --chown=bun:bun /out/ /app/\nENV NODE_ENV=production\nUSER bun\n");
+        docker.push_str(&format!("FROM oven/bun:{BUN_VERSION} AS runtime\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\nCOPY --from=builder --chown=bun:bun /out/ /app/\nENV NODE_ENV=production\nUSER bun\n"));
     } else {
         docker.push_str("FROM node:22-bookworm-slim AS runtime\nRUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\nCOPY --from=builder --chown=node:node /out/ /app/\nENV NODE_ENV=production\nUSER node\n");
     }
@@ -1280,7 +1281,8 @@ mod tests {
         write(path.join("Dockerfile.typescript"), template).unwrap();
         reconcile(path).unwrap();
         let docker = read_to_string(path.join("Dockerfile.typescript")).unwrap();
-        assert!(docker.contains("FROM oven/bun:1.2.19 AS runtime"));
+        assert!(docker.contains(&format!("FROM oven/bun:{} AS runtime", crate::constants::BUN_VERSION)));
+        assert!(docker.contains(&format!("FROM oven/bun:{} AS builder", crate::constants::BUN_VERSION)));
         assert!(docker.contains("bun install --production --frozen-lockfile --ignore-scripts"));
         assert!(docker.contains("cp .forklaunch/universal-sdk/package.json /out/.forklaunch/universal-sdk/"));
         assert!(docker.contains("cp -R .forklaunch/universal-sdk/lib /out/.forklaunch/universal-sdk/"));

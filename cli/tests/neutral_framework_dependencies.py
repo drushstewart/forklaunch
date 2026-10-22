@@ -14,7 +14,7 @@ try:
         app = root / profile
         option = ('--framework-path', repo / 'framework-rs') if profile == 'local' else ('--framework-version', '0.1.0')
         run(cli, 'init', 'application', 'neutral-proof', *option, '--path', app,
-            '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+            '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
             '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Dependency proof', '-A', 'ForkLaunch', '-L', 'MIT')
         assert not (app / '.forklaunch/framework-dependencies.toml').exists()
         config = tomllib.loads((app / '.forklaunch/manifest.toml').read_text())['framework']

@@ -37,7 +37,7 @@ try:
     for variant in ['iam-base', 'iam-better-auth']:
         app = root / variant
         cli('init', 'application', 'mixed-compliance', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'Mixed compliance', '-A', 'ForkLaunch', '-L', 'MIT')
         cli('init', 'service', 'native-api', '--language', 'rust', '-d', 'postgresql', '-D', 'Native API')
         cli('init', 'service', 'legacy-api', '--language', 'typescript', '-d', 'postgresql', '-D', 'Legacy API before IAM')

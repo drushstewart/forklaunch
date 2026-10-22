@@ -12,7 +12,7 @@ mkdir -p output/init-messaging-twilio
 cd output/init-messaging-twilio
 
 # Messaging is retired as a module; email and SMS go through the managed gateway.
-if RUST_BACKTRACE=1 $FL init application messaging-twilio-node -p messaging-twilio-node -o src/modules -d postgresql -f prettier -l eslint -v zod -F express -r node -t vitest -m messaging-twilio -D "Test library" -A "Rohin Bhargava" -L 'AGPL-3.0' 2> rejection.log; then
+if RUST_BACKTRACE=1 $FL init application messaging-twilio-node -p messaging-twilio-node -o src/modules -d postgresql -f prettier -l oxlint -v zod -F express -r node -t vitest -m messaging-twilio -D "Test library" -A "Rohin Bhargava" -L 'AGPL-3.0' 2> rejection.log; then
     echo 'Expected the retired messaging-twilio module to be rejected'
     exit 1
 fi

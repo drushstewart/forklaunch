@@ -5,6 +5,8 @@ repo = pathlib.Path(__file__).resolve().parents[2]
 cli = pathlib.Path(os.environ.get('FORKLAUNCH_CLI', repo/'cli/target/debug/forklaunch'))
 root = pathlib.Path(tempfile.mkdtemp(prefix='forklaunch-bun-contract-'))
 app = root/'app'
+import re
+BUN_VERSION = re.search(r'pub\(crate\) const BUN_VERSION: &str = "([^"]+)";', (repo/'cli/src/constants.rs').read_text()).group(1)
 env = {**os.environ, 'CARGO_INCREMENTAL':'0', 'CARGO_TARGET_DIR':str(repo/'cli/target'), 'RUSTUP_TOOLCHAIN':'stable', 'FORKLAUNCH_SKIP_FORMAT':'1'}
 def run(args, cwd=app, environment=env):
     result = subprocess.run(args, cwd=cwd, env=environment, text=True, capture_output=True)
@@ -15,7 +17,7 @@ def command(*args):
 def locked(args):
     return run([sys.executable, str(repo/'cli/tests/fixtures/worker_runtime_lock.py'), '-c', shlex.join(args)], repo)
 try:
-    command('init','application','bun-contract-proof','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter','eslint','--http-framework','express','--runtime','bun','--test-framework','vitest','-D','Bun proof','-A','ForkLaunch','-L','MIT')
+    command('init','application','bun-contract-proof','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter', 'oxlint','--http-framework','express','--runtime','bun','--test-framework','vitest','-D','Bun proof','-A','ForkLaunch','-L','MIT')
     # Contract builds exist for Rust consumers; a TypeScript-only app keeps tsc -b.
     command('init', 'service', 'consumer', '--language', 'rust', '-D', 'Rust consumer')
     command('init','service','notes','--language','typescript','-d','postgresql','-D','Notes')
@@ -64,7 +66,7 @@ try:
             watcher.terminate();watcher.wait(timeout=15)
     print('PASS Bun normal watch updates TypeScript and Rust SDKs',flush=True)
     docker=(app/'Dockerfile').read_text()
-    assert 'FROM oven/bun:1.2.19 AS runtime' in docker and 'contract-compiler' not in docker and 'pnpm' not in docker
+    assert f'FROM oven/bun:{BUN_VERSION} AS runtime' in docker and 'contract-compiler' not in docker and 'pnpm' not in docker
     assert sorted(p.name for p in (app/'.forklaunch').iterdir()) == ['manifest.toml']
     assert (app/'modules/bun.lock').is_file()
 finally:

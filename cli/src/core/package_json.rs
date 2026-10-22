@@ -19,6 +19,7 @@ use crate::{
     },
     core::manifest::{ManifestConfig, ProjectManifestConfig},
 };
+use package_json_constants::{compose_up_command, split_compose_up_command};
 
 pub(crate) mod application_package_json;
 pub(crate) mod package_json_constants;
@@ -88,34 +89,14 @@ pub(crate) fn update_application_package_json(
     };
 
     let update_docker_cmd = |cmd: &str| {
-        let (docker_cmd, rest_cmd) = match cmd.split_once("&&") {
-            Some((docker, rest)) => (docker.trim(), rest.trim()),
-            None => (cmd.trim(), ""),
-        };
-
-        let mut services: Vec<&str> = docker_cmd
-            .split("-d")
-            .skip(1)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect();
-
-        if !services.contains(&database.as_str()) {
-            services.push(&database);
+        let (mut services, rest_cmd) = split_compose_up_command(cmd);
+        if !services.contains(&database) {
+            services.push(database.clone());
             if is_mongo {
-                services.push("mongo-init");
+                services.push("mongo-init".to_string());
             }
         }
-
-        let new_docker_cmd = format!(
-            "docker compose up {}",
-            services
-                .iter()
-                .map(|svc| format!("-d {}", svc))
-                .collect::<Vec<_>>()
-                .join(" ")
-        );
-
+        let new_docker_cmd = compose_up_command(&services);
         if rest_cmd.is_empty() {
             new_docker_cmd
         } else {

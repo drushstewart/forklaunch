@@ -76,7 +76,7 @@ def live(rust, consumer, label):
 
 try:
     command('init', 'application', 'presence-app', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'Presence', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'presence', '--language', 'rust', '-D', 'Presence')
     relocated = root / 'relocated'

@@ -233,7 +233,7 @@ def check_images(names):
 
 try:
     run('init', 'application', 'module-matrix', '--database', 'postgresql', '--validator', 'zod',
-        '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
+        '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express',
         '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Module lifecycle matrix',
         '-A', 'ForkLaunch', '-L', 'MIT')
     run('init', 'library', 'shared-client', '--language', 'typescript', '-D', 'Shared client')

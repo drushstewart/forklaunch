@@ -53,7 +53,7 @@ def docker(*args, **kwargs):
 
 try:
     cli("init", "application", "image-proof", "--language", "typescript", "--modules-path", "modules",
-        "--database", "postgresql", "--validator", "zod", "--formatter", "prettier", "--linter", "eslint",
+        "--database", "postgresql", "--validator", "zod", "--formatter", "prettier", "--linter", "oxlint",
         "--http-framework", HTTP_FRAMEWORK, "--runtime", RUNTIME, "--test-framework", "vitest",
         "-D", "Shared image proof", "-A", "ForkLaunch", "-L", "MIT")
     # Contract builds exist for Rust consumers; a TypeScript-only app keeps tsc -b.

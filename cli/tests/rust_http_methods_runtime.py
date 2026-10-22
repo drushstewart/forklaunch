@@ -120,7 +120,7 @@ const wrongBody{index}: string = response{index}.response;
 
 try:
     command('init', 'application', 'methods', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express',
             '--runtime', 'node', '--test-framework', 'vitest', '-D', 'Methods', '-A', 'ForkLaunch', '-L', 'MIT')
     before = snapshot()
     command('init', 'router', 'invalid', '--language', 'rust', success=False)

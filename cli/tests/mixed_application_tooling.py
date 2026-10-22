@@ -9,7 +9,7 @@ def run(args,cwd=root):
  r=subprocess.run(args,cwd=cwd,env=env,capture_output=True,text=True);assert r.returncode==0,r.stdout[-5000:]+r.stderr[-7000:];return r.stdout
 def command(*args):return run([str(cli),*args,'--path',str(app)])
 try:
- command('init','application','mixed-tooling','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter','eslint','--http-framework','express','--runtime','node','--test-framework','jest','-D','Tooling','-A','ForkLaunch','-L','MIT')
+ command('init','application','mixed-tooling','--language','typescript','--modules-path','modules','--database','postgresql','--validator','zod','--formatter','prettier','--linter', 'oxlint','--http-framework','express','--runtime','node','--test-framework','jest','-D','Tooling','-A','ForkLaunch','-L','MIT')
  command('init','service','api','--language','typescript','-d','postgresql','-D','API')
  command('init','library','models','--language','rust','-D','Models')
  manifest=tomllib.loads((app/'.forklaunch/manifest.toml').read_text());native=next(p for p in manifest['projects'] if p['name']=='models');directory=app/native['metadata']['cratePath']

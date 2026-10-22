@@ -72,7 +72,7 @@ def image_inventory():
 
 def initialize(description):
     run('init', 'application', 'rust-first', '--modules-path', 'modules',
-        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+        '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
         '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
         '-D', description, '-A', 'ForkLaunch', '-L', 'MIT')
 

@@ -82,7 +82,7 @@ cargo install --path "$SOURCE_ROOT" --locked "${INSTALL_FLAGS[@]}" --root "$RUN_
 export FORKLAUNCH_CLI="$RUN_ROOT/installed/bin/forklaunch"
 "$FORKLAUNCH_CLI" dev --help > "$RUN_ROOT/dev-help.txt"
 grep -q -- '--compose-file' "$RUN_ROOT/dev-help.txt"
-"$FORKLAUNCH_CLI" init application archive-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter eslint --http-framework express --runtime node --test-framework vitest -D 'Packaged CLI' -A ForkLaunch -L MIT
+"$FORKLAUNCH_CLI" init application archive-app --path "$RUN_ROOT/app" --database postgresql --validator zod --formatter prettier --linter oxlint --http-framework express --runtime node --test-framework vitest -D 'Packaged CLI' -A ForkLaunch -L MIT
 "$FORKLAUNCH_CLI" init service probe --path "$RUN_ROOT/app" --language rust --mappers --infrastructure redis s3 -D Probe
 "$FORKLAUNCH_CLI" init worker jobs --path "$RUN_ROOT/app" --language rust --type database --database postgresql --runtime apalis -D Jobs
 "$FORKLAUNCH_CLI" init library shared --path "$RUN_ROOT/app" --language rust -D Shared

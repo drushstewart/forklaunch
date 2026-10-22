@@ -34,7 +34,7 @@ def command(*args):
 
 try:
     command('init', 'application', 'realtime-app', '--database', 'postgresql', '--validator', 'zod',
-            '--formatter', 'prettier', '--linter', 'eslint', '--http-framework', 'express', '--runtime', 'node',
+            '--formatter', 'prettier', '--linter', 'oxlint', '--http-framework', 'express', '--runtime', 'node',
             '--test-framework', 'vitest', '-D', 'Realtime', '-A', 'ForkLaunch', '-L', 'MIT')
     command('init', 'service', 'realtime', '--language', 'rust', '-D', 'Realtime')
     relocated = root / 'relocated-app'

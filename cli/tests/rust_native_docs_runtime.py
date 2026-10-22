@@ -35,7 +35,7 @@ try:
     for mode, selection in [('snapshot', []), ('registry-0.1.0', ['--framework-version', '0.1.0'])]:
         app = root / mode
         run(cli, 'init', 'application', 'docs-proof', '--path', app, '--database', 'postgresql',
-            '--validator', 'zod', '--formatter', 'prettier', '--linter', 'eslint',
+            '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
             '--http-framework', 'express', '--runtime', 'node', '--test-framework', 'vitest',
             '-D', 'Native documentation', '-A', 'ForkLaunch', '-L', 'MIT', *selection, cwd=root)
         run(cli, 'init', 'service', 'docs-api', '--language', 'rust', '--path', app, cwd=root)

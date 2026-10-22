@@ -33,7 +33,8 @@ use crate::{
 /// Regenerates `client-sdk/compliance.ts` based on the current project list.
 ///
 /// The generated file imports TypeScript SDK factories from `./clientSdk`, accepts
-/// typed native adapters, and makes parallel `Promise.all` calls to each service's
+/// typed native adapters, and makes parallel `Promise.all` calls (a direct await
+/// when only one service participates) to each service's
 /// `compliance.eraseUserData` / `exportUserData` method. Result types are
 /// inferred from the SDK factories so callers narrow on the real discriminated
 /// `code` union without casts.
@@ -158,8 +159,17 @@ pub(crate) fn regenerate_client_sdk_compliance(
     let config_fields_block = config_fields.join("\n");
     let destructure = destructure_names.join(", ");
     let return_object = destructure_names.join(", ");
-    let erase_block = erase_calls.join(",\n");
-    let export_block = export_calls.join(",\n");
+    // A lone service awaits its call directly: `Promise.all` over a single
+    // promise adds nothing and fails lint (unicorn/no-single-promise-in-promise-methods).
+    let fan_out = |calls: &[String]| match calls {
+        [call] => format!("      const {destructure} = await {};", call.trim_start()),
+        _ => format!(
+            "      const [{destructure}] = await Promise.all([\n{}\n      ]);",
+            calls.join(",\n")
+        ),
+    };
+    let erase_block = fan_out(&erase_calls);
+    let export_block = fan_out(&export_calls);
     let response_parameters = response_parameters.join(",\n");
     let client_checks = client_checks.join(",\n");
 
@@ -211,16 +221,12 @@ export function createComplianceClient<
 
   return {{
     async erase(userId: string) {{
-      const [{destructure}] = await Promise.all([
 {erase_block}
-      ]);
       return {{ {return_object} }};
     }},
 
     async export(userId: string) {{
-      const [{destructure}] = await Promise.all([
 {export_block}
-      ]);
       return {{ {return_object} }};
     }}
   }};

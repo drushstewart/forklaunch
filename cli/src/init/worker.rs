@@ -54,7 +54,7 @@ use crate::{
                 HYPER_EXPRESS_VERSION, UWEBSOCKETS_VERSION, INFRASTRUCTURE_REDIS_VERSION, INTERNAL_VERSION,
                 IOREDIS_VERSION, MIKRO_ORM_CLI_VERSION, MIKRO_ORM_CORE_VERSION,
                 MIKRO_ORM_DATABASE_VERSION, MIKRO_ORM_MIGRATIONS_VERSION, MIKRO_ORM_SEEDER_VERSION,
-                OXLINT_VERSION, PINO_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT,
+                OXLINT_VERSION, OXLINT_TSGOLINT_VERSION, PINO_VERSION, PRETTIER_VERSION, PROJECT_BUILD_SCRIPT,
                 PROJECT_DOCS_SCRIPT, PROJECT_SEED_SCRIPT, SQLITE3_VERSION, TESTING_VERSION,
                 TSX_VERSION, TYPEBOX_VERSION, TYPEDOC_VERSION,
                 TYPES_EXPRESS_SERVE_STATIC_CORE_VERSION, TYPES_EXPRESS_VERSION, TYPES_JEST_VERSION,
@@ -636,6 +636,11 @@ pub(crate) fn generate_worker_package_json(
                 },
                 oxlint: if manifest_data.is_oxlint {
                     Some(OXLINT_VERSION.to_string())
+                } else {
+                    None
+                },
+                oxlint_tsgolint: if manifest_data.is_oxlint {
+                    Some(OXLINT_TSGOLINT_VERSION.to_string())
                 } else {
                     None
                 },

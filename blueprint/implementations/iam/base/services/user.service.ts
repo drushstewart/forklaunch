@@ -79,7 +79,7 @@ export class BaseUserService<
     );
 
     if (em) {
-      await em.persist(user);
+      em.persist(user);
     } else {
       await this.em.persist(user).flush();
     }
@@ -107,7 +107,7 @@ export class BaseUserService<
     );
 
     if (em) {
-      await em.persist(users);
+      em.persist(users);
     } else {
       await this.em.persist(users).flush();
     }
@@ -196,7 +196,7 @@ export class BaseUserService<
     );
 
     if (em) {
-      await em.persist(user);
+      em.persist(user);
     } else {
       await this.em.persist(user).flush();
     }
@@ -224,7 +224,7 @@ export class BaseUserService<
     );
 
     if (em) {
-      await em.persist(users);
+      em.persist(users);
     } else {
       await this.em.persist(users).flush();
     }

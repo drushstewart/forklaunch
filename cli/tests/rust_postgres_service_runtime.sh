@@ -27,7 +27,7 @@ from pathlib import Path
 print('CLI SHA256:', hashlib.sha256(Path(sys.argv[1]).read_bytes()).hexdigest(), flush=True)
 PYTHON
 "$CLI" init application storage-test --path "$RUN_ROOT/app" --database postgresql \
-  --validator zod --formatter prettier --linter eslint --http-framework express \
+  --validator zod --formatter prettier --linter oxlint --http-framework express \
   --runtime node --test-framework vitest -D Storage -A ForkLaunch -L MIT
 if "$CLI" init service unsupported --path "$RUN_ROOT/app" --language rust -d sqlite -D Unsupported; then
   echo 'Expected unsupported database rejection'; exit 1

@@ -22,6 +22,11 @@ import {
 
 //! resolves the openTelemetryCollector from the configuration
 const openTelemetryCollector = ci.resolve(tokens.OtelCollector);
+
+//! Query values may arrive as arrays or nested objects; only a plain string is
+//! a usable callback, provider or organization value.
+const queryString = (value: unknown): string =>
+  typeof value === 'string' ? value : '';
 const orm = ci.resolve(tokens.Orm);
 setupTenantFilter(orm, { logger: openTelemetryCollector });
 setupRls(orm, { logger: openTelemetryCollector });
@@ -60,7 +65,7 @@ registerDelegatedSurface(
     //! URL hash to the final callback page. This prevents the test flow from overwriting
     //! the main app's session cookie.
     app.internal.get(`${mount.basePath}/test-callback`, async (req, res) => {
-      const callbackUrl = String(req.query.callbackUrl || '');
+      const callbackUrl = queryString(req.query.callbackUrl);
       if (!callbackUrl) {
         res.status(400).send('Missing callbackUrl');
         return;
@@ -126,8 +131,8 @@ registerDelegatedSurface(
 
     //! serves a redirect page for OAuth popup flows (must be before the catch-all)
     app.internal.get(`${mount.basePath}/oauth-redirect`, async (req, res) => {
-      const provider = String(req.query.provider || '');
-      const callbackURL = String(req.query.callbackURL || '');
+      const provider = queryString(req.query.provider);
+      const callbackURL = queryString(req.query.callbackURL);
       const authContext = await (ci.resolve(tokens.BetterAuth) as BetterAuth)
         .$context;
       const callback = trustedCallbackUrl(callbackURL, authContext);
@@ -135,7 +140,7 @@ registerDelegatedSurface(
         res.status(400).send('Invalid callbackURL');
         return;
       }
-      const organizationId = String(req.query.organizationId || '');
+      const organizationId = queryString(req.query.organizationId);
       const endpoint =
         req.query.endpoint === 'sso'
           ? `${authBasePath}/sign-in/sso`
@@ -188,7 +193,8 @@ app.use(complianceRouter);
 app.registerSdks(iamSdkClient);
 
 //! starts the server
-app.listen(port, host, () => {
+// hyper-express returns a Promise from listen; nothing awaits startup here.
+void app.listen(port, host, () => {
   openTelemetryCollector.info(
     `🎉 IAM Server is running at http://${host}:${port} 🎉.\nAn API reference can be accessed at http://${host}:${port}/api/${version}${docsPath}`
   );

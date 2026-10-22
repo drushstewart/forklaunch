@@ -24,6 +24,7 @@ use crate::{
     constants::{
         Database, ERROR_FAILED_TO_PARSE_MANIFEST, ERROR_FAILED_TO_READ_MANIFEST,
         ERROR_FAILED_TO_READ_PACKAGE_JSON, Formatter, HttpFramework, License, Linter, Runtime,
+        SELECTABLE_LINTERS, ensure_selectable_linter, linter_value_parser,
         TestFramework, Validator,
     },
     core::{
@@ -48,7 +49,7 @@ use crate::{
             },
             package_json_constants::{
                 BIOME_VERSION, ESLINT_VERSION, EXPRESS_VERSION, HYPER_EXPRESS_VERSION, UWEBSOCKETS_VERSION,
-                JEST_TYPES_VERSION, JEST_VERSION, OXLINT_VERSION, PRETTIER_VERSION,
+                JEST_TYPES_VERSION, JEST_VERSION, OXLINT_TSGOLINT_VERSION, OXLINT_VERSION, PRETTIER_VERSION,
                 TS_JEST_VERSION, TYPEBOX_VERSION, TYPESCRIPT_ESLINT_VERSION, VITEST_VERSION,
                 ZOD_VERSION, application_build_script, application_clean_purge_script,
                 application_clean_script, application_docs_script, application_format_script,
@@ -655,6 +656,7 @@ fn change_linter(
             dev_dependencies.eslint_js = None;
             dev_dependencies.typescript_eslint = None;
             dev_dependencies.oxlint = None;
+            dev_dependencies.oxlint_tsgolint = None;
 
             for linter in rc_linters_to_preserve.borrow().iter() {
                 match linter.parse().unwrap() {
@@ -666,6 +668,8 @@ fn change_linter(
                     }
                     Linter::Oxlint => {
                         dev_dependencies.oxlint = Some(OXLINT_VERSION.to_string());
+                        dev_dependencies.oxlint_tsgolint =
+                            Some(OXLINT_TSGOLINT_VERSION.to_string());
                     }
                 }
             }
@@ -675,6 +679,7 @@ fn change_linter(
             dev_dependencies.eslint_js = None;
             dev_dependencies.typescript_eslint = None;
             dev_dependencies.oxlint = None;
+            dev_dependencies.oxlint_tsgolint = None;
 
             for linter in rc_linters_to_preserve.borrow().iter() {
                 match linter.parse().unwrap() {
@@ -686,6 +691,8 @@ fn change_linter(
                     }
                     Linter::Oxlint => {
                         dev_dependencies.oxlint = Some(OXLINT_VERSION.to_string());
+                        dev_dependencies.oxlint_tsgolint =
+                            Some(OXLINT_TSGOLINT_VERSION.to_string());
                     }
                 }
             }
@@ -1654,7 +1661,7 @@ impl CliCommand for ApplicationCommand {
                     .short('l')
                     .long("linter")
                     .help("The linter to use")
-                    .value_parser(Linter::VARIANTS),
+                    .value_parser(linter_value_parser()),
             )
             .arg(
                 Arg::new("http-framework")
@@ -1908,10 +1915,13 @@ impl CliCommand for ApplicationCommand {
             &mut stdout,
             matches,
             "linter",
-            Some(&Linter::VARIANTS),
+            Some(&SELECTABLE_LINTERS),
             |input| Linter::VARIANTS.contains(&input),
             |_| "Invalid linter. Please try again".to_string(),
         )?;
+        if let Some(linter) = &linter {
+            ensure_selectable_linter(linter)?;
+        }
 
         let validator = prompt_field_from_selections_with_validation(
             "validator",

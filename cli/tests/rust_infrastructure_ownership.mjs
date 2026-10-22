@@ -14,7 +14,7 @@ const edit=(operation,service,feature,...extra)=>run('infra',operation,service,f
 const read=relative=>readFileSync(path.join(app,relative),'utf8');
 const write=(relative,text)=>writeFileSync(path.join(app,relative),text);
 const compose=()=>JSON.parse(execFileSync('docker',['compose','config','--no-interpolate','--format','json'],{cwd:app,encoding:'utf8'}));
-run('init','application','infra-app','--path',app,'--database','postgresql','--validator','zod','--formatter','prettier','--linter','eslint','--http-framework','express','--runtime','node','--test-framework','vitest','-D','Infrastructure','-A','ForkLaunch','-L','MIT');
+run('init','application','infra-app','--path',app,'--database','postgresql','--validator','zod','--formatter','prettier','--linter', 'oxlint','--http-framework','express','--runtime','node','--test-framework','vitest','-D','Infrastructure','-A','ForkLaunch','-L','MIT');
 for(const service of ['alpha','beta'])run('init','service',service,'--path',app,'--language','rust','-D',service);
 const originalBackends = {redis: compose().services.redis, minio: compose().services.minio};
 // Init and change flags use the same native wiring rather than silently ignoring them.

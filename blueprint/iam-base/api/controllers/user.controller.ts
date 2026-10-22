@@ -1,6 +1,6 @@
 import { bindRuntimeAuth } from '@forklaunch/blueprint-core';
 import { userContract } from '../contracts/user.contract';
-import { handlers, schemaValidator, string } from '@forklaunch/blueprint-core';
+import { handlers, schemaValidator } from '@forklaunch/blueprint-core';
 import { IdsDto } from '@forklaunch/common';
 import { getCachedJwks } from '@forklaunch/core/http';
 import { jwtVerify } from 'jose';

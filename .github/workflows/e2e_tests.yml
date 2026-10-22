@@ -158,8 +158,12 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
+      # Must equal BUN_VERSION in cli/src/constants.rs (the generated images'
+      # oven/bun tag); a unit test in cli/src/core/github_configs.rs enforces it.
       - name: Install Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
 
       - name: Install pnpm
         uses: pnpm/action-setup@v2
@@ -279,14 +283,13 @@ jobs:
       - uses: pnpm/action-setup@v2
         with:
           version: 10
+      # Must equal BUN_VERSION in cli/src/constants.rs: generated Bun images build
+      # with oven/bun:<BUN_VERSION> and run a frozen install of the bun.lock the
+      # suite wrote, which another release may not be able to read.
       - uses: oven-sh/setup-bun@v2
-        if: startsWith(matrix.suite, 'sdk-')
-      # Generated Bun images build with oven/bun:1.2.19, which cannot read the
-      # lockfile format newer Bun releases write. Install the same release.
-      - uses: oven-sh/setup-bun@v2
-        if: startsWith(matrix.suite, 'dev-')
+        if: startsWith(matrix.suite, 'sdk-') || startsWith(matrix.suite, 'dev-')
         with:
-          bun-version: 1.2.19
+          bun-version: 1.4.2
       - uses: actions/download-artifact@v4
         with:
           name: forklaunch-cli
@@ -355,7 +358,6 @@ jobs:
           bash cli/tests/rust_infrastructure_runtime.sh
       - name: PostgreSQL routers, restricted-role tenant isolation and audited protected fields
         if: startsWith(matrix.suite, 'postgres-service')
-        env:
         run: bash cli/tests/rust_postgres_service_runtime.sh
       - name: Generated optimized builds and unsupported shared-image release guard
         if: matrix.suite == 'release-guard'

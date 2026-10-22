@@ -105,7 +105,7 @@ export class BaseSubscriptionService<
       ...(args[0] instanceof EntityManager ? args.slice(1) : args)
     );
     await (em ?? this.em).transactional(async (innerEm) => {
-      await innerEm.persist(subscription);
+      innerEm.persist(subscription);
     });
     const createdSubscriptionDto =
       await this.mappers.SubscriptionMapper.toDto(subscription);
@@ -205,7 +205,7 @@ export class BaseSubscriptionService<
     );
     const updatedSubscription = await (em ?? this.em).upsert(subscription);
     await (em ?? this.em).transactional(async (innerEm) => {
-      await innerEm.persist(updatedSubscription);
+      innerEm.persist(updatedSubscription);
     });
     const updatedSubscriptionDto =
       await this.mappers.SubscriptionMapper.toDto(updatedSubscription);
@@ -266,7 +266,7 @@ export class BaseSubscriptionService<
     }
     subscription.active = false;
     await (em ?? this.em).transactional(async (innerEm) => {
-      await innerEm.persist(subscription);
+      innerEm.persist(subscription);
     });
   }
 
@@ -283,7 +283,7 @@ export class BaseSubscriptionService<
     }
     subscription.active = true;
     await (em ?? this.em).transactional(async (innerEm) => {
-      await innerEm.persist(subscription);
+      innerEm.persist(subscription);
     });
   }
 }
