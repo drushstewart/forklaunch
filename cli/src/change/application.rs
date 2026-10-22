@@ -2200,7 +2200,7 @@ mod adapter_migration_tests {
     #[test]
     fn hyperexpress_admission_uses_requested_runtime_without_mutation() {
         let root = tempfile::tempdir().unwrap();
-        let package = r#"{"packageManager":"pnpm@11.1.0"}"#;
+        let package = r#"{"packageManager":"pnpm@11.28.7"}"#;
         std::fs::write(root.path().join("package.json"), package).unwrap();
         std::fs::write(root.path().join("pnpm-workspace.yaml"), "packages: []\n").unwrap();
         assert!(preflight_http_framework(root.path(), "hyper-express", "node").is_err());

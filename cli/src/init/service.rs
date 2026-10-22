@@ -423,18 +423,29 @@ pub(crate) fn generate_service_package_json(
         dependencies: Some(if let Some(dependencies) = dependencies_override {
             dependencies
         } else {
+            // Ordinary services import the IAM and billing surfaces from their
+            // server.ts, so they depend on those packages. Modules do not:
+            // iam, billing, messaging, cac and ecommerce import only core and
+            // monitoring. Adding the deps to modules made iam and billing
+            // depend on each other, a workspace cycle that pnpm 11 refuses to
+            // order (ERR_PNPM_TASK_CYCLE billing#build -> iam#build).
+            let is_module = manifest_data.is_iam
+                || manifest_data.is_billing
+                || manifest_data.is_messaging
+                || manifest_data.is_cac
+                || manifest_data.is_ecommerce;
             ProjectDependencies {
                 app_name: manifest_data.app_name.to_string(),
                 databases: HashSet::from([manifest_data.database.parse()?]),
                 app_core: Some(APP_CORE_VERSION.to_string()),
                 app_monitoring: Some(APP_MONITORING_VERSION.to_string()),
                 app_client_sdk: None,
-                app_billing: if !manifest_data.is_billing && manifest_data.is_billing_configured {
+                app_billing: if !is_module && manifest_data.is_billing_configured {
                     Some(APP_BILLING_VERSION.to_string())
                 } else {
                     None
                 },
-                app_iam: if !manifest_data.is_iam && manifest_data.is_iam_configured {
+                app_iam: if !is_module && manifest_data.is_iam_configured {
                     Some(APP_IAM_VERSION.to_string())
                 } else {
                     None

@@ -39,7 +39,7 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 11.1.0
+          version: 11.28.7
       - name: Install dependencies
         working-directory: ./blueprint
         run: pnpm install

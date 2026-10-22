@@ -268,7 +268,7 @@ pub(super) fn plan_typescript_sdk(
     if !bun {
         object
             .entry("packageManager")
-            .or_insert(json!("pnpm@11.1.0"));
+            .or_insert(json!("pnpm@11.28.7"));
     }
     if bun {
         object.entry("name").or_insert_with(|| {
