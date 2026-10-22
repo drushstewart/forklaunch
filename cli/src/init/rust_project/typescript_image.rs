@@ -318,7 +318,7 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         if manifest.get("http_framework").and_then(Value::as_str) == Some("hyper-express") {
             "pnpm@10.33.2"
         } else {
-            "pnpm@11.1.0"
+            "pnpm@11.28.7"
         };
 
     let runtime_kind = if bun {
@@ -712,13 +712,20 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         );
     }
     package["devDependencies"]["esbuild"] = json!("0.25.12");
-    let pnpm_pin = package["packageManager"]
+    let mut pnpm_pin = package["packageManager"]
         .as_str()
         .unwrap_or(default_pnpm_pin)
         .to_owned();
+    // pnpm 11.1.0 was the generated pin before 11.28.7. Its post-build
+    // injected-dependency sync hard-links module symlinks (.prettierrc and
+    // friends) into node_modules/.pnpm on Linux, so a second build fails with
+    // EEXIST. Move projects still on the old generated pin forward.
+    if pnpm_pin == "pnpm@11.1.0" {
+        pnpm_pin = "pnpm@11.28.7".to_owned();
+    }
     if !bun {
         anyhow::ensure!(
-            matches!(pnpm_pin.as_str(), "pnpm@10.33.2" | "pnpm@11.1.0"),
+            matches!(pnpm_pin.as_str(), "pnpm@10.33.2" | "pnpm@11.28.7"),
             "Custom package manager version requires a custom Dockerfile"
         );
         package["packageManager"] = json!(pnpm_pin);
@@ -815,8 +822,8 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             native_sdks.push((directory.to_owned(), package.to_owned()));
         }
     }
-    let mut docker = "# Generated shared TypeScript production image. Install once to commit pnpm-lock.yaml.\nFROM node:22-bookworm-slim AS builder\nRUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates && rm -rf /var/lib/apt/lists/*\nRUN corepack enable && corepack prepare pnpm@11.1.0 --activate\nWORKDIR /app\n".to_owned();
-    docker = docker.replace("pnpm@11.1.0", &pnpm_pin);
+    let mut docker = "# Generated shared TypeScript production image. Install once to commit pnpm-lock.yaml.\nFROM node:22-bookworm-slim AS builder\nRUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates && rm -rf /var/lib/apt/lists/*\nRUN corepack enable && corepack prepare pnpm@11.28.7 --activate\nWORKDIR /app\n".to_owned();
+    docker = docker.replace("pnpm@11.28.7", &pnpm_pin);
     if bun {
         docker = "# Generated shared Bun production image. Commit bun.lock before building.\nFROM oven/bun:1.2.19 AS builder\nUSER root\nRUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ git ca-certificates && rm -rf /var/lib/apt/lists/*\nWORKDIR /app\n".into();
     }

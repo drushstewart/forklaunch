@@ -73,7 +73,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.1.0
+          version: 11.28.7
 
       - name: Install (frozen lockfile)
         working-directory: ${{ inputs.workspace }}
@@ -144,7 +144,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.1.0
+          version: 11.28.7
 
       - name: npm auth
         run: |
@@ -200,7 +200,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 11.1.0
+          version: 11.28.7
 
       - name: Wait until npm shows every framework version on this ref
         if: env.WS == 'blueprint'

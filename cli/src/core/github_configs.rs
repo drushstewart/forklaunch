@@ -409,7 +409,7 @@ mod tests {
     }
 
     const MANIFEST: &str = "app_name = 'app'\nmodules_path = 'src'\nruntime = 'node'\n";
-    const TS_SCRIPTS: &str = r#"{"packageManager":"pnpm@11.1.0","scripts":{"build":"pnpm -r build","lint":"eslint .","test":"vitest"}}"#;
+    const TS_SCRIPTS: &str = r#"{"packageManager":"pnpm@11.28.7","scripts":{"build":"pnpm -r build","lint":"eslint .","test":"vitest"}}"#;
 
     #[test]
     fn typescript_applications_install_and_run_scripts_in_the_modules_workspace() {
@@ -432,7 +432,7 @@ mod tests {
         let root = app(&[
             (".forklaunch/manifest.toml", MANIFEST),
             ("Cargo.toml", "[workspace]\nmembers = []\n"),
-            ("package.json", r#"{"packageManager":"pnpm@11.1.0","scripts":{"build":"cargo build --workspace && pnpm -r build","sdk:typecheck":"x"}}"#),
+            ("package.json", r#"{"packageManager":"pnpm@11.28.7","scripts":{"build":"cargo build --workspace && pnpm -r build","sdk:typecheck":"x"}}"#),
             ("pnpm-workspace.yaml", "packages: ['src/*']\n"),
             ("src/package.json", TS_SCRIPTS),
             ("Dockerfile.rust", "FROM rust"),
@@ -464,7 +464,7 @@ mod tests {
         let root = app(&[
             (".forklaunch/manifest.toml", MANIFEST),
             ("Cargo.toml", "[workspace]\nmembers = []\n"),
-            ("package.json", r#"{"packageManager":"pnpm@11.1.0","scripts":{"build":"pnpm -r build"}}"#),
+            ("package.json", r#"{"packageManager":"pnpm@11.28.7","scripts":{"build":"pnpm -r build"}}"#),
             ("pnpm-workspace.yaml", "packages: ['src/*']\n"),
             ("src/package.json", TS_SCRIPTS),
             ("src/pnpm-workspace.yaml", "packages: ['core']\n"),

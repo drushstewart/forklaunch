@@ -14,7 +14,7 @@ function run(command, args) {
   return execFileSync(command, args, { cwd: path.join(root, 'source'), encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 }
 try {
-  await put('source/package.json', { name: 'fixture', private: true, packageManager: 'pnpm@11.1.0', devDependencies: { typescript: '5.9.3' } });
+  await put('source/package.json', { name: 'fixture', private: true, packageManager: 'pnpm@11.28.7', devDependencies: { typescript: '5.9.3' } });
   await put('source/pnpm-workspace.yaml', 'packages: [api, core]\ninjectWorkspacePackages: true\nsyncInjectedDepsAfterScripts: [build]\n');
   await put('source/core/package.json', { name: '@fixture/core', version: '0.0.0', type: 'module', main: 'index.js' });
   await put('source/core/index.js', 'export const answer = 42;\n');
