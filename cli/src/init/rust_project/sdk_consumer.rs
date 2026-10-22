@@ -780,7 +780,12 @@ mod tests {
         assert!(read_to_string(aggregate.join("lib.rs"))
             .unwrap()
             .contains("pub use notes;"));
-        assert!(ensure_service_deletable(root, "src/notes").is_err());
+        // The generated aggregate drops a deleted service's re-export instead of blocking.
+        ensure_service_deletable(root, "src/notes").unwrap();
+        let cargo: Value =
+            toml::from_str(&read_to_string(aggregate.join("Cargo.toml")).unwrap()).unwrap();
+        assert!(cargo["dependencies"].get("notes").is_none());
+        assert!(!read_to_string(aggregate.join("lib.rs")).unwrap().contains("pub use notes"));
     }
 
     #[test]
