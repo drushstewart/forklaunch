@@ -28,7 +28,89 @@ impl MultipartPayload for MultipartForm {
 pub enum SdkAuth {
     Bearer(String),
     Basic { username: String, password: String },
+    /// A fixed header value. A ForkLaunch HMAC credential covers one request's
+    /// method, path, body, timestamp and nonce, so a fixed value verifies at most
+    /// once. Prefer [`SdkAuth::Hmac`] for service-to-service calls.
     HmacHeader { header_name: String, value: String },
+    /// Sign every request with the ForkLaunch request HMAC (see [`HmacSigner`]).
+    Hmac(HmacSigner),
+}
+
+/// Per-request ForkLaunch HMAC signing, compatible with the TypeScript
+/// `createHmacToken` / `generateHmacAuthHeaders` profile and the Rust verifiers:
+/// `HMAC keyId=<id> ts=<ISO-8601 ms> nonce=<random> signature=<base64>` over
+/// `METHOD\n<path>\n<body + "\n" | "undefined"><ts>\n<nonce>`.
+///
+/// The signed path is the final request URL's path, without the query string,
+/// exactly as sent on the wire (`POST /payment-link`, not a router-relative `/`).
+/// The body is the exact bytes sent; an absent or empty body signs as absent.
+/// Each call gets a fresh timestamp and a random nonce, so servers that claim
+/// nonces reject replays. The secret is never formatted.
+#[derive(Clone)]
+pub struct HmacSigner {
+    key_id: String,
+    secret: Arc<[u8]>,
+}
+impl fmt::Debug for HmacSigner {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("HmacSigner")
+            .field("key_id", &self.key_id)
+            .finish_non_exhaustive()
+    }
+}
+impl HmacSigner {
+    /// A signer for the server's `default` key.
+    #[must_use]
+    pub fn new(secret: impl Into<Vec<u8>>) -> Self {
+        Self::with_key_id("default", secret)
+    }
+    /// A signer for a named server key (`keyId=<key_id>`).
+    #[must_use]
+    pub fn with_key_id(key_id: impl Into<String>, secret: impl Into<Vec<u8>>) -> Self {
+        Self {
+            key_id: key_id.into(),
+            secret: secret.into().into(),
+        }
+    }
+    #[must_use]
+    pub fn key_id(&self) -> &str {
+        &self.key_id
+    }
+    /// The `authorization` header value for one request, with a fresh timestamp and nonce.
+    /// # Errors
+    /// Rejects empty secrets, invalid key IDs and newline-injected methods or paths.
+    pub fn sign(&self, method: &str, path: &str, body: Option<&[u8]>) -> Result<String, SdkError> {
+        let timestamp = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let nonce = uuid::Uuid::new_v4().simple().to_string();
+        self.sign_at(method, path, body, &timestamp, &nonce)
+    }
+    /// Deterministic signing for tests and fixtures. Never reuse a nonce for real traffic.
+    /// # Errors
+    /// Rejects empty secrets, invalid key IDs/timestamps and newline-injected inputs.
+    pub fn sign_at(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&[u8]>,
+        timestamp: &str,
+        nonce: &str,
+    ) -> Result<String, SdkError> {
+        use forklaunch_core::auth::request_hmac::{SignedBody, generate_hmac_auth_header};
+        let body = match body {
+            Some(bytes) if !bytes.is_empty() => SignedBody::Bytes(bytes),
+            _ => SignedBody::Absent,
+        };
+        generate_hmac_auth_header(
+            &self.secret,
+            &self.key_id,
+            method,
+            path,
+            body,
+            timestamp,
+            nonce,
+        )
+        .map_err(|_| SdkError::Contract("invalid HMAC signing input"))
+    }
 }
 
 type RequestHook<M> = Arc<dyn Fn(&mut SdkRequest<M>) + Send + Sync>;
@@ -168,12 +250,27 @@ impl<M: MultipartPayload> UniversalSdk<M> {
         });
         self
     }
+    /// Send one fixed `authorization` value. A ForkLaunch HMAC credential is valid
+    /// for a single request; use [`Self::with_hmac_secret`] to sign every call.
     #[must_use]
     pub fn with_hmac_authorization(mut self, value: impl Into<String>) -> Self {
         self.auth = Some(SdkAuth::HmacHeader {
             header_name: "authorization".to_owned(),
             value: value.into(),
         });
+        self
+    }
+    /// Sign every request with the ForkLaunch request HMAC under the `default` key.
+    /// Signing happens last, over the final method, URL path and body bytes,
+    /// after defaults and the request hook have run.
+    #[must_use]
+    pub fn with_hmac_secret(self, secret: impl Into<Vec<u8>>) -> Self {
+        self.with_hmac_signer(HmacSigner::new(secret))
+    }
+    /// Sign every request with the given [`HmacSigner`] (for a named key ID).
+    #[must_use]
+    pub fn with_hmac_signer(mut self, signer: HmacSigner) -> Self {
+        self.auth = Some(SdkAuth::Hmac(signer));
         self
     }
     #[must_use]
@@ -259,6 +356,16 @@ impl<M: MultipartPayload> UniversalSdk<M> {
             .method
             .parse::<reqwest::Method>()
             .map_err(|_| SdkError::TransportPolicy)?;
+        let signer = match &self.auth {
+            Some(SdkAuth::Hmac(signer)) => {
+                // The signature covers the final header; a caller value would be replaced.
+                request
+                    .headers
+                    .retain(|name, _| !name.eq_ignore_ascii_case("authorization"));
+                Some(signer)
+            }
+            _ => None,
+        };
         let mut builder = self.http.request(method, &request.url);
         if !request.query.is_empty() {
             builder = builder.query(&request.query);
@@ -278,6 +385,7 @@ impl<M: MultipartPayload> UniversalSdk<M> {
                 SdkAuth::HmacHeader { header_name, value } => {
                     builder.header(header_name.as_str(), value.as_str())
                 }
+                SdkAuth::Hmac(_) => builder,
             };
         }
         if let Some(body) = request.body {
@@ -320,12 +428,32 @@ impl<M: MultipartPayload> UniversalSdk<M> {
                 crate::MatchedVersionResponses::from_prepared(&prepared, metadata, &self.base_url)
             })
             .transpose()?;
+        if let Some(signer) = signer {
+            sign_prepared(&mut prepared, signer).await?;
+        }
         self.http
             .execute(prepared)
             .await
             .map(|response| (response, matched))
             .map_err(SdkError::from)
     }
+}
+
+// Sign the exact wire request: method, URL path (no query) and the transmitted bytes.
+async fn sign_prepared(request: &mut reqwest::Request, signer: &HmacSigner) -> Result<(), SdkError> {
+    // Streaming bodies (multipart) are buffered so the signed and sent bytes match.
+    buffer_versioned_body(request, std::time::Duration::from_secs(30)).await?;
+    let header = signer.sign(
+        request.method().as_str(),
+        request.url().path(),
+        request.body().and_then(reqwest::Body::as_bytes),
+    )?;
+    request.headers_mut().insert(
+        reqwest::header::AUTHORIZATION,
+        reqwest::header::HeaderValue::from_str(&header)
+            .map_err(|_| SdkError::Contract("invalid HMAC header"))?,
+    );
+    Ok(())
 }
 
 // Match and transmit the same bounded bytes, including multipart serialization.

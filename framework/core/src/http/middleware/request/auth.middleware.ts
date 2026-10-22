@@ -220,15 +220,23 @@ async function checkAuthorizationToken<
         return invalidAuthorizationTokenFormat;
       }
 
-      const verificationResult = await auth.verificationFunction({
-        method: req?.method ?? '',
-        path: req?.path ?? '',
-        body: req?._rawBody ?? req?.body,
-        timestamp: new Date(parsedTimestamp),
-        nonce: parsedNonce,
-        signature: parsedSignature,
-        secretKey: collapsedAuthorizationMethod.hmac.secretKeys[parsedKeyId]
-      });
+      // The signed path is the full wire path without the query string, as the
+      // Rust verifiers and the universal-sdk signers use. The router-relative
+      // `req.path` that older callers signed is deprecated and accepted only
+      // while HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true (it is not bound to a mount).
+      let verificationResult = false;
+      for (const path of hmacSignedPaths(req)) {
+        verificationResult = Boolean(await auth.verificationFunction({
+          method: req?.method ?? '',
+          path,
+          body: req?._rawBody ?? req?.body,
+          timestamp: new Date(parsedTimestamp),
+          nonce: parsedNonce,
+          signature: parsedSignature,
+          secretKey: collapsedAuthorizationMethod.hmac.secretKeys[parsedKeyId]
+        }));
+        if (verificationResult) break;
+      }
 
       if (!verificationResult) {
         return invalidAuthorizationSignature;
@@ -538,6 +546,28 @@ async function checkAuthorizationToken<
  * @param {Response} res - The response object.
  * @param {NextFunction} [next] - The next middleware function.
  */
+/** Deprecated: accept router-relative HMAC paths (`HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true`). */
+function acceptMountRelativeHmacPaths(): boolean {
+  const value =
+    typeof process === 'undefined'
+      ? undefined
+      : process.env?.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS;
+  return value != null && ['true', '1'].includes(value.trim().toLowerCase());
+}
+
+/** Candidate signed paths: the full wire path first, then the opt-in relative form. */
+function hmacSignedPaths(req: {
+  path?: string;
+  originalUrl?: string;
+  url?: string;
+}): string[] {
+  const relative = req?.path ?? '';
+  const wire = (req?.originalUrl ?? req?.url ?? relative).split('?')[0] || relative;
+  const paths = [wire];
+  if (relative !== wire && acceptMountRelativeHmacPaths()) paths.push(relative);
+  return paths;
+}
+
 export async function parseRequestAuth<
   SV extends AnySchemaValidator,
   ContractMethod extends Method,

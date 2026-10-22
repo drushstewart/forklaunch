@@ -207,6 +207,8 @@ fn reserved_method_names() -> BTreeSet<String> {
         "with_jwt".into(),
         "with_basic_auth".into(),
         "with_hmac_authorization".into(),
+        "with_hmac_secret".into(),
+        "with_hmac_signer".into(),
         "with_auth_hook".into(),
     ])
 }
@@ -415,6 +417,7 @@ fn reserved_type_names() -> BTreeSet<String> {
         "SdkError",
         "ResponseValidator",
         "SdkAuth",
+        "HmacSigner",
         "SdkEventStream",
         "MultipartResponse",
         "MultipartResponsePart",
@@ -498,6 +501,8 @@ fn compile_fields(
         transparent: false,
         has_default: true,
         variants: vec![],
+        string_enum: false,
+        enum_variants: vec![],
     };
     if models.insert(name.into(), model).is_some() {
         bail!("Conflicting generated request model {name}");

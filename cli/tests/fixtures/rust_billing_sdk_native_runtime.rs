@@ -43,6 +43,28 @@ async fn generated_rust_sdk_calls_persistent_billing_and_portal() {
         .await
         .unwrap();
     assert!(matches!(response, CreatePlanResponses::Status200(_)));
+    // Per-request signing: every call carries a fresh timestamp and nonce over the
+    // full wire path, so the same client calls plan and payment-link routes.
+    let signed = Client::new(std::env::var("BILLING_BASE_URL").unwrap())
+        .with_hmac_secret(std::env::var("BILLING_HMAC_SECRET").unwrap());
+    for _ in 0..2 {
+        let response = signed
+            .get_plan(GetPlanRequest {
+                params: GetPlanParams { id: id.clone() },
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert!(matches!(response, GetPlanResponses::Status200(_)));
+    }
+    let response = signed
+        .create_payment_link_raw(CreatePaymentLinkRequest {
+            body: Some(std::env::var("BILLING_LINK_BODY").unwrap()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(matches!(response, CreatePaymentLinkResponses::Status200(_)));
     let response = client
         .get_billing_portal_session(GetBillingPortalSessionRequest {
             params: GetBillingPortalSessionParams {

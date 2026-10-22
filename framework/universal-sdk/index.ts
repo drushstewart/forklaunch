@@ -28,7 +28,7 @@ export const universalSdk = async <TypedController>(options: UniversalSdkOptions
       maxMultipartResponseBytes: options.maxMultipartResponseBytes,
       headers: options.headers, beforeRequest: options.beforeRequest,
       allowPlaintextDevelopment: options.allowPlaintextDevelopment,
-      serviceBaseUrls: options.serviceBaseUrls }
+      serviceBaseUrls: options.serviceBaseUrls, hmac: options.hmac }
   );
 
   const proxyInternal = new Proxy(sdkInternal, {
@@ -111,6 +111,7 @@ export type { ZodRegexExecution } from './src/core/zodRegex';
 
 export type { ForkLaunchSdkRequest, ForkLaunchSdkResponse, ForkLaunchErrorResponses, ForkLaunchHeaders, ForkLaunchSdkRequestMeta } from './src/portableRuntime';
 
-export { ForkLaunchSdkHttpError, forkLaunchQueryOptions, forkLaunchMutationOptions } from './src/portableRuntime';
+export { ForkLaunchSdkHttpError, forkLaunchQueryOptions, forkLaunchMutationOptions, createHmacAuthorization, hmacSignedFetch } from './src/portableRuntime';
+export type { HmacSigningOptions } from './src/portableRuntime';
 export type { ForkLaunchQuerySuccess } from './src/portableRuntime';
 export type { UniversalSdkTransportOptions } from './src/types/sdk.types';

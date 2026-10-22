@@ -19,5 +19,5 @@ pub use response::{
     response_content_type,
 };
 pub use stream::SdkEventStream;
-pub use transport::{MultipartPayload, SdkAuth, UniversalSdk};
+pub use transport::{HmacSigner, MultipartPayload, SdkAuth, UniversalSdk};
 pub use versions::MatchedVersionResponses;
