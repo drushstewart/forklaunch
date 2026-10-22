@@ -256,8 +256,16 @@ export type TypescriptApiSdkClient = {
             wait_for(lambda: 'watch_marker' in sdk_source.read_text()
                      and watch_log.read_text().count('Generated Rust SDK sources') > completed)
             original = sdk_source.read_bytes()
+            # Watch passes wait for a missing TypeScript export instead of
+            # failing; the other services still regenerate and the waiting
+            # service keeps its existing outputs.
+            waiting = 'Waiting for typescript-api to export its OpenAPI document'
+            waited = watch_log.read_text().count(waiting)
+            completed = watch_log.read_text().count('Generated Rust SDK sources')
             custom.unlink()
-            wait_for(lambda: 'SDK regeneration failed' in watch_log.read_text())
+            wait_for(lambda: watch_log.read_text().count(waiting) > waited
+                     and watch_log.read_text().count('Generated Rust SDK sources') > completed)
+            assert 'SDK regeneration failed' not in watch_log.read_text(), watch_log.read_text()
             assert sdk_source.read_bytes() == original
             # Deleting a disposable native service refreshes the existing SDKs.
             failed = subprocess.run([str(binary), 'delete', 'service', 'disposable-api', '--continue', '--path', str(app)],
