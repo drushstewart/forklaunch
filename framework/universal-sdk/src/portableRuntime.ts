@@ -1573,7 +1573,10 @@ export function hmacSignedFetch(
 ): typeof fetch {
   const { secretKey, keyId } = options;
   if (!secretKey) throw new TypeError('HMAC signing requires a secret key');
-  return async (input, init) => {
+  const signed = async (
+    input: RequestInfo | URL,
+    init?: RequestInit
+  ): Promise<Response> => {
     const base = options.fetch ?? fetch;
     const request = new Request(input, init);
     const bytes = request.body ? new Uint8Array(await request.arrayBuffer()) : undefined;
@@ -1603,6 +1606,16 @@ export function hmacSignedFetch(
       integrity: init?.integrity
     });
   };
+  // Bun's `typeof fetch` also carries `preconnect`; forward it when the
+  // underlying fetch has one so the wrapper stays a drop-in replacement.
+  return Object.assign(signed, {
+    preconnect: (...args: unknown[]) => {
+      const base = (options.fetch ?? fetch) as unknown as {
+        preconnect?: (...args: unknown[]) => void;
+      };
+      base.preconnect?.(...args);
+    }
+  }) as typeof fetch;
 }
 
 async function request<Responses extends Record<number, unknown>, ContentTypes extends Partial<Record<number, string>> = {}>(
