@@ -222,10 +222,11 @@ async function checkAuthorizationToken<
 
       // The signed path is the full wire path without the query string, as the
       // Rust verifiers and the universal-sdk signers use. The router-relative
-      // `req.path` that older callers signed is deprecated and accepted only
-      // while HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true (it is not bound to a mount).
+      // `req.path` that older callers signed is deprecated but still accepted
+      // unless HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=false (it is not bound to a mount).
       let verificationResult = false;
-      for (const path of hmacSignedPaths(req)) {
+      const signedPaths = hmacSignedPaths(req);
+      for (const path of signedPaths) {
         verificationResult = Boolean(await auth.verificationFunction({
           method: req?.method ?? '',
           path,
@@ -235,7 +236,10 @@ async function checkAuthorizationToken<
           signature: parsedSignature,
           secretKey: collapsedAuthorizationMethod.hmac.secretKeys[parsedKeyId]
         }));
-        if (verificationResult) break;
+        if (verificationResult) {
+          if (path !== signedPaths[0]) warnMountRelativeHmacPath();
+          break;
+        }
       }
 
       if (!verificationResult) {
@@ -546,16 +550,25 @@ async function checkAuthorizationToken<
  * @param {Response} res - The response object.
  * @param {NextFunction} [next] - The next middleware function.
  */
-/** Deprecated: accept router-relative HMAC paths (`HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true`). */
+/** Deprecated router-relative HMAC paths stay accepted unless `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=false`. */
 function acceptMountRelativeHmacPaths(): boolean {
   const value =
     typeof process === 'undefined'
       ? undefined
       : process.env?.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS;
-  return value != null && ['true', '1'].includes(value.trim().toLowerCase());
+  return value == null || !['false', '0'].includes(value.trim().toLowerCase());
 }
 
-/** Candidate signed paths: the full wire path first, then the opt-in relative form. */
+let warnedMountRelativeHmacPath = false;
+function warnMountRelativeHmacPath() {
+  if (warnedMountRelativeHmacPath) return;
+  warnedMountRelativeHmacPath = true;
+  console.warn(
+    'Accepted an HMAC signature over the router-relative path. Sign the full request path instead; set HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=false to reject the deprecated form.'
+  );
+}
+
+/** Candidate signed paths: the full wire path first, then the deprecated relative form. */
 function hmacSignedPaths(req: {
   path?: string;
   originalUrl?: string;
