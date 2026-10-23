@@ -586,7 +586,8 @@ fn change_infrastructure(
                     .unwrap()
                     .forklaunch_infrastructure_redis = None;
 
-                project_package_json.dependencies.as_mut().unwrap().ioredis = None;
+                // ioredis stays: every generated service declares it,
+                // with or without a cache (see generate_service_package_json).
 
                 manifest_data.projects.iter_mut().for_each(|project| {
                     if project.name == manifest_data.service_name {
