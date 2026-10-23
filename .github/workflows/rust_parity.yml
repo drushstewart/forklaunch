@@ -157,6 +157,10 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: line-tables-only
       FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
       FORKLAUNCH_TEST_S3_ENDPOINT: http://127.0.0.1:9000
+      # Loads .github/actions/rust-build-cache/stable-tmp/preload.cjs once the
+      # cache step has set FORKLAUNCH_STABLE_TMP_PRELOAD; a no-op before that.
+      # Set here because GitHub refuses NODE_OPTIONS through GITHUB_ENV.
+      NODE_OPTIONS: --import=data:text/javascript,if(process.env.FORKLAUNCH_STABLE_TMP_PRELOAD){(await(import(%22node:module%22))).createRequire(process.env.FORKLAUNCH_STABLE_TMP_PRELOAD)(process.env.FORKLAUNCH_STABLE_TMP_PRELOAD)}
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
@@ -1061,6 +1065,10 @@ jobs:
       FORKLAUNCH_TEST_KAFKA_BROKERS: 127.0.0.1:9092
       # Required at startup since 7248a878d; the module HTTP tests exercise /mcp.
       MCP_ENABLED: 'true'
+      # Loads .github/actions/rust-build-cache/stable-tmp/preload.cjs once the
+      # cache step has set FORKLAUNCH_STABLE_TMP_PRELOAD; a no-op before that.
+      # Set here because GitHub refuses NODE_OPTIONS through GITHUB_ENV.
+      NODE_OPTIONS: --import=data:text/javascript,if(process.env.FORKLAUNCH_STABLE_TMP_PRELOAD){(await(import(%22node:module%22))).createRequire(process.env.FORKLAUNCH_STABLE_TMP_PRELOAD)(process.env.FORKLAUNCH_STABLE_TMP_PRELOAD)}
     steps:
       - uses: actions/checkout@v7
       # The Kafka worker's rdkafka-sys builds librdkafka with curl and SASL.
