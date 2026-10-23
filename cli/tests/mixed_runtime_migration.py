@@ -41,7 +41,10 @@ try:
   assert package['scripts']['retention:enforce']==('bun run scripts/enforce-retention.ts' if runtime=='bun' else 'pnpm tsx scripts/enforce-retention.ts')
   run([pm,'install','--ignore-scripts'],app/'modules')
   run([sys.executable,str(repo/'cli/tests/fixtures/worker_runtime_lock.py'),'-c',shlex.join([pm,'run','build'])],app/'modules')
-  assert (app/'.forklaunch/contracts/api/contract.json').is_file()
+  # Services build with plain tsc; the CLI compiles contract SDKs separately
+  # (the service's `sdk:build` script runs this same command).
+  command('sdk','build','--service','api')
+  assert (app/api['metadata']['contractArtifactPath']).is_file()
   print('PASS normal dual-SDK build:',runtime,flush=True)
   sample=app/'modules/api/runtime.test.ts';sample.write_text("import {expect,test} from 'vitest';test('selected runner',()=>expect(4).toBe(4));\n")
   run([pm,'run','test','--run','runtime.test.ts'],app/'modules/api');sample.unlink()

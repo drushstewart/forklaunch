@@ -40,7 +40,14 @@ env = {**os.environ, 'FORKLAUNCH_SKIP_FORMAT': '1', 'FORKLAUNCH_ACCOUNT': 'parit
 print(f'RUN {runtime} mixed dev: CLI {binary} SHA-256 {hashlib.sha256(binary.read_bytes()).hexdigest()}', flush=True)
 def cli(*args):
     return subprocess.run([str(binary), *args, '--path', str(app)], cwd=root, env=env, check=True, timeout=180)
-cli('init', 'application', name,
+# Opt-in local framework checkout (FORKLAUNCH_TEST_FRAMEWORK_PATH=<repo>/framework-rs)
+# for framework or blueprint changes not yet on crates.io. Not the
+# local_crates_patch fixture: its host-absolute [patch.crates-io] paths travel
+# into the Docker images through .cargo/config.toml, where they do not exist;
+# --framework-path reaches the images as named build contexts instead.
+framework_path = os.environ.get('FORKLAUNCH_TEST_FRAMEWORK_PATH')
+framework = ['--framework-path', str(Path(framework_path).resolve())] if framework_path else []
+cli('init', 'application', name, *framework,
     '--database', 'postgresql', '--validator', 'zod', '--formatter', 'prettier', '--linter', 'oxlint',
     '--http-framework', 'express', '--runtime', runtime, '--test-framework', 'vitest',
     '-D', 'Mixed development', '-A', 'ForkLaunch', '-L', 'MIT')

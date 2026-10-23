@@ -143,6 +143,15 @@ pub(crate) struct ProjectMetadata {
         skip_serializing_if = "Option::is_none"
     )]
     pub(crate) contract_export: Option<bool>,
+    /// TypeScript service whose SDKs `forklaunch sdk build` compiles from its
+    /// contract modules (see `sdk::typescript_build`). Typed so manifest
+    /// rewrites (for example `change application`) keep it.
+    #[serde(
+        rename = "contractBuild",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub(crate) contract_build: Option<bool>,
     #[serde(
         rename = "staticPath",
         alias = "static_path",
