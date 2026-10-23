@@ -65,7 +65,7 @@ export async function statuses(){
  void [status,error];
 }
 `);
- writeFileSync(join(temporary,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',lib:['ES2022','DOM'],types:[],outDir:'compiled'},include:['*.ts']}));
+ writeFileSync(join(temporary,'tsconfig.json'),JSON.stringify({compilerOptions:{strict:true,target:'ES2022',module:'NodeNext',moduleResolution:'NodeNext',lib:['ES2022','DOM','DOM.Iterable'],types:[],outDir:'compiled'},include:['*.ts']}));
  run(join(dependencies,'node_modules/.bin/tsc'),['-p',join(temporary,'tsconfig.json')]);
  const {createForkLaunchSdk,forkLaunchQueryOptions:query,forkLaunchMutationOptions:mutation,ForkLaunchSdkHttpError}=require(join(temporary,'compiled/sdk.js'));
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));

@@ -1205,7 +1205,15 @@ function sseEvents(response: Response, maxEventBytes = 1048576, onClose: () => v
                         if (data !== '') {
                             const raw = data.slice(0, -1);
                             data = '';
-                            const parsed: unknown = JSON.parse(raw);
+                            // Non-JSON data stays text, as the universal SDK and
+                            // the native codec deliver it.
+                            let parsed: unknown;
+                            try {
+                                parsed = JSON.parse(raw);
+                            }
+                            catch {
+                                parsed = raw;
+                            }
                             const event = id === undefined ? { data: parsed } : { data: parsed, id };
                             const decoded = validate ? validate(event) : event;
                             yield decoded as { data: unknown; id?: string };
@@ -1456,8 +1464,11 @@ async function matchVersionRequest(metadata:SdkVersionMetadata, path:string, bas
       if(branch.bodyMedia!==media)continue;
       const formText=typeof body==='string'?text:new TextDecoder().decode(bytes), count=formText.split('&').length;
       if(count>options.formParameterLimit)throw new TypeError('Version form parameter limit');
-      const qs=await import('qs');
-      const value=qs.default.parse(formText,{allowPrototypes:true,depth:options.formExtended?options.formDepth:0,strictDepth:true,parameterLimit:options.formParameterLimit,arrayLimit:options.formExtended?Math.max(100,count):count,charsetSentinel:options.formCharsetSentinel,interpretNumericEntities:options.formInterpretNumericEntities,charset:'utf-8'});
+      // `qs` is CommonJS: Node's ESM loader exposes it as `default`; TypeScript
+      // only types that without esModuleInterop when the namespace is used.
+      const qsModule=await import('qs');
+      const qs=(qsModule as unknown as {default?:typeof qsModule}).default??qsModule;
+      const value=qs.parse(formText,{allowPrototypes:true,depth:options.formExtended?options.formDepth:0,strictDepth:true,parameterLimit:options.formParameterLimit,arrayLimit:options.formExtended?Math.max(100,count):count,charsetSentinel:options.formCharsetSentinel,interpretNumericEntities:options.formInterpretNumericEntities,charset:'utf-8'});
       accepted=socketValidator(branch.bodySchema,execution)(value);
     }
     else if(branch.bodyKind==='binary'){if(branch.bodyMedia!==media)continue;accepted=socketValidator(branch.bodySchema,execution)(Array.from(bytes));}

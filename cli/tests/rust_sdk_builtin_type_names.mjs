@@ -112,6 +112,7 @@ run("cargo", [
   "codegen_fixed_tuple_models",
 ]);
 // Pin the public TypeScript output captured before Rust qualification changed.
+// Ordinary DTOs expose only their declared members (no implicit index signature).
 for (const [name, schema, typescript] of [
   [
     "String",
@@ -120,19 +121,19 @@ for (const [name, schema, typescript] of [
       required: ["label"],
       properties: { label: { type: "string" } },
     },
-    "{ label: string } & Record<string, unknown>",
+    "{ label: string }",
   ],
   ["Vec", { type: "array", items: { type: "string" } }, "Array<string>"],
   [
     "Option",
     { type: "object", properties: { label: { type: "string" } } },
-    "{ label?: string } & Record<string, unknown>",
+    "{ label?: string }",
   ],
   ["Default", { type: "string", enum: ["a", "b"] }, "'a' | 'b'"],
   [
     "Serialize",
     { type: "object", properties: { label: { type: "string" } } },
-    "{ label?: string } & Record<string, unknown>",
+    "{ label?: string }",
   ],
 ]) {
   const [model] = JSON.parse(

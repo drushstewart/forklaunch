@@ -110,7 +110,8 @@ const validator = {
 };
 const schemas = [
   { const: { '$serde_json::private::Number': '123' } },
-  { const: { '$serde_json::private::RawValue': '{"nested":true}' } },
+  // A literal `$serde_json::private::RawValue` key is upstream serde_json's
+  // raw_value marker (fb1e03d21 dropped the vendored patch), so it is not compared.
 
   ...[undefined, 'draft-04', 'draft-06', '2019-09', '2020-12'].flatMap(
     (draft) => {
@@ -432,7 +433,8 @@ const schemas = [
 ];
 const values = [
   { '$serde_json::private::Number': '123' },
-  { '$serde_json::private::RawValue': '{"nested":true}' },
+  // A literal `$serde_json::private::RawValue` key is upstream serde_json's
+  // raw_value marker (fb1e03d21 dropped the vendored patch), so it is not compared.
   { nested: [{ '$serde_json::private::Number': { literal: true } }] },
 
   '',
@@ -519,7 +521,8 @@ try {
       '--manifest-path',
       path.join(root, 'framework-rs/Cargo.toml'),
       '-p',
-      'forklaunch-ws',
+      // The codec tests moved into forklaunch-core's ws module (fb1e03d21).
+      'forklaunch-core',
       '--all-features',
       'json_schema_payload_conformance',
     ],

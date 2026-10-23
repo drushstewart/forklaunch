@@ -28,7 +28,7 @@ function transpile(file){
   if(modules.has(file))return modules.get(file);
   const exports={};modules.set(file,exports);
   const compiled=transpile(file);
-  const context={exports,Buffer,Blob,Date,ArrayBuffer,Uint8Array,Map,Set,WeakMap,RegExp,require(spec){
+  const context={exports,Buffer,Blob,Date,ArrayBuffer,Uint8Array,Map,Set,WeakMap,RegExp,TextEncoder,TextDecoder,URL,URLSearchParams,structuredClone,crypto:globalThis.crypto,require(spec){
    const override=resolve(spec,file,load);
    if(override!==undefined)return override;
    if(spec==='@forklaunch/common')return load(path.join(root,'framework/common/src/deepCloneWithoutUndefined.ts'));

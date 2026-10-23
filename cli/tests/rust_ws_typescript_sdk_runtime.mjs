@@ -382,7 +382,7 @@ export async function types(client: ForkLaunchSocketClient) {
       { maxMessageBytes: 0 },
     ])
       await assert.rejects(
-        Client.connect('ws://fixture.invalid/chat', options),
+        Client.connect('ws://127.0.0.1:9/chat', options),
         /Invalid/,
       );
     const { WebSocketServer } = external('ws');
@@ -464,7 +464,7 @@ export async function types(client: ForkLaunchSocketClient) {
     });
     for (const cancelled of [false, true]) {
       const wire = stalledSocket();
-      const client = await Client.connect('ws://fixture.invalid/chat', {
+      const client = await Client.connect('ws://127.0.0.1:9/chat', {
         webSocketOptions: { createConnection: () => wire },
         writeTimeoutMs: 25,
       });
@@ -485,7 +485,7 @@ export async function types(client: ForkLaunchSocketClient) {
     }
     {
       const wire = stalledSocket();
-      const client = await Client.connect('ws://fixture.invalid/chat', {
+      const client = await Client.connect('ws://127.0.0.1:9/chat', {
         webSocketOptions: { createConnection: () => wire },
         writeTimeoutMs: 25,
       });
@@ -504,7 +504,7 @@ export async function types(client: ForkLaunchSocketClient) {
     }
     {
       const wire = stalledSocket();
-      const client = await Client.connect('ws://fixture.invalid/chat', {
+      const client = await Client.connect('ws://127.0.0.1:9/chat', {
         webSocketOptions: { createConnection: () => wire },
         closeTimeoutMs: 25,
       });
@@ -737,7 +737,7 @@ export async function types(client: ForkLaunchSocketClient) {
   await rm(temporary, { recursive: true, force: true });
 }
 async function cancelReceives(client) {
-  await assert.rejects(client.recv({ timeoutMs: 2 ** 31 }), /Node timer range/);
+  await assert.rejects(client.recv({ timeoutMs: 2 ** 31 }), /Invalid read timeout: exceeds timer range/);
   assert.throws(() => client.close(1005), /Reserved/);
   await assert.rejects(client.recv({ timeoutMs: 5 }), /read timed out/);
   const controller = new AbortController();
