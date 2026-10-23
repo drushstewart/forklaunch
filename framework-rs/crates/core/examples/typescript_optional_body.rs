@@ -63,9 +63,13 @@ fn main() -> anyhow::Result<()> {
         &SdkGenerationPlan::from_registry(SdkTarget::Rust, &registry),
         &forklaunch_core::rust_sdk::RustSdkOptions::new("OptionalClient"),
     )?;
-    assert!(source.contains("pub struct PresenceVersionOptionalRequest"));
-    assert!(source.contains("pub body: Option<String>"));
+    // Generated Rust requests carry the typed body model; an optional body stays
+    // an `Option`.
+    assert!(source.contains(
+        "pub struct PresenceVersionOptionalRequest<T = PresenceVersionOptionalRequestBody>"
+    ));
+    assert!(source.contains("pub body: Option<T>"));
     std::fs::write(output.join("client.rs"), source)?;
-    println!("{}", json!({"optional":true,"rustBody":"Option<String>"}));
+    println!("{}", json!({"optional":true,"rustBody":"Option<T>"}));
     Ok(())
 }

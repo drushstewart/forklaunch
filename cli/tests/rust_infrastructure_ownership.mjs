@@ -55,7 +55,9 @@ write('docker-compose.yaml',JSON.stringify(document));
 write('src/alpha/.env.local','# Custom local configuration\nexport REDIS_URL = "redis://127.0.0.1:32770/4"\nUNRELATED=preserved\n');
 const originalEnv=read('src/alpha/.env.local');
 edit('add','alpha','redis');
-assert.equal(read('src/alpha/.env.local'),originalEnv);
+// Add keeps the custom settings and only appends the key the encrypted cache
+// helpers need (cb1b3d0dc); remove takes it back below.
+{const added=read('src/alpha/.env.local');assert.ok(added.startsWith(originalEnv),added);assert.match(added.slice(originalEnv.length),/^ENCRYPTION_KEY=\S+\n$/);}
 assert.equal(compose().services.alpha.environment.REDIS_URL,'redis://human-cache:6379/4');
 document=compose();document.services.redis.image='human/redis:edited';document.services.redis.environment.USER_SETTING='updated';
 write('docker-compose.yaml',JSON.stringify(document));

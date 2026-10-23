@@ -69,8 +69,17 @@ def snapshot(directory=None):
 
 def typescript_sources():
     # SDK declarations/barrels and workspace manifests are generated ownership
-    # boundaries. Existing ordinary TS sources/configuration must stay byte-for-byte.
-    return {relative: digest for relative, digest in snapshot(app / 'modules').items()
+    # boundaries. Existing ordinary TS sources/configuration must stay byte-for-byte,
+    # except that the shared production image excludes its `production` build
+    # output from each service's compiler config (typescript_image.rs).
+    def digest(relative, value):
+        if Path(relative).name != 'tsconfig.json':
+            return value
+        config = json.loads((app / relative).read_text())
+        if isinstance(config.get('exclude'), list):
+            config['exclude'] = [entry for entry in config['exclude'] if entry != 'production']
+        return hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest()
+    return {relative: digest(relative, value) for relative, value in snapshot(app / 'modules').items()
             if Path(relative).name != 'package.json'
             and relative != 'modules/pnpm-workspace.yaml'
             and not relative.startswith(('modules/client-sdk/', 'modules/.forklaunch/'))
@@ -122,7 +131,9 @@ try:
         # Dockerfile is preserved once the generated image has its language name.
         managed_image = app / 'Dockerfile'
         generated_image = managed_image.read_bytes()
-        managed_image.write_text(custom_dockerfile)
+        # Ownership is recorded only in the file's generation stamp (d3fe042d1):
+        # an edit keeps the stamp, while a file without one is a custom image.
+        managed_image.write_bytes(generated_image + b'# local edit\n')
         before = snapshot()
         failed = run('init', 'service', 'native-api', '--language', 'rust', '-D', 'Native API', success=False)
         assert 'Dockerfile was modified' in failed.stdout + failed.stderr

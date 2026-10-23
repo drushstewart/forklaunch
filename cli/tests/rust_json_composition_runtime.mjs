@@ -242,7 +242,9 @@ let invalid=client.transform${mode}public_raw(${prefix}Request {body:Some(r#"{"a
 ${mode==='error'?`let ${prefix}Responses::Status400(error)=invalid else {panic!("expected rejection")};assert!(error.contains("formats"));assert!(error.contains("Invalid enum value"));assert!(error.contains("Intersection results could not be merged"));`:`let ${prefix}Responses::Status200(value)=invalid else {panic!("expected validation bypass")};assert_eq!(value["body"],serde_json::json!({"amount":"2","boundedItems":[false],"floatText":"a","caseText":"ﬃ","event":{"kind":"A","count":"2"},"conflict":" x ","kind":"unknown","choice":{"nested":false},"settings":{"enabled":"true","z":1,"a":2},"labels":{"z":"bad","a":"bad"},"formats":{"time":"12","jwt":"bad","ip":"127.0.0.1","emoji":"a"},"extra":"retained"}));`}`;
  }).join('\n');
  mkdirSync(join(temporary,'rust-sdk/src'),{recursive:true});
- writeFileSync(join(temporary,'rust-sdk/Cargo.toml'),'[package]\nname="composition-sdk-proof"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nreqwest={version="0.12",default-features=false,features=["json"]}\nserde={version="1",features=["derive"]}\nserde_json="=1.0.151"\ntokio={version="1",features=["rt-multi-thread","macros"]}\n');
+ writeFileSync(join(temporary,'rust-sdk/Cargo.toml'),'[package]\nname="composition-sdk-proof"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\n'+
+  // Generated Rust clients run on the universal-sdk runtime crate.
+  'forklaunch-universal-sdk={path='+JSON.stringify(join(root,'framework-rs/crates/universal-sdk'))+'}\nreqwest={version="0.13",default-features=false,features=["json"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\ntokio={version="1",features=["rt-multi-thread","macros"]}\n');
  writeFileSync(join(temporary,'rust-sdk/src/main.rs'),rustSource+'\n#[tokio::main] async fn main(){let client=CompositionClient::new('+JSON.stringify(rust)+');'+rustCalls+'}');
  run('cargo',['run','--quiet','--manifest-path',join(temporary,'rust-sdk/Cargo.toml')]);
  console.log('PASS six generated Rust SDK composition success/failure calls');

@@ -117,7 +117,7 @@ const sdk=createForkLaunchSdk();if(false){sdk.optional.presence.presenceVersionO
  run(process.env.TSC_BIN??join(root,'framework/node_modules/.bin/tsc'),['--strict','--noEmit','--skipLibCheck','--target','ES2022','--module','NodeNext','--moduleResolution','NodeNext','types.ts','client.ts']);
  writeFileSync(join(temporary,'client-check.ts'),`
 import assert from 'node:assert/strict';import {createForkLaunchSdk} from './client';
-const calls:any[]=[];const sdk=createForkLaunchSdk({baseUrl:'http://fixture',fetch:async(_url:any,input:any)=>{calls.push(input);return new Response(null,{status:204});}});
+const calls:any[]=[];const sdk=createForkLaunchSdk({baseUrl:'http://127.0.0.1:9',fetch:async(_url:any,input:any)=>{calls.push(input);return new Response(null,{status:204});}});
 await sdk.optional.presence.presenceVersionOptional();await sdk.optional.presence.presenceVersionOptional({body:{flag:'ok'}});
 assert.equal(calls[0].body,undefined);assert.equal(calls[0].headers.get('content-type'),null);assert.equal(calls[1].body,'{"flag":"ok"}');
 `);

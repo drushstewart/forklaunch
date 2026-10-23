@@ -504,8 +504,10 @@ pub(crate) fn generate_rust_router(matches: &ArgMatches) -> Result<()> {
             let source = native_router_rs(&router_name);
             let (contract, handler) = source.split_once("pub fn register(").context("module route template")?;
             write_text_file_preserving_existing(&service_path.join("api/contracts/extensions").join(format!("{router_module}.rs")),
-                &contract.replace("use forklaunch_axum::ForkLaunchRouter;", ""), dryrun, &mut stdout)?;
-            format!("use forklaunch_axum::ForkLaunchRouter;\npub use crate::api::contracts::extensions::{router_module}::{{contract, contracts, ROUTE_NAME}};\npub fn register({handler}")
+                // Declarations compile in the contract host, which has no
+                // runtime dependencies; handler imports stay with the handler.
+                &contract.replace("use forklaunch_axum::ForkLaunchRouter;", "").replace("use axum::Json;\n", ""), dryrun, &mut stdout)?;
+            format!("use axum::Json;\nuse forklaunch_axum::ForkLaunchRouter;\npub use crate::api::contracts::extensions::{router_module}::{{contract, contracts, ROUTE_NAME}};\npub fn register({handler}")
         } else if builtin {
             native_router_rs(&router_name)
         } else {
@@ -3393,6 +3395,34 @@ pub(crate) fn remove_cargo_member(app_root: &Path, member: &str) -> Result<()> {
     edit_cargo_members(app_root, |members| {
         members.retain(|value| value.as_str() != Some(member))
     })
+}
+
+/// A renamed TypeScript project keeps its generated Rust SDK crate (a root
+/// workspace member) under the new directory.
+pub(crate) fn rename_typescript_sdk_member(app_root: &Path, old_dir: &Path, new_dir: &Path) -> Result<()> {
+    if !app_root.join("Cargo.toml").exists() {
+        return Ok(());
+    }
+    let relative = |dir: &Path| -> Result<String> {
+        Ok(dir.strip_prefix(app_root).unwrap_or(dir).join("sdk/rust").to_string_lossy().into_owned())
+    };
+    let (current, target) = (relative(old_dir)?, relative(new_dir)?);
+    let listed = read_to_string(app_root.join("Cargo.toml"))?
+        .parse::<toml_edit::DocumentMut>()?
+        .get("workspace")
+        .and_then(|workspace| workspace.get("members"))
+        .and_then(toml_edit::Item::as_array)
+        .is_some_and(|members| members.iter().any(|member| member.as_str() == Some(current.as_str())));
+    if listed {
+        replace_cargo_member(app_root, &current, &target)?;
+    }
+    Ok(())
+}
+
+/// A deleted TypeScript project's generated Rust SDK crate leaves the root workspace.
+pub(crate) fn remove_typescript_sdk_member(app_root: &Path, dir: &Path) -> Result<()> {
+    let member = dir.strip_prefix(app_root).unwrap_or(dir).join("sdk/rust");
+    remove_cargo_member(app_root, &member.to_string_lossy())
 }
 
 fn replace_cargo_member(app_root: &Path, current_member: &str, target_member: &str) -> Result<()> {

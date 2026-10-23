@@ -40,7 +40,7 @@ const key=()=>{const value=`fl-json-parity:${randomUUID()}`;keys.push(value);ret
 let nativeExecutable;
 async function buildNative(){
  const manifest=path.join(root,'framework-rs/Cargo.toml');
- const child=spawn('cargo',['build','--quiet','--manifest-path',manifest,'-p','forklaunch-infrastructure-redis','--features','redis-client,encryption,serde_json/arbitrary_precision,serde_json/raw_value','--example','json_cache_parity'],{cwd:root,env:process.env,stdio:'inherit'});
+ const child=spawn('cargo',['build','--quiet','--manifest-path',manifest,'-p','forklaunch-infrastructure-redis','--features','redis-client,encryption','--example','json_cache_parity'],{cwd:root,env:process.env,stdio:'inherit'});
  await new Promise((resolve,reject)=>{child.once('error',reject);child.once('close',code=>code===0?resolve():reject(new Error(`Native fixture build failed: ${code}`)));});
  const metadata=JSON.parse(execFileSync('cargo',['metadata','--manifest-path',manifest,'--no-deps','--format-version','1'],{cwd:root,env:process.env,encoding:'utf8'}));
  return path.join(metadata.target_directory,'debug/examples/json_cache_parity');
@@ -61,7 +61,8 @@ try{
    assert.deepEqual(await native([{op:'put',key:rustKey,value}],{format}),[null]);
    const record=await actual.readRecord(rustKey,compliance);
    assert.deepEqual(record.value,value);assert.ok(record.ttlMilliseconds>0);
-   const wire=await transport.command('GET',rustKey);assert.ok(wire.startsWith(`${format}:`));
+   // Native writers always seal randomized, stamped v4 envelopes (JsonRecordCodec::encode).
+   const wire=await transport.command('GET',rustKey);assert.ok(wire.startsWith('v4:'),wire);
    assert.deepEqual(common.safeParse(new FieldEncryptor(master,{previousKeys:previous}).decrypt(wire,tenant)),value);
    assert.ok((await native([{op:'get',key:rustKey}],{tenant:'wrong-tenant'}))[0].error);
    assert.equal((await native([{op:'get',key:rustKey}],{tenant:null}))[0].error,'record_tenant_required');

@@ -49,7 +49,7 @@ def snapshot():
 def contracts():
     manifest = tomllib.loads((app / '.forklaunch/manifest.toml').read_text())
     return {project['name']: json.loads((app / project['metadata']['contractArtifactPath']).read_text())
-            for project in manifest['projects'] if project['name'] in ['iam', 'cac', 'messaging']}
+            for project in manifest['projects'] if project['name'] in ['iam', 'cac', 'billing']}
 
 
 def cac_openapi():
@@ -113,7 +113,7 @@ const wrongBody{index}: string = response{index}.response;
     config = app / 'method-types.tsconfig.json'
     config.write_text(json.dumps({'compilerOptions': {
         'noEmit': True, 'strict': True, 'skipLibCheck': True, 'target': 'ES2022',
-        'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM'],
+        'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable'],
     }, 'files': [str(fixture)]}))
     run(tsc, '--project', config)
 
@@ -125,7 +125,9 @@ try:
     before = snapshot()
     command('init', 'router', 'invalid', '--language', 'rust', success=False)
     assert snapshot() == before, 'Rejected app-root router changed the application'
-    for name in ['iam', 'cac', 'messaging']:
+    for name in ['iam', 'cac', 'billing']:
+        # The messaging module is retired (email/SMS go through the managed
+        # gateway); billing-base is the third builtin router lifecycle.
         command('init', 'module', name, '--language', 'rust', '-m', name + '-base')
         command('init', 'router', 'custom', '--language', 'rust', path=app / 'src' / name)
     # An ordinary service supplies the same public transport package shipped in
@@ -201,7 +203,7 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
                 config = app / 'method-aggregate.tsconfig.json'
                 config.write_text(json.dumps({'compilerOptions': {
                     'noEmit': True, 'strict': True, 'skipLibCheck': True, 'target': 'ES2022',
-                    'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM'],
+                    'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable'],
                 }, 'files': [str(sdk / 'index.ts')]}))
                 run(tsc, '--project', config)
                 # The retained package declares TypeScript source exports with
@@ -226,29 +228,29 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
 
     # Both authored handler and declaration bodies survive change/sync. The
     # changed marker proves lifecycle operations retained the extension hooks.
-    for name in ['iam', 'cac', 'messaging']:
+    for name in ['iam', 'cac', 'billing']:
         command('change', 'router', '-e', 'custom', '-N', 'extra', '--confirm', path=app / 'src' / name)
         command('sync', 'service', name)
-    assert 'request.method().as_str()' in (app / 'src/cac/api/routes/extra.rs').read_text()
+    assert 'request.method().as_str()' in (app / 'src/cac/api/routes/extensions/extra.rs').read_text()
     run('cargo', 'check', '--workspace', '--all-targets')
     command('openapi', 'export')
     for name, artifact in contracts().items():
         assert any(route['path'] == '/extra' for route in artifact['routes']), name
         assert not any(route['path'] == '/custom' for route in artifact['routes']), name
     assert len([route for route in contracts()['cac']['routes'] if route['path'].startswith('/verbs/')]) == 27
-    for name in ['iam', 'cac', 'messaging']:
+    for name in ['iam', 'cac', 'billing']:
         command('delete', 'router', 'extra', '--continue', path=app / 'src' / name)
     run('cargo', 'check', '--workspace', '--all-targets')
     command('openapi', 'export')
     for name, artifact in contracts().items():
         assert not any(route['path'] == '/extra' for route in artifact['routes']), name
     assert not any(route['path'].startswith('/verbs/') for route in contracts()['cac']['routes'])
-    server = app / 'src/messaging/api/routes/mod.rs'
+    server = app / 'src/billing/api/routes/mod.rs'
     original = server.read_text()
     assert 'extensions::register_router(' in original
     server.write_text(original.replace('extensions::register_router(', '('))
     before = snapshot()
-    result = command('init', 'router', 'unsupported', '--language', 'rust', path=app / 'src/messaging', success=False)
+    result = command('init', 'router', 'unsupported', '--language', 'rust', path=app / 'src/billing', success=False)
     assert 'does not expose custom router hooks' in result.stdout + result.stderr
     assert snapshot() == before, 'Missing-hook rejection changed application files'
     print('PASS all 27 HTTP methods, both SDK sources and all builtin module router lifecycles', flush=True)

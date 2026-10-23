@@ -10,10 +10,13 @@ fn opaque_binary_object(object: &Map<String, Value>) -> bool {
     object.get("type").and_then(Value::as_str) == Some("string")
             && object.get("format").and_then(Value::as_str) == Some("binary")
             // The TS file exporter represents Buffer/ArrayBuffer/Blob guards as
-            // empty alternatives. Only this exact legacy File marker is opaque.
-            && object.get("oneOf").is_none_or(|alternatives| {
-                object.get("title").and_then(Value::as_str) == Some("File")
-                    && *alternatives == serde_json::json!([{}, {}, {}, {"type":["string"]}])
+            // empty alternatives, under `oneOf` or (newer OpenAPI exporters)
+            // `anyOf`. Only this exact legacy File marker is opaque.
+            && ["oneOf", "anyOf"].iter().all(|keyword| {
+                object.get(*keyword).is_none_or(|alternatives| {
+                    object.get("title").and_then(Value::as_str) == Some("File")
+                        && *alternatives == serde_json::json!([{}, {}, {}, {"type":["string"]}])
+                })
             })
             && object.keys().all(|key| {
                 matches!(
@@ -21,6 +24,7 @@ fn opaque_binary_object(object: &Map<String, Value>) -> bool {
                     "type"
                         | "format"
                         | "oneOf"
+                        | "anyOf"
                         | "$schema"
                         | "$id"
                         | "id"
@@ -53,6 +57,7 @@ pub(super) fn rewrite(schema: &Map<String, Value>) -> Result<Option<Value>, Stri
     object.insert("type".into(), json!(["array", "string"]));
     object.remove("format");
     object.remove("oneOf");
+    object.remove("anyOf");
     object.insert(
         "items".into(),
         json!({"type":"integer","minimum":0,"maximum":255}),
@@ -126,8 +131,19 @@ mod tests {
             json!({"type":"string","format":"binary","title":"File","oneOf":[{}]}),
             json!({"type":"string","format":"binary","title":"Manual","oneOf":[{},{},{},{"type":["string"]}]}),
             json!({"type":"string","format":"binary","title":"File","oneOf":[{},{},{},{"type":["string"]}],"maxLength":1}),
+            json!({"type":"string","format":"binary","title":"Manual","anyOf":[{},{},{},{"type":["string"]}]}),
         ] {
             assert!(compile_multipart(&schema).is_err());
+        }
+    }
+
+    #[test]
+    fn the_file_marker_is_opaque_under_one_of_or_any_of() {
+        for keyword in ["oneOf", "anyOf"] {
+            let schema = json!({"type":"string","format":"binary","title":"File",
+                keyword:[{},{},{},{"type":["string"]}]});
+            assert!(opaque_binary_schema(&schema), "{keyword}");
+            assert!(compile_multipart(&schema).is_ok(), "{keyword}");
         }
     }
 }

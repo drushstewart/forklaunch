@@ -107,7 +107,15 @@ function sseEvents(response: Response, maxEventBytes = 1048576, onClose: () => v
                         if (data !== '') {
                             const raw = data.slice(0, -1);
                             data = '';
-                            const parsed: unknown = JSON.parse(raw);
+                            // Non-JSON data stays text, as the universal SDK and
+                            // the native codec deliver it.
+                            let parsed: unknown;
+                            try {
+                                parsed = JSON.parse(raw);
+                            }
+                            catch {
+                                parsed = raw;
+                            }
                             const event = id === undefined ? { data: parsed } : { data: parsed, id };
                             const decoded = validate ? validate(event) : event;
                             yield decoded as { data: unknown; id?: string };

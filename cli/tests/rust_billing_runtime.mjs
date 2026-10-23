@@ -90,7 +90,9 @@ try{
   const supplied=await call(base,'/plan','POST',{...planBody,externalId:randomUUID(),id:'must-not-be-a-local-id',undeclaredField:'must-be-stripped'});
   assert.notEqual(supplied.id,'must-not-be-a-local-id');assert.equal(Object.hasOwn(supplied,'undeclaredField'),false);
   if(stripe){const {stripeFields,...withoutProvider}=planBody;await call(base,'/plan','POST',withoutProvider);}
-  else await call(base,'/plan','POST',{...planBody,providerFields:'invalid-record'},400);
+  // The TypeScript validator's unknown() accepts any providerFields value
+  // (a821c0fe8); the native base contract matches it (b0a2ce67a).
+  else await call(base,'/plan','POST',{...planBody,externalId:randomUUID(),providerFields:'unconstrained-record'});
 
   const created=await client.plan.createPlan({body:planBody,headers:{authorization:billingHmac(base,'/plan','POST',JSON.stringify(planBody))}});assert.equal(created.code,200);const plan=created.response;
   await call(base,`/plan/${plan.id}`);assert.equal((await call(base,'/plan')).length>=1,true);

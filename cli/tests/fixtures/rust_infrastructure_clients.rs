@@ -8,13 +8,15 @@ use storage::{redis_infrastructure, s3_infrastructure};
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::args().any(|arg| arg == "--unconfigured") {
+        // Generated factories read their settings through
+        // forklaunch_core::config::required (fa3195530).
         assert_eq!(
             redis_infrastructure::config().unwrap_err().code(),
-            "redis_config_invalid"
+            "config_missing"
         );
         assert_eq!(
             s3_infrastructure::object_store().unwrap_err().code(),
-            "s3_config_invalid"
+            "config_missing"
         );
         println!("PASS native infrastructure factories reject missing settings without connecting");
         return Ok(());

@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from pathlib import Path
 import shlex
 import shutil
@@ -39,8 +40,11 @@ assert report['scope'] == 'framework'
 versions = {p['name']: p['version'] for p in report['packages']}
 blueprint_report = json.loads((args.blueprint_release / 'release.json').read_text()) if args.blueprint_release else None
 assert blueprint_report is None or blueprint_report['scope'] == 'blueprint'
+# Without a staged blueprint release, generated apps pin the published blueprint
+# crates at the CLI's BLUEPRINT_VERSION.
+published_blueprint = re.search(r'BLUEPRINT_VERSION: &str = "([^"]+)"', (repo / 'cli/src/core/cargo_toml/cargo_toml_constants.rs').read_text()).group(1)
 blueprint_versions = {p['name']: p['version'] for p in blueprint_report['packages']} if blueprint_report else {
-    name: '0.1.1' for name in ['forklaunch-worker-interface', 'forklaunch-worker-database', 'forklaunch-worker-redis', 'forklaunch-worker-kafka']}
+    name: published_blueprint for name in ['forklaunch-worker-interface', 'forklaunch-worker-database', 'forklaunch-worker-redis', 'forklaunch-worker-kafka']}
 cli = Path(os.environ['FORKLAUNCH_CLI']).resolve()
 env = {**os.environ, 'RUSTUP_TOOLCHAIN': 'stable', 'CARGO_INCREMENTAL': '0'}
 env.pop('FORKLAUNCH_SKIP_FORMAT', None)

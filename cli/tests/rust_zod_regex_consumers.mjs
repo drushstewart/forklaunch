@@ -113,7 +113,7 @@ try {
     "typescript_socket_artifacts",
   ];
   run("cargo", build);
-  const binary = path.join(target, "debug/examples/socket_artifacts");
+  const binary = path.join(target, "debug/examples/typescript_socket_artifacts");
   const denied = invoke(binary, [artifact, "all"]);
   assert.notEqual(denied.status, 0);
   assert.equal(denied.stdout, "");
