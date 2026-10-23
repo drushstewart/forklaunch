@@ -47,5 +47,5 @@ runs:
       if: steps.stats.outputs.save == 'true'
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/sccache-ci
-        key: sccache-v1-${{ runner.os }}-${{ env.FORKLAUNCH_SCCACHE_FAMILY }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ env.SCCACHE_DIR }}
+        key: sccache-v2-${{ runner.os }}-${{ env.FORKLAUNCH_SCCACHE_FAMILY }}-${{ github.run_id }}-${{ github.run_attempt }}

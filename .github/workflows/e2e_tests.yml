@@ -150,6 +150,7 @@ jobs:
         with:
           family: generated
           fallback-family: cli
+          size: 1200M
 
       - uses: actions/setup-python@v5
         with:
@@ -339,6 +340,7 @@ jobs:
         uses: ./.github/actions/rust-build-cache
         with:
           family: generated
+          size: 1200M
 
       # rdkafka-sys (generated Kafka workers) builds librdkafka, which needs libcurl headers.
       - name: Install native build dependencies for generated workers
@@ -485,6 +487,7 @@ jobs:
         uses: ./.github/actions/rust-build-cache
         with:
           family: generated
+          size: 1200M
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

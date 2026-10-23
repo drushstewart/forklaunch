@@ -26,9 +26,12 @@ inputs:
       Family to start from when this one has no store yet, for instance the
       CLI's store for a job that also builds the CLI.
     default: ''
+  # Every family's store is one entry against the repository's 10 GB Actions
+  # cache, shared with pnpm, CodeQL and the other branches' stores. Uncapped,
+  # the parity stores alone reached 2.4 GB and 2.7 GB, so keep these small.
   size:
     description: Upper bound sccache keeps the local store under (SCCACHE_CACHE_SIZE).
-    default: 2G
+    default: 1G
   registry-cache:
     description: "'restore' restores the shared Cargo registry cache, 'save' also saves it at the end of the job, 'off' skips it."
     default: 'off'
@@ -69,8 +72,17 @@ runs:
         wrapper="$RUNNER_TEMP/sccache-wrapper/sccache"
         printf '#!/bin/sh\nunset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR\nexec "%s" "$@"\n' "$SCCACHE_PATH" > "$wrapper"
         chmod +x "$wrapper"
+        # Keep the store off the root filesystem when the runner has its
+        # separate temporary disk: with a restored store next to the parity
+        # jobs' target directories, the framework job ran out of space.
+        dir="$HOME/.cache/sccache-ci"
+        if [ -d /mnt ] && sudo -n true 2>/dev/null && sudo mkdir -p /mnt/sccache-ci && sudo chown "$(id -u):$(id -g)" /mnt/sccache-ci; then
+          dir=/mnt/sccache-ci
+        fi
+        mkdir -p "$dir"
+        df -h / "$dir"
         {
-          echo "SCCACHE_DIR=$HOME/.cache/sccache-ci"
+          echo "SCCACHE_DIR=$dir"
           echo "SCCACHE_CACHE_SIZE=$SIZE"
           echo "SCCACHE_IDLE_TIMEOUT=0"
           echo "RUSTC_WRAPPER=$wrapper"
@@ -82,11 +94,11 @@ runs:
     - name: Restore compiler cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
-        path: ~/.cache/sccache-ci
-        key: sccache-v1-${{ runner.os }}-${{ inputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+        path: ${{ env.SCCACHE_DIR }}
+        key: sccache-v2-${{ runner.os }}-${{ inputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
-          sccache-v1-${{ runner.os }}-${{ inputs.family }}-
-          ${{ inputs.fallback-family && format('sccache-v1-{0}-{1}-', runner.os, inputs.fallback-family) || '' }}
+          sccache-v2-${{ runner.os }}-${{ inputs.family }}-
+          ${{ inputs.fallback-family && format('sccache-v2-{0}-{1}-', runner.os, inputs.fallback-family) || '' }}
     - name: Cache Cargo registry
       if: inputs.registry-cache != 'off'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
