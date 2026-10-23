@@ -12,6 +12,7 @@ on:
       - 'blueprint-rs/**/Cargo.toml'
       - 'cli/src/core/cargo_toml/cargo_toml_constants.rs'
       - '.github/workflows/scripts/check_blueprint_deps/**'
+      - '.github/actions/rust-build-cache/**'
   pull_request:
     paths:
       - 'blueprint/**/package.json'
@@ -20,6 +21,7 @@ on:
       - 'blueprint-rs/**/Cargo.toml'
       - 'cli/src/core/cargo_toml/cargo_toml_constants.rs'
       - '.github/workflows/scripts/check_blueprint_deps/**'
+      - '.github/actions/rust-build-cache/**'
 
 permissions:
   contents: read
@@ -33,8 +35,14 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+      - name: Rust build cache
+        uses: ./.github/actions/rust-build-cache
+        with:
+          registry-cache: save
+          registry-key: depcheck
+          workspaces: |
+            cli
+            .github/workflows/scripts/check_blueprint_deps
 
       - name: Build CLI
         run: |

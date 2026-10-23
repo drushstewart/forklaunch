@@ -1,0 +1,49 @@
+name: Rust build cache
+description: >-
+  Shared compiler cache for every Rust build in CI. Installs sccache backed by
+  the GitHub Actions cache and routes every later cargo invocation in the job
+  through it, including the ones test scripts run against scaffolded
+  applications: they inherit RUSTC_WRAPPER from the job environment.
+  Optionally restores (and saves) the Cargo registry and git checkouts with
+  Swatinem/rust-cache; compiled output is left to sccache, so no target
+  directory is cached here.
+inputs:
+  registry-cache:
+    description: "'restore' restores the shared Cargo registry cache, 'save' also saves it at the end of the job, 'off' skips it."
+    default: 'off'
+  registry-key:
+    description: Shared key for the Cargo registry cache. Jobs that resolve the same dependency graphs should share one.
+    default: cargo-home
+  workspaces:
+    description: Workspaces whose manifests and lock files key the registry cache (Swatinem/rust-cache syntax).
+    default: framework-rs
+runs:
+  using: composite
+  steps:
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      with:
+        version: v0.18.0
+    # The absolute path, not the bare name: a few test scripts run cargo with a
+    # reduced PATH, and the wrapper must still resolve there.
+    # CARGO_INCREMENTAL=0 because sccache cannot cache incremental builds.
+    # SCCACHE_IDLE_TIMEOUT=0 keeps one server for the whole job, so the stats
+    # printed at the end cover every compilation and no test step pays a
+    # server restart after a long stretch without compiling.
+    - name: Route cargo through sccache
+      shell: bash
+      run: |
+        {
+          echo "SCCACHE_GHA_ENABLED=true"
+          echo "RUSTC_WRAPPER=$SCCACHE_PATH"
+          echo "CARGO_INCREMENTAL=0"
+          echo "SCCACHE_IDLE_TIMEOUT=0"
+        } >> "$GITHUB_ENV"
+    - name: Cache Cargo registry
+      if: inputs.registry-cache != 'off'
+      uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        shared-key: ${{ inputs.registry-key }}
+        workspaces: ${{ inputs.workspaces }}
+        cache-targets: 'false'
+        save-if: ${{ inputs.registry-cache == 'save' }}

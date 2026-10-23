@@ -11,6 +11,7 @@ on:
       - 'scripts/check_rust_package_owners.py'
       - 'framework/**/package.json'
       - '.github/workflows/build_framework_rs.yml'
+      - '.github/actions/rust-build-cache/**'
   pull_request:
     paths:
       - 'framework-rs/**'
@@ -18,6 +19,7 @@ on:
       - 'scripts/check_rust_package_owners.py'
       - 'framework/**/package.json'
       - '.github/workflows/build_framework_rs.yml'
+      - '.github/actions/rust-build-cache/**'
 
 permissions:
   contents: read
@@ -35,6 +37,13 @@ jobs:
 
       - name: Setup Rust
         run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - name: Rust build cache
+        uses: ./.github/actions/rust-build-cache
+        with:
+          registry-cache: save
+          registry-key: framework-rs
+          workspaces: framework-rs
 
       - name: Check formatting
         run: python3 scripts/rust_format.py framework-rs/Cargo.toml

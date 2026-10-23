@@ -12,6 +12,7 @@ on:
       - "scripts/sync_rust_embedded_sources.py"
       - "scripts/test_sync_rust_embedded_sources.py"
       - ".github/workflows/cli_tests.yml"
+      - ".github/actions/rust-build-cache/**"
   pull_request:
     paths:
       - "cli/**"
@@ -20,6 +21,7 @@ on:
       - "scripts/sync_rust_embedded_sources.py"
       - "scripts/test_sync_rust_embedded_sources.py"
       - ".github/workflows/cli_tests.yml"
+      - ".github/actions/rust-build-cache/**"
 
 permissions:
   contents: read
@@ -59,14 +61,14 @@ jobs:
       - name: Embedded source ownership and Git metadata safety
         run: python3 -m unittest discover -s scripts -p test_sync_rust_embedded_sources.py -v
 
-      - name: Cache Rust dependencies
-        uses: actions/cache@v6
+      # Replaces an actions/cache entry that cached `target` (cargo builds into
+      # cli/target) under a key hashing cli/Cargo.lock, which is gitignored.
+      - name: Rust build cache
+        uses: ./.github/actions/rust-build-cache
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('cli/Cargo.lock') }}
+          registry-cache: save
+          registry-key: cli-tests
+          workspaces: cli
 
       - name: Run CLI tests
         working-directory: ./cli

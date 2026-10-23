@@ -13,6 +13,7 @@ on:
       - 'cli/tests/rust_mcp_service_startup.mjs'
       - 'cli/tests/rust_mcp_probe.mjs'
       - '.github/workflows/rust_release.yml'
+      - '.github/actions/rust-build-cache/**'
   workflow_dispatch:
     inputs:
       scope:
@@ -52,6 +53,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # Compiler cache only; what is published is the packaged source, and the
+      # publish job below builds nothing through it.
+      - name: Rust build cache
+        uses: ./.github/actions/rust-build-cache
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
