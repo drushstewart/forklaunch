@@ -81,6 +81,8 @@
         "blueprint/billing-stripe/__test__/checkoutSession.test.ts",
         "blueprint/billing-stripe/__test__/paymentLink.test.ts",
         "blueprint/billing-stripe/__test__/plan.test.ts",
+        "blueprint/billing-stripe/__test__/stripe-mock.ts",
+        "blueprint/billing-stripe/__test__/stripe-stub.ts",
         "blueprint/billing-stripe/__test__/subscription.test.ts",
         "blueprint/billing-stripe/__test__/test-utils.ts",
         "blueprint/billing-stripe/api/controllers/billingPortal.controller.ts",
@@ -292,6 +294,7 @@
         "blueprint/iam-base/__test__/organization.test.ts",
         "blueprint/iam-base/__test__/permission.test.ts",
         "blueprint/iam-base/__test__/role.test.ts",
+        "blueprint/iam-base/__test__/surfacingPath.test.ts",
         "blueprint/iam-base/__test__/test-utils.ts",
         "blueprint/iam-base/__test__/user.test.ts",
         "blueprint/iam-base/api/contracts/compliance.contract.ts",
@@ -321,6 +324,7 @@
         "blueprint/iam-base/domain/mappers/user.mappers.ts",
         "blueprint/iam-base/domain/schemas/index.ts",
         "blueprint/iam-base/domain/types/iamMappers.types.ts",
+        "blueprint/iam-base/domain/utils/surfacingPath.util.ts",
         "blueprint/iam-base/index.ts",
         "blueprint/iam-base/jest.config.ts",
         "blueprint/iam-base/migrations/Migration00000000000000.ts",
@@ -355,6 +359,7 @@
       "files": [],
       "moduleSources": [
         "blueprint/iam-better-auth/__test__/authEncryptionPolicy.test.ts",
+        "blueprint/iam-better-auth/__test__/authorizationScope.test.ts",
         "blueprint/iam-better-auth/__test__/betterAuthErrorLogging.test.ts",
         "blueprint/iam-better-auth/__test__/encryptionContext.test.ts",
         "blueprint/iam-better-auth/__test__/test-utils.ts",
@@ -2360,7 +2365,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/paymentLink.mapper.types.ts",
               "line": 6,
-              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: Dto['PaymentLinkMapper']\n    ) => Dto['PaymentLinkMapper'];\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.PaymentLink) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePaymentLinkMapper']) => Promise<void>;\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Validate the already-applied provider result and prepare one local update.\n     * Does not resolve aliases or establish provider account ownership.\n     */\n    toLocalUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      provider: Stripe.PaymentLink\n    ) => Promise<Dto['UpdatePaymentLinkMapper']>;\n    toCachedDto?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    /** Validate a patch against the normalized cached DTO before provider I/O.\n     * This hook does not resolve provider IDs or authorize provider mutations.\n     */\n    validateCachedUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
+              "type": "{\n  PaymentLinkMapper: {\n    /** Validate and restore declared DTO fields after a JSON cache read. */\n    normalizeCachedDto?: (\n      value: Dto['PaymentLinkMapper']\n    ) => Dto['PaymentLinkMapper'];\n    entity: Entities['PaymentLinkMapper'];\n    toDto: (\n      entity: InferEntity<Entities['PaymentLinkMapper']>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    validateCachedRead?: (existing: Dto['PaymentLinkMapper']) => void;\n    /** Opt-in cached reference lookup; does not prove provider account ownership. */\n    readCachedDto?: (\n      existing: Dto['PaymentLinkMapper'],\n      retrieve: (providerId: string) => Promise<Stripe.PaymentLink>\n    ) => Promise<Dto['PaymentLinkMapper']>;\n  };\n  CreatePaymentLinkMapper: {\n    /** Provider effects already occurred; validate shape before local persistence. */\n    validateProviderCreate?: (provider: Stripe.PaymentLink) => Promise<void>;\n    /** Pure configured validation before any provider creation effects. */\n    validateCreate?: (dto: Dto['CreatePaymentLinkMapper']) => Promise<void>;\n    entity: Entities['CreatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['CreatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['CreatePaymentLinkMapper']>>;\n  };\n  UpdatePaymentLinkMapper: {\n    /** Validate the already-applied provider result and prepare one local update.\n     * `provider.id` is the stored Stripe id, which the service has already\n     * matched; `dto.id` stays the public id. Does not resolve aliases or\n     * establish provider account ownership.\n     */\n    toLocalUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      provider: Stripe.PaymentLink\n    ) => Promise<Dto['UpdatePaymentLinkMapper']>;\n    toCachedDto?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper'],\n      em: EntityManager,\n      ...args: unknown[]\n    ) => Promise<Dto['PaymentLinkMapper']>;\n    /** Validate a patch against the normalized cached DTO before provider I/O.\n     * This hook does not resolve provider IDs or authorize provider mutations.\n     */\n    validateCachedUpdate?: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      existing: Dto['PaymentLinkMapper']\n    ) => Promise<void>;\n    entity: Entities['UpdatePaymentLinkMapper'];\n    toEntity: (\n      dto: Dto['UpdatePaymentLinkMapper'],\n      em: EntityManager,\n      stripePaymentLink: Stripe.PaymentLink,\n      ...args: unknown[]\n    ) => Promise<InferEntity<Entities['UpdatePaymentLinkMapper']>>;\n  };\n}"
             }
           ]
         },
@@ -2619,35 +2624,35 @@
               "name": "StripeBillingPortalEntities",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.entity.types.ts",
-              "line": 17,
+              "line": 11,
               "type": "{\n  BillingPortalMapper: {\n    '~entity': ResolvedEntity<(typeof BillingPortal)['~entity']>;\n  };\n  CreateBillingPortalMapper: {\n    '~entity': ResolvedEntity<(typeof BillingPortal)['~entity']>;\n  };\n  UpdateBillingPortalMapper: {\n    '~entity': ResolvedEntity<(typeof BillingPortal)['~entity']>;\n  };\n}"
             },
             {
               "name": "StripeCheckoutSessionEntities",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.entity.types.ts",
-              "line": 30,
+              "line": 24,
               "type": "{\n  CheckoutSessionMapper: {\n    '~entity': ResolvedEntity<(typeof CheckoutSession)['~entity']>;\n  };\n  CreateCheckoutSessionMapper: {\n    '~entity': ResolvedEntity<(typeof CheckoutSession)['~entity']>;\n  };\n  UpdateCheckoutSessionMapper: {\n    '~entity': ResolvedEntity<(typeof CheckoutSession)['~entity']>;\n  };\n}"
             },
             {
               "name": "StripePaymentLinkEntities",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.entity.types.ts",
-              "line": 43,
+              "line": 37,
               "type": "{\n  PaymentLinkMapper: {\n    '~entity': ResolvedEntity<(typeof PaymentLink)['~entity']>;\n  };\n  CreatePaymentLinkMapper: {\n    '~entity': ResolvedEntity<(typeof PaymentLink)['~entity']>;\n  };\n  UpdatePaymentLinkMapper: {\n    '~entity': ResolvedEntity<(typeof PaymentLink)['~entity']>;\n  };\n}"
             },
             {
               "name": "StripePlanEntities",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.entity.types.ts",
-              "line": 56,
+              "line": 50,
               "type": "{\n  PlanMapper: {\n    '~entity': ResolvedEntity<(typeof Plan)['~entity']>;\n  };\n  CreatePlanMapper: {\n    '~entity': ResolvedEntity<(typeof Plan)['~entity']>;\n  };\n  UpdatePlanMapper: {\n    '~entity': ResolvedEntity<(typeof Plan)['~entity']>;\n  };\n}"
             },
             {
               "name": "StripeSubscriptionEntities",
               "kind": "TypeAliasDeclaration",
               "source": "blueprint/implementations/billing/stripe/domain/types/stripe.entity.types.ts",
-              "line": 69,
+              "line": 63,
               "type": "{\n  SubscriptionMapper: {\n    '~entity': ResolvedEntity<(typeof Subscription)['~entity']>;\n  };\n  CreateSubscriptionMapper: {\n    '~entity': ResolvedEntity<(typeof Subscription)['~entity']>;\n  };\n  UpdateSubscriptionMapper: {\n    '~entity': ResolvedEntity<(typeof Subscription)['~entity']>;\n  };\n}"
             }
           ]
@@ -2791,19 +2796,19 @@
                   "name": "expireCheckoutSession",
                   "signature": "async expireCheckoutSession({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 148
+                  "line": 170
                 },
                 {
                   "name": "handleCheckoutSuccess",
                   "signature": "async handleCheckoutSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 153
+                  "line": 177
                 },
                 {
                   "name": "handleCheckoutFailure",
                   "signature": "async handleCheckoutFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/checkoutSession.service.ts",
-                  "line": 162
+                  "line": 189
                 }
               ]
             }
@@ -2911,37 +2916,37 @@
                   "name": "updatePaymentLink",
                   "signature": "async updatePaymentLink(\n    paymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>,\n    ...args: unknown[]\n  ): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 164
+                  "line": 188
                 },
                 {
                   "name": "getPaymentLink",
                   "signature": "async getPaymentLink({ id }: IdDto): Promise<Dto['PaymentLinkMapper']>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 220
+                  "line": 244
                 },
                 {
                   "name": "expirePaymentLink",
                   "signature": "async expirePaymentLink({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 241
+                  "line": 265
                 },
                 {
                   "name": "handlePaymentSuccess",
                   "signature": "async handlePaymentSuccess({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 250
+                  "line": 278
                 },
                 {
                   "name": "handlePaymentFailure",
                   "signature": "async handlePaymentFailure({ id }: IdDto): Promise<void>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 259
+                  "line": 291
                 },
                 {
                   "name": "listPaymentLinks",
                   "signature": "async listPaymentLinks(idsDto?: IdsDto): Promise<Dto['PaymentLinkMapper'][]>",
                   "source": "blueprint/implementations/billing/stripe/services/paymentLink.service.ts",
-                  "line": 268
+                  "line": 304
                 }
               ]
             }
@@ -7039,25 +7044,25 @@
               "name": "DatabaseWorkerProducer",
               "kind": "ClassDeclaration",
               "source": "blueprint/implementations/worker/database/producers/databaseWorker.producer.ts",
-              "line": 5,
+              "line": 9,
               "members": [
                 {
                   "name": "constructor",
-                  "signature": "constructor(em: EntityManager, options: Options)",
+                  "signature": "constructor(\n    em: EntityManager,\n    options: Options,\n    entityName?: EntitySchema<EventEntity>\n  )",
                   "source": "blueprint/implementations/worker/database/producers/databaseWorker.producer.ts",
-                  "line": 12
+                  "line": 23
                 },
                 {
                   "name": "enqueueJob",
                   "signature": "async enqueueJob(event: EventEntity): Promise<void>",
                   "source": "blueprint/implementations/worker/database/producers/databaseWorker.producer.ts",
-                  "line": 17
+                  "line": 44
                 },
                 {
                   "name": "enqueueBatchJobs",
                   "signature": "async enqueueBatchJobs(events: EventEntity[]): Promise<void>",
                   "source": "blueprint/implementations/worker/database/producers/databaseWorker.producer.ts",
-                  "line": 21
+                  "line": 48
                 }
               ]
             }
@@ -7303,19 +7308,19 @@
                   "name": "constructor",
                   "signature": "constructor(queueName: string, options: Options)",
                   "source": "blueprint/implementations/worker/kafka/producers/kafkaWorker.producer.ts",
-                  "line": 12
+                  "line": 13
                 },
                 {
                   "name": "enqueueJob",
                   "signature": "async enqueueJob(event: EventEntity): Promise<void>",
                   "source": "blueprint/implementations/worker/kafka/producers/kafkaWorker.producer.ts",
-                  "line": 23
+                  "line": 35
                 },
                 {
                   "name": "enqueueBatchJobs",
                   "signature": "async enqueueBatchJobs(events: EventEntity[]): Promise<void>",
                   "source": "blueprint/implementations/worker/kafka/producers/kafkaWorker.producer.ts",
-                  "line": 30
+                  "line": 43
                 }
               ]
             }
@@ -13886,7 +13891,7 @@
               "name": "parseRequestAuth",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/http/middleware/request/auth.middleware.ts",
-              "line": 541
+              "line": 584
             }
           ]
         },
@@ -14777,109 +14782,109 @@
                   "name": "registerRoute",
                   "signature": "registerRoute<\n    Name extends string,\n    ContractMethod extends Method,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, ContractMethod>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    method: ContractMethod,\n    path: Path,\n    registrationMethod: PathBasedHandler<RouterHandler>,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      ContractMethod,\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareAndTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      ContractMethod,\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ): this & {\n    _fetchMap: Prettify<\n      FetchMap extends Record<\n        SanitizePathSlashes<`${BasePath}${Path}`>,\n        unknown\n      >\n        ? FetchMap &\n            Record<\n              SanitizePathSlashes<`${BasePath}${Path}`>,\n              FetchMap[SanitizePathSlashes<`${BasePath}${Path}`>] &\n                Record<\n                  Uppercase<ContractMethod>,\n                  LiveTypeFunction<\n                    SV,\n                    SanitizePathSlashes<`${BasePath}${Path}`>,\n                    P,\n                    ResBodyMap,\n                    ReqBody,\n                    ReqQuery,\n                    ReqHeaders,\n                    ResHeaders,\n                    ContractMethod,\n                    VersionedApi,\n                    Auth\n                  >\n                >\n            >\n        : FetchMap &\n            Record<\n              SanitizePathSlashes<`${BasePath}${Path}`>,\n              Record<\n                Uppercase<ContractMethod>,\n                LiveTypeFunction<\n                  SV,\n                  SanitizePathSlashes<`${BasePath}${Path}`>,\n                  P,\n                  ResBodyMap,\n                  ReqBody,\n                  ReqQuery,\n                  ReqHeaders,\n                  ResHeaders,\n                  ContractMethod,\n                  VersionedApi,\n                  Auth\n                >\n              >\n            >\n    >;\n    sdk: Prettify<\n      Sdk &\n        Record<\n          PrettyCamelCase<\n            Name extends string\n              ? Name\n              : SanitizePathSlashes<`${BasePath}${Path}`>\n          >,\n          LiveSdkFunction<\n            SV,\n            P,\n            ResBodyMap,\n            ReqBody,\n            ReqQuery,\n            ReqHeaders,\n            ResHeaders,\n            VersionedApi,\n            Auth\n          >\n        >\n    >;\n  }",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 708
+                  "line": 752
                 },
                 {
                   "name": "registerMiddlewareHandler",
                   "signature": "registerMiddlewareHandler<\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'middleware'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    registrationMethod: PathOrMiddlewareBasedHandler<RouterHandler>,\n    pathOrContractDetailsOrMiddlewareOrTypedHandler:\n      | Path\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler,\n    contractDetailsOrMiddlewareOrTypedHandler?:\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler,\n    ...middlewareOrMiddlewareWithTypedHandler: (\n      | MiddlewareOrMiddlewareWithTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler\n    )[]\n  ): this",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 1603
+                  "line": 1647
                 },
                 {
                   "name": "registerNestableMiddlewareHandler",
                   "signature": "registerNestableMiddlewareHandler<\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'middleware'>,\n    const SessionSchema extends SessionObject<SV>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    registrationMethod: NestableRouterBasedHandler<RouterHandler, Internal>,\n    pathOrContractDetailsOrMiddlewareOrTypedHandler:\n      | Path\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | ConstrainedForklaunchRouter<SV, RouterHandler>,\n    contractDetailsOrMiddlewareOrTypedHandler?:\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | ConstrainedForklaunchRouter<SV, RouterHandler>,\n    ...middlewareOrMiddlewareWithTypedHandler: (\n      | MiddlewareOrMiddlewareWithTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | ConstrainedForklaunchRouter<SV, RouterHandler>\n    )[]\n  ): this",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 1814
+                  "line": 1858
                 },
                 {
                   "name": "validateSurfacingFunctions",
                   "signature": "validateSurfacingFunctions(\n    router: ForklaunchRouter<SV> = this,\n    parentAuth?: Record<string, unknown>\n  )",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2042
+                  "line": 2086
                 },
                 {
                   "name": "use",
                   "signature": "use: TypedNestableMiddlewareDefinition<\n    this,\n    RouterHandler,\n    Internal,\n    SV,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    Router extends ConstrainedForklaunchRouter<SV, RouterHandler>,\n    VersionedApi extends VersionSchema<SV, 'middleware'>,\n    SessionSchema extends SessionObject<SV>,\n    ResolvedSchema extends (SessionObject<SV> extends SessionSchema\n      ? RouterSession\n      : SessionSchema),\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    pathOrContractDetailsOrMiddlewareOrTypedHandler:\n      | Path\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | Router,\n    contractDetailsOrMiddlewareOrTypedHandler?:\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | Router,\n    ...middlewareOrMiddlewareWithTypedHandler: (\n      | MiddlewareOrMiddlewareWithTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | Router\n    )[]\n  ) => {\n    [\n      pathOrContractDetailsOrMiddlewareOrTypedHandler,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    ].forEach((arg) => {\n      if (isForklaunchRouter<SV>(arg)) {\n        this.routers.push(arg);\n        this.addRouterOptions(\n          arg as ConstrainedForklaunchRouter<SV, RouterHandler>\n        );\n      }\n    });\n\n    return this.registerNestableMiddlewareHandler<\n      Name,\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      ResolvedSchema,\n      Auth\n    >(\n      this.internal.use,\n      pathOrContractDetailsOrMiddlewareOrTypedHandler,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    ) as this & {\n      _fetchMap: FetchMap & {\n        [\n          Key in keyof Router['_fetchMap'] as Key extends string\n            ? SanitizePathSlashes<`${BasePath}${Key}`>\n            : never\n        ]: Router['_fetchMap'][Key];\n      };\n      sdk: Sdk & {\n        [\n          Key in PrettyCamelCase<\n            Router extends { sdkName?: string; basePath: string }\n              ? string extends Router['sdkName']\n                ? Router['basePath']\n                : Router['sdkName']\n              : never\n          >\n        ]: Router['sdk'];\n      };\n    };\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2100
+                  "line": 2144
                 },
                 {
                   "name": "all",
                   "signature": "all: TypedMiddlewareDefinition<\n    this,\n    SV,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    RouterHandler\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'middleware'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    pathOrContractDetailsOrMiddlewareOrTypedHandler:\n      | Path\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler,\n    contractDetailsOrMiddlewareOrTypedHandler?:\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler,\n    ...middlewareOrMiddlewareWithTypedHandler: (\n      | MiddlewareOrMiddlewareWithTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler\n    )[]\n  ) => {\n    return this.registerMiddlewareHandler<\n      Name,\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      this.internal.all,\n      pathOrContractDetailsOrMiddlewareOrTypedHandler,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2254
+                  "line": 2298
                 },
                 {
                   "name": "connect",
                   "signature": "connect: TypedMiddlewareDefinition<\n    this,\n    SV,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    RouterHandler\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'middleware'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    pathOrContractDetailsOrMiddlewareOrTypedHandler:\n      | Path\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler,\n    contractDetailsOrMiddlewareOrTypedHandler?:\n      | ContractDetailsOrMiddlewareOrTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler,\n    ...middlewareOrMiddlewareWithTypedHandler: (\n      | MiddlewareOrMiddlewareWithTypedHandler<\n          SV,\n          Name,\n          'middleware',\n          Path,\n          P,\n          ResBodyMap,\n          ReqBody,\n          ReqQuery,\n          ReqHeaders,\n          ResHeaders,\n          LocalsObj,\n          VersionedApi,\n          BaseRequest,\n          BaseResponse,\n          NextFunction,\n          RouterSession,\n          Auth\n        >\n      | RouterHandler\n    )[]\n  ) => {\n    return this.registerMiddlewareHandler<\n      Name,\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      this.internal.connect,\n      pathOrContractDetailsOrMiddlewareOrTypedHandler,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2369
+                  "line": 2413
                 },
                 {
                   "name": "get",
                   "signature": "get: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'get',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'get'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'get',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'get',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'get',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'get',\n      path,\n      this.internal.get,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2497
+                  "line": 2541
                 },
                 {
                   "name": "post",
                   "signature": "post: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'post',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'post'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'post',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'post',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'post',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'post',\n      path,\n      this.internal.post,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2604
+                  "line": 2648
                 },
                 {
                   "name": "put",
                   "signature": "put: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'put',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'put'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'put',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'put',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'put',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'put',\n      path,\n      this.internal.put,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2711
+                  "line": 2755
                 },
                 {
                   "name": "patch",
                   "signature": "patch: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'patch',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'patch'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'patch',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'patch',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'patch',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'patch',\n      path,\n      this.internal.patch,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2818
+                  "line": 2862
                 },
                 {
                   "name": "delete",
                   "signature": "delete: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'delete',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'delete'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'delete',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'delete',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'delete',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'delete',\n      path,\n      this.internal.delete,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 2925
+                  "line": 2969
                 },
                 {
                   "name": "options",
                   "signature": "options: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'options',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'options'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'options',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'options',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'options',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'options',\n      path,\n      this.internal.options,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 3032
+                  "line": 3076
                 },
                 {
                   "name": "head",
                   "signature": "head: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'head',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'head'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'head',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'head',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'head',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'head',\n      path,\n      this.internal.head,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 3139
+                  "line": 3183
                 },
                 {
                   "name": "trace",
                   "signature": "trace: LiveTypeRouteDefinition<\n    SV,\n    BasePath,\n    'trace',\n    RouterHandler,\n    Internal,\n    RouterSession,\n    BaseRequest,\n    BaseResponse,\n    NextFunction,\n    this\n  > = <\n    Name extends string,\n    Path extends `/${string}`,\n    P extends ParamsObject<SV>,\n    ResBodyMap extends ResponsesObject<SV>,\n    ReqBody extends Body<SV>,\n    ReqQuery extends QueryObject<SV>,\n    ReqHeaders extends HeadersObject<SV>,\n    ResHeaders extends HeadersObject<SV>,\n    LocalsObj extends Record<string, unknown>,\n    VersionedApi extends VersionSchema<SV, 'trace'>,\n    Auth extends SchemaAuthMethods<\n      SV,\n      P,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      VersionedApi,\n      BaseRequest\n    >\n  >(\n    path: Path,\n    contractDetailsOrMiddlewareOrTypedHandler: ContractDetailsOrMiddlewareOrTypedHandler<\n      SV,\n      Name,\n      'trace',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >,\n    ...middlewareOrMiddlewareWithTypedHandler: MiddlewareOrMiddlewareWithTypedHandler<\n      SV,\n      Name,\n      'trace',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      BaseRequest,\n      BaseResponse,\n      NextFunction,\n      RouterSession,\n      Auth\n    >[]\n  ) => {\n    return this.registerRoute<\n      Name,\n      'trace',\n      Path,\n      P,\n      ResBodyMap,\n      ReqBody,\n      ReqQuery,\n      ReqHeaders,\n      ResHeaders,\n      LocalsObj,\n      VersionedApi,\n      Auth\n    >(\n      'trace',\n      path,\n      this.internal.trace,\n      contractDetailsOrMiddlewareOrTypedHandler,\n      ...middlewareOrMiddlewareWithTypedHandler\n    );\n  };",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 3246
+                  "line": 3290
                 },
                 {
                   "name": "insertIntoRouterSdkPaths",
                   "signature": "insertIntoRouterSdkPaths({\n    sdkPath,\n    path,\n    method,\n    name\n  }: {\n    sdkPath: string;\n    name: string;\n    path: string;\n    method: string;\n  })",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 3340
+                  "line": 3384
                 },
                 {
                   "name": "registerSdks",
                   "signature": "registerSdks(sdks: SdkHandlerObject<SV>)",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 3400
+                  "line": 3444
                 },
                 {
                   "name": "clone",
                   "signature": "clone(): this",
                   "source": "framework/core/src/http/router/expressLikeRouter.ts",
-                  "line": 3412
+                  "line": 3456
                 }
               ]
             }
@@ -21144,6 +21149,7 @@
       "files": [],
       "moduleSources": [
         "framework/e2e-tests/__test__/liveTests.test.ts",
+        "framework/e2e-tests/__test__/localMiddlewares.test.ts",
         "framework/e2e-tests/__test__/nestedPaths.test.ts",
         "framework/e2e-tests/__test__/universalSdkBasic.test.ts",
         "framework/e2e-tests/servers/composite.ts",
@@ -23834,6 +23840,11 @@
           "source": "framework/testing/src/index.ts"
         },
         {
+          "subpath": "./jwt",
+          "target": "lib/jwt.d.ts",
+          "source": "framework/testing/src/jwt.ts"
+        },
+        {
           "subpath": "./tokens",
           "target": "lib/tokens.d.ts",
           "source": "framework/testing/src/tokens.ts"
@@ -23847,38 +23858,38 @@
               "name": "DatabaseType",
               "kind": "TypeAliasDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 3,
+              "line": 24,
               "type": "| 'postgres'\n  | 'postgresql'\n  | 'mysql'\n  | 'mariadb'\n  | 'mongodb'\n  | 'mongo'\n  | 'mssql'\n  | 'libsql'\n  | 'sqlite'"
             },
             {
               "name": "PostgresConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 14,
+              "line": 35,
               "members": [
                 {
                   "name": "user",
                   "signature": "user?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 15
+                  "line": 36
                 },
                 {
                   "name": "password",
                   "signature": "password?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 16
+                  "line": 37
                 },
                 {
                   "name": "database",
                   "signature": "database?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 17
+                  "line": 38
                 },
                 {
                   "name": "command",
                   "signature": "command?: string[];",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 18
+                  "line": 39
                 }
               ]
             },
@@ -23886,31 +23897,31 @@
               "name": "MySQLConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 21,
+              "line": 42,
               "members": [
                 {
                   "name": "user",
                   "signature": "user?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 22
+                  "line": 43
                 },
                 {
                   "name": "password",
                   "signature": "password?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 23
+                  "line": 44
                 },
                 {
                   "name": "database",
                   "signature": "database?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 24
+                  "line": 45
                 },
                 {
                   "name": "rootPassword",
                   "signature": "rootPassword?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 25
+                  "line": 46
                 }
               ]
             },
@@ -23918,25 +23929,25 @@
               "name": "MongoDBConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 28,
+              "line": 49,
               "members": [
                 {
                   "name": "user",
                   "signature": "user?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 29
+                  "line": 50
                 },
                 {
                   "name": "password",
                   "signature": "password?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 30
+                  "line": 51
                 },
                 {
                   "name": "database",
                   "signature": "database?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 31
+                  "line": 52
                 }
               ]
             },
@@ -23944,31 +23955,31 @@
               "name": "MSSQLConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 34,
+              "line": 55,
               "members": [
                 {
                   "name": "user",
                   "signature": "user?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 35
+                  "line": 56
                 },
                 {
                   "name": "password",
                   "signature": "password?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 36
+                  "line": 57
                 },
                 {
                   "name": "database",
                   "signature": "database?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 37
+                  "line": 58
                 },
                 {
                   "name": "saPassword",
                   "signature": "saPassword?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 38
+                  "line": 59
                 }
               ]
             },
@@ -23976,13 +23987,13 @@
               "name": "SQLiteConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 41,
+              "line": 62,
               "members": [
                 {
                   "name": "database",
                   "signature": "database?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 42
+                  "line": 63
                 }
               ]
             },
@@ -23990,13 +24001,13 @@
               "name": "RedisConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 45,
+              "line": 66,
               "members": [
                 {
                   "name": "command",
                   "signature": "command?: string[];",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 46
+                  "line": 67
                 }
               ]
             },
@@ -24004,31 +24015,31 @@
               "name": "KafkaConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 49,
+              "line": 70,
               "members": [
                 {
                   "name": "clusterId",
                   "signature": "clusterId?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 51
+                  "line": 72
                 },
                 {
                   "name": "numPartitions",
                   "signature": "numPartitions?: number;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 53
+                  "line": 74
                 },
                 {
                   "name": "replicationFactor",
                   "signature": "replicationFactor?: number;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 55
+                  "line": 76
                 },
                 {
                   "name": "env",
                   "signature": "env?: Record<string, string>;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 57
+                  "line": 78
                 }
               ]
             },
@@ -24036,31 +24047,31 @@
               "name": "S3Config",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 60,
+              "line": 81,
               "members": [
                 {
                   "name": "rootUser",
                   "signature": "rootUser?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 62
+                  "line": 83
                 },
                 {
                   "name": "rootPassword",
                   "signature": "rootPassword?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 64
+                  "line": 85
                 },
                 {
                   "name": "defaultBucket",
                   "signature": "defaultBucket?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 66
+                  "line": 87
                 },
                 {
                   "name": "region",
                   "signature": "region?: string;",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 68
+                  "line": 89
                 }
               ]
             },
@@ -24068,68 +24079,68 @@
               "name": "DatabaseConfig",
               "kind": "TypeAliasDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 71,
+              "line": 92,
               "type": "PostgresConfig | MySQLConfig | MongoDBConfig | MSSQLConfig | SQLiteConfig"
             },
             {
               "name": "TestContainerManager",
               "kind": "ClassDeclaration",
               "source": "framework/testing/src/containers.ts",
-              "line": 77,
+              "line": 98,
               "members": [
                 {
                   "name": "setupDatabaseContainer",
                   "signature": "async setupDatabaseContainer(\n    type: DatabaseType,\n    config: DatabaseConfig = {}\n  ): Promise<StartedTestContainer | null>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 83
+                  "line": 104
                 },
                 {
                   "name": "setupPostgresContainer",
                   "signature": "async setupPostgresContainer(\n    config: PostgresConfig = {}\n  ): Promise<StartedTestContainer>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 135
+                  "line": 156
                 },
                 {
                   "name": "setupMySQLContainer",
                   "signature": "async setupMySQLContainer(\n    config: MySQLConfig = {}\n  ): Promise<StartedTestContainer>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 162
+                  "line": 191
                 },
                 {
                   "name": "setupMongoDBContainer",
                   "signature": "async setupMongoDBContainer(\n    config: MongoDBConfig = {}\n  ): Promise<StartedTestContainer>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 189
+                  "line": 218
                 },
                 {
                   "name": "setupMSSQLContainer",
                   "signature": "async setupMSSQLContainer(\n    config: MSSQLConfig = {}\n  ): Promise<StartedTestContainer>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 214
+                  "line": 243
                 },
                 {
                   "name": "setupRedisContainer",
                   "signature": "async setupRedisContainer(\n    config: RedisConfig = {}\n  ): Promise<StartedTestContainer>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 248
+                  "line": 277
                 },
                 {
                   "name": "setupKafkaContainer",
                   "signature": "async setupKafkaContainer(\n    config: KafkaConfig = {}\n  ): Promise<StartedTestContainer>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 265
+                  "line": 299
                 },
                 {
                   "name": "setupS3Container",
                   "signature": "async setupS3Container(config: S3Config = {}): Promise<StartedTestContainer>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 311
+                  "line": 350
                 },
                 {
                   "name": "cleanup",
                   "signature": "async cleanup(): Promise<void>",
                   "source": "framework/testing/src/containers.ts",
-                  "line": 359
+                  "line": 398
                 }
               ]
             }
@@ -24250,10 +24261,16 @@
                   "line": 10
                 },
                 {
+                  "name": "jwksPublicKeyUrl",
+                  "signature": "jwksPublicKeyUrl?: string;",
+                  "source": "framework/testing/src/environment.ts",
+                  "line": 12
+                },
+                {
                   "name": "customVars",
                   "signature": "customVars?: Record<string, string>;",
                   "source": "framework/testing/src/environment.ts",
-                  "line": 11
+                  "line": 13
                 }
               ]
             },
@@ -24261,7 +24278,7 @@
               "name": "setupTestEnvironment",
               "kind": "FunctionDeclaration",
               "source": "framework/testing/src/environment.ts",
-              "line": 41
+              "line": 43
             }
           ]
         },
@@ -24272,67 +24289,73 @@
               "name": "BlueprintTestConfig",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/harness.ts",
-              "line": 12,
+              "line": 13,
               "members": [
                 {
                   "name": "getConfig",
                   "signature": "getConfig?: () => Promise<AnyMikroOrmOptions>;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 18
+                  "line": 19
                 },
                 {
                   "name": "databaseType",
                   "signature": "databaseType?: DatabaseType;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 24
+                  "line": 25
                 },
                 {
                   "name": "useMigrations",
                   "signature": "useMigrations?: boolean;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 29
+                  "line": 30
                 },
                 {
                   "name": "migrationsPath",
                   "signature": "migrationsPath?: string;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 34
+                  "line": 35
                 },
                 {
                   "name": "needsRedis",
                   "signature": "needsRedis?: boolean;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 39
+                  "line": 40
                 },
                 {
                   "name": "needsKafka",
                   "signature": "needsKafka?: boolean;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 44
+                  "line": 45
                 },
                 {
                   "name": "needsS3",
                   "signature": "needsS3?: boolean;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 49
+                  "line": 50
                 },
                 {
                   "name": "s3Bucket",
                   "signature": "s3Bucket?: string;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 54
+                  "line": 55
                 },
                 {
                   "name": "customEnvVars",
                   "signature": "customEnvVars?: Record<string, string>;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 59
+                  "line": 60
+                },
+                {
+                  "name": "jwt",
+                  "signature": "jwt?: boolean | TestJwtIssuerOptions;",
+                  "source": "framework/testing/src/harness.ts",
+                  "line": 66
                 },
                 {
                   "name": "onSetup",
                   "signature": "onSetup?: (setup: TestSetupResult) => Promise<void>;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 64
+                  "line": 71
                 }
               ]
             },
@@ -24340,43 +24363,49 @@
               "name": "TestSetupResult",
               "kind": "InterfaceDeclaration",
               "source": "framework/testing/src/harness.ts",
-              "line": 67,
+              "line": 74,
               "members": [
                 {
                   "name": "container",
                   "signature": "container: StartedTestContainer | null;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 68
+                  "line": 75
                 },
                 {
                   "name": "redisContainer",
                   "signature": "redisContainer?: StartedTestContainer;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 69
+                  "line": 76
                 },
                 {
                   "name": "kafkaContainer",
                   "signature": "kafkaContainer?: StartedTestContainer;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 70
+                  "line": 77
                 },
                 {
                   "name": "s3Container",
                   "signature": "s3Container?: StartedTestContainer;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 71
+                  "line": 78
                 },
                 {
                   "name": "orm",
                   "signature": "orm?: AnyMikroORM;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 72
+                  "line": 79
                 },
                 {
                   "name": "redis",
                   "signature": "redis?: Redis;",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 73
+                  "line": 80
+                },
+                {
+                  "name": "jwt",
+                  "signature": "jwt?: TestJwtIssuer;",
+                  "source": "framework/testing/src/harness.ts",
+                  "line": 82
                 }
               ]
             },
@@ -24384,31 +24413,31 @@
               "name": "BlueprintTestHarness",
               "kind": "ClassDeclaration",
               "source": "framework/testing/src/harness.ts",
-              "line": 138,
+              "line": 147,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(private config: BlueprintTestConfig)",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 142
+                  "line": 151
                 },
                 {
                   "name": "setup",
                   "signature": "async setup(): Promise<TestSetupResult>",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 149
+                  "line": 158
                 },
                 {
                   "name": "cleanup",
                   "signature": "async cleanup(): Promise<void>",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 244
+                  "line": 272
                 },
                 {
                   "name": "clearDatabase",
                   "signature": "async clearDatabase(): Promise<void>",
                   "source": "framework/testing/src/harness.ts",
-                  "line": 258
+                  "line": 287
                 }
               ]
             }
@@ -24562,6 +24591,40 @@
               "kind": "reexport",
               "source": "framework/testing/src/index.ts",
               "line": 40,
+              "specifier": "./jwt",
+              "target": "framework/testing/src/jwt.ts",
+              "exports": [
+                {
+                  "name": "startTestJwtIssuer",
+                  "original": "startTestJwtIssuer",
+                  "typeOnly": false
+                },
+                {
+                  "name": "surfaceFromTestClaims",
+                  "original": "surfaceFromTestClaims",
+                  "typeOnly": false
+                },
+                {
+                  "name": "TestJwtClaims",
+                  "original": "TestJwtClaims",
+                  "typeOnly": false
+                },
+                {
+                  "name": "TestJwtIssuer",
+                  "original": "TestJwtIssuer",
+                  "typeOnly": false
+                },
+                {
+                  "name": "TestJwtIssuerOptions",
+                  "original": "TestJwtIssuerOptions",
+                  "typeOnly": false
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/testing/src/index.ts",
+              "line": 48,
               "specifier": "./tokens",
               "target": "framework/testing/src/tokens.ts",
               "exports": [
@@ -24571,6 +24634,137 @@
                   "typeOnly": false
                 }
               ]
+            }
+          ]
+        },
+        {
+          "source": "framework/testing/src/jwt.ts",
+          "exports": [
+            {
+              "name": "TestJwtClaims",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/testing/src/jwt.ts",
+              "line": 10,
+              "members": [
+                {
+                  "name": "sub",
+                  "signature": "sub: string;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 12
+                },
+                {
+                  "name": "tenantId",
+                  "signature": "tenantId?: string;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 14
+                },
+                {
+                  "name": "roles",
+                  "signature": "roles?: readonly string[];",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 15
+                },
+                {
+                  "name": "permissions",
+                  "signature": "permissions?: readonly string[];",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 16
+                },
+                {
+                  "name": "expiresIn",
+                  "signature": "expiresIn?: number;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 18
+                },
+                {
+                  "name": "(signature)",
+                  "signature": "[claim: string]: unknown;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 20
+                }
+              ]
+            },
+            {
+              "name": "TestJwtIssuerOptions",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/testing/src/jwt.ts",
+              "line": 23,
+              "members": [
+                {
+                  "name": "keyId",
+                  "signature": "keyId?: string;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 25
+                },
+                {
+                  "name": "issuer",
+                  "signature": "issuer?: string;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 27
+                },
+                {
+                  "name": "audience",
+                  "signature": "audience?: string;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 29
+                },
+                {
+                  "name": "jwksPath",
+                  "signature": "jwksPath?: string;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 31
+                }
+              ]
+            },
+            {
+              "name": "TestJwtIssuer",
+              "kind": "InterfaceDeclaration",
+              "source": "framework/testing/src/jwt.ts",
+              "line": 39,
+              "members": [
+                {
+                  "name": "jwksUrl",
+                  "signature": "readonly jwksUrl: string;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 41
+                },
+                {
+                  "name": "jwks",
+                  "signature": "readonly jwks: { keys: JWK[] };",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 43
+                },
+                {
+                  "name": "issue",
+                  "signature": "issue(claims: TestJwtClaims): Promise<string>;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 45
+                },
+                {
+                  "name": "bearer",
+                  "signature": "bearer(claims: TestJwtClaims): Promise<`Bearer ${string}`>;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 47
+                },
+                {
+                  "name": "close",
+                  "signature": "close(): Promise<void>;",
+                  "source": "framework/testing/src/jwt.ts",
+                  "line": 49
+                }
+              ]
+            },
+            {
+              "name": "startTestJwtIssuer",
+              "kind": "FunctionDeclaration",
+              "source": "framework/testing/src/jwt.ts",
+              "line": 66
+            },
+            {
+              "name": "surfaceFromTestClaims",
+              "kind": "VariableDeclaration",
+              "source": "framework/testing/src/jwt.ts",
+              "line": 149
             }
           ]
         },
@@ -24811,6 +25005,16 @@
                   "name": "forkLaunchMutationOptions",
                   "original": "forkLaunchMutationOptions",
                   "typeOnly": false
+                },
+                {
+                  "name": "createHmacAuthorization",
+                  "original": "createHmacAuthorization",
+                  "typeOnly": false
+                },
+                {
+                  "name": "hmacSignedFetch",
+                  "original": "hmacSignedFetch",
+                  "typeOnly": false
                 }
               ]
             },
@@ -24818,6 +25022,20 @@
               "kind": "reexport",
               "source": "framework/universal-sdk/index.ts",
               "line": 115,
+              "specifier": "./src/portableRuntime",
+              "target": "framework/universal-sdk/src/portableRuntime.ts",
+              "exports": [
+                {
+                  "name": "HmacSigningOptions",
+                  "original": "HmacSigningOptions",
+                  "typeOnly": true
+                }
+              ]
+            },
+            {
+              "kind": "reexport",
+              "source": "framework/universal-sdk/index.ts",
+              "line": 116,
               "specifier": "./src/portableRuntime",
               "target": "framework/universal-sdk/src/portableRuntime.ts",
               "exports": [
@@ -24831,7 +25049,7 @@
             {
               "kind": "reexport",
               "source": "framework/universal-sdk/index.ts",
-              "line": 116,
+              "line": 117,
               "specifier": "./src/types/sdk.types",
               "target": "framework/universal-sdk/src/types/sdk.types.ts",
               "exports": [
@@ -24947,13 +25165,13 @@
               "name": "getRegistryOperation",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/openApi.ts",
-              "line": 62
+              "line": 60
             },
             {
               "name": "refreshOpenApi",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/core/openApi.ts",
-              "line": 70
+              "line": 68
             }
           ]
         },
@@ -25215,40 +25433,40 @@
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
               "line": 22,
-              "type": "{\n  baseUrl?: string;\n  /** Local development only; permits plaintext credentials outside loopback. */\n  allowPlaintextDevelopment?: boolean;\n  serviceBaseUrls?: Partial<Record<string, string>>;\n  fetch?: typeof fetch;\n  maxSseEventBytes?: number;\n  zodRegexExecution?: ZodRegexExecution;\n  maxMultipartResponseBytes?: number;\n  headers?: ForkLaunchHeaders;\n  beforeRequest?: (request: ForkLaunchSdkRequestMeta) => ForkLaunchSdkRequestMeta | Promise<ForkLaunchSdkRequestMeta>;\n}"
+              "type": "{\n  baseUrl?: string;\n  /** Local development only; permits plaintext credentials outside loopback. */\n  allowPlaintextDevelopment?: boolean;\n  serviceBaseUrls?: Partial<Record<string, string>>;\n  fetch?: typeof fetch;\n  maxSseEventBytes?: number;\n  zodRegexExecution?: ZodRegexExecution;\n  maxMultipartResponseBytes?: number;\n  headers?: ForkLaunchHeaders;\n  beforeRequest?: (request: ForkLaunchSdkRequestMeta) => ForkLaunchSdkRequestMeta | Promise<ForkLaunchSdkRequestMeta>;\n  /** Sign every API request with the ForkLaunch request HMAC (internal routes). */\n  hmac?: HmacSigningOptions;\n}"
             },
             {
               "name": "ForkLaunchSdkRequestMeta",
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 35,
+              "line": 37,
               "type": "{\n  service: string;\n  router: string;\n  operation: string;\n  method: string;\n  path: string;\n  requestKind?: 'json' | 'text' | 'binary' | 'urlEncoded' | 'multipart';\n  requestContentType?: string;\n  requestSchema?: AnySchema;\n  requestObjects?: Record<string,{schema:AnySchema;fields:SdkVersionRules}>;\n  responseKinds?: Partial<Record<string, 'empty' | 'json' | 'text' | 'binary' | 'sse' | 'multipart'>>;\n  responseSchemas?: Record<string, AnySchema>;\n  versionMetadata?: SdkVersionMetadata;\n  responseHeaders?: Record<string, Record<string, {required:boolean; schema:unknown}>>;\n  input: {\n    params?: Record<string, ForkLaunchPathValue>;\n    query?: Record<string, ForkLaunchQueryValue>;\n    body?: unknown;\n    headers?: ForkLaunchHeaders;\n  } & ForkLaunchSdkFetchInit;\n}"
             },
             {
               "name": "ForkLaunchErrorResponses",
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 57,
+              "line": 59,
               "type": "{ 400: string; 401: string; 403: string; 404: string; 500: string }"
             },
             {
               "name": "ForkLaunchQuerySuccess",
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 60,
+              "line": 62,
               "type": "Result extends unknown\n  ? number extends Result['status'] ? Result : `${Result['status']}` extends `2${string}` ? Result : never\n  : never"
             },
             {
               "name": "ForkLaunchSdkHttpError",
               "kind": "ClassDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 64,
+              "line": 66,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(public readonly result: Result)",
                   "source": "framework/universal-sdk/src/portableRuntime.ts",
-                  "line": 65
+                  "line": 67
                 }
               ]
             },
@@ -25256,45 +25474,64 @@
               "name": "forkLaunchQueryOptions",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 78
+              "line": 80
             },
             {
               "name": "forkLaunchMutationOptions",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 106
+              "line": 108
             },
             {
               "name": "safeStringify",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 142
+              "line": 144
             },
             {
               "name": "registerZodChecks",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 967
+              "line": 973
             },
             {
               "name": "ZodRegexExecution",
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 1005,
+              "line": 1011,
               "type": "'host-native'"
             },
             {
               "name": "registerZodRegex",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 1050
+              "line": 1056
+            },
+            {
+              "name": "HmacSigningOptions",
+              "kind": "TypeAliasDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 1509,
+              "type": "{\n  /** The target service's shared HMAC secret (for example `BILLING_HMAC_SECRET_KEY`). */\n  secretKey: string;\n  /** The server key id; defaults to `default`. */\n  keyId?: string;\n}"
+            },
+            {
+              "name": "createHmacAuthorization",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 1532
+            },
+            {
+              "name": "hmacSignedFetch",
+              "kind": "FunctionDeclaration",
+              "source": "framework/universal-sdk/src/portableRuntime.ts",
+              "line": 1571
             },
             {
               "kind": "assignment",
               "name": "default",
               "expression": "request",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 1647
+              "line": 1766
             }
           ]
         },
@@ -25332,7 +25569,7 @@
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/types/sdk.types.ts",
               "line": 14,
-              "type": "Pick<\n  ForkLaunchSdkConfig,\n  'fetch' | 'maxSseEventBytes' | 'maxMultipartResponseBytes' | 'headers' |\n  'beforeRequest' | 'allowPlaintextDevelopment' | 'serviceBaseUrls'\n>"
+              "type": "Pick<\n  ForkLaunchSdkConfig,\n  'fetch' | 'maxSseEventBytes' | 'maxMultipartResponseBytes' | 'headers' |\n  'beforeRequest' | 'allowPlaintextDevelopment' | 'serviceBaseUrls' | 'hmac'\n>"
             },
             {
               "name": "RequestType",
@@ -25433,19 +25670,19 @@
                   "name": "isPortableSdkPath",
                   "signature": "isPortableSdkPath(path: string): boolean",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 105
+                  "line": 112
                 },
                 {
                   "name": "executeFetchCall",
                   "signature": "async executeFetchCall(\n    path: string,\n    request?: RequestType & {\n      method:\n        | 'get'\n        | 'post'\n        | 'put'\n        | 'patch'\n        | 'delete'\n        | 'options'\n        | 'head'\n        | 'trace';\n    } & {\n      version?: string;\n    }\n  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 111
+                  "line": 118
                 },
                 {
                   "name": "executeSdkCall",
                   "signature": "async executeSdkCall(\n    sdkPath: string,\n    request?: RequestType\n  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 152
+                  "line": 159
                 }
               ]
             }
