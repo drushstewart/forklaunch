@@ -70,7 +70,9 @@ impl<F: Json> Validate<F> for EnumValidator {
         // is no reason to compare it against all items - we know that
         // there are no items with such type at all
         if self.types.contains_value_type::<F>(instance) {
-            self.items.iter().any(|item| instance.equals_value(item))
+            self.items
+                .iter()
+                .any(|item| crate::keyed_cmp::node_equals::<F>(instance, item))
         } else {
             false
         }
@@ -121,7 +123,7 @@ impl<F: Json> Validate<F> for SingleValueEnumValidator {
     }
 
     fn is_valid(&self, instance: &F::Node<'_>, _ctx: &mut ValidationContext) -> bool {
-        instance.equals_value(&self.value)
+        crate::keyed_cmp::node_equals::<F>(instance, &self.value)
     }
 }
 

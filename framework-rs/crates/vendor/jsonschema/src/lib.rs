@@ -1084,6 +1084,7 @@ pub(crate) mod compiler;
 mod content_encoding;
 mod content_media_type;
 pub(crate) mod dereferencer;
+mod keyed_cmp;
 pub mod error;
 mod evaluation;
 pub(crate) use jsonschema_value::{
