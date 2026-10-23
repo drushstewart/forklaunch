@@ -18468,7 +18468,7 @@
                   "name": "convertToJSValue",
                   "signature": "override convertToJSValue(value: string | null): unknown",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 653
+                  "line": 658
                 }
               ]
             },
@@ -18476,19 +18476,19 @@
               "name": "CompliantIndexType",
               "kind": "ClassDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 674,
+              "line": 679,
               "members": [
                 {
                   "name": "convertToDatabaseValue",
                   "signature": "override convertToDatabaseValue(\n    value: unknown,\n    _platform: Platform,\n    context?: TransformContext\n  ): string | null",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 675
+                  "line": 680
                 },
                 {
                   "name": "convertToJSValue",
                   "signature": "override convertToJSValue(value: string | null): unknown",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 699
+                  "line": 712
                 }
               ]
             },
@@ -18496,31 +18496,31 @@
               "name": "isCompliantType",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 706
+              "line": 719
             },
             {
               "name": "CompliantPropertyBinding",
               "kind": "InterfaceDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 717,
+              "line": 730,
               "members": [
                 {
                   "name": "property",
                   "signature": "property: string;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 718
+                  "line": 731
                 },
                 {
                   "name": "spec",
                   "signature": "spec: CompliantFieldSpec;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 719
+                  "line": 732
                 },
                 {
                   "name": "sibling",
                   "signature": "sibling?: string;",
                   "source": "framework/core/src/persistence/compliantField.ts",
-                  "line": 721
+                  "line": 734
                 }
               ]
             },
@@ -18528,27 +18528,27 @@
               "name": "installCompliantAccessors",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 860
+              "line": 873
             },
             {
               "name": "Deanon",
               "kind": "TypeAliasDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 940,
+              "line": 953,
               "type": "X extends CompliantField<infer V, EncryptedComplianceLevel, boolean> ? V : X"
             },
             {
               "name": "Deanonymized",
               "kind": "TypeAliasDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 944,
+              "line": 957,
               "type": "{ [K in keyof T]: Deanon<T[K]> }"
             },
             {
               "name": "deanon",
               "kind": "FunctionDeclaration",
               "source": "framework/core/src/persistence/compliantField.ts",
-              "line": 958
+              "line": 971
             }
           ]
         },
