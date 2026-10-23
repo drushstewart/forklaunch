@@ -311,7 +311,9 @@ jobs:
           bash cli/tests/rust_package_sources.sh
       - name: Change commands preserve and compile application code
         if: matrix.suite == 'changes'
-        run: bash cli/tests/rust_change_commands.sh
+        run: |
+          bash cli/tests/rust_change_commands.sh
+          python3 cli/tests/rust_conversion_preservation.py
       - name: Mixed workspace discovery, package membership and both HTTP/MCP surfaces
         if: matrix.suite == 'mixed'
         run: |
