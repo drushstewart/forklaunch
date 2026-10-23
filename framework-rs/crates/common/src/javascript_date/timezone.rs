@@ -69,11 +69,22 @@ fn standard_offset(zone: &TimeZone) -> i32 {
 fn host_offset(tz: Option<&str>) -> i32 {
     let parsed = match tz {
         Some("") => return 0,
-        Some(value) => TimeZone::from_posix_tz(if value == "localtime" {
-            ":localtime"
-        } else {
-            value
-        }),
+        Some(value) => {
+            let spec = if value == "localtime" {
+                ":localtime"
+            } else {
+                value
+            };
+            // glibc reads `:name` as a zoneinfo file and, when no such file
+            // exists, parses `name` as a POSIX TZ string (TZ=":GMT+8" is UTC-8 on
+            // a host without a GMT+8 file). tz-rs stops at the missing file.
+            TimeZone::from_posix_tz(spec).or_else(|error| match spec.strip_prefix(':') {
+                Some(rest) if !rest.is_empty() && rest != "localtime" => {
+                    TimeZone::from_posix_tz(rest)
+                }
+                _ => Err(error),
+            })
+        }
         None => TimeZone::local(),
     };
     parsed.as_ref().map_or(0, standard_offset)
