@@ -17,7 +17,7 @@ for (const relative of config.packages) {
   if (!directory.startsWith(`${root}${path.sep}`)) throw new Error('Workspace package escapes build root');
   const manifest = JSON.parse(await readFile(path.join(directory, 'package.json'), 'utf8'));
   if (packages.has(manifest.name)) throw new Error('Duplicate workspace package name');
-  const generatedContract = await Promise.any(['.forklaunch-sdk-package.json', '.forklaunch-generated'].map(async file => {
+  const generatedContract = await Promise.any(['.forklaunch-sdk-package.json', '.forklaunch-generated', '.forklaunch-sdk-local'].map(async file => {
     if (!await stat(path.join(directory, file)).then(value => value.isFile(), () => false)) throw new Error('absent');
     return true;
   })).catch(() => false);
