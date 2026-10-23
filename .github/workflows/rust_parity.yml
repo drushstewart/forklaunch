@@ -354,6 +354,7 @@ on:
       - 'cli/tests/rust_typescript_hmac_parity.mjs'
       - 'cli/tests/rust_typescript_authorization_runtime*'
       - 'cli/tests/fixtures/rust_typescript_authorization.rs'
+      - 'cli/tests/fixtures/rust_typescript_authorization_contracts.rs'
       - '.github/workflows/rust_parity.yml'
   push:
     branches: [main, rohin/rust-framework]
@@ -709,6 +710,7 @@ on:
       - 'cli/tests/rust_typescript_hmac_parity.mjs'
       - 'cli/tests/rust_typescript_authorization_runtime*'
       - 'cli/tests/fixtures/rust_typescript_authorization.rs'
+      - 'cli/tests/fixtures/rust_typescript_authorization_contracts.rs'
       - '.github/workflows/rust_parity.yml'
 
 permissions:

@@ -1414,6 +1414,7 @@ dependencies = [
  "forklaunch-axum",
  "forklaunch-core",
  "forklaunch-iam-interface",
+ "forklaunch-validator",
  "form_urlencoded",
  "getrandom 0.4.2",
  "jsonwebtoken",

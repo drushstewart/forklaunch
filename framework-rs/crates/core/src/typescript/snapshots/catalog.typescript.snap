@@ -1763,7 +1763,11 @@ async function request<Responses extends Record<number, unknown>, ContentTypes e
       body: wireBody
     });
     if (response.type === 'opaqueredirect') throw new TypeError('Browser redirect responses are opaque; use a redirect-aware application navigation flow');
-    const contentType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? '';
+    const receivedType = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() ?? '';
+    // Servers commonly label bodyless responses (HEAD, 204, 205, 304); a
+    // declared empty response matches regardless of that label.
+    const bodyless = resolved.method.toUpperCase() === 'HEAD' || [204, 205, 304].includes(response.status);
+    const contentType = bodyless && responseKinds[`${response.status}:${receivedType}`] === undefined && responseKinds[`${response.status}:`] === 'empty' ? '' : receivedType;
     const responseKey = `${response.status}:${contentType}`;
     const declaredStatus = Object.keys(responseKinds).some(key => key.startsWith(`${response.status}:`));
     // These built-in text errors are explicitly present in the generated envelope union.

@@ -64,7 +64,7 @@ try{
  run(join(dependencies,'node_modules/.bin/esbuild'),['openapi.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=openapi.mjs']);
  run(process.execPath,['openapi.mjs']);
  run(join(dependencies,'node_modules/.bin/esbuild'),['service.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=service.mjs']);
- run('cargo',['build','--quiet','--manifest-path',join(root,'blueprint-rs/Cargo.toml'),'-p','forklaunch-blueprint-sample-service','--example','canonical_iam']);
+ run('cargo',['build','--quiet','--manifest-path',join(root,'blueprint-rs/Cargo.toml'),'-p','forklaunch-iam-base','--example','canonical_iam']);
  const ts=await start(process.execPath,['service.mjs']);
  const rust=await start(join(process.env.CARGO_TARGET_DIR??join(root,'blueprint-rs/target'),'debug/examples/canonical_iam'),[join(temporary,'issued.json')]);
  const key=new TextEncoder().encode('test-only-signing-key');

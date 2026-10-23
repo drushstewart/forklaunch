@@ -11,49 +11,11 @@ use forklaunch_core::auth::{
     verify_jwt_hs256,
 };
 use forklaunch_axum::{ForkLaunchRouter, RouterConfig, session::AuthenticatedSession};
-use forklaunch_core::contract::{AccessLevel, AuthConfig, BodyContract, JwtAuthConfig, RouteContract};
+pub use contracts::policy_fixture::contracts;
 use forklaunch_core::http::{ErrorKind, ErrorResponse};
 use forklaunch_validator::{ParseError, pretty_print_parse_errors};
 use serde_json::{Value, json};
 const SECRET: &[u8] = b"fixture-only-session-authorization-key";
-pub fn contracts() -> Vec<RouteContract> {
-    [
-        "permissions",
-        "scope",
-        "features",
-        "unconfigured",
-        "basic",
-        "resource",
-        "jwt-resource",
-        "hmac",
-        "session",
-        "missing-session-callback",
-    ]
-    .into_iter()
-    .map(|name| {
-        RouteContract::get(
-            format!("Check {name}"),
-            "Session authorization fixture",
-            format!("/policy/{name}"),
-        )
-        .with_auth(if name == "hmac" {
-            AuthConfig::hmac()
-        } else if name == "basic" || name == "resource" {
-            AuthConfig::basic()
-        } else {
-            AuthConfig::jwt(JwtAuthConfig::SignatureKey)
-        })
-        .with_access(if name == "hmac" {
-            AccessLevel::Internal
-        } else if name == "scope" || name == "features" || name == "basic" {
-            AccessLevel::Authenticated
-        } else {
-            AccessLevel::Protected
-        })
-        .with_response(200, Some(BodyContract::json("PolicyResponse")))
-    })
-    .collect()
-}
 pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
     let config = RouterConfig {
         auth_error_format: if std::env::var("FORKLAUNCH_TEST_AUTH_TEXT").as_deref() == Ok("1") {
@@ -61,6 +23,9 @@ pub fn register(mut router: ForkLaunchRouter) -> ForkLaunchRouter {
         } else {
             forklaunch_axum::AuthErrorFormat::Json
         },
+        // The generated native application serves the docs and OpenAPI.
+        openapi_enabled: false,
+        docs_enabled: false,
         ..RouterConfig::default()
     }
         .with_response_authenticator(|request, contract| async move {

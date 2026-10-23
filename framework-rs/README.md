@@ -80,7 +80,7 @@ time before returning a principal. It rejects empty keys and malformed optional
 use `jwt::verify_jwk`, `verify_jwks`, or the optional remote-JWKS adapter with an
 explicit `Validation`. Token-provided key URLs never select trusted keys.
 
-The [canonical IAM example](../blueprint-rs/crates/sample-service/examples/canonical_iam.rs)
+The [canonical IAM example](../blueprint-rs/crates/implementations/iam/iam-base/examples/canonical_iam.rs)
 shows issuance and router authentication with a test-only key. The actual
 TypeScript/JOSE fixture verifies Rust-issued claims and both servers accept the
 token; JOSE-issued tokens also authenticate against Rust. Declared JWT routes
