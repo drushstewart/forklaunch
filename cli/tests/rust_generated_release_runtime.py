@@ -149,6 +149,9 @@ try:
 
     assert '/health' in exported_paths(specs['rust-api'])
     assert any(path.startswith('/fixture') for path in exported_paths(specs['ts-api']))
+    # Release exports TypeScript OpenAPI by running the service; its contract
+    # artifact (contractBuild) comes from the SDK build.
+    cli('sdk', 'build', '--service', 'ts-api')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
     print('PASS raw mixed Cargo/PNPM builds, local SDKs, Rust/tsx exports and ' + 'supported release', flush=True)
 
