@@ -27,11 +27,17 @@ impl MultipartPayload for MultipartForm {
 #[derive(Clone)]
 pub enum SdkAuth {
     Bearer(String),
-    Basic { username: String, password: String },
+    Basic {
+        username: String,
+        password: String,
+    },
     /// A fixed header value. A request HMAC credential covers one request's
     /// method, path, body, timestamp and nonce, so a fixed value verifies at most
     /// once. Prefer [`SdkAuth::Hmac`] for service-to-service calls.
-    HmacHeader { header_name: String, value: String },
+    HmacHeader {
+        header_name: String,
+        value: String,
+    },
     /// Sign every request with the request HMAC (see [`HmacSigner`]).
     Hmac(HmacSigner),
 }
@@ -440,7 +446,10 @@ impl<M: MultipartPayload> UniversalSdk<M> {
 }
 
 // Sign the exact wire request: method, URL path (no query) and the transmitted bytes.
-async fn sign_prepared(request: &mut reqwest::Request, signer: &HmacSigner) -> Result<(), SdkError> {
+async fn sign_prepared(
+    request: &mut reqwest::Request,
+    signer: &HmacSigner,
+) -> Result<(), SdkError> {
     // Streaming bodies (multipart) are buffered so the signed and sent bytes match.
     buffer_versioned_body(request, std::time::Duration::from_secs(30)).await?;
     let header = signer.sign(

@@ -1,8 +1,9 @@
 //! Ecommerce HTTP contracts for the catalog/cart/order/payment module.
 use crate::{
-    AddCartItemDto, AdjustStockDto, CartDto, CreateCartDto, CreateOrderDto, CreateProductDto,
-    CreateInventoryDto, CreateVariantDto, InventoryDto, OrderDto, PaymentDto, ProductDto, ProductSearchDto,
-    StockCheckDto, StockCheckResultDto, UpdateProductDto, UpdateVariantDto, VariantDto,
+    AddCartItemDto, AdjustStockDto, CartDto, CreateCartDto, CreateInventoryDto, CreateOrderDto,
+    CreateProductDto, CreateVariantDto, InventoryDto, OrderDto, PaymentDto, ProductDto,
+    ProductSearchDto, StockCheckDto, StockCheckResultDto, UpdateProductDto, UpdateVariantDto,
+    VariantDto,
     catalog::{CatalogPage, CatalogQuery},
     module::{CreateProviderPayment, CreatedPayment, OrderTransition},
 };

@@ -131,7 +131,11 @@ fn generate(module: &mut ItemMod, source: Option<&syn::LitStr>) -> syn::Result<(
 }
 
 /// The generated operation type must not shadow a DTO already named in the module.
-fn reject_collision(occupied: &[syn::Ident], tag: &syn::Ident, name: &syn::Ident) -> syn::Result<()> {
+fn reject_collision(
+    occupied: &[syn::Ident],
+    tag: &syn::Ident,
+    name: &syn::Ident,
+) -> syn::Result<()> {
     let Some(existing) = occupied.iter().find(|existing| *existing == tag) else {
         return Ok(());
     };

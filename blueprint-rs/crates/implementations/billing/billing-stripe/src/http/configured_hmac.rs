@@ -293,7 +293,13 @@ mod tests {
             ("2026-10-15T07:23:45.678+02:00", "2026-10-15T05:23:45.678Z"),
         ] {
             assert!(
-                authenticate(&auth, &request(Some(header(stamp, canonical))), &route, true).is_ok(),
+                authenticate(
+                    &auth,
+                    &request(Some(header(stamp, canonical))),
+                    &route,
+                    true
+                )
+                .is_ok(),
                 "{stamp}"
             );
         }
@@ -305,7 +311,15 @@ mod tests {
             "HMAC keyId=other ts=2026-10-15T07:23:45.678Z nonce=repeat signature={}",
             forklaunch_core::auth::hmac_sign(b"different", payload)
         );
-        assert!(authenticate(&private, &request(Some(private_header.clone())), &route, true).is_ok());
+        assert!(
+            authenticate(
+                &private,
+                &request(Some(private_header.clone())),
+                &route,
+                true
+            )
+            .is_ok()
+        );
         let mut other = route.clone();
         other.path = "/payment-link/another".into();
         assert_eq!(

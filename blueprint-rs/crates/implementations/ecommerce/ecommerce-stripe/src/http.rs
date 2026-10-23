@@ -24,10 +24,9 @@ use forklaunch_ecommerce_base::{
 };
 use forklaunch_ecommerce_interface::{
     AddCartItemDto, AdjustStockDto, CartService, CreateCartDto, CreateInventoryDto, CreateOrderDto,
-    CreatePaymentDto,
-    CreateProductDto, CreateVariantDto, InventoryService, OrderService, PaymentService,
-    ProductService, RemoveCartItemDto, StockCheckDto, TransitionOrderDto, UpdateProductDto,
-    UpdateVariantDto, VariantService, contracts,
+    CreatePaymentDto, CreateProductDto, CreateVariantDto, InventoryService, OrderService,
+    PaymentService, ProductService, RemoveCartItemDto, StockCheckDto, TransitionOrderDto,
+    UpdateProductDto, UpdateVariantDto, VariantService, contracts,
     module::{CreateProviderPayment, CreatedPayment, OrderTransition, PaymentProvider},
 };
 use forklaunch_ecommerce_paypal::{PaypalClient, PaypalPaymentService};
@@ -314,7 +313,9 @@ impl EcommerceHttp {
             "getVariant" => any(handler!(get_variant, input:Path<String>)),
             "updateVariant" => any(handler!(update_variant, input:CheckedJson<UpdateVariantDto>)),
             "deleteVariant" => any(handler!(delete_variant, input:Path<String>)),
-            "createInventory" => any(handler!(create_inventory, input:CheckedJson<CreateInventoryDto>)),
+            "createInventory" => {
+                any(handler!(create_inventory, input:CheckedJson<CreateInventoryDto>))
+            }
             "getInventory" => any(handler!(get_inventory, input:Path<String>)),
             "adjustStock" => any(handler!(adjust_stock, input:CheckedJson<AdjustStockDto>)),
             "checkStock" => any(handler!(check_stock, input:CheckedJson<StockCheckDto>)),

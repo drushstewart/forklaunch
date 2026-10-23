@@ -604,7 +604,12 @@ fn string_enum_values(schema: &JsonValue) -> Option<Vec<String>> {
         .iter()
         .map(|value| value.as_str().map(str::to_owned))
         .collect::<Option<Vec<_>>>()
-        .map(|values| values.into_iter().filter(|value| seen.insert(value.clone())).collect())
+        .map(|values| {
+            values
+                .into_iter()
+                .filter(|value| seen.insert(value.clone()))
+                .collect()
+        })
 }
 
 /// A fieldless Rust enum whose variants serialize to the exact wire strings.
@@ -1309,8 +1314,17 @@ mod string_enum_tests {
         let source = render_rust_models(&models, &aliases).unwrap();
         assert_eq!(root, "Payment");
         assert!(source.contains("pub enum PaymentCurrency {"), "{source}");
-        for (variant, wire) in [("Usd", "USD"), ("Eur", "eur"), ("Usd2", "usd"), ("Model9X", "9x"), ("Value5", "self")] {
-            assert!(source.contains(&format!("#[serde(rename = \"{wire}\")]\n    {variant},")), "{variant}");
+        for (variant, wire) in [
+            ("Usd", "USD"),
+            ("Eur", "eur"),
+            ("Usd2", "usd"),
+            ("Model9X", "9x"),
+            ("Value5", "self"),
+        ] {
+            assert!(
+                source.contains(&format!("#[serde(rename = \"{wire}\")]\n    {variant},")),
+                "{variant}"
+            );
         }
         assert!(source.contains("pub enum PaymentMethodsItem {"));
         assert!(source.contains("::std::vec::Vec<PaymentMethodsItem>"));
