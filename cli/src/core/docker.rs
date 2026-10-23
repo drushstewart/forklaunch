@@ -173,7 +173,7 @@ pub(crate) struct Healthcheck {
     pub(crate) start_period: String,
 
     #[serde(flatten)]
-    pub(crate) additional_properties: HashMap<String, Value>,
+    pub(crate) additional_properties: IndexMap<String, Value>,
 }
 
 impl<'de> Deserialize<'de> for Healthcheck {
@@ -197,7 +197,7 @@ impl<'de> Deserialize<'de> for Healthcheck {
                 M: MapAccess<'de>,
             {
                 let mut healthcheck = Healthcheck::default();
-                let mut additional_properties = HashMap::new();
+                let mut additional_properties = IndexMap::new();
 
                 while let Some((key, value)) = access.next_entry::<String, Value>()? {
                     match key.as_str() {
@@ -287,7 +287,7 @@ pub(crate) struct DependsOn {
     #[serde(default)]
     pub(crate) condition: DependencyCondition,
     #[serde(flatten)]
-    pub(crate) additional_properties: HashMap<String,Value>,
+    pub(crate) additional_properties: IndexMap<String, Value>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -307,7 +307,7 @@ pub(crate) struct DockerService {
     pub(crate) command: Option<Command>,
     pub(crate) healthcheck: Option<Healthcheck>,
 
-    pub(crate) additional_properties: HashMap<String, Value>,
+    pub(crate) additional_properties: IndexMap<String, Value>,
     pub(crate) structured_fields: HashMap<String, Value>,
 }
 
@@ -673,7 +673,7 @@ impl<'de> Deserialize<'de> for DockerService {
                 M: MapAccess<'de>,
             {
                 let mut service = DockerService::default();
-                let mut additional_properties = HashMap::new();
+                let mut additional_properties = IndexMap::new();
 
                 while let Some((key, value)) = access.next_entry::<String, Value>()? {
                     match key.as_str() {
@@ -765,7 +765,7 @@ pub(crate) struct DockerVolume {
     pub(crate) driver: String,
 
     #[serde(flatten)]
-    pub(crate) additional_properties: HashMap<String, Value>,
+    pub(crate) additional_properties: IndexMap<String, Value>,
 }
 
 impl<'de> Deserialize<'de> for DockerVolume {
@@ -795,7 +795,7 @@ impl<'de> Deserialize<'de> for DockerVolume {
             // String short-form (e.g., volume defined as just a string)
             Value::String(s) => Ok(DockerVolume {
                 driver: s,
-                additional_properties: HashMap::new(),
+                additional_properties: IndexMap::new(),
             }),
             _ => Ok(DockerVolume::default()),
         }
@@ -807,7 +807,7 @@ pub(crate) struct DockerBuild {
     pub(crate) context: String,
     pub(crate) dockerfile: String,
     #[serde(flatten)]
-    pub(crate) additional_properties: HashMap<String, Value>,
+    pub(crate) additional_properties: IndexMap<String, Value>,
 }
 
 #[derive(Debug, Serialize, Default, Clone)]
@@ -816,7 +816,7 @@ pub(crate) struct DockerNetwork {
     pub(crate) driver: String,
 
     #[serde(flatten)]
-    pub(crate) additional_properties: HashMap<String, Value>,
+    pub(crate) additional_properties: IndexMap<String, Value>,
 }
 
 impl<'de> Deserialize<'de> for DockerNetwork {
@@ -848,7 +848,7 @@ impl<'de> Deserialize<'de> for DockerNetwork {
             Value::String(s) => Ok(DockerNetwork {
                 name: s,
                 driver: String::new(),
-                additional_properties: HashMap::new(),
+                additional_properties: IndexMap::new(),
             }),
             _ => Ok(DockerNetwork::default()),
         }
@@ -934,7 +934,7 @@ pub(crate) fn postgresql_service(app_name: &str) -> DockerService {
             timeout: "5s".to_string(),
             retries: 5,
             start_period: "30s".to_string(),
-            additional_properties: HashMap::new(),
+            additional_properties: IndexMap::new(),
         }),
         ..Default::default()
     }
@@ -1014,7 +1014,7 @@ pub(crate) fn kafka_service(app_name: &str) -> DockerService {
             timeout: "12s".to_string(),
             retries: 5,
             start_period: "30s".to_string(),
-            additional_properties: HashMap::new(),
+            additional_properties: IndexMap::new(),
         }),
         ..Default::default()
     }
@@ -1082,7 +1082,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                     timeout: "10s".to_string(),
                     retries: 3,
                     start_period: "30s".to_string(),
-                    additional_properties: HashMap::new(),
+                    additional_properties: IndexMap::new(),
                 }),
                 ..Default::default()
             },
@@ -1142,7 +1142,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 timeout: "10s".to_string(),
                 retries: 12,
                 start_period: "30s".to_string(),
-                additional_properties: HashMap::new(),
+                additional_properties: IndexMap::new(),
             }),
             ..Default::default()
         },
@@ -1276,7 +1276,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 timeout: "10s".to_string(),
                 retries: 3,
                 start_period: "30s".to_string(),
-                additional_properties: HashMap::new(),
+                additional_properties: IndexMap::new(),
             }),
             ..Default::default()
         },
@@ -1381,7 +1381,7 @@ pub(crate) fn add_redis_to_docker_compose<'a>(
                     timeout: "5s".to_string(),
                     retries: 5,
                     start_period: "10s".to_string(),
-                    additional_properties: HashMap::new(),
+                    additional_properties: IndexMap::new(),
                 }),
                 ..Default::default()
             },
@@ -1457,7 +1457,7 @@ pub(crate) fn add_s3_to_docker_compose<'a>(
                     timeout: "10s".to_string(),
                     retries: 3,
                     start_period: "30s".to_string(),
-                    additional_properties: HashMap::new(),
+                    additional_properties: IndexMap::new(),
                 }),
                 ..Default::default()
             },
@@ -1705,7 +1705,7 @@ pub(crate) fn add_database_to_docker_compose(
                             timeout: "3s".to_string(),
                             retries: 5,
                             start_period: "3s".to_string(),
-                            additional_properties: HashMap::new(),
+                            additional_properties: IndexMap::new(),
                         }),
                         ..Default::default()
                     },
@@ -1766,7 +1766,7 @@ pub(crate) fn add_database_to_docker_compose(
                             timeout: "5s".to_string(),
                             retries: 5,
                             start_period: "30s".to_string(),
-                            additional_properties: HashMap::new(),
+                            additional_properties: IndexMap::new(),
                         }),
                         ..Default::default()
                     },
@@ -1810,7 +1810,7 @@ pub(crate) fn add_database_to_docker_compose(
                             timeout: "5s".to_string(),
                             retries: 5,
                             start_period: "30s".to_string(),
-                            additional_properties: HashMap::new(),
+                            additional_properties: IndexMap::new(),
                         }),
                         ..Default::default()
                     },
@@ -1853,7 +1853,7 @@ pub(crate) fn add_database_to_docker_compose(
                             timeout: "5s".to_string(),
                             retries: 5,
                             start_period: "30s".to_string(),
-                            additional_properties: HashMap::new(),
+                            additional_properties: IndexMap::new(),
                         }),
                         ..Default::default()
                     },
@@ -2152,7 +2152,7 @@ fn create_base_service(
                 timeout: "10s".to_string(),
                 retries: 3,
                 start_period: "40s".to_string(),
-                additional_properties: HashMap::new(),
+                additional_properties: IndexMap::new(),
             })
         } else {
             None

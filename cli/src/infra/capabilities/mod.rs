@@ -16,7 +16,7 @@
 //! capability's file only says what is particular to it.
 
 mod native;
-pub(crate) use native::{cleanup_deleted_native_service, rename_native_capabilities};
+pub(crate) use native::{cleanup_deleted_native_service, compose_processes, rename_native_capabilities};
 pub(crate) use native::{
     dependency_in_use, ensure_dependency as ensure_native_dependency, release_dependency,
 };

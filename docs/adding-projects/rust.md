@@ -241,7 +241,7 @@ The shared `forklaunch_core::persistence::json::JsonRecordCodec` uses TypeScript
 
 ## Managed capabilities
 
-Managed capabilities can be added to a native service in either a Rust or mixed application:
+Managed capabilities can be added to a native service or worker in either a Rust or mixed application:
 
 ```sh
 forklaunch infra add accounts email --path .
@@ -249,13 +249,16 @@ forklaunch infra add accounts sms --path .
 forklaunch infra add accounts whatsapp --path .
 forklaunch infra add accounts voice --path .
 forklaunch infra add accounts payments --path .
+forklaunch infra add accounts models --path .
 ```
 
-The CLI creates typed factories in `src/capabilities/mod.rs`, editable handlers in `src/capabilities/<feature>.rs`, and the signed `POST /platform-events/:feature` route. HTTP and MCP use the same callback authentication. An existing billing payment-event handler keeps its receipt processing and business effects. Handler stubs acknowledge verified events; implement the required business effects and deduplicate event IDs in those handlers.
+The CLI creates typed factories in `src/capabilities/mod.rs` (`crate::capabilities::email_client()`, `sms_client()`, `whatsapp_client()`, `voice_client()`, `payments_client()` and `stripe_client()`, `models_client()`), editable handlers in `src/capabilities/<feature>.rs`, and the signed `POST /platform-events/:feature` route. `models_client()` returns the framework's `ModelGatewayClient` (`models()`, `chat_completion`, `chat_completion_stream`): platform-hosted models without a provider key, under the product's model allowlist, token budget and rate limit. Models have no events, so `models` alone writes the factory without the route. On a worker, the worker process and its `-server` process both get the gateway settings, and events go to the server. HTTP and MCP use the same callback authentication. An existing billing payment-event handler keeps its receipt processing and business effects. Handler stubs acknowledge verified events; implement the required business effects and deduplicate event IDs in those handlers.
 
 Client factories resolve trusted `PLATFORM_GATEWAY_URL`, `INSTANCE_ID`, and `INSTANCE_HMAC_KEY` settings and reuse a connection pool. SMS construction defers refusal when managed settings are missing; other factories return a configuration error. Compose receives the local gateway mock and a fixed-URL development opt-in. Production configuration should supply the managed gateway settings.
 
 `src/capabilities/nonce_store.rs` supplies one replay store shared by every feature in the service process. Its default is bounded process-local memory. For multiple replicas, return an implementation of `PlatformEventNonceStore` backed by shared atomic storage. Changes to this factory and event handlers survive capability additions, sync and rename.
+
+`forklaunch infra add accounts cache` and `infra add accounts object-store` (on a service or a Rust worker) write `infrastructure/redis.rs` (`crate::redis_infrastructure::connect()`, `encrypted_cache()`, `encrypted_queue(name)`) and `infrastructure/s3.rs` (`crate::s3_infrastructure::object_store()`, `configured_object_store()`, `encrypted_object_store()`). Compose gets Redis (the project's own database index) or the project's bucket in `minio-init`, every process of the project waits for them, and `.env.local` mirrors the settings for host runs. The encrypted helpers read `ENCRYPTION_KEY`, which `.env` holds; removal keeps it there so values encrypted under it stay readable if a store is added again.
 
 Use `forklaunch infra remove accounts email --path .` to remove a capability. Removal keeps no records: it takes back what `infra add` writes for the service (generated files, the marked `FORKLAUNCH MANAGED CAPABILITIES` sections, hooks, dependency features and `KEY=value` settings) wherever they still have their generated form, so it works the same in a fresh clone. Anything edited since stays, with a note naming it. The local mock has one callback destination per feature; removing its active owner promotes another registered service.
 

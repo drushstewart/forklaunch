@@ -564,7 +564,7 @@ fn share_rust_image(compose: &mut DockerCompose, app: &str) {
         service.image = Some(image.clone());
         if Some(name) == builder.as_ref() {
             service.build = Some(build.clone());
-            service.additional_properties.remove("pull_policy");
+            service.additional_properties.shift_remove("pull_policy");
         } else {
             service.build = None;
             service.additional_properties.insert("pull_policy".into(), "never".into());
@@ -773,7 +773,7 @@ fn wire_encrypted_helpers(root: &Path, compose: &mut DockerCompose) -> Result<()
         });
         if helpers {
             let env = compose.services.get_mut(&name).unwrap().environment.get_or_insert_with(IndexMap::new);
-            env.entry("ENCRYPTION_KEY".into()).or_insert_with(|| "${ENCRYPTION_KEY:?Configure a field encryption key}".into());
+            env.entry("ENCRYPTION_KEY".into()).or_insert_with(|| crate::infra::native_local::ENCRYPTION_KEY_REFERENCE.into());
         }
     }
     Ok(())
@@ -834,8 +834,8 @@ pub(super) fn wire_framework_contexts(root: &Path, compose: &mut DockerCompose, 
                 build.additional_properties.insert("args".into(), serde_yml::Value::Mapping(args));
             }
             None => {
-                build.additional_properties.remove("additional_contexts");
-                build.additional_properties.remove("args");
+                build.additional_properties.shift_remove("additional_contexts");
+                build.additional_properties.shift_remove("args");
             }
         }
     }
