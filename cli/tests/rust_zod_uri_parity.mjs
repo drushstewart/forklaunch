@@ -45,6 +45,9 @@ else {
  assert.equal(output.length,cases.length);for(let i=0;i<cases.length;i++)assert.deepEqual(output[i],expected[i],JSON.stringify(cases[i]));
  const composed=cargo(['run','--quiet','--manifest-path',manifest,'-p','forklaunch-validator','--features','zod-uri','--example','zod_json_parity'],compositions.map(v=>JSON.stringify(v)).join('\n')+'\n').trim().split('\n').map(JSON.parse);
  assert.deepEqual(composed,compositionExpected);
+ // Offline metadata resolves every locked package, including other targets'
+ // dependencies a host build never downloads; fetch the locked set first.
+ cargo(['fetch','--locked','--manifest-path',manifest]);
  const metadata=JSON.parse(cargo(['metadata','--format-version','1','--locked','--offline','--manifest-path',manifest,'--features','forklaunch-validator/zod-uri']));
  const lock=readFileSync(path.join(root,'framework-rs/Cargo.lock'),'utf8').split('[[package]]').find(block=>block.includes('name = \"ada-url\"')&&block.includes('version = \"3.2.4\"'));assert.ok(lock?.includes(provenance.crate_sha256),'pinned official crate archive checksum');
  const dependency=metadata.packages.find(p=>p.name==='ada-url'&&p.version===provenance.version);assert.ok(dependency);

@@ -86,7 +86,8 @@ try:
     rejected('change', 'worker', '-d', 'sqlite', path=worker, message='Unsupported Rust worker backend')
     rejected('change', 'worker', '-t', 'redis', path=worker, message='explicit queue/lifecycle migration')
     rejected('change', 'service', '-d', 'sqlite', path=service, message='PostgreSQL')
-    rejected('change', 'service', '--to', 'worker', '-t', 'redis', path=service, message='customized lifecycle')
+    # A service with routers converts only after they are removed (ef39d81dd).
+    rejected('change', 'service', '--to', 'worker', '-t', 'redis', path=service, message='Delete or move the routers first')
 
     command('change', 'service', '-N', 'customer-accounts', '--confirm', path=service)
     service = app / 'src/customer-accounts'
