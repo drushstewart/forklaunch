@@ -1466,7 +1466,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @better-auth/core@1.7.6 @better-auth/utils@0.4.2 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25 esbuild@0.28.2 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 qs@6.16.0 @types/qs@6.15.1
+      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @better-auth/core@1.7.6 @better-auth/utils@0.4.2 @opentelemetry/api@1.9.1 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25 esbuild@0.28.2 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 qs@6.16.0 @types/qs@6.15.1
       - name: Check configured mapper and service source types
         run: |
           mkdir -p "$RUNNER_TEMP/fl-configured-mappers-types"
@@ -1573,7 +1573,7 @@ jobs:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_payment_link_update
-          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_payment_link_update -- --ignored --nocapture
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout,typescript-routing --test http_configured_payment_link_update -- --ignored --nocapture
       - name: Configured Subscription update preflight and HTTP dispatch
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_subscription_update
