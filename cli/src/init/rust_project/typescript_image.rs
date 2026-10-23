@@ -886,7 +886,13 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             "Unsupported TypeScript package identifier"
         );
         if !bun {
-            docker.push_str(&format!("RUN pnpm --filter {name} --prod deploy --offline /out/{directory}\nRUN mkdir -p /out/{directory}/production && cp -R {directory}/production/. /out/{directory}/production/\n"));
+            // Not `--offline`: pnpm verifies every lockfile entry against
+            // minimumReleaseAge, and for a package whose registry document
+            // changed inside that window it needs the version's exact publish
+            // time from the full metadata, which the frozen install does not
+            // leave in the offline mirror (ERR_PNPM_NO_OFFLINE_META). The
+            // frozen lockfile still forbids any re-resolution.
+            docker.push_str(&format!("RUN pnpm --filter {name} --prod deploy --frozen-lockfile /out/{directory}\nRUN mkdir -p /out/{directory}/production && cp -R {directory}/production/. /out/{directory}/production/\n"));
         }
     }
     if bun {
@@ -1458,7 +1464,7 @@ mod tests {
         reconcile(root.path()).unwrap();
         let docker = read_to_string(root.path().join("Dockerfile.typescript")).unwrap();
         assert!(!docker.contains("COPY . .") && !docker.contains("src/native"));
-        assert!(docker.contains("--frozen-lockfile") && docker.contains("--prod deploy --offline"));
+        assert!(docker.contains("--frozen-lockfile") && docker.contains("--prod deploy --frozen-lockfile") && !docker.contains("--offline"));
         assert!(docker.contains("USER node"));
         let compose: JsonValue =
             serde_yml::from_str(&read_to_string(root.path().join("docker-compose.yaml")).unwrap())
