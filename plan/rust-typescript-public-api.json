@@ -23361,13 +23361,13 @@
               "name": "S3EncryptionOptions",
               "kind": "InterfaceDeclaration",
               "source": "framework/infrastructure/S3/index.ts",
-              "line": 45,
+              "line": 46,
               "members": [
                 {
                   "name": "encryptor",
                   "signature": "encryptor: FieldEncryptor;",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 47
+                  "line": 48
                 }
               ]
             },
@@ -23375,13 +23375,13 @@
               "name": "S3FileBody",
               "kind": "TypeAliasDeclaration",
               "source": "framework/infrastructure/S3/index.ts",
-              "line": 81,
+              "line": 82,
               "type": "ObjectStoreFileBody"
             },
             {
               "kind": "reexport",
               "source": "framework/infrastructure/S3/index.ts",
-              "line": 82,
+              "line": 83,
               "exports": [
                 {
                   "name": "PresignDownloadOptions",
@@ -23409,103 +23409,103 @@
               "name": "s3ClientConfig",
               "kind": "FunctionDeclaration",
               "source": "framework/infrastructure/S3/index.ts",
-              "line": 101
+              "line": 102
             },
             {
               "name": "S3ObjectStore",
               "kind": "ClassDeclaration",
               "source": "framework/infrastructure/S3/index.ts",
-              "line": 135,
+              "line": 136,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    private openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    options: S3ObjectStoreOptions,\n    private telemetryOptions: TelemetryOptions,\n    encryption: S3EncryptionOptions\n  )",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 145
+                  "line": 146
                 },
                 {
                   "name": "putObject",
                   "signature": "async putObject<T>(\n    object: T & { key: string },\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 230
+                  "line": 231
                 },
                 {
                   "name": "putBatchObjects",
                   "signature": "async putBatchObjects<T>(\n    objects: (T & { key: string })[],\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 249
+                  "line": 250
                 },
                 {
                   "name": "streamUploadObject",
                   "signature": "async streamUploadObject<T>(\n    object: T & { key: string },\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 256
+                  "line": 257
                 },
                 {
                   "name": "streamUploadBatchObjects",
                   "signature": "async streamUploadBatchObjects<T>(\n    objects: (T & { key: string })[],\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 263
+                  "line": 264
                 },
                 {
                   "name": "deleteObject",
                   "signature": "async deleteObject(objectKey: string): Promise<void>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 270
+                  "line": 271
                 },
                 {
                   "name": "deleteBatchObjects",
                   "signature": "async deleteBatchObjects(objectKeys: string[]): Promise<void>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 276
+                  "line": 277
                 },
                 {
                   "name": "readObject",
                   "signature": "async readObject<T>(\n    objectKey: string,\n    compliance?: ComplianceContext\n  ): Promise<T>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 286
+                  "line": 287
                 },
                 {
                   "name": "readBatchObjects",
                   "signature": "async readBatchObjects<T>(\n    objectKeys: string[],\n    compliance?: ComplianceContext\n  ): Promise<T[]>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 302
+                  "line": 303
                 },
                 {
                   "name": "streamDownloadObject",
                   "signature": "async streamDownloadObject(objectKey: string): Promise<Readable>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 311
+                  "line": 312
                 },
                 {
                   "name": "streamDownloadBatchObjects",
                   "signature": "async streamDownloadBatchObjects(objectKeys: string[]): Promise<Readable[]>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 325
+                  "line": 326
                 },
                 {
                   "name": "putFile",
                   "signature": "async putFile(\n    objectKey: string,\n    body: S3FileBody,\n    options: PutFileOptions\n  ): Promise<void>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 334
+                  "line": 335
                 },
                 {
                   "name": "presignUpload",
                   "signature": "async presignUpload(\n    objectKey: string,\n    options: PresignUploadOptions\n  ): Promise<PresignedUpload>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 365
+                  "line": 366
                 },
                 {
                   "name": "presignDownload",
                   "signature": "async presignDownload(\n    objectKey: string,\n    options: PresignDownloadOptions = {}\n  ): Promise<string>",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 401
+                  "line": 402
                 },
                 {
                   "name": "getClient",
                   "signature": "getClient(): S3Client",
                   "source": "framework/infrastructure/S3/index.ts",
-                  "line": 423
+                  "line": 424
                 }
               ]
             }
@@ -23538,13 +23538,13 @@
               "name": "RedisCacheEncryptionOptions",
               "kind": "InterfaceDeclaration",
               "source": "framework/infrastructure/redis/index.ts",
-              "line": 33,
+              "line": 34,
               "members": [
                 {
                   "name": "encryptor",
                   "signature": "encryptor: FieldEncryptor;",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 35
+                  "line": 36
                 }
               ]
             },
@@ -23552,121 +23552,121 @@
               "name": "RedisTtlCache",
               "kind": "ClassDeclaration",
               "source": "framework/infrastructure/redis/index.ts",
-              "line": 45,
+              "line": 46,
               "members": [
                 {
                   "name": "constructor",
                   "signature": "constructor(\n    private ttlMilliseconds: number,\n    private openTelemetryCollector: OpenTelemetryCollector<MetricsDefinition>,\n    options: RedisClientOptions,\n    telemetryOptions: TelemetryOptions,\n    encryption: RedisCacheEncryptionOptions\n  )",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 59
+                  "line": 60
                 },
                 {
                   "name": "putRecord",
                   "signature": "async putRecord<T>(\n    { key, value, ttlMilliseconds = this.ttlMilliseconds }: TtlCacheRecord<T>,\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 144
+                  "line": 145
                 },
                 {
                   "name": "putBatchRecords",
                   "signature": "async putBatchRecords<T>(\n    cacheRecords: TtlCacheRecord<T>[],\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 158
+                  "line": 159
                 },
                 {
                   "name": "enqueueRecord",
                   "signature": "async enqueueRecord<T>(\n    queueName: string,\n    value: T,\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 173
+                  "line": 174
                 },
                 {
                   "name": "enqueueBatchRecords",
                   "signature": "async enqueueBatchRecords<T>(\n    queueName: string,\n    values: T[],\n    compliance?: ComplianceContext\n  ): Promise<void>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 184
+                  "line": 185
                 },
                 {
                   "name": "deleteRecord",
                   "signature": "async deleteRecord(cacheRecordKey: string): Promise<void>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 199
+                  "line": 200
                 },
                 {
                   "name": "deleteBatchRecords",
                   "signature": "async deleteBatchRecords(cacheRecordKeys: string[]): Promise<void>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 203
+                  "line": 204
                 },
                 {
                   "name": "dequeueRecord",
                   "signature": "async dequeueRecord<T>(\n    queueName: string,\n    compliance?: ComplianceContext\n  ): Promise<T>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 211
+                  "line": 212
                 },
                 {
                   "name": "dequeueBatchRecords",
                   "signature": "async dequeueBatchRecords<T>(\n    queueName: string,\n    pageSize: number,\n    compliance?: ComplianceContext\n  ): Promise<T[]>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 222
+                  "line": 223
                 },
                 {
                   "name": "readRecord",
                   "signature": "async readRecord<T>(\n    cacheRecordKey: string,\n    compliance?: ComplianceContext\n  ): Promise<TtlCacheRecord<T>>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 242
+                  "line": 243
                 },
                 {
                   "name": "readBatchRecords",
                   "signature": "async readBatchRecords<T>(\n    cacheRecordKeysOrPrefix: string[] | string,\n    compliance?: ComplianceContext\n  ): Promise<TtlCacheRecord<T>[]>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 272
+                  "line": 273
                 },
                 {
                   "name": "listKeys",
                   "signature": "async listKeys(pattern_prefix: string): Promise<string[]>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 309
+                  "line": 310
                 },
                 {
                   "name": "peekRecord",
                   "signature": "async peekRecord(cacheRecordKey: string): Promise<boolean>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 313
+                  "line": 314
                 },
                 {
                   "name": "peekBatchRecords",
                   "signature": "async peekBatchRecords(\n    cacheRecordKeysOrPrefix: string[] | string\n  ): Promise<boolean[]>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 318
+                  "line": 319
                 },
                 {
                   "name": "peekQueueRecord",
                   "signature": "async peekQueueRecord<T>(\n    queueName: string,\n    compliance?: ComplianceContext\n  ): Promise<T>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 332
+                  "line": 333
                 },
                 {
                   "name": "peekQueueRecords",
                   "signature": "async peekQueueRecords<T>(\n    queueName: string,\n    pageSize: number,\n    compliance?: ComplianceContext\n  ): Promise<T[]>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 343
+                  "line": 344
                 },
                 {
                   "name": "disconnect",
                   "signature": "async disconnect(): Promise<void>",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 359
+                  "line": 360
                 },
                 {
                   "name": "getTtlMilliseconds",
                   "signature": "getTtlMilliseconds(): number",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 363
+                  "line": 364
                 },
                 {
                   "name": "getClient",
                   "signature": "getClient(): typeof this.client",
                   "source": "framework/infrastructure/redis/index.ts",
-                  "line": 367
+                  "line": 368
                 }
               ]
             }
@@ -25511,27 +25511,27 @@
               "name": "HmacSigningOptions",
               "kind": "TypeAliasDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 1509,
+              "line": 1520,
               "type": "{\n  /** The target service's shared HMAC secret (for example `BILLING_HMAC_SECRET_KEY`). */\n  secretKey: string;\n  /** The server key id; defaults to `default`. */\n  keyId?: string;\n}"
             },
             {
               "name": "createHmacAuthorization",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 1532
+              "line": 1543
             },
             {
               "name": "hmacSignedFetch",
               "kind": "FunctionDeclaration",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 1571
+              "line": 1582
             },
             {
               "kind": "assignment",
               "name": "default",
               "expression": "request",
               "source": "framework/universal-sdk/src/portableRuntime.ts",
-              "line": 1779
+              "line": 1790
             }
           ]
         },
@@ -25670,19 +25670,19 @@
                   "name": "isPortableSdkPath",
                   "signature": "isPortableSdkPath(path: string): boolean",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 112
+                  "line": 114
                 },
                 {
                   "name": "executeFetchCall",
                   "signature": "async executeFetchCall(\n    path: string,\n    request?: RequestType & {\n      method:\n        | 'get'\n        | 'post'\n        | 'put'\n        | 'patch'\n        | 'delete'\n        | 'options'\n        | 'head'\n        | 'trace';\n    } & {\n      version?: string;\n    }\n  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 118
+                  "line": 120
                 },
                 {
                   "name": "executeSdkCall",
                   "signature": "async executeSdkCall(\n    sdkPath: string,\n    request?: RequestType\n  ): Promise<ResponseType | ForkLaunchSdkResponse<Record<number, unknown>>>",
                   "source": "framework/universal-sdk/src/universalSdk.ts",
-                  "line": 159
+                  "line": 161
                 }
               ]
             }
