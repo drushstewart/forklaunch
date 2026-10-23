@@ -77,8 +77,14 @@ try:
     # Keep consumer aliases/features while repairing a relocated local dependency.
     consumer_path = app / 'modules/native-api/Cargo.toml'
     consumer_text = consumer_path.read_text()
-    assert '[dependencies.native-models]' in consumer_text
-    consumer_text = consumer_text.replace('[dependencies.native-models]', '[dependencies.models]\npackage = \"native-models\"\nfeatures = [\"custom-models\"]')
+    # init library writes the consumer dependency inline
+    # (`native-models = { path = "..." }`); older CLIs wrote a table.
+    if '[dependencies.native-models]' in consumer_text:
+        consumer_text = consumer_text.replace('[dependencies.native-models]', '[dependencies.models]\npackage = \"native-models\"\nfeatures = [\"custom-models\"]')
+    else:
+        inline = re.search(r'^native-models = \{ path = ("[^"]+") \}$', consumer_text, flags=re.M)
+        assert inline, consumer_text
+        consumer_text = consumer_text.replace(inline.group(0), f'models = {{ package = "native-models", path = {inline.group(1)}, features = ["custom-models"] }}')
     consumer_path.write_text(consumer_text)
     library_path = app / 'modules/core/native-models/Cargo.toml'
     library_path.write_text(library_path.read_text() + '\n[features]\ncustom-models = []\n')
