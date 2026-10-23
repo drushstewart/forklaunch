@@ -144,14 +144,32 @@ export function parse<
   if (missingResponseSchema && collapsedOptions !== 'warning') {
     throw new Error(`Undocumented response status ${statusCode}`);
   }
-  const parsedResponse = missingResponseSchema
-    ? { ok: true as const }
-    : schemaValidator.parse(
-        defaultErrorStatus
-          ? schemaValidator.union([schemaValidator.string, responses?.[statusCode]])
-          : responses?.[statusCode],
+  // A default error status may carry its declared body or the framework's
+  // string message. TypeBox cannot put a compiled schema in a union (building
+  // one throws), so for a declared schema the two are tried in turn instead.
+  const declaredResponse = responses?.[statusCode];
+  const defaultErrorResponse = () => {
+    try {
+      return schemaValidator.parse(
+        schemaValidator.union([schemaValidator.string, declaredResponse]),
         res.bodyData
       );
+    } catch (error) {
+      if (declaredResponse === undefined) throw error;
+      const declared = schemaValidator.parse(declaredResponse, res.bodyData);
+      if (declared.ok) return declared;
+      const message = schemaValidator.parse(
+        schemaValidator.string,
+        res.bodyData
+      );
+      return message.ok ? message : declared;
+    }
+  };
+  const parsedResponse = missingResponseSchema
+    ? { ok: true as const }
+    : defaultErrorStatus
+      ? defaultErrorResponse()
+      : schemaValidator.parse(declaredResponse, res.bodyData);
 
   const parsedHeaders = schemaValidator.parse(
     headers ?? schemaValidator.unknown,
