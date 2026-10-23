@@ -93,11 +93,18 @@ export class UniversalSdk {
       zodRegexExecution,
       transportOptions
     );
-    const initial = await refreshOpenApi(host, registryOptions, undefined, transportOptions.fetch);
-    if (initial.updateRequired) {
-      sdk.registryOpenApiJson = initial.registryOpenApiJson;
-      sdk.registryOpenApiHash = initial.registryOpenApiHash;
-      sdk.sdkPathMap = initial.sdkPathMap;
+    // Load the registry eagerly when it is reachable so portable client paths
+    // resolve from the start. A registry that is not up yet (services starting
+    // together) is not an error here: the first call loads it, as before.
+    try {
+      const initial = await refreshOpenApi(host, registryOptions, undefined, transportOptions.fetch);
+      if (initial.updateRequired) {
+        sdk.registryOpenApiJson = initial.registryOpenApiJson;
+        sdk.registryOpenApiHash = initial.registryOpenApiHash;
+        sdk.sdkPathMap = initial.sdkPathMap;
+      }
+    } catch {
+      // Retried on first use.
     }
     return sdk;
   }

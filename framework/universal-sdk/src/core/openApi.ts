@@ -46,11 +46,9 @@ export function getSdkPathMap(
         // operation ID has no single request/response contract to execute.
         if (operation?.operationId && operation['x-forklaunch-operations'] === undefined) {
           const key = `${operation.operationId}${versionedPath ? `.${versionedPath}` : ''}`;
-          if (!Object.hasOwn(sdkPathMap, key)) {
-            sdkPathMap[key] = { method, path, version, portableOperation: descriptors[0] };
-          } else if (sdkPathMap[key].path !== path || sdkPathMap[key].method !== method || sdkPathMap[key].version !== version) {
-            throw new TypeError('Duplicate SDK operation path');
-          }
+          // A repeated operation ID resolves to the last route that declares it,
+          // as it always has; rejecting it would break existing registries.
+          sdkPathMap[key] = { method, path, version, portableOperation: descriptors[0] };
         }
       });
     });

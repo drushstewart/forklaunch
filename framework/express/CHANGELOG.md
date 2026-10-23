@@ -1,5 +1,19 @@
 # @forklaunch/express
 
+## 1.2.52
+
+### Patch Changes
+
+- d2319b3: The final error handler sends its plain-text diagnostic with Express's own `send`, so it is no longer validated against the failing route's contract (which could throw again and return Express's HTML stack trace). `res.setHeader` with an array value now sets repeated header values instead of joining them with newlines.
+- Updated dependencies [d2319b3]
+- Updated dependencies [d2319b3]
+- Updated dependencies [d2319b3]
+- Updated dependencies [cf365df]
+- Updated dependencies [f868861]
+- Updated dependencies [d2319b3]
+  - @forklaunch/core@3.3.0
+  - @forklaunch/validator@1.3.0
+
 ## 1.2.51
 
 ### Patch Changes
