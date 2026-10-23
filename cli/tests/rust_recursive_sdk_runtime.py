@@ -40,7 +40,7 @@ def command(*args, path=None):
 
 def typescript(paths, output=None):
     options = {'strict': True, 'skipLibCheck': True, 'target': 'ES2022',
-               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM'],
+               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable'],
                'types': ['node'], 'typeRoots': [str(runtime / 'node_modules/@types')]}
     if output:
         options.update(outDir=str(output), rootDir=os.path.commonpath([str(Path(p).parent) for p in paths]), noEmitOnError=True)

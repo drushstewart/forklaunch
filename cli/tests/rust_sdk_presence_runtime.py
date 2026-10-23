@@ -37,7 +37,7 @@ def typescript(consumer, output):
     config = root / 'presence-tsconfig.json'
     config.write_text(json.dumps({'compilerOptions': {
         'strict': True, 'skipLibCheck': True, 'target': 'ES2022', 'module': 'ESNext',
-        'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM'],
+        'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable'],
         'types': ['node'], 'typeRoots': [str(shared / 'node_modules/@types')],
         'rootDir': str(consumer.parent), 'outDir': str(output), 'noEmitOnError': True,
     }, 'files': [str(consumer)]}))

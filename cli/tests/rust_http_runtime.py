@@ -41,7 +41,7 @@ def command(*args, path=None):
 def configure_ts(tsc, paths, output=None, type_roots=None):
     config = root / 'fixture-tsconfig.json'
     options = {'strict': True, 'skipLibCheck': True, 'target': 'ES2022',
-               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM']}
+               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable']}
     if output:
         options['outDir'] = str(output)
         options['rootDir'] = os.path.commonpath([str(Path(path).parent) for path in paths])

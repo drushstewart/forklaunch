@@ -35,7 +35,7 @@ def command(*args, path=None):
 
 def typescript(source, output=None):
     options = {'strict': True, 'skipLibCheck': True, 'target': 'ES2022',
-               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM']}
+               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable']}
     if output:
         options.update(outDir=str(output), rootDir=str(source.parent), noEmitOnError=True)
     else:
