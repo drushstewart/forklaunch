@@ -415,7 +415,7 @@ export async function startStripeStub(): Promise<StripeStub> {
               error: {
                 type: status === 500 ? 'api_error' : 'invalid_request_error',
                 code: error instanceof StripeError ? error.code : undefined,
-                message: error instanceof Error ? error.message : String(error)
+                message: error instanceof Error ? error.message : 'Unknown error'
               }
             })
           );
