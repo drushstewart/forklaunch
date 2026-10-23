@@ -340,7 +340,8 @@ try:
     probe_surfaces('LegacyApiReloaded', native_status='native-reloaded')
     process.send_signal(signal.SIGTERM)
     assert process.wait(timeout=90) == 0
-    assert all(not container['State']['Running'] for container in inspect(containers))
+    running = [container['Name'] for container in inspect(containers) if container['State']['Running']]
+    assert not running, f'Containers still running after shutdown: {running}'
     if not external_sdk_watch:
         commands = subprocess.check_output(['ps', '-axo', 'command'], text=True)
         assert f'sdk watch --path {app} --target all' not in commands, 'Owned SDK watcher survived development shutdown'

@@ -434,8 +434,9 @@ Rust reloads happen inside the running containers, without restarting them:
   service healthchecks apply unchanged, because the running process keeps serving
   while a rebuild runs.
 - Migration and seed jobs run once per `forklaunch dev`, after the warm-up.
-- Editing `rust-toolchain.toml` rebuilds the builder image through Compose watch. Native
-  services get no Compose restart rules; authored `develop.watch` rules are kept.
+- Native services get no Compose restart rules; authored `develop.watch` rules are kept.
+  Restart `forklaunch dev` after changing `rust-toolchain.toml` (the image installs the
+  toolchain) or adding a crate (the watch list is fixed at start).
 
 Host edits do not reach containers as inotify events on Docker Desktop or OrbStack, so
 on macOS and Windows the builder polls the mounted sources every 500 ms. Set
@@ -483,7 +484,7 @@ checks native socket artifact/SDK creation, edits, removal and restoration. Sepa
 TypeScript-only replays validate shared-library reloads; Bun covers `--no-build` image
 reuse with Compose watching. See the parity inventory for the retained evidence.
 
-Compose watch (TypeScript restarts, the toolchain rebuild, authored rules) requires
+Compose watch (TypeScript restarts and authored rules) requires
 [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
 Use `--no-watch` to start without reloads (one build, then each process starts once), `--no-build` to reuse images,
 and `--project-name` to select the Compose project. With reloads enabled,

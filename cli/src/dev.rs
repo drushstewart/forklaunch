@@ -352,11 +352,10 @@ impl CliCommand for DevCommand {
         let watch = !matches.get_flag("no_watch")
             && (!changes.as_object().unwrap().is_empty()
                 || !typescript_changes.as_object().unwrap().is_empty());
-        if watch && !matches.get_flag("no_build") {
-            toolchain_rebuild(&root, &mut planned);
-        }
         // Native reloads run inside the containers; Compose watch is only
-        // for TypeScript restarts, the toolchain rebuild and authored rules.
+        // for TypeScript restarts and authored rules. A rust-toolchain.toml
+        // change needs a new `forklaunch dev` (the image installs it): a
+        // Compose rebuild would recreate every dependent container.
         let compose_watch = watch && uses_compose_watch(&planned);
         let reuse_watched_images = compose_watch && matches.get_flag("no_build");
         if reuse_watched_images {
@@ -512,21 +511,20 @@ impl CliCommand for DevCommand {
                 Ok(command)
             })
             .transpose()?;
-        supervise(run, watcher, socket_exports)
+        // After an interrupt, stop anything a late Compose watch restart
+        // started again while the stack was shutting down.
+        let mut stop = Process::new(&docker);
+        stop.args(["compose", "--project-directory"])
+            .arg(&root)
+            .arg("-f")
+            .arg(temporary.path())
+            .arg("stop")
+            .current_dir(&root)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        supervise(run, watcher, socket_exports, stop)
     }
-}
-
-/// A rust-toolchain.toml edit changes the toolchain baked into the native dev
-/// image: rebuild the builder, which then relinks (and restarts) every binary.
-fn toolchain_rebuild(root: &Path, compose: &mut Value) {
-    let toolchain = root.join("rust-toolchain.toml");
-    let Some(builder) = compose["services"].get_mut(NATIVE_BUILD) else {
-        return;
-    };
-    if !toolchain.is_file() || builder["healthcheck"].is_null() {
-        return;
-    }
-    builder["develop"] = json!({"watch":[{"action":"rebuild","path":toolchain}]});
 }
 
 fn uses_compose_watch(compose: &Value) -> bool {
@@ -837,7 +835,13 @@ fn watch_builder(
 /// Add source paths to a reload builder's watch list (before its `--`).
 /// Returns false when the plan has no reload builder.
 pub(super) fn watch_native_path(compose: &mut Value, root: &Path, path: &Path) -> bool {
-    let Some(entrypoint) = compose["services"][NATIVE_BUILD]["entrypoint"].as_array_mut() else {
+    // `get_mut`, not indexing: indexing would insert an empty service.
+    let Some(entrypoint) = compose
+        .get_mut("services")
+        .and_then(|services| services.get_mut(NATIVE_BUILD))
+        .and_then(|builder| builder.get_mut("entrypoint"))
+        .and_then(Value::as_array_mut)
+    else {
         return false;
     };
     if entrypoint.first().and_then(Value::as_str) != Some("watchexec") {
@@ -1315,6 +1319,7 @@ fn supervise(
     mut command: Process,
     sdk: Option<Process>,
     mut socket_exports: Option<sockets::Exports>,
+    mut stop: Process,
 ) -> Result<()> {
     let interrupts = Arc::new(AtomicUsize::new(0));
     let handler = interrupts.clone();
@@ -1339,13 +1344,21 @@ fn supervise(
             exports.poll();
         }
         if let Some(status) = child.try_wait()? {
-            if status.success() || forwarded > 0 {
+            if forwarded > 0 {
+                let _ = stop.status();
+                return Ok(());
+            }
+            if status.success() {
                 return Ok(());
             }
             bail!("Development stack exited with {status}");
         }
         let received = interrupts.load(Ordering::SeqCst);
         if received > forwarded {
+            // Stop regenerating SDKs first: a regeneration during shutdown
+            // would trigger Compose watch restarts.
+            sdk = None;
+            socket_exports = None;
             #[cfg(unix)]
             {
                 use nix::{
@@ -1471,6 +1484,8 @@ mod tests {
         }
         assert!(text.contains(&"**/target/**"));
         assert_eq!(services[NATIVE_BUILD]["restart"], "unless-stopped");
+        // No Compose rebuild rule: it would recreate every dependent container.
+        assert!(services[NATIVE_BUILD].get("develop").is_none());
         assert!(services[NATIVE_BUILD]["healthcheck"]["test"].to_string().contains("forklaunch-native-ready"));
         for name in ["native-api", "native-outbox"] {
             assert_eq!(services[name]["entrypoint"], json!(["forklaunch-native-run", "--watch"]));
@@ -1492,6 +1507,10 @@ mod tests {
             assert!(dockerfile.contains(sha));
         }
         assert!(dockerfile.contains("forklaunch-native-rebuild") && dockerfile.contains("forklaunch-native-run"));
+        // Without a reload builder nothing is added to the plan.
+        let mut plain = json!({"services":{"api":{}}});
+        assert!(!watch_native_path(&mut plain, root.path(), &root.path().join("sdk")));
+        assert_eq!(plain, json!({"services":{"api":{}}}));
         // Later SDK paths join the builder's watch list, before its command.
         let sdk = root.path().canonicalize().unwrap().join("sdks/rust");
         assert!(watch_native_path(&mut planned, &root.path().canonicalize().unwrap(), &sdk));
@@ -1500,21 +1519,6 @@ mod tests {
         assert_eq!(builder[separator - 1], "/app/sdks/rust");
         assert!(watch_native_path(&mut planned, &root.path().canonicalize().unwrap(), &sdk));
         assert_eq!(planned["services"][NATIVE_BUILD]["entrypoint"].as_array().unwrap().len(), builder.len());
-    }
-
-    #[test]
-    fn toolchain_changes_rebuild_the_builder_image_only_with_reloads() {
-        let (root, manifest, compose) = fixture();
-        fs::write(root.path().join("rust-toolchain.toml"), "[toolchain]\nchannel='1.98.0'\n").unwrap();
-        let (mut off, _) = plan(root.path(), &manifest, compose.clone(), &[], true).unwrap();
-        toolchain_rebuild(root.path(), &mut off);
-        assert!(off["services"][NATIVE_BUILD].get("develop").is_none());
-        let reload = Reload::Watch { poll_ms: None };
-        let (mut planned, _) = plan_with(root.path(), &manifest, compose, &[], true, reload).unwrap();
-        assert!(!planned["services"][NATIVE_BUILD]["entrypoint"].to_string().contains("--poll"));
-        toolchain_rebuild(root.path(), &mut planned);
-        assert_eq!(planned["services"][NATIVE_BUILD]["develop"]["watch"][0]["action"], "rebuild");
-        assert!(uses_compose_watch(&planned));
     }
 
     #[cfg(unix)]
