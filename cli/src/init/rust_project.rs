@@ -4016,7 +4016,9 @@ fn read_manifest_value(path: &Path) -> Result<Value> {
 }
 
 fn write_manifest_value(path: &Path, value: &Value) -> Result<()> {
-    write(path, toml::to_string_pretty(value)?)
+    let mut value = value.clone();
+    crate::core::manifest::remove_retired_manifest_keys(&mut value);
+    write(path, toml::to_string_pretty(&value)?)
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 

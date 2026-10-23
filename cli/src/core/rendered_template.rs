@@ -44,10 +44,11 @@ pub(crate) fn write_rendered_templates(
                 )
             })?;
 
-            write(
-                &rendered_template.path,
-                apply_watermark(&rendered_template)?,
-            )
+            let mut content = apply_watermark(&rendered_template)?;
+            if super::manifest::is_manifest_path(&rendered_template.path) {
+                content = super::manifest::strip_retired_manifest_keys(&content);
+            }
+            write(&rendered_template.path, content)
             .with_context(|| match &rendered_template.context {
                 Some(context) => context.clone(),
                 None => format!(
