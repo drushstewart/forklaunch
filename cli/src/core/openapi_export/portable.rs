@@ -11,7 +11,34 @@ pub(super) fn enrich(document: &mut Value, artifact: &Value, service: &str) -> R
     forklaunch_core::openapi::attach_portable_operation_descriptors(
         document,
         &descriptors(artifact, service)?,
-    )
+    )?;
+    mark_internal_operations(document, artifact);
+    Ok(())
+}
+
+/// The build compiler's portable document marks `access: internal` operations
+/// with `x-forklaunch-access: "internal"` (agent tools skip them); the runtime
+/// export protocol emits plain OpenAPI, so mark them from the contract too.
+fn mark_internal_operations(document: &mut Value, artifact: &Value) {
+    for route in artifact["routes"].as_array().into_iter().flatten() {
+        let (Some("internal"), Some(path), Some(method)) = (
+            route["access"].as_str(),
+            route["openapiPath"].as_str(),
+            route["method"].as_str(),
+        ) else {
+            continue;
+        };
+        if route["options"]["openapi"] == false {
+            continue;
+        }
+        if let Some(operation) = document["paths"]
+            .get_mut(path)
+            .and_then(|item| item.get_mut(method.to_ascii_lowercase()))
+            .and_then(Value::as_object_mut)
+        {
+            operation.insert("x-forklaunch-access".to_owned(), "internal".into());
+        }
+    }
 }
 
 fn descriptors(artifact: &Value, service: &str) -> Result<BTreeMap<String, Value>> {
