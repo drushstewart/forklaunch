@@ -362,3 +362,31 @@ mod tests {
         }
     }
 }
+
+/// One file of the TypeScript service template rendered for `data`, as init
+/// writes it (replacements and watermark included), or `None` when the
+/// template has no such file.
+pub(crate) fn render_service_template_file(
+    relative: &str,
+    data: &super::manifest::service::ServiceManifestData,
+) -> Result<Option<String>> {
+    let Some(file) = TEMPLATES_DIR.get_file(Path::new("project/service").join(relative)) else {
+        return Ok(None);
+    };
+    let source = file
+        .contents_utf8()
+        .with_context(|| format!("Template {relative} is not UTF-8"))?;
+    let rendered = database_replacements(
+        &data.database,
+        forklaunch_replacements(&data.app_name, render_template(source, data)?),
+    )
+    .replace(
+        "@forklaunch/validator/typebox",
+        &format!("@forklaunch/validator/{}", data.validator),
+    );
+    Ok(Some(super::watermark::apply_watermark(&RenderedTemplate {
+        path: Path::new(relative).to_path_buf(),
+        content: rendered,
+        context: None,
+    })?))
+}

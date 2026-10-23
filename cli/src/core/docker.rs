@@ -1946,12 +1946,14 @@ pub(crate) fn clean_up_unused_infrastructure_services(
             },
         });
 
-    for infrastructure in unused_infrastructure {
+    let unused_infrastructure: std::vec::Vec<String> = unused_infrastructure.collect();
+    for infrastructure in unused_infrastructure.iter().cloned() {
         // No project declares it, but something else in the stack may still
         // run on it: MinIO backs the telemetry bucket (`minio-init`), and a
         // module can reach Redis without declaring a cache. Removing it would
         // break that service, so only drop what nothing else references.
-        if service_still_referenced(docker_compose, &infrastructure) {
+        // Services removed along with it (MongoDB's `mongo-init`) do not count.
+        if service_still_referenced_outside(docker_compose, &infrastructure, &unused_infrastructure) {
             continue;
         }
         let removed = docker_compose
@@ -1982,6 +1984,19 @@ pub(crate) fn clean_up_unused_infrastructure_services(
     }
 
     Ok(())
+}
+
+/// [`service_still_referenced`], not counting references from `ignored`.
+fn service_still_referenced_outside(
+    docker_compose: &DockerCompose,
+    name: &str,
+    ignored: &[String],
+) -> bool {
+    let mut others = docker_compose.clone();
+    others
+        .services
+        .retain(|key, _| key.as_str() == name || !ignored.contains(key));
+    service_still_referenced(&others, name)
 }
 
 /// True when another compose service depends on `name` or addresses it by

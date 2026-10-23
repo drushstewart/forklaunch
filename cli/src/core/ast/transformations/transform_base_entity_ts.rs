@@ -72,6 +72,35 @@ pub(crate) fn transform_base_entity_ts(
         .context(error_failed_to_read_file(&base_entity_to_copy_path))?;
     let base_entity_to_copy_text = template.content;
 
+    // A source file still as generated carries nothing of the user's to copy:
+    // the target is its template, verbatim, so switching database kinds and
+    // back returns the generated file byte for byte.
+    let generated = |name: &str| -> Option<String> {
+        let source = TEMPLATES_DIR
+            .get_file(Path::new("project").join("core").join("persistence").join(name))?
+            .contents_utf8()?
+            .to_string();
+        Some(source)
+    };
+    if let (Some(copy_template), Some(create_template)) = (
+        generated(base_entity_file_name_to_copy),
+        generated(base_entity_file_name_to_create),
+    ) {
+        let watermarked = crate::core::watermark::apply_watermark(
+            &crate::core::rendered_template::RenderedTemplate {
+                path: base_entity_to_copy_path.clone(),
+                content: copy_template.clone(),
+                context: None,
+            },
+        )?;
+        if base_entity_to_copy_text.trim() == watermarked.trim()
+            || base_entity_to_copy_text.trim() == copy_template.trim()
+        {
+            // Rendered as init renders it (the renderer drops the final newline).
+            return Ok(Some(ramhorns::Template::new(create_template.as_str())?.render(&())));
+        }
+    }
+
     let base_entity_to_copy_program = parse_ast_program(
         &allocator,
         &base_entity_to_copy_text,

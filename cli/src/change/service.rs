@@ -116,6 +116,29 @@ fn change_name(
     )
 }
 
+/// Point a Compose `depends_on` at `database` instead of whichever database
+/// it named, in that entry's place (appended when it named none).
+fn replace_database_dependency(depends_on: &mut IndexMap<String, DependsOn>, database: &Database) {
+    let mut at = None;
+    for variant in Database::VARIANTS {
+        if let Some((index, _, _)) = depends_on.shift_remove_full(variant) {
+            at.get_or_insert(index);
+        }
+    }
+    let entry = DependsOn {
+        condition: DependencyCondition::ServiceStarted,
+        ..Default::default()
+    };
+    match at {
+        Some(index) => {
+            depends_on.shift_insert(index.min(depends_on.len()), database.to_string(), entry);
+        }
+        None => {
+            depends_on.insert(database.to_string(), entry);
+        }
+    }
+}
+
 fn change_database(
     base_path: &Path,
     database: &Database,
@@ -131,6 +154,37 @@ fn change_database(
     }
 
     let existing_database = manifest_data.database.parse::<Database>()?;
+    // A generated file still as init wrote it is re-rendered for the new
+    // database rather than reprinted from its AST, so the change (and its
+    // inverse) touch only what the database decides.
+    let previous = manifest_data.clone();
+    let next = previous.initialize(InitializableManifestConfigMetadata::Project(
+        ProjectInitializationMetadata {
+            project_name: base_path.file_name().unwrap().to_string_lossy().to_string(),
+            database: Some(database.clone()),
+            infrastructure: None,
+            description: None,
+            worker_type: None,
+        },
+    ));
+    let rerender = |relative: &str, cache: &mut RenderedTemplatesCache| -> Result<bool> {
+        let path = base_path.join(relative);
+        let (Some(current), Some(before), Some(after)) = (
+            cache.get(&path)?,
+            crate::core::template::render_service_template_file(relative, &previous)?,
+            crate::core::template::render_service_template_file(relative, &next)?,
+        ) else {
+            return Ok(false);
+        };
+        if current.content != before {
+            return Ok(false);
+        }
+        cache.insert(
+            path.to_string_lossy().to_string(),
+            RenderedTemplate { path, content: after, context: None },
+        );
+        Ok(true)
+    };
     manifest_data.database = database.to_string();
 
     let manifest_data_clone = manifest_data.clone();
@@ -162,6 +216,18 @@ fn change_database(
         &mut existing_docker_service_environment,
     )?;
 
+    // A database service added here goes where init puts it, ahead of the
+    // first service that uses it, not at the end of the file.
+    for name in [database.to_string(), "mongo-init".to_string()] {
+        if let (Some(from), Some(to)) = (
+            docker_compose_data.services.get_index_of(&name),
+            docker_compose_data.services.get_index_of(&project.name),
+        ) && from > to
+        {
+            docker_compose_data.services.move_index(from, to);
+        }
+    }
+
     let dockerfile_key = base_path.parent().unwrap().join("Dockerfile");
     let dockerfile = rendered_templates_cache.get(&dockerfile_key)?;
     if let Some(dockerfile_template) = dockerfile {
@@ -185,23 +251,24 @@ fn change_database(
 
     let mut index_map = IndexMap::new();
     let depends_on = docker_service.depends_on.as_mut().unwrap_or(&mut index_map);
-    for database in Database::VARIANTS {
-        if depends_on.contains_key(&database.to_string()) {
-            depends_on.shift_remove(&database.to_string());
+    replace_database_dependency(depends_on, database);
+    // The generated image's migration process waits on the same database.
+    let migration = format!("{}-migrate", project.name);
+    if let Some(depends_on) = docker_compose_data
+        .services
+        .get_mut(&migration)
+        .and_then(|service| service.depends_on.as_mut())
+    {
+        if Database::VARIANTS.iter().any(|variant| depends_on.contains_key(*variant)) {
+            replace_database_dependency(depends_on, database);
         }
     }
-    depends_on.insert(
-        database.to_string(),
-        DependsOn {
-            condition: DependencyCondition::ServiceStarted,
-            ..Default::default()
-        },
-    );
 
     let projects = manifest_data.projects.clone();
     clean_up_unused_infrastructure_services(docker_compose_data, projects)?;
 
     let mikro_orm_config_path = base_path.join("mikro-orm.config.ts");
+    if !rerender("mikro-orm.config.ts", rendered_templates_cache)? {
     rendered_templates_cache.insert(
         mikro_orm_config_path.to_string_lossy(),
         RenderedTemplate {
@@ -215,6 +282,7 @@ fn change_database(
             context: None,
         },
     );
+    }
 
     // Update registrations.ts import source for database-specific package
     let registrations_path = base_path.join("registrations.ts");
@@ -268,7 +336,7 @@ fn change_database(
     }
 
     let test_utils_path = base_path.join("__test__").join("test-utils.ts");
-    if test_utils_path.exists() {
+    if test_utils_path.exists() && !rerender("__test__/test-utils.ts", rendered_templates_cache)? {
         let current_content = rendered_templates_cache.get(&test_utils_path)?;
         if current_content.is_some() || std::fs::read_to_string(&test_utils_path).is_ok() {
             let new_content =
