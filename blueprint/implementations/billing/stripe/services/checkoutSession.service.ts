@@ -145,26 +145,56 @@ export class StripeCheckoutSessionService<
     return databaseCheckoutSession;
   }
 
+  /**
+   * The Stripe id (`cs_...`) stored with a checkout session when it was
+   * created. Public ids are local; Stripe only knows its own id. The stored
+   * provider object's id wins; a record without one is still usable when its
+   * own id is a Stripe id. Anything else fails here rather than sending Stripe
+   * a local id.
+   */
+  protected async stripeCheckoutSessionId(id: string): Promise<string> {
+    const checkoutSession =
+      await this.baseCheckoutSessionService.getCheckoutSession({ id });
+    const stored = (
+      checkoutSession?.stripeFields as { id?: unknown } | undefined
+    )?.id;
+    const stripeId = stored === undefined ? checkoutSession?.id : stored;
+    if (typeof stripeId !== 'string' || !/^cs_[A-Za-z0-9_]+$/.test(stripeId)) {
+      throw new Error(
+        `Checkout session ${id} has no stored Stripe checkout session id`
+      );
+    }
+    return stripeId;
+  }
+
   async expireCheckoutSession({ id }: IdDto): Promise<void> {
-    await this.stripeClient.checkout.sessions.expire(id);
+    await this.stripeClient.checkout.sessions.expire(
+      await this.stripeCheckoutSessionId(id)
+    );
     await this.baseCheckoutSessionService.expireCheckoutSession({ id });
   }
 
   async handleCheckoutSuccess({ id }: IdDto): Promise<void> {
-    await this.stripeClient.checkout.sessions.update(id, {
-      metadata: {
-        status: 'SUCCESS'
+    await this.stripeClient.checkout.sessions.update(
+      await this.stripeCheckoutSessionId(id),
+      {
+        metadata: {
+          status: 'SUCCESS'
+        }
       }
-    });
+    );
     await this.baseCheckoutSessionService.handleCheckoutSuccess({ id });
   }
 
   async handleCheckoutFailure({ id }: IdDto): Promise<void> {
-    await this.stripeClient.checkout.sessions.update(id, {
-      metadata: {
-        status: 'FAILED'
+    await this.stripeClient.checkout.sessions.update(
+      await this.stripeCheckoutSessionId(id),
+      {
+        metadata: {
+          status: 'FAILED'
+        }
       }
-    });
+    );
     await this.baseCheckoutSessionService.handleCheckoutFailure({ id });
   }
 }

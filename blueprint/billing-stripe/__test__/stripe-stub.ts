@@ -5,7 +5,9 @@ import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
  * An in-memory stand-in for the slice of the Stripe API this module calls, so
  * its tests run offline and without a Stripe key. It keeps the objects it
  * creates, answers retrieves, updates, lists and deletes from them, and
- * replies to unknown ids and routes with Stripe's error shape.
+ * replies to unknown ids and routes with Stripe's error shape. It is stricter
+ * than Stripe about id shape: an id without its Stripe prefix (`plink_`, `cs_`,
+ * `sub_`, ...) is refused with a 400, so sending a local id to Stripe fails.
  *
  * Set `STRIPE_LIVE_TESTS=1` (with `STRIPE_API_KEY` set to a Stripe test-mode
  * key) to run the tests against the real Stripe test API instead.
@@ -89,6 +91,20 @@ class StripeError extends Error {
   }
 }
 
+/**
+ * The id prefix Stripe always gives these object types. Plans and products are
+ * left out: Stripe lets callers choose their ids.
+ */
+const ID_PREFIXES: Record<string, string> = {
+  payment_methods: 'pm',
+  customers: 'cus',
+  prices: 'price',
+  payment_links: 'plink',
+  checkout_sessions: 'cs',
+  billing_portal_sessions: 'bps',
+  subscriptions: 'sub'
+};
+
 let running: StripeStub | undefined;
 
 /** The stub started by {@link startStripeStub}, until it is closed. */
@@ -105,6 +121,17 @@ export async function startStripeStub(): Promise<StripeStub> {
     return entries;
   };
   const find = (name: string, object: string, key: string) => {
+    // Stripe ids carry a type prefix. Refuse anything else outright, so a
+    // service that sends a local (public UUID) id to Stripe fails loudly here
+    // instead of only failing against the real API.
+    const prefix = ID_PREFIXES[name];
+    if (prefix && !new RegExp(`^${prefix}_[A-Za-z0-9_]+$`).test(key)) {
+      throw new StripeError(
+        400,
+        `Invalid ${object} id '${key}': Stripe ${object} ids start with '${prefix}_'`,
+        'invalid_stripe_id'
+      );
+    }
     const found = table(name).get(key);
     if (!found) {
       throw new StripeError(

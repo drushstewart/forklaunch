@@ -161,26 +161,51 @@ export class StripePaymentLinkService<
     return paymentLink;
   }
 
+  /**
+   * The Stripe id (`plink_...`) stored with a payment link when it was created.
+   * Public ids are local; Stripe only knows its own id. The stored provider
+   * object's id wins; a record without one is still usable when its own id is a
+   * Stripe id. Anything else fails here rather than sending Stripe a local id.
+   */
+  protected stripePaymentLinkId(
+    paymentLink: Dto['PaymentLinkMapper'],
+    id: string
+  ): string {
+    const stored = (paymentLink?.stripeFields as { id?: unknown } | undefined)
+      ?.id;
+    const stripeId = stored === undefined ? paymentLink?.id : stored;
+    if (
+      typeof stripeId !== 'string' ||
+      !/^plink_[A-Za-z0-9_]+$/.test(stripeId)
+    ) {
+      throw new Error(
+        `Payment link ${id} has no stored Stripe payment link id`
+      );
+    }
+    return stripeId;
+  }
+
   async updatePaymentLink(
     paymentLinkDto: StripeUpdatePaymentLinkDto<StatusEnum>,
     ...args: unknown[]
   ): Promise<Dto['PaymentLinkMapper']> {
+    const existing = await this.basePaymentLinkService.getPaymentLink({
+      id: paymentLinkDto.id
+    });
     if (this.mappers.UpdatePaymentLinkMapper.validateCachedUpdate) {
-      const existing = await this.basePaymentLinkService.getPaymentLink({
-        id: paymentLinkDto.id
-      });
       await this.mappers.UpdatePaymentLinkMapper.validateCachedUpdate(
         paymentLinkDto,
         existing
       );
     }
-    const session = await this.stripeClient.paymentLinks.update(
-      paymentLinkDto.id,
-      {
-        ...paymentLinkDto.stripeFields,
-        payment_method_types: paymentLinkDto.paymentMethods
-      }
-    );
+    const stripeId = this.stripePaymentLinkId(existing, paymentLinkDto.id);
+    const session = await this.stripeClient.paymentLinks.update(stripeId, {
+      ...paymentLinkDto.stripeFields,
+      payment_method_types: paymentLinkDto.paymentMethods
+    });
+    if (session.id !== stripeId) {
+      throw new Error('Invalid Stripe billing response');
+    }
 
     const toLocalUpdate = this.mappers.UpdatePaymentLinkMapper.toLocalUpdate;
     if (toLocalUpdate) {
@@ -198,7 +223,6 @@ export class StripePaymentLinkService<
         await this.mappers.UpdatePaymentLinkMapper.toEntity(
           {
             ...paymentLinkDto,
-            id: session.id,
             amount:
               session.line_items?.data.reduce<number>(
                 (total, item) => total + item.amount_total,
@@ -239,7 +263,11 @@ export class StripePaymentLinkService<
   }
 
   async expirePaymentLink({ id }: IdDto): Promise<void> {
-    await this.stripeClient.paymentLinks.update(id, {
+    const stripeId = this.stripePaymentLinkId(
+      await this.basePaymentLinkService.getPaymentLink({ id }),
+      id
+    );
+    await this.stripeClient.paymentLinks.update(stripeId, {
       metadata: {
         status: 'EXPIRED'
       }
@@ -248,7 +276,11 @@ export class StripePaymentLinkService<
   }
 
   async handlePaymentSuccess({ id }: IdDto): Promise<void> {
-    await this.stripeClient.paymentLinks.update(id, {
+    const stripeId = this.stripePaymentLinkId(
+      await this.basePaymentLinkService.getPaymentLink({ id }),
+      id
+    );
+    await this.stripeClient.paymentLinks.update(stripeId, {
       metadata: {
         status: 'COMPLETED'
       }
@@ -257,7 +289,11 @@ export class StripePaymentLinkService<
   }
 
   async handlePaymentFailure({ id }: IdDto): Promise<void> {
-    await this.stripeClient.paymentLinks.update(id, {
+    const stripeId = this.stripePaymentLinkId(
+      await this.basePaymentLinkService.getPaymentLink({ id }),
+      id
+    );
+    await this.stripeClient.paymentLinks.update(stripeId, {
       metadata: {
         status: 'FAILED'
       }

@@ -39,7 +39,9 @@ export type StripePaymentLinkMappers<
   };
   UpdatePaymentLinkMapper: {
     /** Validate the already-applied provider result and prepare one local update.
-     * Does not resolve aliases or establish provider account ownership.
+     * `provider.id` is the stored Stripe id, which the service has already
+     * matched; `dto.id` stays the public id. Does not resolve aliases or
+     * establish provider account ownership.
      */
     toLocalUpdate?: (
       dto: Dto['UpdatePaymentLinkMapper'],

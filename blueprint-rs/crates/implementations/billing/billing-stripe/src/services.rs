@@ -3,6 +3,8 @@
 //! on output. Generated Stripe contracts must expose the TS `stripeFields` name.
 //! Provider mutations precede local persistence, matching the TS wrappers. A
 //! failed local write can require reconciliation; external calls are not retried.
+//! Payment-link and checkout mutations read the record first and call Stripe
+//! with its stored Stripe id (`plink_`/`cs_`); public ids stay local.
 use crate::client::{StripeBillingClient, StripeResource};
 use chrono::{Duration, Utc};
 use forklaunch_billing_base::services::{BaseBillingService, BillingStore};
@@ -155,21 +157,33 @@ impl<S: BillingStore> StripeBillingService<S> {
         value.provider_fields = Some(provider);
         Ok(value)
     }
+    /// The Stripe id (`plink_...`) stored with a payment link at creation.
+    async fn stored_payment_link_id(&self, id: &str) -> BlueprintResult<String> {
+        let record = self.base.get_payment_link(id).await?;
+        stored_stripe_id(&record.id, record.provider_fields.as_ref(), "plink_")
+    }
+    /// The Stripe id (`cs_...`) stored with a checkout session at creation.
+    async fn stored_checkout_session_id(&self, id: &str) -> BlueprintResult<String> {
+        let record = self.base.get_checkout_session(id).await?;
+        stored_stripe_id(&record.id, record.provider_fields.as_ref(), "cs_")
+    }
     async fn link_status(&self, id: &str, status: &str) -> BlueprintResult<()> {
+        let stripe_id = self.stored_payment_link_id(id).await?;
         self.client
             .update(
                 StripeResource::PaymentLink,
-                id,
+                &stripe_id,
                 &json!({"metadata":{"status":status}}),
             )
             .await?;
         Ok(())
     }
     async fn checkout_status(&self, id: &str, status: &str) -> BlueprintResult<()> {
+        let stripe_id = self.stored_checkout_session_id(id).await?;
         self.client
             .update(
                 StripeResource::CheckoutSession,
-                id,
+                &stripe_id,
                 &json!({"metadata":{"status":status}}),
             )
             .await?;
@@ -448,8 +462,14 @@ impl<S: BillingStore> CheckoutSessionService for StripeBillingService<S> {
         Ok(value)
     }
     async fn expire_checkout_session(&self, id: &str) -> BlueprintResult<()> {
+        let stripe_id = self.stored_checkout_session_id(id).await?;
         self.client
-            .action(StripeResource::CheckoutSession, id, "expire", &json!({}))
+            .action(
+                StripeResource::CheckoutSession,
+                &stripe_id,
+                "expire",
+                &json!({}),
+            )
             .await?;
         self.base.expire_checkout_session(id).await
     }
@@ -497,10 +517,13 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
         &self,
         mut request: UpdatePaymentLinkDto,
     ) -> BlueprintResult<PaymentLinkDto> {
-        if self.configured_payment_link_updates {
+        let record = if self.configured_payment_link_updates {
             self.configured_preflight_payment_link_update(&request)
-                .await?;
-        }
+                .await?
+        } else {
+            self.base.get_payment_link(&request.id).await?
+        };
+        let stripe_id = stored_stripe_id(&record.id, record.provider_fields.as_ref(), "plink_")?;
         let mut overrides = json!({});
         if let Some(value) = &request.payment_methods {
             overrides["payment_method_types"] = json!(value);
@@ -514,14 +537,14 @@ impl<S: BillingStore> PaymentLinkService for StripeBillingService<S> {
         }
         let provider = if self.configured_payment_link_updates {
             self.client
-                .update_configured(StripeResource::PaymentLink, &request.id, &fields)
+                .update_configured(StripeResource::PaymentLink, &stripe_id, &fields)
                 .await?
         } else {
             self.client
-                .update(StripeResource::PaymentLink, &request.id, &fields)
+                .update(StripeResource::PaymentLink, &stripe_id, &fields)
                 .await?
         };
-        validate_read_identity(&provider, &request.id, "payment_link")?;
+        validate_read_identity(&provider, &stripe_id, "payment_link")?;
         request.amount = Some(line_amount(&provider)?);
         request.provider_fields = Some(provider);
         self.base.update_payment_link(request).await
@@ -697,6 +720,32 @@ fn line_amount(provider: &Value) -> BlueprintResult<f64> {
     } else {
         Err(invalid_response())
     }
+}
+/// Provider mutations target the Stripe id stored with the record, never a
+/// local public id. The stored provider object's id wins; a record without one
+/// is still usable when its own id is a Stripe id (the default service stores
+/// records under their Stripe id). Anything else fails before any Stripe call.
+fn stored_stripe_id(
+    record_id: &str,
+    provider_fields: Option<&Value>,
+    prefix: &str,
+) -> BlueprintResult<String> {
+    let stripe_shaped = |id: &&str| {
+        id.strip_prefix(prefix).is_some_and(|rest| {
+            !rest.is_empty() && rest.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+    };
+    match provider_fields.and_then(|fields| fields.get("id")) {
+        Some(stored) => stored.as_str().filter(stripe_shaped),
+        None => Some(record_id).filter(stripe_shaped),
+    }
+    .map(str::to_owned)
+    .ok_or_else(|| {
+        BlueprintError::new(
+            "billing_provider_reference_missing",
+            "Billing record has no stored Stripe id",
+        )
+    })
 }
 fn invalid_response() -> BlueprintError {
     BlueprintError::new("stripe_invalid_response", "Invalid Stripe billing response")
