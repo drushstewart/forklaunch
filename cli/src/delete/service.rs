@@ -272,6 +272,9 @@ impl CliCommand for ServiceCommand {
         write_rendered_templates(&rendered_templates, false, &mut stdout)?;
 
         crate::sdk::typescript_build::remove_hook(&app_root_path, &service_name)?;
+        // The manifest entry is already gone, so remove_hook cannot find the
+        // generated Rust SDK member; image planning would trip over it.
+        crate::init::rust_project::remove_typescript_sdk_member(&app_root_path, &service_base_path.join(&service_name))?;
         crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
 
         log_ok!(stdout, "{} deleted successfully!", service_name);

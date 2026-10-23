@@ -1089,6 +1089,13 @@ impl CliCommand for WorkerCommand {
 
         if !dryrun {
             let old = worker_base_path.file_name().and_then(|name| name.to_str()).context("Invalid project directory")?;
+            // Image planning reads the workspace members, so move the SDK
+            // member before the hook rename refreshes the images.
+            crate::init::rust_project::rename_typescript_sdk_member(
+                &app_root_path,
+                &worker_base_path,
+                &worker_base_path.with_file_name(&manifest_data.worker_name),
+            )?;
             crate::sdk::typescript_build::rename_hook(&app_root_path, old, &manifest_data.worker_name)?;
             crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(stdout, "{} changed successfully!", &manifest_data.app_name);

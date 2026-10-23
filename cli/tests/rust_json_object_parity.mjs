@@ -57,7 +57,7 @@ vm.runInNewContext(compile(await readFile(path.join(root,'framework/infrastructu
 const master='native-json-current-fixture-key',previous=['native-json-previous-fixture-key'],tenant='tenant-a';
 const env={...process.env,S3_URL:base,S3_BUCKET:bucket,S3_PREFIX:prefix,S3_REGION:'us-east-1',S3_ACCESS_KEY_ID:'owned-json-fixture',S3_SECRET_ACCESS_KEY:'owned-json-fixture-secret',AWS_EC2_METADATA_DISABLED:'true'};
 async function native(operations,options={}){
- const child=spawn('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-infrastructure-s3','--features','aws-sdk,encryption,serde_json/arbitrary_precision,serde_json/raw_value','--example','json_object_parity'],{cwd:root,env,stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stdin.end(JSON.stringify({master,previous,tenant,operations,...options}));
+ const child=spawn('cargo',['run','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-infrastructure-s3','--features','aws-sdk,encryption','--example','json_object_parity'],{cwd:root,env,stdio:['pipe','pipe','inherit']});let output='';child.stdout.on('data',chunk=>output+=chunk);child.stdin.end(JSON.stringify({master,previous,tenant,operations,...options}));
  assert.equal(await new Promise(resolve=>child.once('close',resolve)),0);return JSON.parse(output);
 }
 const actual=(encryptor)=>new exports.S3ObjectStore({}, {bucket,client,prefix,createBucketIfMissing:false},{},{encryptor});
@@ -71,7 +71,8 @@ try{
   assert.deepEqual(await native([{op:'put',key:rustKey,value}],{format}),[null]);
   assert.deepEqual(JSON.parse(JSON.stringify(await store.readObject(rustKey,compliance))),value);
   const bytes=objects.get(`/${bucket}/${prefix}${rustKey}`).body.toString();
-  assert.ok(bytes.startsWith(`${format}:`));assert.ok(!bytes.includes(value.email));
+  // Native writers always seal randomized, stamped v4 envelopes (JsonRecordCodec::encode).
+  assert.ok(bytes.startsWith('v4:'),bytes);assert.ok(!bytes.includes(value.email));
   assert.ok((await native([{op:'get',key:rustKey}],{tenant:'wrong'}))[0].error);
   assert.equal((await native([{op:'get',key:rustKey}],{tenant:null}))[0].error,'record_tenant_required');
   await assert.rejects(store.readObject(rustKey,{tenantId:'wrong'}));

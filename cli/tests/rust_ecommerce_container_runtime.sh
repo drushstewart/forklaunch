@@ -79,7 +79,9 @@ for name,service in compose['services'].items():
     env.update(DATABASE_URL=f'postgres://ecommerce_app:fixture-restricted-password@{database}:5432/parity',TENANT_ID='container-ecommerce-fixture',ENCRYPTION_KEY='container-encryption-fixture')
     if name=='ecommerce':
         assert service['command']==['/app/bin/ecommerce']
-        env.update(HMAC_SECRET_KEY='container-ecommerce-hmac-secret',JWKS_PUBLIC_KEY_URL='http://127.0.0.1:9/jwks',STRIPE_API_KEY='sk_fixture',STRIPE_WEBHOOK_SECRET='whsec_fixture',HOST='0.0.0.0',PORT='8000')
+        env.update(HMAC_SECRET_KEY='container-ecommerce-hmac-secret',JWKS_PUBLIC_KEY_URL='http://127.0.0.1:9/jwks',STRIPE_API_KEY='sk_fixture',STRIPE_WEBHOOK_SECRET='whsec_fixture',HOST='0.0.0.0',PORT='8000',
+            # Every JWT verifier pins the shared IAM issuer/audience (ec53d81cd).
+            JWT_ISSUER='http://iam.fixture',JWT_AUDIENCE='container-app-api')
         service['ports']=['127.0.0.1::8000']
     else:
         assert service['command']==['/app/bin/ecommerce','--worker']

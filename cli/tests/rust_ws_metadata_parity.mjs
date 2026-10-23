@@ -51,7 +51,7 @@ async function parse(document){
 try{
  const input=path.join(temporary,'input.json'),output=path.join(temporary,'output.json'),references=path.join(temporary,'references.json');
  const framework=path.join(temporary,'framework.json');
- execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-ws','--all-features','framework_schema_entry_conformance'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_FRAMEWORK_SOCKET_CONTRACT:framework},stdio:'inherit',timeout:300000});
+ execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--all-features','framework_schema_entry_conformance'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_FRAMEWORK_SOCKET_CONTRACT:framework},stdio:'inherit',timeout:300000});
  cases.push(JSON.parse(await readFile(framework,'utf8')));
  await writeFile(input,JSON.stringify(cases));
  execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','build,asyncapi-import','raw::tests'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_RAW_SOCKET_INPUT:input,FORKLAUNCH_TEST_RAW_SOCKET_OUTPUT:output,FORKLAUNCH_TEST_RAW_SOCKET_REFERENCES:references},stdio:'inherit',timeout:300000});

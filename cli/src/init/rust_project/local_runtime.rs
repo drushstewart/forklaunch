@@ -103,8 +103,12 @@ fn groups(compose: &DockerCompose) -> Vec<DatabaseGroup> {
         .collect()
 }
 
+/// TypeScript services on the shared PostgreSQL. Processes of one project
+/// (`ecommerce`, `ecommerce-worker`) share its database, so they share the
+/// roles of the process its `<name>-migrate` job migrates for; separate roles
+/// would each take over the schema and lock the other out.
 fn typescript_databases(compose: &DockerCompose) -> Vec<TypescriptDatabase> {
-    compose
+    let candidates: Vec<(&String, &String)> = compose
         .services
         .iter()
         .filter(|(name, service)| {
@@ -112,10 +116,23 @@ fn typescript_databases(compose: &DockerCompose) -> Vec<TypescriptDatabase> {
                 && env(service, "DB_HOST").is_some_and(|host| host == "postgresql")
                 && env(service, "DB_NAME").is_some()
         })
-        .map(|(name, service)| TypescriptDatabase {
-            service: name.clone(),
-            database: env(service, "DB_NAME").unwrap().clone(),
-            role: name.to_case(Case::Snake),
+        .map(|(name, service)| (name, env(service, "DB_NAME").unwrap()))
+        .collect();
+    let owner = |database: &String| {
+        let sharing = candidates.iter().filter(|(_, db)| *db == database).map(|(name, _)| *name);
+        sharing
+            .clone()
+            .find(|name| compose.services.contains_key(&format!("{name}-migrate")))
+            .or_else(|| sharing.min_by_key(|name| name.len()))
+            .expect("a database has at least one service")
+            .to_case(Case::Snake)
+    };
+    candidates
+        .iter()
+        .map(|(name, database)| TypescriptDatabase {
+            service: (*name).clone(),
+            database: (*database).clone(),
+            role: owner(database),
         })
         .collect()
 }
@@ -1132,7 +1149,12 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             .iter()
             .map(|group| (role(&group.prefix, "owner"), role(&group.prefix, "app"), database(&app, &group.prefix)))
             .collect();
-        databases.extend(typescript.iter().map(|ts| (format!("{}_owner", ts.role), format!("{}_app", ts.role), ts.database.clone())));
+        for ts in &typescript {
+            let entry = (format!("{}_owner", ts.role), format!("{}_app", ts.role), ts.database.clone());
+            if !databases.contains(&entry) {
+                databases.push(entry);
+            }
+        }
         let mut provision = DockerService {
             image: postgres.image.clone(),
             restart: Some(Restart::No),
@@ -1215,7 +1237,58 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     write(&compose_path, yaml_to_string(&compose)?)?;
     let modules_path = manifest.get("modules_path").and_then(Value::as_str).unwrap_or("src");
     let values = write_env(root, modules_path, &app, &compose)?;
+    let superuser = compose
+        .services
+        .get("postgresql")
+        .and_then(|postgres| env(postgres, "POSTGRES_USER"))
+        .cloned()
+        .unwrap_or_else(|| "postgres".into());
+    typescript_local_owners(&root.join(modules_path), &typescript, &superuser)?;
+    if !typescript.is_empty() && compose.services.contains_key(PROVISION) {
+        provision_host_scripts(&root.join(modules_path).join("package.json"))?;
+    }
     write_local_envs(root, &compose, &values, &migrations)
+}
+
+/// The TypeScript workspace's database scripts (`migrate:init`, `seed`, ...)
+/// start PostgreSQL and connect as the owner roles, which only exist once
+/// `postgresql-provision` has run.
+fn provision_host_scripts(path: &Path) -> Result<()> {
+    const START: &str = "\"docker compose up -d --wait postgresql && ";
+    let Ok(existing) = read_to_string(path) else { return Ok(()) };
+    let provisioned = format!("{START}docker compose run --rm {PROVISION} && ");
+    let content = existing.replace(&provisioned, START).replace(START, &provisioned);
+    if content != existing {
+        write(path, content)?;
+    }
+    Ok(())
+}
+
+/// Host tooling of a TypeScript project (`pnpm migrate:*`, seeds) connects
+/// with its `.env.local` `DB_USER`. The generator writes the PostgreSQL
+/// superuser there, whose tables the restricted roles cannot see; use the
+/// owner role the `<name>-migrate` job migrates as. Other users are kept.
+fn typescript_local_owners(modules: &Path, typescript: &[TypescriptDatabase], superuser: &str) -> Result<()> {
+    for database in typescript.iter().filter(|database| database.service.to_case(Case::Snake) == database.role) {
+        let path = modules.join(&database.service).join(".env.local");
+        let Ok(existing) = read_to_string(&path) else { continue };
+        let owner = format!("{}_owner", database.role);
+        let content: Vec<String> = existing
+            .lines()
+            .map(|line| match line.split_once('=') {
+                Some((key, value)) if key.trim() == "DB_USER" && value.trim() == superuser => format!("DB_USER={owner}"),
+                _ => line.to_owned(),
+            })
+            .collect();
+        let mut content = content.join("\n");
+        if existing.ends_with('\n') {
+            content.push('\n');
+        }
+        if content != existing {
+            write(&path, content)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1399,6 +1472,56 @@ mod tests {
         assert_eq!(host("http://iam:8004/api/auth/jwks"), "http://127.0.0.1:8004/api/auth/jwks");
         assert_eq!(host("http://coding-server:3000"), "http://127.0.0.1:8001");
         assert_eq!(host("kafka:29092"), "127.0.0.1:9092");
+    }
+
+    #[test]
+    fn typescript_database_scripts_provision_roles_first() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("package.json");
+        std::fs::write(&path, r#"{"scripts":{"migrate:init":"docker compose up -d --wait postgresql && pnpm -r run migrate:init","dev":"pnpm dev"}}"#).unwrap();
+        provision_host_scripts(&path).unwrap();
+        let expected = r#"{"scripts":{"migrate:init":"docker compose up -d --wait postgresql && docker compose run --rm postgresql-provision && pnpm -r run migrate:init","dev":"pnpm dev"}}"#;
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+        // Idempotent.
+        provision_host_scripts(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+    }
+
+    #[test]
+    fn typescript_host_tooling_uses_the_owner_role() {
+        let root = tempfile::tempdir().unwrap();
+        for (project, user) in [("ecommerce", "postgresql"), ("intake", "custom")] {
+            std::fs::create_dir_all(root.path().join(project)).unwrap();
+            std::fs::write(root.path().join(project).join(".env.local"), format!("DB_HOST=localhost\nDB_USER={user}\n")).unwrap();
+        }
+        let database = |service: &str, role: &str| TypescriptDatabase { service: service.into(), database: "db".into(), role: role.into() };
+        let typescript = [database("ecommerce", "ecommerce"), database("ecommerce-worker", "ecommerce"), database("intake", "intake")];
+        typescript_local_owners(root.path(), &typescript, "postgresql").unwrap();
+        let read = |project: &str| std::fs::read_to_string(root.path().join(project).join(".env.local")).unwrap();
+        assert_eq!(read("ecommerce"), "DB_HOST=localhost\nDB_USER=ecommerce_owner\n");
+        assert_eq!(read("intake"), "DB_HOST=localhost\nDB_USER=custom\n");
+    }
+
+    #[test]
+    fn typescript_processes_of_one_database_share_its_migrated_roles() {
+        let compose: DockerCompose = yaml_from_str(r#"
+services:
+  ecommerce:
+    environment: { DB_HOST: postgresql, DB_NAME: app-ecommerce-dev }
+  ecommerce-worker:
+    environment: { DB_HOST: postgresql, DB_NAME: app-ecommerce-dev }
+  ecommerce-migrate:
+    environment: { DB_HOST: postgresql, DB_NAME: app-ecommerce-dev }
+  intake:
+    environment: { DB_HOST: postgresql, DB_NAME: app-intake-dev }
+"#).unwrap();
+        let roles: Vec<(String, String)> =
+            typescript_databases(&compose).into_iter().map(|db| (db.service, db.role)).collect();
+        assert_eq!(roles, [
+            ("ecommerce".into(), "ecommerce".into()),
+            ("ecommerce-worker".into(), "ecommerce".into()),
+            ("intake".into(), "intake".into()),
+        ]);
     }
 
     #[test]

@@ -37,7 +37,7 @@ def typescript(consumer, output):
     config = root / 'versioned-tsconfig.json'
     config.write_text(json.dumps({'compilerOptions': {
         'strict': True, 'skipLibCheck': True, 'target': 'ES2022', 'module': 'ESNext',
-        'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM'],
+        'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable'],
         'types': ['node'], 'typeRoots': [str(shared / 'node_modules/@types')],
         'rootDir': str(consumer.parent), 'outDir': str(output), 'noEmitOnError': True,
     }, 'files': [str(consumer)]}))
@@ -94,7 +94,7 @@ try:
     routes = service / 'api/routes/mod.rs'
     routes.write_text('pub mod version_fixture;\n' + routes.read_text().replace('ContractRouter::new(contracts::registry())', 'ContractRouter::new(contracts::native_registry())'))
     cargo = service / 'Cargo.toml'
-    cargo.write_text(cargo.read_text().replace('features = ["native-server"', 'features = ["native-server", "adapter"'))
+    cargo.write_text(cargo.read_text().replace('"native-server"', '"native-server", "adapter"', 1))
     application = service / 'application.rs'
     application.write_text(application.read_text().replace('    Ok(router)', '''    let fixture = crate::api::routes::version_fixture::register(forklaunch_axum::ForkLaunchRouter::new(
         forklaunch_core::ServiceInfo::new("versions", env!("CARGO_PKG_VERSION")),

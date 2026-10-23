@@ -17,7 +17,7 @@ async fn generated_client_calls_authenticated_cac_routes() {
     let DescribeCodeSetResponses::Status200(value) = response else {
         panic!("descriptor failed");
     };
-    assert_eq!(value.code_set_type, "mock");
+    assert_eq!(value.code_set_type.as_str(), "mock");
     assert!(!value.licensed);
     let response = client
         .lookup_procedure_code(LookupProcedureCodeRequest {

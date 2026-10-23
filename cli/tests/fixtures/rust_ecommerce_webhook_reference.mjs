@@ -59,7 +59,7 @@ export async function compareWebhooks({base,otherBase,peerBase,call,providerBase
  async function send(provider,payload,{reference=false,bad=false,target=base}={}){
   const raw=JSON.stringify(payload),requestHeaders=headers(provider,raw,bad);
   if(reference){let code,response;activeProvider=provider;
-   try{await handlers[`/${provider}`]({body:provider==='paypal'?{id:payload.id,event_type:payload.event_type,resource:payload.resource}:payload,rawBody:Buffer.from(raw),headers:requestHeaders},{status(value){code=value;return this;},send(value){response=value;}});}
+   try{await handlers[`/${provider}`]({body:provider==='paypal'?{id:payload.id,event_type:payload.event_type,resource:payload.resource}:payload,rawBody:Buffer.from(raw),/* framework body parser, 0c03ba93e */_rawBody:Buffer.from(raw),headers:requestHeaders},{status(value){code=value;return this;},send(value){response=value;}});}
    catch{code=500;response='Webhook handling failed';}
    return{code,response};
   }

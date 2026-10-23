@@ -103,8 +103,10 @@ export class UniversalSdk {
         sdk.registryOpenApiHash = initial.registryOpenApiHash;
         sdk.sdkPathMap = initial.sdkPathMap;
       }
-    } catch {
-      // Retried on first use.
+    } catch (error) {
+      // Retried on first use. A document supplied in-process is always
+      // reachable, so an invalid one is rejected now rather than on first use.
+      if ('raw' in registryOptions) throw error;
     }
     return sdk;
   }

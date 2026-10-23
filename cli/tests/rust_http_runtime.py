@@ -41,7 +41,7 @@ def command(*args, path=None):
 def configure_ts(tsc, paths, output=None, type_roots=None):
     config = root / 'fixture-tsconfig.json'
     options = {'strict': True, 'skipLibCheck': True, 'target': 'ES2022',
-               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM']}
+               'module': 'ESNext', 'moduleResolution': 'Bundler', 'lib': ['ES2022', 'DOM', 'DOM.Iterable']}
     if output:
         options['outDir'] = str(output)
         options['rootDir'] = os.path.commonpath([str(Path(path).parent) for path in paths])
@@ -111,7 +111,7 @@ pub struct UsersQuery { pub label: Option<String> }
     # Programmatic adapter remains an explicitly supported framework route API;
     # generated startup, docs, origin security, telemetry and MCP stay unchanged.
     cargo = service / 'Cargo.toml'
-    cargo.write_text(cargo.read_text().replace('features = ["native-server"', 'features = ["native-server", "adapter"'))
+    cargo.write_text(cargo.read_text().replace('"native-server"', '"native-server", "adapter"', 1))
     application = service / 'application.rs'
     text = application.read_text().replace('    Ok(router)', '''    let mut handlers = forklaunch_core::http::LocalRouter::new();
     crate::api::routes::transport_fixture::register(&mut handlers);

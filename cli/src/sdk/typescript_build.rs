@@ -398,21 +398,46 @@ pub(crate) fn remove_hook(root: &Path, name: &str) -> Result<()> {
 }
 
 pub(crate) fn rename_hook(root: &Path, old: &str, new: &str) -> Result<()> {
-    if old == new || !has_contract_build(root, old)? {
+    if old == new {
         return Ok(());
     }
-    ensure!(!has_contract_build(root, new)?, "Destination contract hook already exists");
+    // `change service` writes the renamed manifest entry first, so the hook's
+    // metadata may already sit under the new name while still describing the
+    // old directory and scripts.
+    let entry_renamed = !has_contract_build(root, old)? && has_contract_build(root, new)?;
+    if !entry_renamed {
+        if !has_contract_build(root, old)? {
+            return Ok(());
+        }
+        ensure!(!has_contract_build(root, new)?, "Destination contract hook already exists");
+    }
+    let source = if entry_renamed { new } else { old };
     let modules = manifest(root)?["modules_path"]
         .as_str()
         .context("Missing hook modules path")?
         .to_owned();
     let service = root.join(&modules).join(new);
-    let local = super::layout::typescript_authored(root, old)?;
-    // Transports are recorded in the compiled contract, not in a plan.
-    let (request_multipart, response_multipart) = fs::read_to_string(root.join(contract_path(root, old)?))
+    let local = super::layout::typescript_authored(root, source)?;
+    // Transports are recorded in the compiled contract, not in a plan. The
+    // directory has already moved, so prefer the contract under its new path.
+    let (request_multipart, response_multipart) = fs::read_to_string(service.join("sdk/contract.json"))
         .ok()
+        .or_else(|| fs::read_to_string(root.join(contract_path(root, source).ok()?)).ok())
         .and_then(|contract| forklaunch_core::build::http_artifact_sources(&contract, old).ok())
         .map_or((false, false), |compiled| (compiled.request_multipart, compiled.response_multipart));
+    if entry_renamed {
+        // The generated SDK scripts still name the old service.
+        let package_path = service.join("package.json");
+        let mut package: serde_json::Value = serde_json::from_slice(&fs::read(&package_path)?)?;
+        if let Some(scripts) = package["scripts"].as_object_mut() {
+            for (key, value) in [("sdk:build", sdk_script(old)), ("sdk:watch", format!("{} --watch", sdk_script(old)))] {
+                if scripts.get(key).and_then(serde_json::Value::as_str) == Some(value.as_str()) {
+                    scripts.remove(key);
+                }
+            }
+            fs::write(&package_path, format!("{}\n", serde_json::to_string_pretty(&package)?))?;
+        }
+    }
     if local {
         record_local_ownership(root, &service, new)?;
         crate::init::rust_project::rename_service_sdk_dependency(root, &format!("{modules}/{old}"), &format!("{modules}/{new}"), old, new)?;
@@ -425,7 +450,11 @@ pub(crate) fn rename_hook(root: &Path, old: &str, new: &str) -> Result<()> {
     )?;
     install_hooks(root, &service, new)?;
     record_contract_path(root, new, contract_path(root, new)?)?;
-    remove_hook(root, old)
+    if entry_renamed {
+        Ok(())
+    } else {
+        remove_hook(root, old)
+    }
 }
 
 fn fingerprint(directory: &Path) -> Result<Vec<u8>> {
