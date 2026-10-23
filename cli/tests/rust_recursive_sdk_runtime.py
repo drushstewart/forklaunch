@@ -103,7 +103,7 @@ try:
         routes = service / 'api/routes/mod.rs'
         routes.write_text('pub mod recursive_fixture;\n' + routes.read_text().replace('ContractRouter::new(contracts::registry())', 'ContractRouter::new(contracts::native_registry())'))
         cargo = service / 'Cargo.toml'
-        cargo.write_text(cargo.read_text().replace('features = ["native-server"]', 'features = ["native-server", "adapter"]'))
+        cargo.write_text(cargo.read_text().replace('features = ["native-server"', 'features = ["native-server", "adapter"'))
         application = service / 'application.rs'
         application.write_text(application.read_text().replace('    Ok(router)', '''    let fixture = forklaunch_axum::ForkLaunchRouter::from_local_router(
         forklaunch_core::ServiceInfo::new("trees", env!("CARGO_PKG_VERSION")),
