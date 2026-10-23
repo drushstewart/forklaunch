@@ -48,8 +48,11 @@ def rust_image():
     binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
     services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
         'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    # Long-running processes; one-shot migrate/seed jobs run the same binary
+    # with --migrate/--seed and are not processes.
     processes = {name: service for name, service in services.items()
-                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')
+                 and not set(service['command'][1:]) & {'--migrate', '--seed'}}
     return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
 
 modules = 'src'
@@ -363,7 +366,10 @@ def check_paths():
         assert 'build-dependencies' not in aggregate_manifest
         assert not (aggregate / 'build.rs').exists(), 'Aggregate reexports existing SDKs without duplicate generation'
         public_exports = (aggregate / 'lib.rs').read_bytes()
-        assert b'pub use accounts;' in public_exports and b'pub use accounts::*;' in public_exports
+        # With several services the aggregate re-exports each by name; a glob
+        # re-export is only emitted for a single service.
+        assert b'pub use accounts;' in public_exports and b'pub use products;' in public_exports
+        assert b'::*;' not in public_exports.replace(b'pub use extensions::*;', b'')
         extension = aggregate / 'extensions.rs'
         extension.write_text('//! Application-owned SDK alias.\npub use crate::accounts::Client as AccountClient;\n')
         extension_source = extension.read_bytes()
