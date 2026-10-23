@@ -93,6 +93,40 @@
           "enumItems": [],
           "mappedType": "text"
         },
+        "provider_fields": {
+          "name": "provider_fields",
+          "type": "jsonb",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "json"
+        },
+        "retention_anonymized_at": {
+          "name": "retention_anonymized_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
         "status": {
           "name": "status",
           "type": "text",
@@ -107,8 +141,11 @@
           "default": "'active'",
           "comment": null,
           "collation": null,
-          "enumItems": [],
-          "mappedType": "text"
+          "enumItems": [
+            "active",
+            "inactive"
+          ],
+          "mappedType": "enum"
         },
         "subscription": {
           "name": "subscription",
@@ -167,7 +204,14 @@
           "unique": true
         }
       ],
-      "checks": [],
+      "checks": [
+        {
+          "name": "organization_status_check",
+          "expression": "\"status\" in ('active', 'inactive')",
+          "definition": "check (\"status\" in ('active', 'inactive'))",
+          "columnName": "status"
+        }
+      ],
       "triggers": [],
       "foreignKeys": {},
       "comment": null
@@ -209,6 +253,23 @@
           "collation": null,
           "enumItems": [],
           "mappedType": "uuid"
+        },
+        "retention_anonymized_at": {
+          "name": "retention_anonymized_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         },
         "slug": {
           "name": "slug",
@@ -316,6 +377,23 @@
           "collation": null,
           "enumItems": [],
           "mappedType": "text"
+        },
+        "retention_anonymized_at": {
+          "name": "retention_anonymized_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
         },
         "updated_at": {
           "name": "updated_at",
@@ -576,6 +654,23 @@
           "enumItems": [],
           "mappedType": "json"
         },
+        "retention_anonymized_at": {
+          "name": "retention_anonymized_at",
+          "type": "timestamptz(6)",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": 6,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "collation": null,
+          "enumItems": [],
+          "mappedType": "datetime"
+        },
         "subscription": {
           "name": "subscription",
           "type": "text",
@@ -656,7 +751,6 @@
             "id"
           ],
           "referencedTableName": "public.organization",
-          "updateRule": "cascade",
           "deleteRule": "set null"
         }
       },

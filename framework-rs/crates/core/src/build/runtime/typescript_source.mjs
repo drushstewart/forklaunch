@@ -54,10 +54,22 @@ visit(source, node => {
   const binding = callback.params[0].name;
   const callbacks = [];
   let catchAll = 0;
+  // A provider mount may be registered once per pattern
+  // (`for (const path of ...mount.paths...) app.internal.all(path, ...)`),
+  // because some adapters accept one pattern per registration.
+  const mountPathBindings = new Set();
+  visit(callback.body, loop => {
+    if (loop.type !== 'ForOfStatement' || loop.left?.type !== 'VariableDeclaration' || loop.left.declarations.length !== 1 ||
+        loop.left.declarations[0].id?.type !== 'Identifier') return;
+    let readsPaths = false;
+    visit(loop.right, node => { if (member(node) === `${binding}.paths`) readsPaths = true; });
+    if (readsPaths) mountPathBindings.add(loop.left.declarations[0].id.name);
+  });
   visit(callback.body, route => {
     if (route.type !== 'CallExpression' || !/^app\.(?:internal\.)?(all|get|post|put|patch|delete|head|options|trace)$/.test(member(route.callee) || '')) return;
     const method = member(route.callee), routePath = route.arguments[0];
-    if (method === 'app.internal.all' && member(routePath) === `${binding}.paths`) catchAll++;
+    if (method === 'app.internal.all' && (member(routePath) === `${binding}.paths` ||
+        (routePath?.type === 'Identifier' && mountPathBindings.has(routePath.name)))) catchAll++;
     else if (method === 'app.internal.get' && routePath?.type === 'TemplateLiteral' && routePath.expressions.length === 1 &&
         member(routePath.expressions[0]) === `${binding}.basePath` && routePath.quasis.length === 2 && routePath.quasis[0].value.cooked === '') callbacks.push(routePath.quasis[1].value.cooked);
     else throw new Error('Undeclared route in delegated surface registration');

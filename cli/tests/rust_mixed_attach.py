@@ -35,8 +35,11 @@ def rust_image():
     binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
     services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
         'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    # Long-running processes; one-shot migrate/seed jobs run the same binary
+    # with --migrate/--seed and are not processes.
     processes = {name: service for name, service in services.items()
-                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')
+                 and not set(service['command'][1:]) & {'--migrate', '--seed'}}
     return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
 
 custom_dockerfile = '# Existing custom TypeScript image\nFROM node:22\n'

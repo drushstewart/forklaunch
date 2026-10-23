@@ -359,7 +359,7 @@ jobs:
       - name: PostgreSQL routers, restricted-role tenant isolation and audited protected fields
         if: startsWith(matrix.suite, 'postgres-service')
         run: bash cli/tests/rust_postgres_service_runtime.sh
-      - name: Generated optimized builds and unsupported shared-image release guard
+      - name: Generated optimized builds and shared-image release manifests
         if: matrix.suite == 'release-guard'
         run: bash cli/tests/rust_generated_release_runtime.sh
       - name: Install TypeScript compiler for real signature interoperability

@@ -230,9 +230,11 @@ export type TypescriptApiSdkClient = {
     # reading any other project's temporarily missing export.
     cli('init', 'library', 'clients', '--language', 'rust', '--sdk-services', 'native-api')
     aggregate = app / 'src/client-sdk/rust'
-    assert tomllib.loads((aggregate / 'Cargo.toml').read_text())['dependencies'] == {
-        'native_api': {'package': 'native-api-sdk', 'path': '../../native-api/sdk/rust'},
-    }
+    # The aggregate re-exports every service-local SDK (e3842817d); the one
+    # named on --sdk-services and the newly added native service are among them.
+    aggregate_dependencies = tomllib.loads((aggregate / 'Cargo.toml').read_text())['dependencies']
+    assert aggregate_dependencies['native_api'] == {'package': 'native-api-sdk', 'path': '../../native-api/sdk/rust'}, aggregate_dependencies
+    assert aggregate_dependencies['disposable_api'] == {'package': 'disposable-api-sdk', 'path': '../../disposable-api/sdk/rust'}, aggregate_dependencies
     # Compilation publishes the newly added service's contract before the
     # watcher validates all registered services.
     run('cargo', 'build', '-p', 'disposable-api', '-p', 'clients')

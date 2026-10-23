@@ -61,8 +61,6 @@ try:
            'FORKLAUNCH_CLI': str(binary), 'FORKLAUNCH_SKIP_FORMAT': '1',
            'FORKLAUNCH_PLATFORM_MANAGEMENT_API_URL': endpoint,
            'FORKLAUNCH_BILLING_API_URL': endpoint}
-    require_supported = os.environ.get('FORKLAUNCH_EXPECT_SHARED_RELEASE_SUPPORTED') == '1'
-    guard = 'Shared language images require explicit process commands and migration dependencies that the release manifest contract cannot represent yet'
 
     def run(*args, cwd=None, **kwargs):
         print('Running:', shlex.join(map(str, args)), flush=True)
@@ -88,28 +86,22 @@ try:
                 '--skip-sync', '--yes', '--version', '1.0.0']
         if prebuilt:
             args += ['--prebuilt-openapi', '.forklaunch/prebuilt', '--application-id', app_id]
-        if require_supported:
-            run(*args)
-            return json.loads((app / '.forklaunch/release-manifest.json').read_text())
-        result = run(*args, check=False, capture_output=True, text=True)
+        # Shared-image releases are supported: one built Rust image per app.
+        result = run(*args, capture_output=True, text=True)
         output = result.stdout + result.stderr
         print(output, flush=True)
-        assert result.returncode != 0, 'Shared-image release support changed: run the explicit positive capability matrix and update the platform contract evidence'
-        assert guard in output, output
-        assert not (app / '.forklaunch/release-manifest.json').exists(), 'Rejected release wrote an executable manifest'
-        assert 'UNEXPECTED POST' not in requests, 'Rejected release published to the platform'
+        assert 'UNEXPECTED POST' not in requests, 'Local dry-run release published to the platform'
         assert 'synthetic-generated-release-token' not in output
         if prebuilt:
             assert 'Building Rust' not in output and 'Building TypeScript' not in output
-        return None
+        return json.loads((app / '.forklaunch/release-manifest.json').read_text())
 
     native = release()
-    if native is not None:
-        assert [service['name'] for service in native['services']] == ['rust-api']
-        native_service = native['services'][0]
-        assert native_service['runtime'] == 'tokio' and native_service['binary'] == 'rust-api'
-        assert native_service['buildContext'] == '.' and native_service['dockerfile'] == 'Dockerfile.rust'
-        assert '/health' in native_service['config']['openApiSpec']['paths']
+    assert [service['name'] for service in native['services']] == ['rust-api']
+    native_service = native['services'][0]
+    assert native_service['runtime'] == 'tokio' and native_service['binary'] == 'rust-api'
+    assert native_service['buildContext'] == '.' and native_service['dockerfile'] == 'Dockerfile.rust'
+    assert '/health' in native_service['config']['openApiSpec']['paths']
     sdk = app / 'src/rust-api/sdk/typescript'
     contract = json.loads((sdk / 'contract.json').read_text())
     assert contract['generator'] == 'framework-rs' and contract['service']['name'] == 'rust-api'
@@ -117,7 +109,7 @@ try:
     assert (sdk / 'index.ts').read_text().strip() == "export type * from './sdk.js';"
     assert (app / 'src/rust-api/sdk/rust/generated/client.rs').is_file()
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
-    print('PASS raw optimized Rust build, local SDKs/OpenAPI and ' + ('supported release' if native else 'explicit shared-image release guard (capability remains blocked)'), flush=True)
+    print('PASS raw optimized Rust build, local SDKs/OpenAPI and ' + 'supported release', flush=True)
 
     cli('init', 'service', 'ts-api', '--language', 'typescript', '-d', 'postgresql', '-D', 'TypeScript API')
     ts = app / 'src/ts-api'
@@ -130,22 +122,15 @@ try:
     run('pnpm', 'install', '--ignore-scripts', '--no-frozen-lockfile')
     (app / '.forklaunch/release-manifest.json').unlink(missing_ok=True)
     mixed = release()
-    if mixed is not None:
-        specs = {service['name']: service['config']['openApiSpec'] for service in mixed['services']}
-        assert set(specs) == {'rust-api', 'ts-api'}
-        components = {service['name']: service for service in mixed['services']}
-        assert components['rust-api']['runtime'] == 'tokio'
-        assert components['rust-api']['binary'] == 'rust-api'
-        assert 'runtime' not in components['ts-api'] and 'binary' not in components['ts-api']
-    else:
-        specs = {name: json.loads((app / path).read_text()) for name, path in {
-            'rust-api': 'src/rust-api/sdk/typescript/openapi.json',
-            'ts-api': 'src/ts-api/sdk/openapi.json',
-        }.items()}
+    specs = {service['name']: service['config']['openApiSpec'] for service in mixed['services']}
+    assert set(specs) == {'rust-api', 'ts-api'}
+    components = {service['name']: service for service in mixed['services']}
+    assert components['rust-api']['runtime'] == 'tokio'
+    assert components['rust-api']['binary'] == 'rust-api'
+    assert 'runtime' not in components['ts-api'] and 'binary' not in components['ts-api']
     for name, language in [('rust-api', 'rust'), ('ts-api', 'typescript')]:
-        if mixed is not None:
-            assert components[name]['buildContext'] == '.'
-            assert components[name]['dockerfile'] == 'Dockerfile.' + language
+        assert components[name]['buildContext'] == '.'
+        assert components[name]['dockerfile'] == 'Dockerfile.' + language
         typescript_sdk = app / f'src/{name}/sdk/typescript/sdk.ts' if language == 'rust' else app / f'src/{name}/sdk.ts'
         assert typescript_sdk.is_file()
         if language == 'typescript':
@@ -153,9 +138,8 @@ try:
             assert (app / f'src/{name}/dist/sdk.d.ts').is_file()
         assert (app / f'src/{name}/sdk/rust/Cargo.toml').is_file()
     export_controls = {'FORKLAUNCH_MODE', 'FORKLAUNCH_OPENAPI_OUTPUT', 'FORKLAUNCH_CONTRACT_OUTPUT', 'FORKLAUNCH_ASYNCAPI_OUTPUT'}
-    if mixed is not None:
-        required = {item['name'] for item in mixed.get('requiredEnvironmentVariables', [])}
-        assert not export_controls & required, f'Export controls leaked into runtime requirements: {export_controls & required}'
+    required = {item['name'] for item in mixed.get('requiredEnvironmentVariables', [])}
+    assert not export_controls & required, f'Export controls leaked into runtime requirements: {export_controls & required}'
     def exported_paths(spec):
         # TypeScript exports a version map; native services export one document.
         # Release/prebuilt preserve either representation verbatim.
@@ -165,8 +149,11 @@ try:
 
     assert '/health' in exported_paths(specs['rust-api'])
     assert any(path.startswith('/fixture') for path in exported_paths(specs['ts-api']))
+    # Release exports TypeScript OpenAPI by running the service; its contract
+    # artifact (contractBuild) comes from the SDK build.
+    cli('sdk', 'build', '--service', 'ts-api')
     cli('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
-    print('PASS raw mixed Cargo/PNPM builds, local SDKs, Rust/tsx exports and ' + ('supported release' if mixed else 'explicit shared-image release guard (capability remains blocked)'), flush=True)
+    print('PASS raw mixed Cargo/PNPM builds, local SDKs, Rust/tsx exports and ' + 'supported release', flush=True)
 
     for name, spec in specs.items():
         output = app / '.forklaunch/prebuilt' / name / 'openapi.json'
@@ -176,13 +163,10 @@ try:
     (app / 'src/rust-api/main.rs').write_text('compile_error!("Prebuilt release must not compile application code");\n')
     (ts / 'server.ts').write_text('throw new Error("Prebuilt release must not execute application code");\n')
     prebuilt = release(True)
-    if prebuilt is not None:
-        assert {service['name']: service['config']['openApiSpec'] for service in prebuilt['services']} == specs
-    else:
-        assert all(json.loads((app / '.forklaunch/prebuilt' / name / 'openapi.json').read_text()) == spec for name, spec in specs.items())
+    assert {service['name']: service['config']['openApiSpec'] for service in prebuilt['services']} == specs
     assert not any('synthetic-generated-release-token' in json.dumps(result) for result in [native, mixed, prebuilt])
     assert 'UNEXPECTED POST' not in requests, 'Dry run published to the platform'
-    print('PASS prebuilt ' + ('artifact reuse' if prebuilt else 'shared-image rejection') + ' without source compilation/execution, secret leakage or publication', flush=True)
+    print('PASS prebuilt artifact reuse without source compilation/execution, secret leakage or publication', flush=True)
 finally:
     account_path.unlink(missing_ok=True)
     server.shutdown()

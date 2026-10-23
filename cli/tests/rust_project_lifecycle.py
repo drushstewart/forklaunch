@@ -48,8 +48,11 @@ def rust_image():
     binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
     services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
         'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    # Long-running processes; one-shot migrate/seed jobs run the same binary
+    # with --migrate/--seed and are not processes.
     processes = {name: service for name, service in services.items()
-                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')
+                 and not set(service['command'][1:]) & {'--migrate', '--seed'}}
     return {'inputs': inputs, 'binaries': binaries, 'processes': processes}
 
 modules = 'src'
@@ -354,13 +357,19 @@ def check_paths():
         assert rust_projects()['clients']['metadata']['cratePath'] == relative
         assert relative in cargo(app)['workspace']['members']
         aggregate_manifest = cargo(aggregate)
+        # The aggregate re-exports every service-local SDK (e3842817d);
+        # --sdk-services lists the ones needed now.
         assert aggregate_manifest['dependencies'] == {
             'accounts': {'package': 'accounts-sdk', 'path': '../../accounts/sdk/rust'},
+            'products': {'package': 'products-sdk', 'path': '../../products/sdk/rust'},
         }, aggregate_manifest
         assert 'build-dependencies' not in aggregate_manifest
         assert not (aggregate / 'build.rs').exists(), 'Aggregate reexports existing SDKs without duplicate generation'
         public_exports = (aggregate / 'lib.rs').read_bytes()
-        assert b'pub use accounts;' in public_exports and b'pub use accounts::*;' in public_exports
+        # With several services the aggregate re-exports each by name; a glob
+        # re-export is only emitted for a single service.
+        assert b'pub use accounts;' in public_exports and b'pub use products;' in public_exports
+        assert b'::*;' not in public_exports.replace(b'pub use extensions::*;', b'')
         extension = aggregate / 'extensions.rs'
         extension.write_text('//! Application-owned SDK alias.\npub use crate::accounts::Client as AccountClient;\n')
         extension_source = extension.read_bytes()
@@ -371,13 +380,16 @@ def check_paths():
         assert not project('accounts').exists()
         assert cargo(aggregate)['dependencies'] == {
             'accounts': {'package': 'customer-accounts-sdk', 'path': '../../customer-accounts/sdk/rust'},
+            'products': {'package': 'products-sdk', 'path': '../../products/sdk/rust'},
         }, cargo(aggregate)
         assert (aggregate / 'lib.rs').read_bytes() == public_exports
         assert extension.read_bytes() == extension_source
-        before = snapshot()
-        deletion = command('delete', 'service', 'customer-accounts', '--continue', check=False)
-        assert deletion.returncode != 0 and 'referenced by the Rust client aggregate' in deletion.stdout + deletion.stderr
-        assert snapshot() == before, 'Refused deletion changed the service or its SDK consumer'
+        # Deleting a service drops its re-export instead of blocking (e3842817d).
+        extension.write_text('//! Application-owned SDK extensions.\n')
+        command('delete', 'service', 'products', '--continue')
+        assert not project('products').exists()
+        assert 'products' not in cargo(aggregate)['dependencies'], cargo(aggregate)
+        assert b'pub use products' not in (aggregate / 'lib.rs').read_bytes()
         compile_projects()
 
 
