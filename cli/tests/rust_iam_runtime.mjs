@@ -189,6 +189,16 @@ try {
   const seededClaims=JSON.parse(Buffer.from(seeded.response.id.split('.')[1],'base64url'));
   assert.deepEqual(seededClaims.roles,['admin']);assert.deepEqual([...seededClaims.permissions].sort(),['platform:read','platform:write']);
   assert.equal((await call(first.baseUrl,'/users/user-1','GET',undefined,200,`Bearer ${seeded.response.id}`)).email,'member@example.com');
+  // The seed also wrote the admin's directory records under its login id, as POST /user does.
+  assert.deepEqual((await call(first.baseUrl,'/user/seed-admin/surface-roles')).map(role=>role.name),['admin']);
+  assert.deepEqual((await call(first.baseUrl,'/user/seed-admin/surface-permissions')).map(permission=>permission.slug).sort(),['platform:read','platform:write']);
+  const seededToken=`Bearer ${seeded.response.id}`,seededDirectory=await call(first.baseUrl,'/user/seed-admin','GET',undefined,200,seededToken);
+  assert.equal(seededDirectory.email,'admin@example.com');assert.equal(seededDirectory.organization,'seed-organization');
+  assert.deepEqual(seededDirectory.roles.map(role=>role.name),['admin']);
+  assert.deepEqual((await call(first.baseUrl,'/organization/seed-organization','GET',undefined,200,seededToken)).users.map(user=>user.id),['seed-admin']);
+  // Organization scope comes from the seeded directory user: fixture users in other organizations stay hidden.
+  await call(first.baseUrl,`/user/${directory.a.users[1].id}`,'GET',undefined,404,seededToken);
+  console.log('PASS seeded admin: directory user under its login id surfaces roles and passes organization-scoped JWT directory routes');
   console.log('PASS session user reads: self only, cross-user/list reads need platform:read (HTTP and MCP)');
   const page = await sdk.users.listUsers({ query: { limit: 1 } });
   assert.equal(page.code, 200);

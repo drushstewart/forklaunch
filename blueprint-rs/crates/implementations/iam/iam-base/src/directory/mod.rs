@@ -6,7 +6,7 @@ use std::future::Future;
 
 pub mod compliance;
 pub mod filter;
-mod mapping;
+pub(crate) mod mapping;
 pub mod memory;
 #[cfg(feature = "postgres")]
 pub mod postgres;
@@ -95,7 +95,7 @@ pub(super) fn conflict() -> BlueprintError {
     )
 }
 
-pub(super) fn record_id(value: &Value) -> BlueprintResult<&str> {
+pub(crate) fn record_id(value: &Value) -> BlueprintResult<&str> {
     value
         .get("id")
         .and_then(Value::as_str)

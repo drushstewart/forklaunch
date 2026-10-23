@@ -1129,14 +1129,14 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                     ..Default::default()
                 },
             )])),
+            // The Tempo image is distroless (just `/tempo`): no shell, wget or
+            // curl. The binary's own `-health` flag probes /ready and exits 0/1.
             healthcheck: Some(Healthcheck {
                 test: HealthTest::List(vec![
                     "CMD".to_string(),
-                    "wget".to_string(),
-                    "--no-verbose".to_string(),
-                    "--tries=1".to_string(),
-                    "--spider".to_string(),
-                    "http://localhost:3200/ready".to_string(),
+                    "/tempo".to_string(),
+                    "-health".to_string(),
+                    "-health.url=http://localhost:3200/ready".to_string(),
                 ]),
                 interval: "10s".to_string(),
                 timeout: "10s".to_string(),
@@ -1172,21 +1172,9 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                     ..Default::default()
                 },
             )])),
-            healthcheck: Some(Healthcheck {
-                test: HealthTest::List(vec![
-                    "CMD".to_string(),
-                    "wget".to_string(),
-                    "--no-verbose".to_string(),
-                    "--tries=1".to_string(),
-                    "--spider".to_string(),
-                    "http://localhost:3100/ready".to_string(),
-                ]),
-                interval: "10s".to_string(),
-                timeout: "10s".to_string(),
-                retries: 12,
-                start_period: "30s".to_string(),
-                additional_properties: HashMap::new(),
-            }),
+            // No healthcheck: the Loki image ships only `/usr/bin/loki`, which
+            // has no health-probe mode, and no shell, wget or curl. A check
+            // here could never pass. Dependents use `service_started`.
             ..Default::default()
         },
     );
@@ -1243,21 +1231,10 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                     },
                 ),
             ])),
-            healthcheck: Some(Healthcheck {
-                test: HealthTest::List(vec![
-                    "CMD".to_string(),
-                    "wget".to_string(),
-                    "--no-verbose".to_string(),
-                    "--tries=1".to_string(),
-                    "--spider".to_string(),
-                    "http://localhost:9090/ready".to_string(),
-                ]),
-                interval: "10s".to_string(),
-                timeout: "10s".to_string(),
-                retries: 12,
-                start_period: "30s".to_string(),
-                additional_properties: HashMap::new(),
-            }),
+            // No healthcheck: the Mimir image ships only `/bin/mimir`, which has
+            // no health-probe mode, and no shell, wget or curl. A check here
+            // could never pass. Dependents use `service_started`. Production
+            // still probes /ready from the load balancer (see note above).
             ..Default::default()
         },
     );
@@ -1285,6 +1262,7 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                 format!("{}/monitoring/grafana-provisioning/dashboards:/etc/grafana/provisioning/dashboards", context_path.to_string_lossy())
             ]),
             networks: Some(vec![format!("{}-network", app_name)]),
+            // The Grafana image is Alpine-based; busybox wget is present.
             healthcheck: Some(Healthcheck {
                 test: HealthTest::List(vec![
                     "CMD".to_string(),
@@ -1350,21 +1328,10 @@ pub(crate) fn add_otel_to_docker_compose<'a>(
                     },
                 ),
             ])),
-            healthcheck: Some(Healthcheck {
-                test: HealthTest::List(vec![
-                    "CMD".to_string(),
-                    "wget".to_string(),
-                    "--no-verbose".to_string(),
-                    "--tries=1".to_string(),
-                    "--spider".to_string(),
-                    "http://localhost:13133/".to_string(),
-                ]),
-                interval: "10s".to_string(),
-                timeout: "10s".to_string(),
-                retries: 12,
-                start_period: "20s".to_string(),
-                additional_properties: HashMap::new(),
-            }),
+            // No healthcheck: the collector image is distroless (just
+            // `/otelcol-contrib`). The `health_check` extension serves
+            // :13133 (published for host-side probes), but nothing inside the
+            // image can call it. Dependents use `service_started`.
             ..Default::default()
         },
     );
@@ -3204,20 +3171,69 @@ depends_on:
             "the Thanos sidecar is part of the pre-migration architecture"
         );
 
-        let mimir_health = healthcheck_target(&compose, "mimir");
-        assert!(
-            mimir_health.contains("/ready"),
-            "Mimir's health path must be /ready, got: {mimir_health}"
-        );
-        assert!(
-            !mimir_health.contains("/-/healthy"),
-            "/-/healthy is a Prometheus path; Mimir returns 404 for it. \
-             This exact mismatch caused a production outage. Got: {mimir_health}"
-        );
-
-        // Loki and Tempo are the same dskit stack and use the same path.
-        assert!(healthcheck_target(&compose, "loki").contains("/ready"));
+        // Mimir and Loki carry no local healthcheck (their images ship no
+        // client to run one). If one is ever added it must use /ready.
+        for service in ["mimir", "loki", "tempo"] {
+            if compose.services[service].healthcheck.is_none() {
+                continue;
+            }
+            let health = healthcheck_target(&compose, service);
+            assert!(
+                health.contains("/ready"),
+                "{service}'s health path must be /ready, got: {health}"
+            );
+            assert!(
+                !health.contains("/-/healthy"),
+                "/-/healthy is a Prometheus path; Mimir returns 404 for it. \
+                 This exact mismatch caused a production outage. Got: {health}"
+            );
+        }
         assert!(healthcheck_target(&compose, "tempo").contains("/ready"));
+    }
+
+    /// The monitoring images are distroless apart from Grafana: they ship one
+    /// binary and no shell, wget or curl. A healthcheck that calls a missing
+    /// tool never passes, so `docker compose up --wait` fails and the stack
+    /// shows `unhealthy` forever. Each check must run a binary its image has.
+    #[test]
+    fn test_monitoring_healthchecks_use_binaries_the_images_ship() {
+        let compose = generated_otel_compose();
+        // service -> executables present in the pinned image.
+        let shipped: [(&str, &[&str]); 5] = [
+            ("tempo", &["/tempo"]),
+            ("loki", &[]),
+            ("mimir", &[]),
+            ("otel-collector", &[]),
+            ("grafana", &["wget", "curl"]),
+        ];
+        for (service, binaries) in shipped {
+            let Some(healthcheck) = compose.services[service].healthcheck.as_ref() else {
+                continue;
+            };
+            let HealthTest::List(parts) = &healthcheck.test else {
+                panic!("{service}: healthcheck must be exec form (CMD), not a shell string");
+            };
+            assert_eq!(
+                parts[0], "CMD",
+                "{service}: images without a shell need CMD, not CMD-SHELL"
+            );
+            assert!(
+                binaries.contains(&parts[1].as_str()),
+                "{service}: healthcheck runs `{}`, which the image does not ship",
+                parts[1]
+            );
+        }
+        // Nothing may wait on a service that has no healthcheck.
+        for (name, service) in &compose.services {
+            for (dependency, condition) in service.depends_on.iter().flatten() {
+                if matches!(condition.condition, DependencyCondition::ServiceHealthy) {
+                    assert!(
+                        compose.services[dependency].healthcheck.is_some(),
+                        "{name} waits for {dependency} to be healthy, but it has no healthcheck"
+                    );
+                }
+            }
+        }
     }
 
     /// Metrics reach Mimir via the `prometheus_remote_write` exporter, which

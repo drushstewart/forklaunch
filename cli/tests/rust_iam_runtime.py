@@ -73,6 +73,9 @@ try:
     relocated = root / 'relocated-app'
     app.rename(relocated)
     app = relocated
+    # Build against this checkout's crates (the seed's directory records are
+    # not on crates.io until the next crates release).
+    run('python3', repo / 'cli/tests/fixtures/local_crates_patch.py', app, repo)
     service = app / 'src/iam'
     assert (app / 'src/iam/sdk/rust/.forklaunch-sdk-local').is_file()
     assert (app / 'src/iam/.forklaunch/contracts/Cargo.toml').is_file()
@@ -174,7 +177,7 @@ try:
         from urllib.parse import urlsplit, urlunsplit
         owner = urlsplit(env['FORKLAUNCH_TEST_POSTGRES_URL'])
         runtime_url = urlunsplit(owner._replace(netloc=f"{env['FORKLAUNCH_TEST_ROLE']}:parity-test-only@{owner.hostname}:{owner.port or 5432}"))
-        seed_env = {'DATABASE_URL': runtime_url, 'TENANT_ID': env['FORKLAUNCH_TEST_ROLE'] + '-a', 'IAM_SEED_ADMIN_PASSWORD': 'seed-admin-password'}
+        seed_env = {'DATABASE_URL': runtime_url, 'TENANT_ID': env['FORKLAUNCH_TEST_ROLE'] + '-a', 'IAM_SEED_ADMIN_PASSWORD': 'seed-admin-password', 'ENCRYPTION_KEY': 'iam-fixture-encryption-only'}
         assert 'name = "admin"' in (service / 'seed.toml').read_text()
         run('cargo', 'run', '-p', 'iam', '--', '--seed', extra_env=seed_env)
         run('cargo', 'run', '-p', 'iam', '--', '--seed', extra_env=seed_env)
