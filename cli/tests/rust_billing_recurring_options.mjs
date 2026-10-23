@@ -33,8 +33,8 @@ for (const flavor of ['zod', 'typebox']) for (const kind of ['plan', 'subscripti
     async persist(entity) { persisted.push(structuredClone(entity)); }
   });
   const stripe = kind === 'plan' ? { plans: {
-    async create(payload) { payloads.push(structuredClone(payload)); return { id: 'plan_owned' }; },
-    async retrieve(id, options) { retrieved.push(structuredClone({ id, options })); return { id, product: provider }; }
+    async create(payload) { payloads.push(structuredClone(payload)); return { id: 'plan_owned', object: 'plan' }; },
+    async retrieve(id, options) { retrieved.push(structuredClone({ id, options })); return { id, object: 'plan', product: provider }; }
   } } : { subscriptions: { async create(payload) { payloads.push(structuredClone(payload)); return provider; } } };
   const service = new Service(stripe, em, {}, validator, mappers);
   const base = kind === 'plan'
