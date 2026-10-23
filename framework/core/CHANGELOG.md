@@ -1,5 +1,12 @@
 # @forklaunch/core
 
+## 3.2.1
+
+### Patch Changes
+
+- A bulk update (`em.nativeUpdate`, `qb.update`) that writes a non-queryable compliant field (pii/phi/pci) now seals the value like any other write, instead of throwing `CompliantQueryError: … cannot be queried`. MikroORM flags a bulk update's values as query values (`mode: 'query-data'`), and they were being refused as if they were a `where`. Better Auth's MikroORM adapter changes passwords this way, so password reset and change-password returned 500 on any app whose `account.password` is `.compliance('pci')`. A `where` on a non-queryable field is still refused. A bulk update that sets a **queryable** compliant field is now refused with a message saying to load the entity, assign and flush, since the update cannot write the sealed value's second column.
+- f868861: - The managed gateway clients (`createModelGatewayClient`, `createSmsClient`, `createWhatsAppClient`, `createVoiceClient`, `createStripeClient`, and the shared `instanceGatewaySettings`) no longer say they are only for managed instances. Their refusal names the managed gateway settings (`PLATFORM_GATEWAY_URL`, `INSTANCE_ID`, `INSTANCE_HMAC_KEY`), which the platform sets for a managed instance and, at deploy, for a component of a regular app that declares the capability (`forklaunch infra add <service> <capability>`). Code that matched the old message text ("managed mode", "not a managed instance") should match on the error's settings names instead.
+
 ## 3.2.0
 
 ### Minor Changes
