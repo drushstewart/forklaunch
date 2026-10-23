@@ -73,6 +73,11 @@ def typescript_sources():
     # except that the shared production image excludes its `production` build
     # output from each service's compiler config (typescript_image.rs).
     def digest(relative, value):
+        # A native backend adds the settings TypeScript consumers need to reach
+        # it to their .env.local, and mixed apps point host database tooling at
+        # each service's owner role (8c25eaee8); every other line survives.
+        if Path(relative).name == '.env.local':
+            return frozenset(line for line in (app / relative).read_text().splitlines() if not line.startswith('DB_USER='))
         if Path(relative).name != 'tsconfig.json':
             return value
         config = json.loads((app / relative).read_text())
@@ -88,8 +93,9 @@ def typescript_sources():
 
 def preserve_sources(original):
     current = typescript_sources()
-    assert all(current.get(path) == content for path, content in original.items()), [
-        path for path, content in original.items() if current.get(path) != content]
+    kept = lambda path, content: content <= current.get(path, frozenset()) if isinstance(content, frozenset) else current.get(path) == content
+    assert all(kept(path, content) for path, content in original.items()), [
+        path for path, content in original.items() if not kept(path, content)]
     assert (app / 'Dockerfile').read_text() == custom_dockerfile
     for package_path in ['modules/package.json', 'modules/legacy-api/package.json']:
         package = json.loads((app / package_path).read_text())
