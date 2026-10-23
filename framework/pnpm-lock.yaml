@@ -673,6 +673,9 @@ importers:
       ioredis:
         specifier: ^6.0.0
         version: 6.0.0
+      jose:
+        specifier: 6.2.12
+        version: 6.2.12
       testcontainers:
         specifier: ^12.2.1
         version: 12.2.1
