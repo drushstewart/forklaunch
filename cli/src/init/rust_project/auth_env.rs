@@ -75,27 +75,44 @@ fn ensure(env: &mut IndexMap<String, String>, key: &str, value: impl Into<String
     env.entry(key.to_owned()).or_insert_with(|| value.into());
 }
 
-/// The Rust module of `variants` and the URL of its compose service.
-fn module_url(manifest: &Value, compose: &DockerCompose, variants: &[&str]) -> Option<(String, String)> {
-    let name = projects(manifest)
-        .find(|project| {
-            project.get("variant").and_then(Value::as_str).is_some_and(|variant| variants.contains(&variant))
-                && is_rust(project)
-        })?
-        .get("name")?
-        .as_str()?
-        .to_owned();
-    let port = compose.services.get(&name)?.environment.as_ref()?.get("PORT")?.clone();
-    Some((name.clone(), format!("http://{name}:{port}")))
+/// The compose service of the first module of `variants`, in either language.
+fn module_service(manifest: &Value, compose: &DockerCompose, variants: &[&str]) -> Option<String> {
+    projects(manifest)
+        .filter(|project| project.get("variant").and_then(Value::as_str).is_some_and(|variant| variants.contains(&variant)))
+        .filter_map(|project| project.get("name").and_then(Value::as_str))
+        .find(|name| compose.services.contains_key(*name))
+        .map(str::to_owned)
 }
 
-/// TypeScript services and workers in a Rust application authorize against
-/// the Rust IAM and billing modules. Their generator only knows TypeScript
-/// modules, so it leaves `HMAC_SECRET_KEY` empty, a JWKS placeholder, and no
-/// `IAM_URL`/`BILLING_URL`; their config validation then fails at startup.
-/// Point them at the modules' own compose wiring. Values the application set
-/// are kept.
-fn typescript_consumers(manifest: &Value, compose: &mut DockerCompose) {
+/// `<PROJECT>_URL` for every project with an HTTP compose service.
+fn service_urls(manifest: &Value, compose: &DockerCompose) -> IndexMap<String, String> {
+    projects(manifest)
+        .filter_map(|project| project.get("name").and_then(Value::as_str))
+        .filter_map(|name| {
+            let port = compose.services.get(name)?.environment.as_ref()?.get("PORT")?;
+            Some((format!("{}_URL", name.to_case(Case::UpperSnake)), format!("http://{name}:{port}")))
+        })
+        .collect()
+}
+
+/// Variables a TypeScript project's config injector reads (`registrations.ts`).
+fn typescript_reads(root: &Path, manifest: &Value, project: &str) -> Vec<String> {
+    let modules = manifest.get("modules_path").and_then(Value::as_str).unwrap_or("src");
+    read_to_string(root.join(modules).join(project).join("registrations.ts"))
+        .ok()
+        .and_then(|source| crate::core::ast::infrastructure::env::extract_env_vars_from_source(&source).ok())
+        .map(|usages| usages.into_iter().map(|usage| usage.var_name).collect())
+        .unwrap_or_default()
+}
+
+/// The TypeScript generator wires a service only to TypeScript modules that
+/// existed when it ran, and a TypeScript-only app reads the rest from the
+/// bind-mounted `.env.local`. A mixed app runs TypeScript from a built image
+/// with no `.env` files, so every value its config injector requires must be
+/// in compose: `<MODULE>_URL`, the shared `HMAC_SECRET_KEY`, the IAM JWKS URL
+/// (from whichever language IAM is), and Stripe credentials from the root
+/// `.env`. Values the application set are kept.
+fn typescript_consumers(root: &Path, manifest: &Value, compose: &mut DockerCompose) {
     let typescript: Vec<String> = projects(manifest)
         .filter(|project| !is_rust(project))
         .filter_map(|project| project.get("name").and_then(Value::as_str))
@@ -106,34 +123,71 @@ fn typescript_consumers(manifest: &Value, compose: &mut DockerCompose) {
         .filter_map(|project| project.get("name").and_then(Value::as_str))
         .map(str::to_owned)
         .collect();
-    let iam = module_url(manifest, compose, &["iam-base"]);
-    let billing = module_url(manifest, compose, &["billing-base", "billing-stripe"]);
-    let module_env = |module: &Option<(String, String)>, key: &str| {
-        module.as_ref().and_then(|(name, _)| compose.services.get(name)?.environment.as_ref()?.get(key).cloned())
+    let iam = module_service(manifest, compose, &["iam-base", "iam-better-auth"]);
+    let billing = module_service(manifest, compose, &["billing-base", "billing-stripe"]);
+    let module_env = |module: &Option<String>, key: &str| {
+        module
+            .as_ref()
+            .and_then(|name| compose.services.get(name)?.environment.as_ref()?.get(key).cloned())
+            .filter(|value| !unset(value))
     };
     let hmac = module_env(&iam, "HMAC_SECRET_KEY").or_else(|| module_env(&billing, "HMAC_SECRET_KEY"));
     let jwks = module_env(&iam, "JWKS_PUBLIC_KEY_URL");
-    for (name, service) in compose.services.iter_mut() {
-        let owned = !native.contains(name)
-            && typescript.iter().any(|project| name == project || name.starts_with(&format!("{project}-")));
-        let Some(env) = service.environment.as_mut().filter(|_| owned) else { continue };
-        // The TypeScript generator adds these only to IAM/billing consumers.
-        if !env.contains_key("HMAC_SECRET_KEY") {
-            continue;
-        }
-        let unset = |value: Option<&String>| value.is_none_or(|value| value.is_empty() || value.starts_with("replace-with-"));
-        if let Some(hmac) = &hmac && unset(env.get("HMAC_SECRET_KEY")) {
-            env.insert("HMAC_SECRET_KEY".into(), hmac.clone());
-        }
-        if let Some(jwks) = &jwks && unset(env.get("JWKS_PUBLIC_KEY_URL")) {
-            env.insert("JWKS_PUBLIC_KEY_URL".into(), jwks.clone());
-        }
-        for (key, module) in [("IAM_URL", &iam), ("BILLING_URL", &billing)] {
-            if let Some((_, url)) = module && unset(env.get(key)) {
-                env.insert(key.into(), url.clone());
+    let urls = service_urls(manifest, compose);
+    let modules = manifest.get("modules_path").and_then(Value::as_str).unwrap_or("src");
+    for project in &typescript {
+        let reads = typescript_reads(root, manifest, project);
+        let local = env_values(&root.join(modules).join(project).join(".env.local"));
+        let own_url = format!("{}_URL", project.to_case(Case::UpperSnake));
+        for (name, service) in compose.services.iter_mut() {
+            let owned = !native.contains(name) && (name == project || name.starts_with(&format!("{project}-")));
+            let Some(env) = service.environment.as_mut().filter(|_| owned) else { continue };
+            let mut wanted: Vec<String> = reads.clone();
+            // Without a readable injector, wire what the generator declared;
+            // it declares HMAC_SECRET_KEY only on IAM/billing consumers.
+            wanted.extend(env.keys().cloned());
+            if reads.is_empty() && env.contains_key("HMAC_SECRET_KEY") {
+                wanted.extend(["IAM_URL".to_owned(), "BILLING_URL".to_owned()]);
+            }
+            for key in wanted {
+                if !env.get(&key).is_none_or(|value| unset(value)) {
+                    continue;
+                }
+                let value = match key.as_str() {
+                    "HMAC_SECRET_KEY" => hmac.clone(),
+                    "JWKS_PUBLIC_KEY_URL" => jwks.clone(),
+                    "STRIPE_API_KEY" | "STRIPE_WEBHOOK_SECRET" => Some(format!("${{{key}:-}}")),
+                    _ if urls.contains_key(&key) => urls.get(&key).filter(|_| key != own_url).cloned(),
+                    _ => local.get(&key).and_then(|value| from_local(&key, value)),
+                };
+                if let Some(value) = value {
+                    env.insert(key, value);
+                }
             }
         }
     }
+}
+
+/// A TypeScript-only app reads the generator's `.env.local` defaults (PayPal,
+/// queue names, ...) from its bind mount. In compose: host-only values are
+/// skipped, settings are copied, and secrets are never copied: a generator
+/// placeholder becomes the default of a root `.env` reference, and anything
+/// else must be set there.
+fn from_local(key: &str, value: &str) -> Option<String> {
+    if value.is_empty() || value.contains("localhost") || value.contains("127.0.0.1") {
+        return None;
+    }
+    let secret = ["SECRET", "PASSWORD", "TOKEN", "PRIVATE"].iter().any(|word| key.contains(word)) || key.ends_with("_KEY");
+    Some(match (secret, unset(value)) {
+        (false, _) => value.to_owned(),
+        (true, true) => format!("${{{key}:-{value}}}"),
+        (true, false) => format!("${{{key}:?Set {key} in .env}}"),
+    })
+}
+
+/// Empty or a generator placeholder.
+fn unset(value: &str) -> bool {
+    value.is_empty() || value.starts_with("replace-with-")
 }
 
 /// Adds the auth variables and the IAM seed service to `docker-compose.yaml`.
@@ -178,7 +232,7 @@ pub(super) fn compose(root: &Path) -> Result<()> {
             }
         }
     }
-    typescript_consumers(&manifest, &mut compose);
+    typescript_consumers(root, &manifest, &mut compose);
     let custom = custom_services(&manifest);
     for (name, service) in compose.services.iter_mut() {
         let env = service.environment.get_or_insert_with(IndexMap::new);
@@ -336,7 +390,7 @@ services:
   svc-native:
     environment: { HMAC_SECRET_KEY: "" }
 "#).unwrap();
-        typescript_consumers(&manifest, &mut compose);
+        typescript_consumers(Path::new("/nonexistent"), &manifest, &mut compose);
         let env = |name: &str| compose.services[name].environment.clone().unwrap();
         let svc = env("svc");
         assert_eq!(svc["HMAC_SECRET_KEY"], "${IAM_HMAC_SECRET_KEY:?x}");
@@ -351,6 +405,103 @@ services:
         // Non-consumers and Rust projects are untouched.
         assert!(!env("jobs-plain").contains_key("IAM_URL"));
         assert_eq!(env("svc-native")["HMAC_SECRET_KEY"], "");
+    }
+
+    fn registrations(root: &Path, project: &str, keys: &[&str]) {
+        let entries: String = keys
+            .iter()
+            .map(|key| format!("  {key}: {{ lifetime: Lifetime.Singleton, type: string, value: getEnvVar('{key}') }},\n"))
+            .collect();
+        let dir = root.join("src").join(project);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("registrations.ts"), format!("const env = configInjector.chain({{\n{entries}}});\n")).unwrap();
+    }
+
+    /// A mixed app with TypeScript IAM, Rust billing and TypeScript consumers:
+    /// TypeScript-to-TypeScript module URLs, keys and Stripe credentials are
+    /// wired from what each project's config injector reads.
+    #[test]
+    fn typescript_consumers_use_modules_of_either_language() {
+        let root = tempfile::tempdir().unwrap();
+        registrations(root.path(), "reminders", &["IAM_URL", "BILLING_URL", "HMAC_SECRET_KEY", "JWKS_PUBLIC_KEY_URL", "REDIS_URL"]);
+        registrations(root.path(), "ecommerce", &[
+            "STRIPE_API_KEY", "STRIPE_WEBHOOK_SECRET", "HMAC_SECRET_KEY", "PORT", "PAYPAL_BASE_URL",
+            "PAYPAL_CLIENT_SECRET", "PAYPAL_WEBHOOK_ID", "ORDER_EVENT_QUEUE", "REDIS_URL", "SIGNING_KEY",
+        ]);
+        std::fs::write(
+            root.path().join("src/ecommerce/.env.local"),
+            "STRIPE_API_KEY=replace-with-stripe-api-key\nPAYPAL_BASE_URL=https://api-m.sandbox.paypal.com\n\
+             PAYPAL_CLIENT_SECRET=replace-with-paypal-client-secret\nPAYPAL_WEBHOOK_ID=replace-with-paypal-webhook-id\n\
+             ORDER_EVENT_QUEUE=order-events\nREDIS_URL=redis://localhost:6379/0\nSIGNING_KEY=real-secret\n",
+        )
+        .unwrap();
+        registrations(root.path(), "iam", &["HMAC_SECRET_KEY", "JWKS_PUBLIC_KEY_URL", "PORT"]);
+        let manifest: Value = toml::from_str(r#"
+language = "mixed"
+modules_path = "src"
+[[projects]]
+name = "iam"
+variant = "iam-better-auth"
+[projects.metadata]
+language = "typescript"
+[[projects]]
+name = "billing"
+variant = "billing-stripe"
+[projects.metadata]
+language = "rust"
+[[projects]]
+name = "ecommerce"
+variant = "ecommerce-stripe"
+[projects.metadata]
+language = "typescript"
+[[projects]]
+name = "reminders"
+[projects.metadata]
+language = "typescript"
+"#).unwrap();
+        let mut compose: DockerCompose = yaml_from_str(r#"
+services:
+  iam:
+    environment: { PORT: "8001", HMAC_SECRET_KEY: shared, JWKS_PUBLIC_KEY_URL: "http://iam:8001/api/auth/jwks" }
+  billing:
+    environment: { PORT: "8002", HMAC_SECRET_KEY: "${BILLING_HMAC_SECRET_KEY:?x}", STRIPE_API_KEY: "${STRIPE_API_KEY:-}" }
+  ecommerce:
+    environment: { PORT: "8003", HMAC_SECRET_KEY: shared }
+  ecommerce-worker:
+    environment: { PORT: "8003", HMAC_SECRET_KEY: shared, STRIPE_API_KEY: replace-with-stripe-api-key }
+  reminders-server:
+    environment: { PORT: "8004", REDIS_URL: "redis://redis:6379/1" }
+  reminders-worker:
+    environment: { HMAC_SECRET_KEY: "", JWKS_PUBLIC_KEY_URL: replace-with-jwks-public-key-url }
+"#).unwrap();
+        typescript_consumers(root.path(), &manifest, &mut compose);
+        let env = |name: &str| compose.services[name].environment.clone().unwrap();
+        for worker in ["reminders-server", "reminders-worker"] {
+            let worker = env(worker);
+            assert_eq!(worker["IAM_URL"], "http://iam:8001");
+            assert_eq!(worker["BILLING_URL"], "http://billing:8002");
+            assert_eq!(worker["HMAC_SECRET_KEY"], "shared");
+            assert_eq!(worker["JWKS_PUBLIC_KEY_URL"], "http://iam:8001/api/auth/jwks");
+        }
+        assert_eq!(env("reminders-server")["REDIS_URL"], "redis://redis:6379/1");
+        for service in ["ecommerce", "ecommerce-worker"] {
+            let service = env(service);
+            assert_eq!(service["STRIPE_API_KEY"], "${STRIPE_API_KEY:-}");
+            assert_eq!(service["STRIPE_WEBHOOK_SECRET"], "${STRIPE_WEBHOOK_SECRET:-}");
+            // Only what the injector reads.
+            assert!(!service.contains_key("IAM_URL"));
+            // `.env.local` settings are copied; secrets only as `.env` references.
+            assert_eq!(service["PAYPAL_BASE_URL"], "https://api-m.sandbox.paypal.com");
+            assert_eq!(service["PAYPAL_WEBHOOK_ID"], "replace-with-paypal-webhook-id");
+            assert_eq!(service["ORDER_EVENT_QUEUE"], "order-events");
+            assert_eq!(service["PAYPAL_CLIENT_SECRET"], "${PAYPAL_CLIENT_SECRET:-replace-with-paypal-client-secret}");
+            assert_eq!(service["SIGNING_KEY"], "${SIGNING_KEY:?Set SIGNING_KEY in .env}");
+            assert!(!service.contains_key("REDIS_URL"));
+        }
+        // A module never points at itself, and Rust modules are left alone.
+        assert!(!env("iam").contains_key("IAM_URL"));
+        assert!(!env("billing").contains_key("IAM_URL"));
+        assert!(!env("billing").contains_key("JWKS_PUBLIC_KEY_URL"));
     }
 
     #[test]
