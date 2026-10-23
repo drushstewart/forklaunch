@@ -850,7 +850,7 @@ mod tests {
         unowned.ports = Some(vec!["8137:3000".into()]);
         unowned
             .additional_properties
-            .remove("x-forklaunch-worker-for");
+            .shift_remove("x-forklaunch-worker-for");
         repair_legacy_producer_origin(&mut unowned, "jobs");
         assert_eq!(
             unowned.environment.unwrap()["PUBLIC_ORIGIN"],
