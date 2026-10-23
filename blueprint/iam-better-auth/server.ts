@@ -1,3 +1,4 @@
+import { getEnvVar } from '@forklaunch/common';
 import { betterAuthSurface } from './api/contracts/auth.surface';
 import {
   forklaunchExpress,
@@ -41,8 +42,14 @@ const app = forklaunchExpress(
 //! Use the resolved URL: Better Auth lets a base URL path override basePath.
 const resolvedAuth = ci.resolve(tokens.BetterAuth) as BetterAuth;
 const resolvedAuthContext = await resolvedAuth.$context;
-const authBaseURL = resolvedAuthContext.baseURL.replace(/\/+$/, '');
-const authBasePath = new URL(authBaseURL).pathname.replace(/\/+$/, '');
+const authBaseURL = `${resolvedAuthContext.baseURL}`.replace(/\/+$/, '');
+//! Contract export (FORKLAUNCH_MODE=openapi) resolves services to inert
+//! stand-ins with no URL; describe the configured base path there.
+const authBasePath = (
+  URL.canParse(authBaseURL)
+    ? new URL(authBaseURL).pathname
+    : (getEnvVar('BETTER_AUTH_BASE_PATH') ?? '/api/auth')
+).replace(/\/+$/, '');
 
 registerDelegatedSurface(
   betterAuthSurface,

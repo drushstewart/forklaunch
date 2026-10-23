@@ -103,8 +103,12 @@ fn groups(compose: &DockerCompose) -> Vec<DatabaseGroup> {
         .collect()
 }
 
+/// TypeScript services on the shared PostgreSQL. Processes of one project
+/// (`ecommerce`, `ecommerce-worker`) share its database, so they share the
+/// roles of the process its `<name>-migrate` job migrates for; separate roles
+/// would each take over the schema and lock the other out.
 fn typescript_databases(compose: &DockerCompose) -> Vec<TypescriptDatabase> {
-    compose
+    let candidates: Vec<(&String, &String)> = compose
         .services
         .iter()
         .filter(|(name, service)| {
@@ -112,10 +116,23 @@ fn typescript_databases(compose: &DockerCompose) -> Vec<TypescriptDatabase> {
                 && env(service, "DB_HOST").is_some_and(|host| host == "postgresql")
                 && env(service, "DB_NAME").is_some()
         })
-        .map(|(name, service)| TypescriptDatabase {
-            service: name.clone(),
-            database: env(service, "DB_NAME").unwrap().clone(),
-            role: name.to_case(Case::Snake),
+        .map(|(name, service)| (name, env(service, "DB_NAME").unwrap()))
+        .collect();
+    let owner = |database: &String| {
+        let sharing = candidates.iter().filter(|(_, db)| *db == database).map(|(name, _)| *name);
+        sharing
+            .clone()
+            .find(|name| compose.services.contains_key(&format!("{name}-migrate")))
+            .or_else(|| sharing.min_by_key(|name| name.len()))
+            .expect("a database has at least one service")
+            .to_case(Case::Snake)
+    };
+    candidates
+        .iter()
+        .map(|(name, database)| TypescriptDatabase {
+            service: (*name).clone(),
+            database: (*database).clone(),
+            role: owner(database),
         })
         .collect()
 }
@@ -891,7 +908,12 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             .iter()
             .map(|group| (role(&group.prefix, "owner"), role(&group.prefix, "app"), database(&app, &group.prefix)))
             .collect();
-        databases.extend(typescript.iter().map(|ts| (format!("{}_owner", ts.role), format!("{}_app", ts.role), ts.database.clone())));
+        for ts in &typescript {
+            let entry = (format!("{}_owner", ts.role), format!("{}_app", ts.role), ts.database.clone());
+            if !databases.contains(&entry) {
+                databases.push(entry);
+            }
+        }
         let mut provision = DockerService {
             image: postgres.image.clone(),
             restart: Some(Restart::No),
@@ -1066,6 +1088,28 @@ mod tests {
         assert_eq!(host("http://iam:8004/api/auth/jwks"), "http://127.0.0.1:8004/api/auth/jwks");
         assert_eq!(host("http://coding-server:3000"), "http://127.0.0.1:8001");
         assert_eq!(host("kafka:29092"), "127.0.0.1:9092");
+    }
+
+    #[test]
+    fn typescript_processes_of_one_database_share_its_migrated_roles() {
+        let compose: DockerCompose = yaml_from_str(r#"
+services:
+  ecommerce:
+    environment: { DB_HOST: postgresql, DB_NAME: app-ecommerce-dev }
+  ecommerce-worker:
+    environment: { DB_HOST: postgresql, DB_NAME: app-ecommerce-dev }
+  ecommerce-migrate:
+    environment: { DB_HOST: postgresql, DB_NAME: app-ecommerce-dev }
+  intake:
+    environment: { DB_HOST: postgresql, DB_NAME: app-intake-dev }
+"#).unwrap();
+        let roles: Vec<(String, String)> =
+            typescript_databases(&compose).into_iter().map(|db| (db.service, db.role)).collect();
+        assert_eq!(roles, [
+            ("ecommerce".into(), "ecommerce".into()),
+            ("ecommerce-worker".into(), "ecommerce".into()),
+            ("intake".into(), "intake".into()),
+        ]);
     }
 
     #[test]
