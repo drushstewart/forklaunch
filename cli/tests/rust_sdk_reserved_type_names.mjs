@@ -136,6 +136,8 @@ try {
     '[package]\nname="fl-reserved-type-names"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nserde={version="1",features=["derive"]}\nserde_json="=1.0.151"\n',
   );
   writeFileSync(path.join(work, "src/lib.rs"), modules.join("\n"));
+  // Offline builds need every resolved package, including other targets' dependencies a host build never downloads; fetch them first.
+  run("cargo", ["fetch", "--manifest-path", path.join(work, "Cargo.toml")]);
   run("cargo", [
     "rustc",
     "--offline",

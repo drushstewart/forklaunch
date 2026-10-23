@@ -308,6 +308,8 @@ try {
     path.join(work, "src/main.rs"),
     `use fl_zod_check_consumers::SocketClient;fn main(){let codecs=SocketClient::schemas().unwrap();for (wire,valid) in [${cases.map((value, i) => `(${JSON.stringify(JSON.stringify(value))},${expected[i]})`).join(",")}]{let decoded=codecs.incoming.decode(wire.as_bytes());assert_eq!(decoded.is_ok(),valid);match serde_json::from_str(wire){Ok(value)=>assert_eq!(codecs.outgoing.encode(&value).is_ok(),valid),Err(_)=>assert!(!valid,"valid payload must construct generated type")};}println!("PASS generated Rust exact-check codecs");}`,
   );
+  // Offline builds need every resolved package, including other targets' dependencies a host build never downloads; fetch them first.
+  run("cargo", ["fetch", "--manifest-path", path.join(work, "Cargo.toml")]);
   run("cargo", [
     "rustc",
     "--offline",
