@@ -49,6 +49,19 @@ pub(super) fn resolved_output(path: &Path) -> Result<PathBuf> {
     Ok(resolved)
 }
 
+/// A project-local Rust SDK whose build script emits the service's contract
+/// and OpenAPI artifacts (`build::service_sdks_at`).
+fn build_emits_artifacts(root: &Path, project: &toml::Value) -> bool {
+    let metadata = project.get("metadata");
+    let field = |name: &str| metadata.and_then(|m| m.get(name)).and_then(toml::Value::as_str);
+    if field("language") != Some("rust") || field("sdkLayout") != Some("project-local-v1") {
+        return false;
+    }
+    let Some(crate_path) = field("cratePath") else { return false };
+    std::fs::read_to_string(root.join(crate_path).join("sdk/rust/build.rs"))
+        .is_ok_and(|source| source.contains("service_sdks_at("))
+}
+
 pub(super) fn enable(
     root: &Path,
     manifest: &toml::Value,
@@ -80,6 +93,13 @@ pub(super) fn enable(
             .find(|project| project.get("name").and_then(toml::Value::as_str) == Some(binary))
             .context("Native project missing")?;
         let metadata = project.get("metadata");
+        if build_emits_artifacts(root, project) {
+            // Cargo's SDK build script already writes these artifacts on every
+            // rebuild. A second, differently serialized startup export would
+            // alternate with it, and each alternation would regenerate SDKs and
+            // restart the service, forever.
+            continue;
+        }
         let mut paths = Vec::new();
         for (field, alias, default) in [
             (

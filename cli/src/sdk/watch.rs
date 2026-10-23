@@ -187,8 +187,16 @@ fn run_sdk_watch(
             continue;
         }
 
+        let root = app_root.canonicalize().unwrap_or_else(|_| app_root.to_path_buf());
+        let changed: Vec<String> = fingerprint
+            .iter()
+            .filter(|(path, digest)| last_fingerprint.get(*path) != Some(*digest))
+            .map(|(path, _)| path)
+            .chain(last_fingerprint.keys().filter(|path| !fingerprint.contains_key(*path)))
+            .map(|path| path.strip_prefix(&root).unwrap_or(path).display().to_string())
+            .collect();
         last_fingerprint = fingerprint;
-        log_info!(stdout, "{source} artifacts changed; regenerating SDKs");
+        log_info!(stdout, "{source} artifacts changed ({}); regenerating SDKs", changed.join(", "));
         if let Err(error) =
             generate_sdk_outputs_while_watching(app_root, target, source, selected_service, stdout)
         {

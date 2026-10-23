@@ -769,6 +769,9 @@ fn plan(
         .context("Native builder template missing source-copy boundary")?
         .replace("pkg-config libssl-dev", "pkg-config curl libssl-dev")
         + "\nENV SQLX_OFFLINE=true\n"
+        // Install the application's pinned toolchain and components once in the
+        // image, not in every container at start.
+        + "COPY rust-toolchain.tom[l] /opt/forklaunch-toolchain/\nRUN cd /opt/forklaunch-toolchain && if [ -f rust-toolchain.toml ]; then rustup toolchain install; fi\n"
         + NATIVE_BUILD_SCRIPT;
     // Compose interpolates the inline Dockerfile; keep the script's `$` literal.
     let dockerfile = dockerfile.replace('$', "$$");

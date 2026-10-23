@@ -388,7 +388,7 @@ fn ensure_infrastructure(compose: &mut DockerCompose, app: &str, groups: &[Datab
     if kafka && !compose.services.contains_key("kafka") {
         compose.services.insert("kafka".into(), crate::core::docker::kafka_service(app));
     }
-    let buckets: BTreeSet<String> = compose
+    let mut buckets: BTreeSet<String> = compose
         .services
         .iter()
         .filter(|(name, _)| name.as_str() != MINIO_INIT)
@@ -396,6 +396,10 @@ fn ensure_infrastructure(compose: &mut DockerCompose, app: &str, groups: &[Datab
         .filter_map(|(_, service)| env(service, "S3_BUCKET").cloned())
         .filter(|bucket| !bucket.contains('$'))
         .collect();
+    // The telemetry stack (Tempo, Loki, Mimir) stores in its own bucket.
+    if ["tempo", "loki", "mimir"].iter().any(|name| compose.services.contains_key(*name)) {
+        buckets.insert("forklaunch-telemetry".into());
+    }
     if !buckets.is_empty() && compose.services.contains_key("minio") {
         let buckets: Vec<&str> = buckets.iter().map(String::as_str).collect();
         crate::core::docker::ensure_minio_buckets(compose, app, &buckets);
@@ -422,7 +426,9 @@ fn isolate_redis(compose: &mut DockerCompose) {
     let owner = |name: &str, service: &DockerService| {
         worker_owner(service)
             .map(str::to_owned)
-            .unwrap_or_else(|| name.trim_end_matches("-server").trim_end_matches("-worker").to_owned())
+            .unwrap_or_else(|| {
+                name.trim_end_matches("-migrate").trim_end_matches("-server").trim_end_matches("-worker").to_owned()
+            })
     };
     let mut taken: BTreeMap<u32, String> = BTreeMap::new();
     let mut assigned: BTreeMap<String, u32> = BTreeMap::new();
@@ -970,13 +976,14 @@ mod tests {
     #[test]
     fn redis_databases_are_isolated_per_service_pair() {
         let mut compose: DockerCompose = serde_yml::from_str(
-            "services:\n  api:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n  web:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n  jobs-worker:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n  jobs-server:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n",
+            "services:\n  api:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n  web-migrate:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n  web:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n  jobs-worker:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n  jobs-server:\n    environment: {REDIS_URL: 'redis://redis:6379/0'}\n",
         )
         .unwrap();
         isolate_redis(&mut compose);
         let url = |name: &str| compose.services[name].environment.as_ref().unwrap()["REDIS_URL"].clone();
         assert_eq!(url("api"), "redis://redis:6379/0");
         assert_eq!(url("web"), "redis://redis:6379/1");
+        assert_eq!(url("web-migrate"), "redis://redis:6379/1");
         assert_eq!(url("jobs-worker"), "redis://redis:6379/2");
         assert_eq!(url("jobs-server"), "redis://redis:6379/2");
     }
