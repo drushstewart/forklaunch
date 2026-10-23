@@ -121,6 +121,7 @@ pub(super) fn service_templates(
         "api/mod.rs",
         "api/controllers/mod.rs",
         "api/controllers/health.rs",
+        "api/policy.rs",
         "api/routes/mod.rs",
         "api/routes/health.rs",
         "api/contracts/mod.rs",
@@ -158,7 +159,7 @@ pub(super) fn service_templates(
     cargo = cargo.replace("[build-dependencies]", &format!("[build-dependencies]\ncontracts = {{ package = \"{name}-contracts\", path = \"domain\" }}"));
     cargo = cargo.replace(
         "features = [\"mcp\"]",
-        "default-features = false, features = [\"native-server\"]",
+        "default-features = false, features = [\"native-server\", \"native-jwt\"]",
     );
     cargo = cargo
         .lines()

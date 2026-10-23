@@ -955,7 +955,10 @@ impl CliCommand for WorkerCommand {
                 &r#type,
                 &worker_name.to_case(Case::Pascal),
             ),
-            worker_producer_factory: get_worker_producer_factory(&r#type),
+            worker_producer_factory: get_worker_producer_factory(
+                &r#type,
+                &worker_name.to_case(Case::Pascal),
+            ),
 
             is_iam_configured: manifest_data.projects.iter().any(|project_entry| {
                 if project_entry.name == "iam" {

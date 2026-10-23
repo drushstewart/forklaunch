@@ -268,7 +268,7 @@ export const deleteBatchUsers = handlers.delete(
  * ```typescript
  * createHmacToken({
  *   method: 'GET',
- *   path: '/123414/surface-roles',
+ *   path: '/user/123414/surface-roles',
  *   body?: {
  *     someKey: '123414'
  *   },
@@ -304,7 +304,7 @@ export const surfaceRoles = handlers.get(
  * ```typescript
  * createHmacToken({
  *   method: 'GET',
- *   path: '/123414/surface-permissions',
+ *   path: '/user/123414/surface-permissions',
  *   body?: {
  *     someKey: '123414'
  *   },

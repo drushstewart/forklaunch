@@ -37,14 +37,12 @@ const provider=http.createServer(async(request,response)=>{
 await Promise.all([jwks,provider].map(server=>new Promise(resolve=>server.listen(0,'127.0.0.1',resolve))));
 const children=[];
 const configuredBillingHosts=new Set();
-// The configured Stripe service matches Express router-relative HMAC paths;
-// the native base service and platform-event transport retain full paths.
-function billingHmac(base,path,method='GET',body){
- if(configuredBillingHosts.has(base)){
-  const mount=['/payment-link','/checkout-session','/subscription','/plan'].find(prefix=>path===prefix||path.startsWith(prefix+'/'));
-  if(mount)path=path.slice(mount.length)||'/';
- }
- return hmac(path,method,body);
+// Every billing service verifies the full wire path, like the SDK signers. The
+// configured Stripe service also still accepts Express router-relative paths.
+function billingHmac(base,path,method='GET',body){return hmac(path,method,body);}
+function legacyRelativeHmac(path,method='GET',body){
+ const mount=['/payment-link','/checkout-session','/subscription','/plan'].find(prefix=>path===prefix||path.startsWith(prefix+'/'));
+ return hmac(mount?path.slice(mount.length)||'/':path,method,body);
 }
 function hmac(path,method='GET',body,key=secret,keyId='default',nonce=randomUUID(),timestamp){const ts=timestamp??new Date().toISOString(),serialized=body===undefined?'undefined':`${body}\n`;return `HMAC keyId=${keyId} ts=${ts} nonce=${nonce} signature=${createHmac('sha256',key).update(`${method}\n${path}\n${serialized}${ts}\n${nonce}`).digest('base64')}`;}
 function jwt(roles=['admin']){const header=Buffer.from(JSON.stringify({alg:'RS256',kid:jwk.kid,typ:'JWT'})).toString('base64url'),payload=Buffer.from(JSON.stringify({sub:'billing-admin',roles,iss:issuer,aud:audience,exp:Math.floor(Date.now()/1000)+300})).toString('base64url');return `Bearer ${header}.${payload}.${sign('RSA-SHA256',Buffer.from(`${header}.${payload}`),privateKey).toString('base64url')}`;}
@@ -84,7 +82,9 @@ try{
   await call(base,'/compliance/erase/user','DELETE',undefined,404,jwt(['system']));
   const providerFields=stripe?{stripeFields:{}}:{providerFields:{private:'private-provider-value'}};
   const planBody={name:'prod_fixture',price:1999,cadence:stripe?'month':'MONTHLY',currency:'USD',externalId:randomUUID(),billingProvider:stripe?'stripe':'none',active:true,...providerFields};
-  if(stripe)await call(base,'/plan','POST',planBody,403,hmac('/plan','POST',JSON.stringify(planBody)));
+  // Deprecated router-relative signatures are rejected unless explicitly enabled.
+  // (configured Stripe answers 403 "Invalid Authorization signature."; the native base 401).
+  await call(base,'/plan','POST',planBody,stripe?403:401,hmac('/','POST',JSON.stringify(planBody)));
   await call(base,'/plan','POST',{...planBody,currency:'INVALID'},400);
   const supplied=await call(base,'/plan','POST',{...planBody,externalId:randomUUID(),id:'must-not-be-a-local-id',undeclaredField:'must-be-stripped'});
   assert.notEqual(supplied.id,'must-not-be-a-local-id');assert.equal(Object.hasOwn(supplied,'undeclaredField'),false);
@@ -105,6 +105,16 @@ try{
   const linkBody={amount:299,paymentMethods:checkoutBody.paymentMethods,currency:'USD',status:'PENDING',...(stripe?{stripeFields:{line_items:[{price:'price_fixture',quantity:1}]}}:providerFields)};
   if(stripe){const {stripeFields,...missingOptions}=linkBody;await call(base,'/payment-link','POST',missingOptions,400);await call(base,'/payment-link','POST',{...linkBody,stripeFields:{}},400);}
   for(const suffix of ['expire','success','failure']){const link=await call(base,'/payment-link','POST',linkBody);await call(base,`/payment-link/${link.id}`);await call(base,`/payment-link/${link.id}`,'PUT',{id:link.id,amount:0});await call(base,'/payment-link');await call(base,`/payment-link/${link.id}`+(suffix==='expire'?'':'/'+suffix),suffix==='expire'?'DELETE':'GET');await removedCachedRecord(base,`/payment-link/${link.id}`,stripe);}
+  // The TypeScript SDK signs each request itself (fresh nonce, full wire path).
+  const signed=await sdk.universalSdk({host:base,registryOptions:{raw:await openApiDocument(service)},hmac:{secretKey:secret}});
+  for(let attempt=0;attempt<2;attempt++)assert.equal((await signed.plan.getPlan({params:{id:plan.id}})).code,200);
+  const signedLink=await signed.paymentLink.createPaymentLink({body:linkBody});assert.equal(signedLink.code,200,JSON.stringify(signedLink.response));
+  assert.equal((await signed.paymentLink.getPaymentLink({params:{id:signedLink.response.id}})).code,200);
+  assert.equal((await signed.paymentLink.expirePaymentLink({params:{id:signedLink.response.id}})).code,200);
+  const unsigned=await sdk.universalSdk({host:base,registryOptions:{raw:await openApiDocument(service)},hmac:{secretKey:'not-the-billing-secret'}});
+  // Configured Stripe declares its 403; the native base route leaves its 401 undeclared.
+  if(stripe)assert.equal((await unsigned.plan.getPlan({params:{id:plan.id}})).code,403);
+  else await assert.rejects(()=>unsigned.plan.getPlan({params:{id:plan.id}}),/Undeclared response status/);
   await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},403,jwt(['viewer']));
   const portal=await call(base,'/billing-portal','POST',{customerId:'cus_fixture',expiresAt:new Date().toISOString(),...providerFields},200,jwt());await call(base,`/billing-portal/${portal.id}`,'GET',undefined,200,jwt());const updated=await call(base,`/billing-portal/${portal.id}`,'PUT',{id:portal.id,customerId:'must-not-reassign',...providerFields},200,jwt());assert.equal(updated.id,portal.id);assert.equal(updated.customerId,portal.customerId);
   if(stripe){
@@ -116,7 +126,7 @@ try{
    const webhookPortal=await call(base,'/billing-portal/bps_webhook','GET',undefined,200,jwt());assert.equal(Object.hasOwn(webhookPortal,'stripeFields'),false);
   }
   const rustBody=JSON.stringify({...planBody,externalId:randomUUID()});
-  const rust=spawn('cargo',['test','--manifest-path',process.env[`FORKLAUNCH_TEST_${service.toUpperCase()}_SDK_MANIFEST`],'--test','runtime','--','--nocapture'],{env:{...process.env,BILLING_BASE_URL:base,BILLING_PLAN_ID:plan.id,BILLING_GET_HEADER:billingHmac(base,'/plan/'+plan.id),BILLING_LIST_HEADER:billingHmac(base,'/plan'),BILLING_CREATE_BODY:rustBody,BILLING_CREATE_HEADER:billingHmac(base,'/plan','POST',rustBody),BILLING_PORTAL_ID:portal.id,BILLING_PORTAL_HEADER:jwt(),BILLING_WEBHOOK_PORTAL_ID:stripe?'bps_webhook':undefined},stdio:['ignore','pipe','pipe']});let rustOutput='';rust.stdout.on('data',chunk=>rustOutput+=chunk);rust.stderr.on('data',chunk=>rustOutput+=chunk);const rustTimer=setTimeout(()=>rust.kill('SIGKILL'),120000);try{assert.equal(await new Promise(resolve=>rust.once('close',resolve)),0,rustOutput);}finally{clearTimeout(rustTimer);}
+  const rust=spawn('cargo',['test','--manifest-path',process.env[`FORKLAUNCH_TEST_${service.toUpperCase()}_SDK_MANIFEST`],'--test','runtime','--','--nocapture'],{env:{...process.env,BILLING_BASE_URL:base,BILLING_PLAN_ID:plan.id,BILLING_GET_HEADER:billingHmac(base,'/plan/'+plan.id),BILLING_LIST_HEADER:billingHmac(base,'/plan'),BILLING_CREATE_BODY:rustBody,BILLING_CREATE_HEADER:billingHmac(base,'/plan','POST',rustBody),BILLING_PORTAL_ID:portal.id,BILLING_HMAC_SECRET:secret,BILLING_LINK_BODY:JSON.stringify(linkBody),BILLING_PORTAL_HEADER:jwt(),BILLING_WEBHOOK_PORTAL_ID:stripe?'bps_webhook':undefined},stdio:['ignore','pipe','pipe']});let rustOutput='';rust.stdout.on('data',chunk=>rustOutput+=chunk);rust.stderr.on('data',chunk=>rustOutput+=chunk);const rustTimer=setTimeout(()=>rust.kill('SIGKILL'),120000);try{assert.equal(await new Promise(resolve=>rust.once('close',resolve)),0,rustOutput);}finally{clearTimeout(rustTimer);}
   await call(base,`/billing-portal/${portal.id}`,'DELETE',undefined,200,jwt());
   let replayEvent;
   if(stripe){
@@ -160,5 +170,5 @@ try{
  for(const config of [{MCP_ENABLED:'false'},{MCP_ENABLED:'true',MCP_PATH:'/tools'}]){const info=await start(baseBinary,'a',config);assert.equal((await fetch(info.base+'/health')).status,200);assert.equal((await fetch(info.base+'/mcp',{method:'POST'})).status,404);if(config.MCP_ENABLED==='true')await probeMcp(info.base,[],config.MCP_PATH);await stop(info);}
  assert.ok(providerCalls>20);
  console.log('PASS generated base/Stripe billing: all five service families over HTTP, authenticated MCP tools, both SDKs, JWT roles, configured party lookups, verified webhooks/platform events, keyless managed gateway calls, supplied keys taking precedence over the gateway, configuration failures, encrypted persistence, tenant isolation, restart, MCP settings and graceful shutdown');
-}finally{// Cleanup must not mask the failure that left a process running.
+}catch(error){if(process.env.FORKLAUNCH_DEBUG_BILLING)for(const info of children)console.error('SERVICE STDERR:',info.errors().slice(-6000));throw error;}finally{// Cleanup must not mask the failure that left a process running.
  for(const info of children)if(info.child.exitCode===null&&info.child.signalCode===null){info.child.kill('SIGKILL');await info.exit;}await Promise.all([jwks,provider].map(server=>new Promise(resolve=>server.close(resolve))));}

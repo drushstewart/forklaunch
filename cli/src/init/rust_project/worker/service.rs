@@ -208,7 +208,7 @@ fn producer(
         .unwrap_or_else(|| contracts_layout::new_host_directory(dir));
     let data = rust_crate_template_data(name, "Worker contracts", true);
     let jobs = render_rust_template("rust/leased-worker/event_contract.rs", &data)
-        + "\n#[forklaunch_core::contract::schema]\npub struct AcceptedJob { pub operation_id: String }\n";
+        + "\n/// `operation_id` identifies the accepted job on every side: it is the queue job id\n/// (the apalis task id, the leased job id, or the Kafka record key) and the\n/// `context.operationId` the consumer sees after opening the sealed event.\n#[forklaunch_core::contract::schema]\npub struct AcceptedJob { pub operation_id: String }\n";
     files.push(RenderedTemplate {
         path: job_source(dir, &host),
         content: jobs,
@@ -253,7 +253,7 @@ fn producer(
 pub mod contract {
     use forklaunch_core::contract::{HttpMethod,endpoint::{Endpoint,JsonBody}};
     use crate::domain::schemas::jobs::{AcceptedJob,WorkInput};
-    #[access(Authenticated)]
+    #[access(Internal)]
     pub fn enqueue() -> Endpoint<JsonBody<WorkInput>,JsonBody<AcceptedJob>> {
         Endpoint::new("Enqueue Work", "Authorize and encrypt a work item", HttpMethod::Post, "/jobs", 202).expect("valid enqueue contract")
     }
@@ -287,39 +287,27 @@ pub fn mount(router:ContractRouter<AppState>)->Result<ContractRouter<AppState>,S
     contracts::enqueue::Bindings { enqueue: contracts::enqueue::Enqueue::bind_authorized(ProducerAuthorization,enqueue) }.mount(router)
 }
 "#.into()});
-    files.push(RenderedTemplate {path:dir.join("api/controllers/enqueue.rs"),context:None,content:r#"
-use std::future::{self,Future};
-use axum::{extract::State,http::request::Parts};
-use contracts::jobs::{AcceptedJob,WorkInput};
-use forklaunch_axum::native::{EndpointError,EndpointPolicy};
-use forklaunch_core::contract::RouteContract;
-use uuid::Uuid;
-use crate::{domain::services::producer,registrations::AppState};
-/// Replace with verified application identity and resource permission checks.
-/// Tenant must come from authenticated identity, never an untrusted body/header.
-#[derive(Clone)]
-pub struct ProducerAuthorization;
-impl EndpointPolicy<AppState> for ProducerAuthorization {
-    type Context = Uuid;
-    fn authorize(&self,_parts:&mut Parts,_state:&AppState,_route:&RouteContract)->impl Future<Output=Result<Self::Context,EndpointError>> + Send {
-        future::ready(Err(EndpointError::Unauthorized))
-    }
-}
-pub async fn enqueue(_state:State<AppState>,tenant:Uuid,input:WorkInput)->Result<AcceptedJob,EndpointError> {
-    producer::enqueue(tenant,input).await
-}
-"#.into()});
+    files.push(RenderedTemplate {path:dir.join("api/controllers/enqueue.rs"),context:None,content:PRODUCER_POLICY.into()});
+    append(
+        files,
+        &dir.join("domain/services/mod.rs"),
+        "\npub mod replay;\n",
+    )?;
+    files.push(RenderedTemplate {path:dir.join("domain/services/replay.rs"),context:None,content:replay_store(apalis, backend)});
+    replay_wiring(files, dir, apalis, backend)?;
     append(
         files,
         &dir.join("domain/services/mod.rs"),
         "\npub mod producer;\n",
     )?;
     let (imports, submit) = if apalis {
-        ("use apalis_core::backend::TaskSink;\nuse apalis_postgres::{Config,PostgresStorage};\nuse forklaunch_worker_interface::SealedEvent;\nuse crate::consumer::registrations;", r#"
+        ("use apalis_core::backend::TaskSink;\nuse apalis_core::task::{builder::TaskBuilder,task_id::TaskId};\nuse apalis_postgres::{Config,PostgresStorage};\nuse forklaunch_worker_interface::SealedEvent;\nuse crate::consumer::registrations;", r#"
     let pool=registrations::pool(false).await.map_err(|_|EndpointError::Unavailable)?;
     let mut queue=PostgresStorage::<SealedEvent>::new(&pool)
         .with_config(Config::default().queue(env!("CARGO_PKG_NAME")));
-    let result=queue.push(event).await.map_err(|_|EndpointError::Unavailable);
+    // The apalis task id is the operation id, so AcceptedJob correlates with the queue row.
+    let task=TaskBuilder::new(event).task_id(TaskId::from_string(operation.to_string())).build();
+    let result=queue.push_task(task).await.map_err(|_|EndpointError::Unavailable);
     pool.close().await;
     result?;
 "#)
@@ -363,6 +351,186 @@ pub async fn enqueue(tenant:Uuid,input:WorkInput)->Result<AcceptedJob,EndpointEr
             "contracts::enqueue::",
             "crate::api::controllers::enqueue::contract::",
         );
+    }
+    Ok(())
+}
+
+/// Producer admission: the ForkLaunch request HMAC from internal callers, a clock
+/// window and a one-time nonce claim. Callers share `INTERNAL_HMAC_SECRET_KEY`.
+const PRODUCER_POLICY: &str = r#"
+use axum::{extract::State,http::request::Parts};
+use contracts::jobs::{AcceptedJob,WorkInput};
+use forklaunch_axum::native::{EndpointError,EndpointPolicy,PolicyCapabilities};
+use forklaunch_core::{auth::request_hmac::{HmacAuthorization,SignedBody},config,contract::RouteContract};
+use std::time::{Duration,SystemTime,UNIX_EPOCH};
+use uuid::Uuid;
+use crate::{domain::services::{producer,replay},registrations::AppState};
+/// Signed requests are accepted within this window, including future clock skew.
+const MAX_SKEW:Duration=Duration::from_secs(300);
+/// Service-to-service admission. Internal callers sign every request with the shared
+/// `INTERNAL_HMAC_SECRET_KEY` (keyId `default`) using the ForkLaunch request HMAC over
+/// the method, full path and original body bytes: generated Rust clients with
+/// `with_hmac_secret`, TypeScript with `universalSdk({ hmac: { secretKey } })`.
+/// Unsigned requests get 401, bad or stale signatures 403, and a replayed nonce 409.
+/// The tenant comes from trusted configuration (`TENANT_ID`), never from the request.
+/// Narrow this policy further (per-caller keys, resource checks) as the application needs.
+#[derive(Clone)]
+pub struct ProducerAuthorization;
+/// `authorize_body` verifies the original bytes and claims the nonce atomically.
+impl forklaunch_core::contract::bindings::OriginalBodySignedPolicy for ProducerAuthorization {}
+impl EndpointPolicy<AppState> for ProducerAuthorization {
+    const CAPABILITIES:PolicyCapabilities=PolicyCapabilities::SignedInternal;
+    type Context=Uuid;
+    async fn authorize(&self,parts:&mut Parts,_state:&AppState,_route:&RouteContract)->Result<Uuid,EndpointError> {
+        if !matches!(credential(parts).map(HmacAuthorization::parse),Some(Ok(_))) { return Err(EndpointError::Unauthorized); }
+        let tenant:Uuid=config::required("TENANT_ID").map_err(|_|EndpointError::Unavailable)?;
+        if tenant.is_nil() { return Err(EndpointError::Unavailable); }
+        Ok(tenant)
+    }
+    async fn authorize_body(&self,tenant:Uuid,parts:&mut Parts,bytes:&[u8],_state:&AppState,_route:&RouteContract)->Result<Uuid,EndpointError> {
+        let credential=HmacAuthorization::parse(credential(parts).ok_or(EndpointError::Unauthorized)?).map_err(|_|EndpointError::Unauthorized)?;
+        let secret:String=config::required("INTERNAL_HMAC_SECRET_KEY").map_err(|_|EndpointError::Unavailable)?;
+        if secret.len()<32 { return Err(EndpointError::Unavailable); }
+        let body=if bytes.is_empty() { SignedBody::Absent } else { SignedBody::Bytes(bytes) };
+        let now=SystemTime::now().duration_since(UNIX_EPOCH).ok().and_then(|now|i64::try_from(now.as_millis()).ok()).ok_or(EndpointError::Unavailable)?;
+        if credential.key_id()!="default" || !credential.verify_at(secret.as_bytes(),parts.method.as_str(),parts.uri.path(),body,now,MAX_SKEW) {
+            return Err(EndpointError::Forbidden);
+        }
+        // Claim only after verification; the claim outlives the signature's validity.
+        let expires=credential.timestamp_unix_millis().saturating_add(i64::try_from(MAX_SKEW.as_millis()).unwrap_or(i64::MAX));
+        if replay::claim(credential.nonce(),expires).await? { Ok(tenant) } else { Err(EndpointError::Conflict) }
+    }
+}
+fn credential(parts:&Parts)->Option<&str> { parts.headers.get("authorization").and_then(|value|value.to_str().ok()) }
+pub async fn enqueue(_state:State<AppState>,tenant:Uuid,input:WorkInput)->Result<AcceptedJob,EndpointError> {
+    producer::enqueue(tenant,input).await
+}
+"#;
+
+/// The producer's shared replay store: PostgreSQL for database queues, Redis for
+/// Redis queues. Kafka producers have no shared store, so the default is per process.
+fn replay_store(apalis: bool, backend: Backend) -> String {
+    let postgres = |pool: &str| format!(r#"//! One-time nonce claims for signed internal calls, shared by every producer replica.
+//! `--migrate` creates `forklaunch_request_nonces`; the runtime role needs INSERT, UPDATE
+//! and DELETE on it. Expired claims are reclaimed in place and pruned opportunistically.
+use forklaunch_axum::native::EndpointError;
+use sqlx::PgPool;
+pub async fn migrate(pool:&PgPool)->Result<(),sqlx::Error> {{
+    sqlx::query("CREATE TABLE IF NOT EXISTS forklaunch_request_nonces (nonce text PRIMARY KEY, expires_at timestamptz NOT NULL)").execute(pool).await?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS forklaunch_request_nonces_expiry ON forklaunch_request_nonces (expires_at)").execute(pool).await?;
+    Ok(())
+}}
+/// `Ok(true)` when this nonce was not already claimed and unexpired.
+pub async fn claim(nonce:&str,expires_unix_millis:i64)->Result<bool,EndpointError> {{
+{pool}
+    let claimed=sqlx::query("INSERT INTO forklaunch_request_nonces (nonce, expires_at) VALUES ($1, to_timestamp($2::double precision / 1000)) ON CONFLICT (nonce) DO UPDATE SET expires_at = EXCLUDED.expires_at WHERE forklaunch_request_nonces.expires_at < now()")
+        .bind(nonce).bind(expires_unix_millis as f64).execute(&pool).await;
+    // A failed prune never admits a request; it only leaves expired rows behind.
+    let _=sqlx::query("DELETE FROM forklaunch_request_nonces WHERE expires_at < now() - interval '1 hour'").execute(&pool).await;
+    pool.close().await;
+    Ok(claimed.map_err(|_|EndpointError::Unavailable)?.rows_affected()==1)
+}}
+"#);
+    if apalis {
+        return postgres("    let pool=crate::consumer::registrations::pool(false).await.map_err(|_|EndpointError::Unavailable)?;");
+    }
+    match backend {
+        Backend::Postgres => postgres(r#"    let url=forklaunch_core::config::required::<String>("DATABASE_URL").map_err(|_|EndpointError::Unavailable)?;
+    crate::consumer::events::transport_policy().map_err(|_|EndpointError::Unavailable)?.postgres(&url).map_err(|_|EndpointError::Unavailable)?;
+    let pool=sqlx::postgres::PgPoolOptions::new().max_connections(1).connect(&url).await.map_err(|_|EndpointError::Unavailable)?;"#),
+        Backend::Redis => r#"//! One-time nonce claims for signed internal calls in Redis (`SET NX PX`), shared by
+//! every producer replica. Keys live under the worker namespace (and `REDIS_KEY_PREFIX`).
+use forklaunch_axum::native::EndpointError;
+use forklaunch_core::config;
+use std::time::{SystemTime,UNIX_EPOCH};
+/// `Ok(true)` when this nonce was not already claimed and unexpired.
+pub async fn claim(nonce:&str,expires_unix_millis:i64)->Result<bool,EndpointError> {
+    let url=config::required::<String>("REDIS_URL").map_err(|_|EndpointError::Unavailable)?;
+    crate::consumer::events::transport_policy().map_err(|_|EndpointError::Unavailable)?.redis(&url).map_err(|_|EndpointError::Unavailable)?;
+    let namespace=config::required::<String>("WORKER_NAMESPACE").map_err(|_|EndpointError::Unavailable)?;
+    let prefix=config::optional::<String>("REDIS_KEY_PREFIX").map_err(|_|EndpointError::Unavailable)?.unwrap_or_default();
+    let now=SystemTime::now().duration_since(UNIX_EPOCH).ok().and_then(|now|i64::try_from(now.as_millis()).ok()).ok_or(EndpointError::Unavailable)?;
+    let ttl=expires_unix_millis.saturating_sub(now).max(1000);
+    let client=redis::Client::open(url).map_err(|_|EndpointError::Unavailable)?;
+    let mut connection=client.get_multiplexed_async_connection().await.map_err(|_|EndpointError::Unavailable)?;
+    let claimed:Option<String>=redis::cmd("SET").arg(format!("{prefix}fl_nonce:{namespace}:{nonce}")).arg("1").arg("NX").arg("PX").arg(ttl)
+        .query_async(&mut connection).await.map_err(|_|EndpointError::Unavailable)?;
+    Ok(claimed.is_some())
+}
+"#.into(),
+        Backend::Kafka => r#"//! One-time nonce claims for signed internal calls. Kafka producers have no shared
+//! store, so this default holds claims in this process only: it rejects replays to the
+//! same replica. Run one producer replica, or replace `claim` with a shared atomic
+//! store (a PostgreSQL unique insert or Redis `SET NX`) before scaling out.
+use forklaunch_axum::native::EndpointError;
+use std::{collections::BTreeMap,sync::{Mutex,OnceLock},time::{SystemTime,UNIX_EPOCH}};
+const CAPACITY:usize=100_000;
+static CLAIMS:OnceLock<Mutex<BTreeMap<String,i64>>>=OnceLock::new();
+/// `Ok(true)` when this nonce was not already claimed and unexpired.
+pub async fn claim(nonce:&str,expires_unix_millis:i64)->Result<bool,EndpointError> {
+    let now=SystemTime::now().duration_since(UNIX_EPOCH).ok().and_then(|now|i64::try_from(now.as_millis()).ok()).ok_or(EndpointError::Unavailable)?;
+    let mut claims=CLAIMS.get_or_init(Default::default).lock().map_err(|_|EndpointError::Unavailable)?;
+    claims.retain(|_,expires|*expires>=now);
+    if claims.contains_key(nonce) { return Ok(false); }
+    if claims.len()>=CAPACITY { return Err(EndpointError::Unavailable); }
+    claims.insert(nonce.to_owned(),expires_unix_millis);
+    Ok(true)
+}
+"#.into(),
+    }
+}
+
+/// Create the PostgreSQL replay table on `--migrate`, and give Redis producers a client.
+fn replay_wiring(files: &mut [RenderedTemplate], dir: &Path, apalis: bool, backend: Backend) -> Result<()> {
+    if apalis {
+        let migrations = files
+            .iter_mut()
+            .find(|file| {
+                file.path == dir.join("consumer/migrations/mod.rs")
+                    || file.path == dir.join("migrations/mod.rs")
+            })
+            .context("apalis migrations")?;
+        migrations.content = migrations.content.replace(
+            "PostgresStorage::setup(pool).await?; Ok(())",
+            "PostgresStorage::setup(pool).await?; crate::domain::services::replay::migrate(pool).await?; Ok(())",
+        );
+        anyhow::ensure!(migrations.content.contains("replay::migrate"), "apalis migration hook");
+        return Ok(());
+    }
+    match backend {
+        Backend::Postgres => {
+            let worker = files
+                .iter_mut()
+                .find(|file| file.path == dir.join("consumer/worker.rs"))
+                .context("database worker runtime")?;
+            worker.content = worker.content.replace(
+                "PostgresWorkerQueue::migrate(&pool).await?;",
+                "PostgresWorkerQueue::migrate(&pool).await?;\n        crate::domain::services::replay::migrate(&pool).await?;",
+            );
+            anyhow::ensure!(worker.content.contains("replay::migrate"), "database migration hook");
+        }
+        Backend::Redis => {
+            let cargo = files
+                .iter_mut()
+                .find(|file| file.path == dir.join("Cargo.toml"))
+                .context("worker manifest")?;
+            let mut manifest: Value = toml::from_str(&cargo.content)?;
+            manifest
+                .get_mut("dependencies")
+                .and_then(Value::as_table_mut)
+                .context("worker dependencies")?
+                .entry("redis")
+                .or_insert_with(|| {
+                    toml::from_str::<Value>(
+                        r#"version = "1.7"
+default-features = false
+features = ["tokio-rustls-comp", "tls-rustls-webpki-roots"]"#,
+                    )
+                    .unwrap()
+                });
+            cargo.content = toml::to_string_pretty(&manifest)?;
+        }
+        Backend::Kafka => {}
     }
     Ok(())
 }
@@ -493,7 +661,7 @@ mod tests {
         assert!(source("worker.rs").contains("consumer::bootstrapper::run"));
         assert!(source("main.rs").contains("bootstrapper::run"));
         assert!(source("api/controllers/enqueue.rs").contains("Err(EndpointError::Unauthorized)"));
-        assert!(source("domain/services/producer.rs").contains("queue.push(event)"));
+        assert!(source("domain/services/producer.rs").contains("queue.push_task(task)"));
         assert!(source("consumer/worker_hooks.rs").contains("crate::consumer::worker") == false);
         assert!(source("consumer/bootstrapper.rs").contains("crate::consumer::worker::run"));
         assert!(source("domain/mod.rs").contains("contracts::jobs"));

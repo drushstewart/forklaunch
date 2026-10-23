@@ -633,7 +633,10 @@ pub(crate) fn generate_service_package_json(
                     None
                 },
                 uuid: Some(UUID_VERSION.to_string()),
-                zod: if manifest_data.is_zod {
+                // Better Auth's inferred config type names zod's schema types, so
+                // declaration emit needs zod resolvable from the module itself,
+                // whichever validator the app uses (TS2883 otherwise).
+                zod: if manifest_data.is_zod || manifest_data.is_better_auth {
                     Some(ZOD_VERSION.to_string())
                 } else {
                     None

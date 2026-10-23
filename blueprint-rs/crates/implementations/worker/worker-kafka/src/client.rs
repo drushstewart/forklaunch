@@ -16,7 +16,7 @@ use rdkafka::{
     consumer::{
         BaseConsumer, Consumer, ConsumerContext, ConsumerGroupMetadata, Rebalance, StreamConsumer,
     },
-    error::{KafkaError, KafkaResult},
+    error::{KafkaError, KafkaResult, RDKafkaErrorCode},
     message::OwnedMessage,
     producer::{FutureProducer, FutureRecord, Producer},
 };
@@ -56,6 +56,11 @@ pub struct KafkaOptions {
     /// fences an earlier replica. Never share this identity across live replicas.
     pub transactional_id: String,
     pub operation_timeout: Duration,
+    /// Total time `connect` keeps retrying retriable broker errors (for example a
+    /// broker that is still starting, or the first transactional initialization
+    /// that creates `__transaction_state`). Each attempt is bounded by
+    /// `operation_timeout`.
+    pub startup_timeout: Duration,
     pub session_timeout: Duration,
     pub max_payload_bytes: usize,
     /// librdkafka TLS/SASL and connection options. Delivery-critical settings are
@@ -84,6 +89,7 @@ impl KafkaOptions {
             group: "workers".into(),
             transactional_id: transactional_id.into(),
             operation_timeout: Duration::from_secs(5),
+            startup_timeout: Duration::from_secs(60),
             session_timeout: Duration::from_secs(10),
             max_payload_bytes: 1024 * 1024,
             properties: BTreeMap::new(),
@@ -103,6 +109,8 @@ impl KafkaOptions {
             || self.brokers.chars().any(char::is_control)
             || self.operation_timeout < Duration::from_millis(100)
             || self.operation_timeout > Duration::from_secs(60)
+            || self.startup_timeout < self.operation_timeout
+            || self.startup_timeout > Duration::from_secs(600)
             || self.session_timeout < Duration::from_secs(6)
             || self.session_timeout > Duration::from_secs(300)
             || !(1..=8 * 1024 * 1024).contains(&self.max_payload_bytes)
@@ -143,9 +151,23 @@ impl KafkaOptions {
                 "message.timeout.ms",
                 millis(self.operation_timeout).to_string(),
             )
-            .set("allow.auto.create.topics", "false")
-            .set("log_level", "0");
+            .set("allow.auto.create.topics", "false");
+        // On hosts where `localhost` resolves to `::1` first (macOS), an IPv4-only
+        // broker port fails the first connection. Prefer IPv4 for loopback brokers
+        // unless the caller chose an address family explicitly.
+        if !self.properties.contains_key("broker.address.family") && self.loopback_only() {
+            config.set("broker.address.family", "v4");
+        }
         config
+    }
+    fn loopback_only(&self) -> bool {
+        self.brokers.split(',').all(|broker| {
+            let host = broker
+                .trim()
+                .rsplit_once(':')
+                .map_or(broker.trim(), |(host, _)| host);
+            host.eq_ignore_ascii_case("localhost")
+        })
     }
 }
 fn scoped(prefix: &str, parts: &[&str]) -> String {
@@ -187,19 +209,101 @@ fn rebalance_error() -> BlueprintError {
     )
 }
 
+/// Routes librdkafka logs and client errors to `tracing` (target
+/// `forklaunch_worker_kafka::librdkafka`). Messages are stripped of control
+/// characters and truncated; librdkafka does not log credentials unless its
+/// `debug` property is enabled, which callers opt into explicitly.
 #[derive(Clone, Default)]
-struct QuietContext {
+struct LoggingContext {
     epoch: Arc<AtomicU64>,
 }
-impl ClientContext for QuietContext {
-    // Avoid forwarding broker logs/errors that may contain authentication details.
-    fn log(&self, _: RDKafkaLogLevel, _: &str, _: &str) {}
-    fn error(&self, _: KafkaError, _: &str) {}
+impl ClientContext for LoggingContext {
+    fn log(&self, level: RDKafkaLogLevel, facility: &str, message: &str) {
+        let message = sanitize(message);
+        let facility = sanitize(facility);
+        match level {
+            RDKafkaLogLevel::Emerg | RDKafkaLogLevel::Alert | RDKafkaLogLevel::Critical => {
+                tracing::error!(target: "forklaunch_worker_kafka::librdkafka", facility, "{message}");
+            }
+            // librdkafka reports recoverable connection failures at error level.
+            RDKafkaLogLevel::Error | RDKafkaLogLevel::Warning => {
+                tracing::warn!(target: "forklaunch_worker_kafka::librdkafka", facility, "{message}");
+            }
+            RDKafkaLogLevel::Notice => {
+                tracing::info!(target: "forklaunch_worker_kafka::librdkafka", facility, "{message}");
+            }
+            RDKafkaLogLevel::Info => {
+                tracing::debug!(target: "forklaunch_worker_kafka::librdkafka", facility, "{message}");
+            }
+            RDKafkaLogLevel::Debug => {
+                tracing::trace!(target: "forklaunch_worker_kafka::librdkafka", facility, "{message}");
+            }
+        }
+    }
+    fn error(&self, error: KafkaError, reason: &str) {
+        let reason = sanitize(reason);
+        if is_transient(&error) {
+            tracing::warn!(target: "forklaunch_worker_kafka::librdkafka", error = %error, "{reason}");
+        } else {
+            tracing::error!(target: "forklaunch_worker_kafka::librdkafka", error = %error, "{reason}");
+        }
+    }
 }
-impl ConsumerContext for QuietContext {
+impl ConsumerContext for LoggingContext {
     fn pre_rebalance(&self, _: &BaseConsumer<Self>, _: &Rebalance<'_>) {
         self.epoch.fetch_add(1, Ordering::SeqCst);
     }
+}
+fn sanitize(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(1024)
+        .collect()
+}
+
+/// Errors librdkafka recovers from by itself (reconnects, leader/coordinator
+/// moves, topic metadata not yet propagated). The worker keeps polling instead
+/// of exiting; everything else stops it.
+fn is_transient(error: &KafkaError) -> bool {
+    match error {
+        KafkaError::MessageConsumptionFatal(_) => false,
+        KafkaError::PartitionEOF(_) | KafkaError::NoMessageReceived => true,
+        KafkaError::Transaction(error) => !error.is_fatal() && error.is_retriable(),
+        other => other.rdkafka_error_code().is_some_and(transient_code),
+    }
+}
+fn transient_code(code: RDKafkaErrorCode) -> bool {
+    matches!(
+        code,
+        RDKafkaErrorCode::BrokerTransportFailure
+            | RDKafkaErrorCode::AllBrokersDown
+            | RDKafkaErrorCode::Resolve
+            | RDKafkaErrorCode::OperationTimedOut
+            | RDKafkaErrorCode::MessageTimedOut
+            | RDKafkaErrorCode::RequestTimedOut
+            | RDKafkaErrorCode::TimedOutQueue
+            | RDKafkaErrorCode::NetworkException
+            | RDKafkaErrorCode::WaitingForCoordinator
+            | RDKafkaErrorCode::CoordinatorNotAvailable
+            | RDKafkaErrorCode::NotCoordinator
+            | RDKafkaErrorCode::CoordinatorLoadInProgress
+            | RDKafkaErrorCode::LeaderNotAvailable
+            | RDKafkaErrorCode::NotLeaderForPartition
+            | RDKafkaErrorCode::BrokerNotAvailable
+            | RDKafkaErrorCode::NotEnoughReplicas
+            | RDKafkaErrorCode::NotEnoughReplicasAfterAppend
+            | RDKafkaErrorCode::UnknownTopicOrPartition
+            | RDKafkaErrorCode::UnknownTopic
+            | RDKafkaErrorCode::UnknownPartition
+            | RDKafkaErrorCode::RebalanceInProgress
+            | RDKafkaErrorCode::ConcurrentTransactions
+    )
+}
+const BACKOFF_START: Duration = Duration::from_millis(100);
+const BACKOFF_MAX: Duration = Duration::from_secs(5);
+fn next_backoff(current: Duration) -> Duration {
+    (current * 2).min(BACKOFF_MAX)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,12 +366,49 @@ async fn blocking<T: Send + 'static>(
         .map_err(|_| storage())
 }
 
+/// The first transactional producer on a fresh broker creates
+/// `__transaction_state`, and a broker may still be starting; both surface as
+/// retriable errors. librdkafka allows `init_transactions` to be called again
+/// after a retriable failure, so retry with backoff within `startup_timeout`.
+async fn init_transactions(
+    producer: &FutureProducer<LoggingContext>,
+    options: &KafkaOptions,
+) -> BlueprintResult<()> {
+    let deadline = Instant::now() + options.startup_timeout;
+    let mut backoff = BACKOFF_START;
+    loop {
+        let owned = producer.clone();
+        let attempt = remaining(deadline)?.min(options.operation_timeout);
+        let result = tokio::task::spawn_blocking(move || owned.init_transactions(attempt))
+            .await
+            .map_err(|_| storage())?;
+        match result {
+            Ok(()) => return Ok(()),
+            Err(error) if is_transient(&error) => {
+                let wait = backoff.min(remaining(deadline)?);
+                tracing::warn!(
+                    target: "forklaunch_worker_kafka",
+                    error = %error,
+                    retry_in_ms = millis(wait),
+                    "Kafka transactional producer not ready; retrying"
+                );
+                tokio::time::sleep(wait).await;
+                backoff = next_backoff(backoff);
+            }
+            Err(error) => {
+                tracing::error!(target: "forklaunch_worker_kafka", error = %error, "Kafka transactional producer initialization failed");
+                return Err(storage());
+            }
+        }
+    }
+}
+
 /// Serialized, transactional publisher. A failed transaction makes this handle
 /// unusable: construct a fresh one to fence/resolve the earlier transaction.
 /// Duplicate job IDs are permitted by Kafka; use idempotent application handlers.
 pub struct KafkaProducer {
     options: KafkaOptions,
-    producer: FutureProducer<QuietContext>,
+    producer: FutureProducer<LoggingContext>,
     lock: Mutex<()>,
     healthy: AtomicBool,
 }
@@ -276,7 +417,7 @@ impl KafkaProducer {
     /// Returns sanitized configuration, broker, or transaction initialization errors.
     pub async fn connect(options: KafkaOptions) -> BlueprintResult<Self> {
         options.validate()?;
-        let producer: FutureProducer<QuietContext> = options
+        let producer: FutureProducer<LoggingContext> = options
             .config()
             .set(
                 "transactional.id",
@@ -294,11 +435,9 @@ impl KafkaProducer {
             .set("enable.idempotence", "true")
             .set("acks", "all")
             .set("transaction.timeout.ms", "60000")
-            .create_with_context(QuietContext::default())
+            .create_with_context(LoggingContext::default())
             .map_err(|_| invalid())?;
-        let owned = producer.clone();
-        let deadline = options.operation_timeout;
-        blocking(move || owned.init_transactions(deadline)).await?;
+        init_transactions(&producer, &options).await?;
         Ok(Self {
             options,
             producer,
@@ -442,7 +581,7 @@ struct Delivery {
 pub struct KafkaWorker {
     options: KafkaOptions,
     producer: KafkaProducer,
-    consumer: StreamConsumer<QuietContext>,
+    consumer: StreamConsumer<LoggingContext>,
 }
 impl KafkaWorker {
     /// # Errors
@@ -459,7 +598,7 @@ impl KafkaWorker {
             + options.operation_timeout * 6
             + config.drain_timeout
             + Duration::from_secs(30);
-        let consumer: StreamConsumer<QuietContext> = options
+        let consumer: StreamConsumer<LoggingContext> = options
             .config()
             .set("group.id", options.group_id())
             .set("enable.auto.commit", "false")
@@ -484,7 +623,7 @@ impl KafkaWorker {
                 "fetch.message.max.bytes",
                 (options.max_payload_bytes + 4096).to_string(),
             )
-            .create_with_context(QuietContext::default())
+            .create_with_context(LoggingContext::default())
             .map_err(|_| invalid())?;
         consumer
             .subscribe(&[&options.topic()])
@@ -505,6 +644,7 @@ impl KafkaWorker {
     /// Returns broker, invalid-message or assignment errors after stopping claims.
     /// Shutdown drains the active handler within its deadline; cancellation leaves
     /// the offset uncommitted for another replica or a subsequent restart.
+    #[allow(clippy::too_many_lines)]
     pub async fn run<H, F>(
         &self,
         handler: &H,
@@ -522,6 +662,7 @@ impl KafkaWorker {
         let mut report = KafkaRunReport::default();
         let mut buffered = VecDeque::<Delivery>::new();
         let mut buffered_bytes = 0_usize;
+        let mut backoff = BACKOFF_START;
         loop {
             if control.state() == WorkerState::Draining {
                 break;
@@ -542,11 +683,38 @@ impl KafkaWorker {
             } else {
                 // Poll even while paused to keep group membership healthy. Records
                 // already fetched during a pause race stay bounded and uncommitted.
-                let message = tokio::select! {
+                let received = tokio::select! {
                     () = &mut shutdown => { control.drain(); break; }
                     () = control.draining() => break,
                     () = tokio::time::sleep(Duration::from_millis(100)) => continue,
-                    message = self.consumer.recv() => message.map_err(|_| storage())?,
+                    message = self.consumer.recv() => message,
+                };
+                let message = match received {
+                    Ok(message) => {
+                        backoff = BACKOFF_START;
+                        message
+                    }
+                    Err(error) if is_transient(&error) => {
+                        // librdkafka reconnects on its own; keep the group
+                        // membership alive and back off instead of exiting.
+                        tracing::warn!(
+                            target: "forklaunch_worker_kafka",
+                            error = %error,
+                            retry_in_ms = millis(backoff),
+                            "transient Kafka consumer error; retrying"
+                        );
+                        tokio::select! {
+                            () = &mut shutdown => { control.drain(); break; }
+                            () = control.draining() => break,
+                            () = tokio::time::sleep(backoff) => (),
+                        }
+                        backoff = next_backoff(backoff);
+                        continue;
+                    }
+                    Err(error) => {
+                        tracing::error!(target: "forklaunch_worker_kafka", error = %error, "Kafka consumer failed");
+                        return Err(storage());
+                    }
                 };
                 let epoch = self.consumer.context().epoch.load(Ordering::SeqCst);
                 let metadata = self.consumer.group_metadata().ok_or_else(rebalance_error)?;
@@ -761,5 +929,49 @@ mod tests {
             .validate()
             .is_err()
         );
+    }
+    #[test]
+    fn transient_broker_errors_are_retried_and_others_stop_the_worker() {
+        for code in [
+            RDKafkaErrorCode::BrokerTransportFailure,
+            RDKafkaErrorCode::AllBrokersDown,
+            RDKafkaErrorCode::UnknownTopicOrPartition,
+            RDKafkaErrorCode::CoordinatorLoadInProgress,
+        ] {
+            assert!(
+                is_transient(&KafkaError::MessageConsumption(code)),
+                "{code:?}"
+            );
+        }
+        assert!(!is_transient(&KafkaError::MessageConsumptionFatal(
+            RDKafkaErrorCode::BrokerTransportFailure
+        )));
+        for code in [
+            RDKafkaErrorCode::Authentication,
+            RDKafkaErrorCode::TopicAuthorizationFailed,
+            RDKafkaErrorCode::Fatal,
+        ] {
+            assert!(
+                !is_transient(&KafkaError::MessageConsumption(code)),
+                "{code:?}"
+            );
+        }
+        assert_eq!(next_backoff(BACKOFF_START), Duration::from_millis(200));
+        assert_eq!(next_backoff(BACKOFF_MAX), BACKOFF_MAX);
+    }
+    #[test]
+    fn loopback_brokers_prefer_ipv4_unless_configured() {
+        let mut options = options();
+        assert_eq!(options.config().get("broker.address.family"), Some("v4"));
+        options.brokers = "localhost:9092,kafka:9092".into();
+        assert_eq!(options.config().get("broker.address.family"), None);
+        options.brokers = "localhost:9092".into();
+        options
+            .properties
+            .insert("broker.address.family".into(), "any".into());
+        assert_eq!(options.config().get("broker.address.family"), Some("any"));
+        assert_eq!(options.config().get("log_level"), None);
+        options.startup_timeout = Duration::from_secs(1);
+        assert!(options.validate().is_err());
     }
 }

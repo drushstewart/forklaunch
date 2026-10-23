@@ -632,6 +632,18 @@ fn ensure_iam_compose(root: &Path, name: &str, dryrun: bool) -> Result<()> {
     Ok(())
 }
 
+/// Whether `service` is the one-shot `--seed` job running module `name`'s binary.
+pub(super) fn is_seed_job(service: &DockerService, name: &str) -> bool {
+    matches!(&service.command, Some(DockerCommand::Multiple(args))
+        if args.len() == 2 && args[1] == "--seed"
+            && ["./target/release/", "/app/bin/"].iter().any(|prefix| args[0] == format!("{prefix}{name}")))
+}
+
+/// The image the renamed module's own service runs, which its seed job shares.
+fn service_image_after_rename(compose: &DockerCompose, name: &str) -> Option<String> {
+    compose.services.get(name).and_then(|service| service.image.clone())
+}
+
 pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     let crate_dir = root
@@ -696,6 +708,21 @@ pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
                 serde_yml::Value::String(new.to_owned()),
             );
             compose.services.insert(new_worker, worker);
+        }
+        // The IAM seed job runs the module's own binary with --seed.
+        let old_seed = format!("{old}-seed");
+        if compose.services.get(&old_seed).is_some_and(|service| is_seed_job(service, old)) {
+            let new_seed = format!("{new}-seed");
+            anyhow::ensure!(
+                !compose.services.contains_key(&new_seed),
+                "Compose service {new_seed} already exists"
+            );
+            let mut seed = compose.services.shift_remove(&old_seed).context("Expected IAM seed job")?;
+            if let Some(DockerCommand::Multiple(args)) = &mut seed.command {
+                args[0] = args[0].replacen(&format!("/{old}"), &format!("/{new}"), 1);
+            }
+            seed.image = service_image_after_rename(&compose, new).or(seed.image);
+            compose.services.insert(new_seed, seed);
         }
         write(path, yaml_to_string(&compose)?)?;
     }

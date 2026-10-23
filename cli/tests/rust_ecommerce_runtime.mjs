@@ -78,7 +78,7 @@ async function value(response){assert.equal(response.status,200,await response.c
 async function eventually(check){for(let i=0;i<300;i++){if(await check())return;await new Promise(resolve=>setTimeout(resolve,25));}throw new Error('Inventory worker did not apply the order event');}
 try{
   let service=await start();const other=await start({tenant:'b'});
-  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog','checkout','handleStripeWebhook','handlePaypalWebhook'])).length,32);
+  for(const instance of [service,other])assert.equal((await probeMcp(instance.base,['createProduct','listCatalog','createCart','transitionOrder','createPayment','importCatalog','checkout','handleStripeWebhook','handlePaypalWebhook','createInventory'])).length,33);
   assert.equal((await fetch(service.base+'/product')).status,401);
   const denied=await mcpRpc(service.base,'tools/call',{name:'getProduct',arguments:{params:{id:'missing'}}});assert.equal(denied.isError,true);
   const sdk=await import(pathToFileURL(sdkPath));
@@ -87,6 +87,16 @@ try{
   const product={id:'product',externalId:'external',handle:'beans',title:'Beans'};
   const created=await client.product.createProduct({body:product,headers:{authorization:hmac('/product','POST',JSON.stringify(product))}});assert.equal(created.code,200);assert.equal(created.response.id,'product');
   await value(await call(service.base,'/variant',{method:'POST',body:{id:'variant',productId:'product',externalId:'external-variant',title:'Large',priceCents:100,optionValues:{Size:'Large'}}}));
+  // A variant created over HTTP has no stock row until createInventory makes one.
+  await value(await call(service.base,'/variant',{method:'POST',body:{id:'fresh-variant',productId:'product',externalId:'external-fresh',title:'Small',priceCents:50,optionValues:{Size:'Small'}}}));
+  assert.equal((await call(service.base,'/inventory/adjust',{method:'PUT',body:{variantId:'fresh-variant',delta:1}})).status,404);
+  const stockRow={variantId:'fresh-variant',stock:5};
+  const createdStock=await client.inventory.createInventory({body:stockRow,headers:{authorization:hmac('/inventory','POST',JSON.stringify(stockRow))}});
+  assert.equal(createdStock.code,200,JSON.stringify(createdStock.response));assert.equal(createdStock.response.stock,5);
+  assert.equal((await call(service.base,'/inventory',{method:'POST',body:stockRow})).status,409);
+  assert.equal((await call(other.base,'/inventory/fresh-variant')).status,404);
+  assert.equal((await value(await call(service.base,'/inventory/adjust',{method:'PUT',body:{variantId:'fresh-variant',delta:-2}}))).stock,3);
+  assert.equal((await call(service.base,'/variant/fresh-variant',{method:'DELETE'})).status,200);
   const catalog=await client.product.listCatalog({query:{ids:['product'],limit:1},headers:{authorization:hmac('/product/catalog')}});
   assert.equal(catalog.code,200);assert.equal(catalog.response.total,1);assert.equal(catalog.response.products[0].variants[0].stock,8);
   assert.deepEqual(await value(await call(other.base,'/product')),[]);

@@ -1,0 +1,28 @@
+# Roles and login users `{{{name}}} --seed` creates or updates (idempotent;
+# nothing is deleted). Edit freely; set IAM_SEED_FILE to use another file.
+# Roles match the TypeScript IAM defaults. Admin reads of other users and the
+# directory read routes need `platform:read`.
+# Passwords never live here: each user names the variable that holds it.
+
+[[roles]]
+name = "viewer"
+permissions = ["platform:read"]
+
+[[roles]]
+name = "editor"
+permissions = ["platform:read", "platform:write"]
+
+[[roles]]
+name = "admin"
+permissions = ["platform:read", "platform:write"]
+
+[[roles]]
+name = "system"
+permissions = ["platform:read", "platform:write"]
+
+[[users]]
+id = "seed-admin"
+email = "admin@example.com"
+display_name = "Administrator"
+roles = ["admin"]
+password_env = "IAM_SEED_ADMIN_PASSWORD"

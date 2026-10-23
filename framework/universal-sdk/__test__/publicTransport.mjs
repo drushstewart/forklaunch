@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
+import {createHmac} from 'node:crypto';
 
 const directory = resolve(process.argv[2]);
 for (const api of [await import(pathToFileURL(`${directory}/lib/index.mjs`).href),
   createRequire(import.meta.url)(`${directory}/lib/index.js`)]) {
-  const {universalSdk, forkLaunchQueryOptions, forkLaunchMutationOptions, ForkLaunchSdkHttpError} = api;
+  const {universalSdk, forkLaunchQueryOptions, forkLaunchMutationOptions, ForkLaunchSdkHttpError, createHmacAuthorization, hmacSignedFetch} = api;
   const paths = {};
   for (const [name, kind, media] of [['json', 'json', 'application/json'],
     ['events', 'sse', 'text/event-stream'], ['parts', 'multipart', 'multipart/form-data']]) {
@@ -144,6 +145,41 @@ for (const api of [await import(pathToFileURL(`${directory}/lib/index.mjs`).href
     return {status: 200, response: 'ok'};
   }, {});
   assert.deepEqual(await query.queryFn({signal: controller.signal}), {status: 200, response: 'ok'});
+  // Per-request HMAC: same payload as core createHmacToken, full wire path, fresh nonce.
+  const stamp = new Date('2026-10-22T00:00:00.000Z');
+  const expected = (method, path, body, nonce) => createHmac('sha256', 'hmac-secret')
+    .update(`${method}\n${path}\n${body ? body + '\n' : 'undefined'}${stamp.toISOString()}\n${nonce}`).digest('base64');
+  assert.equal(await createHmacAuthorization({secretKey: 'hmac-secret', method: 'POST', path: '/payment-link', body: '{"a":1}', timestamp: stamp, nonce: 'n1'}),
+    `HMAC keyId=default ts=${stamp.toISOString()} nonce=n1 signature=${expected('POST', '/payment-link', '{"a":1}', 'n1')}`);
+  assert.ok((await createHmacAuthorization({secretKey: 'hmac-secret', keyId: 'other', method: 'GET', path: '/plan', timestamp: stamp, nonce: 'n2'}))
+    .endsWith(expected('GET', '/plan', undefined, 'n2')));
+  const signedRequests = [];
+  const verifying = async (url, init) => {
+    const header = new Headers(init.headers).get('authorization');
+    const [, ts, nonce, signature] = /^HMAC keyId=default ts=(\S+) nonce=(\S+) signature=(\S+)$/.exec(header);
+    const body = init.body === undefined ? undefined : new TextDecoder().decode(init.body);
+    const path = new URL(url).pathname;
+    assert.equal(signature, createHmac('sha256', 'hmac-secret').update(`${init.method}\n${path}\n${body ? body + '\n' : 'undefined'}${ts}\n${nonce}`).digest('base64'));
+    signedRequests.push({nonce, path});
+    return Response.json({message: 'signed'});
+  };
+  const signedFetch = hmacSignedFetch({secretKey: 'hmac-secret', fetch: verifying});
+  await signedFetch('https://example.invalid/base/payment-link?expand=1', {method: 'POST', body: '{"amount":1}', headers: {authorization: 'stale'}});
+  await signedFetch('https://example.invalid/base/payment-link?expand=1', {method: 'POST', body: '{"amount":1}'});
+  await signedFetch('https://example.invalid/plan/a%2Fb', {method: 'GET'});
+  assert.deepEqual(signedRequests.map(request => request.path), ['/base/payment-link', '/base/payment-link', '/plan/a%2Fb']);
+  assert.equal(new Set(signedRequests.map(request => request.nonce)).size, 3);
+  const sdkSigned = [];
+  const signedSdk = await universalSdk({...options, fetch: async (url, init) => {
+    const path = new URL(url).pathname;
+    if (path === '/json') sdkSigned.push(new Headers(init.headers).get('authorization'));
+    return fetcher(url, init);
+  }, hmac: {secretKey: 'hmac-secret'}});
+  await signedSdk.json();
+  await signedSdk.json();
+  assert.equal(sdkSigned.length, 2);
+  assert.ok(sdkSigned.every(header => header?.startsWith('HMAC keyId=default ')));
+  assert.notEqual(sdkSigned[0], sdkSigned[1]);
   const failure = {status: 404, response: 'missing'};
   await assert.rejects(() => forkLaunchMutationOptions(['example'], async () => failure).mutationFn({}),
     error => error instanceof ForkLaunchSdkHttpError && error.result === failure);

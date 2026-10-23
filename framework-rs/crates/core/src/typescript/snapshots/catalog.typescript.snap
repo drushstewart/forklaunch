@@ -30,6 +30,8 @@ export type ForkLaunchSdkConfig = {
   maxMultipartResponseBytes?: number;
   headers?: ForkLaunchHeaders;
   beforeRequest?: (request: ForkLaunchSdkRequestMeta) => ForkLaunchSdkRequestMeta | Promise<ForkLaunchSdkRequestMeta>;
+  /** Sign every API request with the ForkLaunch request HMAC (internal routes). */
+  hmac?: HmacSigningOptions;
 };
 
 export type ForkLaunchSdkRequestMeta = {
@@ -308,6 +310,10 @@ function socketValidator(schema: AnySchema, regexExecution?: ZodRegexExecution):
       try { new URL(value); return true; } catch { return false; }
     },
   });
+  // Native (Rust/schemars) integer formats: annotation-only bounds checks, so
+  // contracts stay unchanged and Ajv does not warn `unknown format "uint64"`.
+  for (const [name, min, max] of [['int8', -128, 127], ['int16', -32768, 32767], ['uint8', 0, 255], ['uint16', 0, 65535], ['uint32', 0, 4294967295], ['uint64', 0, Infinity], ['uint', 0, Infinity], ['int', -Infinity, Infinity], ['int128', -Infinity, Infinity], ['uint128', 0, Infinity]] as const)
+    engine.addFormat(name, { type: 'number', validate: (value: number) => Number.isInteger(value) && value >= min && value <= max });
   engine.removeKeyword('multipleOf');
   engine.addKeyword({
     keyword: 'multipleOf',
@@ -1556,11 +1562,124 @@ function decodeVersionBody(plans:SdkVersionResponse[],value:unknown,execution?:Z
   throw new TypeError('Response body violates matched API versions');
 }
 
+/**
+ * Per-request ForkLaunch HMAC signing, the same scheme as `@forklaunch/core`
+ * `createHmacToken` / `generateHmacAuthHeaders` and the Rust verifiers:
+ *
+ *   authorization: HMAC keyId=<id> ts=<ISO-8601> nonce=<random> signature=<base64>
+ *   signature = base64(HMAC-SHA256(secret,
+ *     `${METHOD}\n${path}\n${body ? body + '\n' : 'undefined'}${ts}\n${nonce}`))
+ *
+ * The signed path is the final request URL's path without the query string,
+ * exactly as sent (`POST /payment-link`, never a router-relative `/`). The body
+ * is the exact UTF-8 bytes sent; an absent or empty body signs as `undefined`.
+ * Every request gets a fresh timestamp and a random nonce, so servers that claim
+ * nonces reject replays. Uses Web Crypto, so it runs in browsers, Node and Bun.
+ */
+export type HmacSigningOptions = {
+  /** The target service's shared HMAC secret (for example `BILLING_HMAC_SECRET_KEY`). */
+  secretKey: string;
+  /** The server key id; defaults to `default`. */
+  keyId?: string;
+};
+
+const encoder = new TextEncoder();
+
+function base64(bytes: ArrayBuffer): string {
+  let binary = '';
+  for (const byte of new Uint8Array(bytes)) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function randomNonce(): string {
+  const crypto = globalThis.crypto;
+  if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+/** The `authorization` header value for one request. */
+export async function createHmacAuthorization({
+  secretKey,
+  keyId = 'default',
+  method,
+  path,
+  body,
+  timestamp = new Date(),
+  nonce = randomNonce()
+}: HmacSigningOptions & {
+  method: string;
+  path: string;
+  /** The exact wire bytes or text; omit for no body. */
+  body?: Uint8Array | string;
+  timestamp?: Date;
+  nonce?: string;
+}): Promise<`HMAC keyId=${string} ts=${string} nonce=${string} signature=${string}`> {
+  if (!secretKey) throw new TypeError('HMAC signing requires a secret key');
+  if (/[\s]/.test(keyId) || /[\r\n]/.test(path) || /[\r\n\s]/.test(method)) {
+    throw new TypeError('Invalid HMAC signing input');
+  }
+  const text = body === undefined ? '' : typeof body === 'string' ? body : new TextDecoder().decode(body);
+  const ts = timestamp.toISOString();
+  const payload = `${method}\n${path}\n${text ? `${text}\n` : 'undefined'}${ts}\n${nonce}`;
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secretKey),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signature = base64(await globalThis.crypto.subtle.sign('HMAC', key, encoder.encode(payload)));
+  return `HMAC keyId=${keyId} ts=${ts} nonce=${nonce} signature=${signature}`;
+}
+
+/**
+ * Wrap `fetch` so every request is signed over its final method, URL path and
+ * body bytes. A caller-supplied `authorization` header is replaced. Multipart
+ * and other non-text bodies are serialized once, signed, and sent as those bytes.
+ */
+export function hmacSignedFetch(
+  options: HmacSigningOptions & { fetch?: typeof fetch }
+): typeof fetch {
+  const { secretKey, keyId } = options;
+  if (!secretKey) throw new TypeError('HMAC signing requires a secret key');
+  return async (input, init) => {
+    const base = options.fetch ?? fetch;
+    const request = new Request(input, init);
+    const bytes = request.body ? new Uint8Array(await request.arrayBuffer()) : undefined;
+    const headers = new Headers(request.headers);
+    headers.set(
+      'authorization',
+      await createHmacAuthorization({
+        secretKey,
+        keyId,
+        method: request.method,
+        path: new URL(request.url).pathname,
+        body: bytes
+      })
+    );
+    return base(request.url, {
+      method: request.method,
+      headers,
+      body: bytes && bytes.length ? bytes : undefined,
+      redirect: init?.redirect ?? request.redirect,
+      signal: init?.signal ?? (input instanceof Request ? input.signal : undefined),
+      credentials: init?.credentials,
+      mode: init?.mode,
+      cache: init?.cache,
+      keepalive: init?.keepalive,
+      referrer: init?.referrer,
+      referrerPolicy: init?.referrerPolicy,
+      integrity: init?.integrity
+    });
+  };
+}
+
 async function request<Responses extends Record<number, unknown>, ContentTypes extends Partial<Record<number, string>> = {}>(
   config: ForkLaunchSdkConfig,
   meta: ForkLaunchSdkRequestMeta
 ): Promise<ForkLaunchSdkResponse<Responses, never, ContentTypes>> {
-  const fetcher = config.fetch ?? fetch;
+  const fetcher = config.hmac ? hmacSignedFetch({ ...config.hmac, fetch: config.fetch }) : config.fetch ?? fetch;
   // The hook may change transport inputs, but cannot weaken the response contract.
   const responseKinds = { ...meta.responseKinds };
   const requestSchema = structuredClone(meta.requestSchema ?? true);

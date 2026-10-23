@@ -475,6 +475,8 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
         environment.insert("PORT".into(), "3000".into());
         environment.insert("MCP_ENABLED".into(), "true".into());
         environment.entry("PUBLIC_ORIGIN".into()).or_insert_with(|| format!("http://localhost:{producer_port}"));
+        // Internal callers sign producer requests with the shared service key.
+        environment.entry("INTERNAL_HMAC_SECRET_KEY".into()).or_insert_with(|| "${INTERNAL_HMAC_SECRET_KEY:?Configure the shared internal service HMAC key}".into());
         let producer = compose.services.entry(format!("{name}-server")).or_insert(producer);
         repair_legacy_producer_origin(producer, name);
     }
@@ -557,6 +559,30 @@ pub(super) fn rename_sources(root: &Path, old: &str, new: &str) -> Result<()> {
 
 /// An ordinary native Apalis profile with protected lifecycle/build entrypoints
 /// and explicit application-owned backend and asset hooks.
+/// The application-owned apalis processor. `JobState` is built once at worker start and
+/// injected into every job, so processors reuse pools and SDK clients.
+const APALIS_HANDLER: &str = r#"//! Replace this fail-closed hook with an authorized audited domain processor.
+use apalis_core::error::BoxDynError;
+use forklaunch_worker_interface::{ProcessorError, SealedEvent, apalis, native::RuntimeError};
+
+/// Resources shared by every job, built once when the worker starts and injected
+/// with `Data<JobState>`: the runtime pool, plus the SDK clients, keys or caches the
+/// processor needs (for example a generated client with `with_hmac_secret`).
+#[derive(Clone)]
+pub struct JobState {
+    pub pool: sqlx::PgPool,
+}
+impl JobState {
+    pub async fn new(pool: sqlx::PgPool) -> Result<Self, RuntimeError> {
+        Ok(Self { pool })
+    }
+}
+
+pub async fn process_job(_event: SealedEvent, _state: ::apalis::prelude::Data<JobState>) -> Result<(), BoxDynError> {
+    Err(apalis::queue_error(ProcessorError::Configuration))
+}
+"#;
+
 pub(super) fn apalis_templates(root: &Path, dir: &Path, name: &str, description: &str) -> Result<Vec<RenderedTemplate>> {
     let data=rust_crate_template_data(name,description,true);
     let relative=crate::core::relative_path::get_relative_path(dir,&root.join(".forklaunch/framework-rs")).to_string_lossy().replace('\\',"/");
@@ -602,7 +628,7 @@ zeroize = {{}}
         ("Cargo.toml",cargo),
         ("domain/mod.rs","pub mod services;\npub mod schemas;\npub use schemas::event_contract::{WorkInput,WorkEvent};\n".into()),
         ("domain/services/mod.rs","pub mod handler;\n".into()),
-        ("domain/services/handler.rs","//! Replace this fail-closed hook with an authorized audited domain processor.\nuse apalis_core::error::BoxDynError;\nuse forklaunch_worker_interface::{ProcessorError, SealedEvent, apalis};\n\npub async fn process_job(_event:SealedEvent)->Result<(),BoxDynError> { Err(apalis::queue_error(ProcessorError::Configuration)) }\n".into()),
+        ("domain/services/handler.rs",APALIS_HANDLER.into()),
         ("domain/schemas/mod.rs","pub mod event_contract;\n".into()),
         ("domain/schemas/event_contract.rs",event),
         ("persistence/mod.rs","//! Application-owned persistence extensions.\n".into()),

@@ -328,7 +328,9 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     super::local_runtime::ensure_cargo_config(root)?;
     super::local_runtime::prune_stale_migrations(root)?;
     reconcile_images(root)?;
-    super::local_runtime::reconcile(root)
+    super::auth_env::compose(root)?;
+    super::local_runtime::reconcile(root)?;
+    super::auth_env::local_envs(root)
 }
 
 fn reconcile_images(root: &Path) -> Result<()> {

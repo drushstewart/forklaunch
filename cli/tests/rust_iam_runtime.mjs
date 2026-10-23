@@ -37,7 +37,7 @@ databaseUrl.username = role;
 databaseUrl.password = 'parity-test-only';
 const sessionKeys=['SESSION_JWT_PRIVATE_KEY_PEM','SESSION_JWT_KEY_ID','SESSION_JWT_ISSUER','SESSION_JWT_AUDIENCE'];
 function environment(tenant,classified=false,signed=tenant==='a') {
-  const env={...process.env,SESSION_COOKIE_ORIGIN:'https://iam.example.test',FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience};
+  const env={...process.env,SESSION_COOKIE_ORIGIN:'https://iam.example.test',FORKLAUNCH_FIXTURE_CLASSIFIED_IAM:classified?'1':'0',DATABASE_URL:databaseUrl.toString(),TENANT_ID:`${role}-${tenant}`,HOST:'127.0.0.1',PORT:'0',RUST_LOG:'info',MCP_ENABLED:'true',PROTOCOL:'http',VERSION:'v1',DOCS_PATH:'/docs',ENCRYPTION_KEY:'iam-fixture-encryption-only',HMAC_SECRET_KEY:secret,JWKS_PUBLIC_KEY_URL:`http://127.0.0.1:${jwks.address().port}/jwks`,JWT_ISSUER:issuer,JWT_AUDIENCE:audience,CORS_ORIGINS:'https://app.example.test'};
   for(const key of [...sessionKeys,'IAM_DIRECTORY_AUTHORIZATION','SESSION_OIDC_ISSUER','SESSION_OIDC_CLIENT_ID','SESSION_OIDC_CLIENT_SECRET'])delete env[key];
   env.IAM_DIRECTORY_AUTHORIZATION='jwt-claims';
   if(signed)Object.assign(env,{SESSION_JWT_PRIVATE_KEY_PEM:privateKey.export({format:'pem',type:'pkcs8'}),SESSION_JWT_KEY_ID:jwk.kid,SESSION_JWT_ISSUER:issuer,SESSION_JWT_AUDIENCE:audience});
@@ -141,6 +141,23 @@ try {
   assert.equal(claims.exp,login.response.expires_at_unix_seconds);assert.equal(claims.exp-claims.iat,3600);
   assert.deepEqual(claims.roles,['member']);assert.deepEqual(claims.permissions,['users:read']);
   assert.ok(!JSON.stringify(claims).includes('member@example.com'));
+  // The signing key's public half is served where every JWKS_PUBLIC_KEY_URL points.
+  const published=await fetch(`${first.baseUrl}/api/auth/jwks`);assert.equal(published.status,200);
+  const [publishedKey]=(await published.json()).keys;
+  assert.deepEqual({kid:publishedKey.kid,n:publishedKey.n,e:publishedKey.e,alg:publishedKey.alg,use:publishedKey.use},{kid:jwk.kid,n:jwk.n,e:jwk.e,alg:'RS256',use:'sig'});
+  assert.equal(publishedKey.d,undefined);
+  assert.equal((await fetch(`${second.baseUrl}/api/auth/jwks`)).status,404);
+  // CORS: only CORS_ORIGINS entries are echoed (with credentials), never `*`.
+  const preflight=origin=>fetch(`${first.baseUrl}/auth/login`,{method:'OPTIONS',headers:{origin,'access-control-request-method':'POST','access-control-request-headers':'content-type'}});
+  const allowed=await preflight('https://app.example.test');
+  assert.ok(allowed.status<300,String(allowed.status));
+  assert.equal(allowed.headers.get('access-control-allow-origin'),'https://app.example.test');
+  assert.equal(allowed.headers.get('access-control-allow-credentials'),'true');
+  const foreign=await preflight('https://evil.example.test');
+  assert.equal(foreign.headers.get('access-control-allow-origin'),null);
+  const actual=await fetch(`${first.baseUrl}/health`,{headers:{origin:'https://evil.example.test'}});
+  assert.equal(actual.headers.get('access-control-allow-origin'),null);
+  console.log('PASS IAM publishes its session JWKS and answers CORS only for configured origins');
   const again=await publicSdk.auth.authenticate({body:{email:'member@example.com',password:'first-password'}});
   assert.equal(again.code,200);assert.notEqual(again.response.id,token);
   assert.notEqual(JSON.parse(Buffer.from(again.response.id.split('.')[1],'base64url')).jti,claims.jti);
@@ -150,22 +167,42 @@ try {
   const opaque=await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,host:second.baseUrl})).auth.authenticate({body:{email:'member@example.com',password:'second-password'}});
   assert.equal(opaque.code,200);assert.match(opaque.response.id,/^[a-f0-9]{64}$/);
   const opaqueSdk=(await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true,host:second.baseUrl,headers:{authorization:`Bearer ${opaque.response.id}`}}));
-  assert.equal((await opaqueSdk.users.listUsers({query:{}})).code,200);
+  assert.equal((await opaqueSdk.users.getSessionUser({params:{id:'user-1'}})).code,200);
+  assert.equal((await opaqueSdk.users.listUsers({query:{}})).code,403);
   assert.equal((await opaqueSdk.auth.logout()).code,204);
   console.log('PASS generated RS256 session issuance, Node signature/claim checks, unique tokens, rejected unstored JWTs, opaque defaults and fail-closed signing configuration');
 
-  const sdk = (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: first.baseUrl, headers: { authorization: `Bearer ${token}` } }));
+  // Session reads: a member reads only itself; `platform:read` reads anyone and lists.
+  const memberSdk = (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: first.baseUrl, headers: { authorization: `Bearer ${token}` } }));
+  assert.equal((await memberSdk.users.getSessionUser({params:{id:'user-1'}})).code,200);
+  assert.equal((await memberSdk.users.listUserPermissions({params:{id:'user-1'}})).code,200);
+  for(const path of ['/users/user-2','/users/user-2/permissions','/users','/organizations'])await call(first.baseUrl,path,'GET',undefined,403,`Bearer ${token}`);
+  const deniedMemberMcp=await mcpRpc(first.baseUrl,'tools/call',{name:'getSessionUser',arguments:{params:{id:'user-2'}}},{authorization:`Bearer ${token}`});assert.equal(deniedMemberMcp.isError,true);
+  const adminLogin=await publicSdk.auth.authenticate({body:{email:'other@example.com',password:'first-password'}});assert.equal(adminLogin.code,200);
+  const adminToken=adminLogin.response.id;
+  const sdk = (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: first.baseUrl, headers: { authorization: `Bearer ${adminToken}` } }));
+  assert.equal((await sdk.users.getSessionUser({params:{id:'user-1'}})).response.email,'member@example.com');
+  assert.deepEqual((await sdk.users.listUserPermissions({params:{id:'user-1'}})).response,[{resource:'users',action:'read'}]);
+  assert.equal((await sdk.users.listOrganizations({query:{}})).code,200);
+  // `iam --seed` created admin@example.com (role admin: platform:read, platform:write).
+  const seeded=await publicSdk.auth.authenticate({body:{email:'admin@example.com',password:'seed-admin-password'}});assert.equal(seeded.code,200);
+  const seededClaims=JSON.parse(Buffer.from(seeded.response.id.split('.')[1],'base64url'));
+  assert.deepEqual(seededClaims.roles,['admin']);assert.deepEqual([...seededClaims.permissions].sort(),['platform:read','platform:write']);
+  assert.equal((await call(first.baseUrl,'/users/user-1','GET',undefined,200,`Bearer ${seeded.response.id}`)).email,'member@example.com');
+  console.log('PASS session user reads: self only, cross-user/list reads need platform:read (HTTP and MCP)');
   const page = await sdk.users.listUsers({ query: { limit: 1 } });
   assert.equal(page.code, 200);
-  assert.equal(page.response.items[0].display_name, 'First');
-  assert.equal(page.response.next_cursor, 'user-1');
-  const mcpPage=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{limit:1}}},{authorization:`Bearer ${token}`});assert.equal(mcpPage.isError,false,JSON.stringify(mcpPage));assert.deepEqual(JSON.parse(mcpPage.content[0].text),page.response);
+  assert.equal(page.response.items.length, 1);
+  assert.equal(page.response.next_cursor, page.response.items[0].id);
+  const mcpPage=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{limit:1}}},{authorization:`Bearer ${adminToken}`});assert.equal(mcpPage.isError,false,JSON.stringify(mcpPage));assert.deepEqual(JSON.parse(mcpPage.content[0].text),page.response);
   const deniedMcp=await mcpRpc(first.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}});assert.equal(deniedMcp.isError,true);
-  const wrongTenantMcp=await mcpRpc(second.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${token}`});assert.equal(wrongTenantMcp.isError,true);
-  const next = await sdk.users.listUsers({ query: { limit: 1, cursor: page.response.next_cursor } });
-  assert.equal(next.response.items[0].id, 'user-2');
-  assert.equal(next.response.next_cursor, null);
-  const wrongTenant = await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: second.baseUrl, headers: { authorization: `Bearer ${token}` } })).users.listUsers({query:{}});
+  const wrongTenantMcp=await mcpRpc(second.baseUrl,'tools/call',{name:'listUsers',arguments:{query:{}}},{authorization:`Bearer ${adminToken}`});assert.equal(wrongTenantMcp.isError,true);
+  // Cursor pages cover every user once (fixture users plus the seeded admin).
+  const listed=[...page.response.items];let cursor=page.response.next_cursor;
+  while(cursor!==null){const next=await sdk.users.listUsers({query:{limit:1,cursor}});assert.equal(next.code,200);listed.push(...next.response.items);cursor=next.response.next_cursor;assert.ok(listed.length<=3);}
+  assert.deepEqual(listed.map(user=>user.id).sort(),['seed-admin','user-1','user-2']);
+  assert.equal(listed.find(user=>user.id==='user-1').display_name,'First');
+  const wrongTenant = await (await universalSdk({registryOptions:{path:'openapi.json'},allowPlaintextDevelopment:true, host: second.baseUrl, headers: { authorization: `Bearer ${adminToken}` } })).users.listUsers({query:{}});
   assert.equal(wrongTenant.code, 401);
   assert.equal((await publicSdk.users.listUsers({query:{}})).code, 401);
   assert.equal((await fetch(`${first.baseUrl}/health`)).status, 200);

@@ -1,4 +1,4 @@
-import portableRequest, { type ForkLaunchSdkResponse } from './portableRuntime';
+import portableRequest, { hmacSignedFetch, type ForkLaunchSdkResponse } from './portableRuntime';
 import { portableOperations, type PortableOperation } from './core/portableOperation';
 import { registerZodRegex, type ZodRegexExecution } from './core/zodRegex';
 import {
@@ -295,7 +295,11 @@ export class UniversalSdk {
       url += queryString ? `?${queryString}` : '';
     }
 
-    const response = await (this.transportOptions.fetch ?? fetch)(url, {
+    // Registry discovery stays unsigned; API calls sign the final wire request.
+    const apiFetch = this.transportOptions.hmac
+      ? hmacSignedFetch({ ...this.transportOptions.hmac, fetch: this.transportOptions.fetch })
+      : (this.transportOptions.fetch ?? fetch);
+    const response = await apiFetch(url, {
       method: method?.toUpperCase(),
       headers: {
         ...headers,

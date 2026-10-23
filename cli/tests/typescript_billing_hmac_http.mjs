@@ -62,9 +62,18 @@ try {
  for(const signedPath of ['/owned','/payment-link/owned']) {
   const stamp=new Date(),nonce='mounted';const signature=hmac.createHmacToken({method:'PUT',path:signedPath,body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/payment-link/owned`,{method:'PUT',headers:{'content-type':'application/json',authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`},body:'{"amount":"12"}'});
-  assert.equal(response.status,signedPath==='/owned'?200:403,`mounted signed path ${signedPath}`);assert.equal(calls,signedPath==='/owned'?1:0);await response.text();count++;
+  // The full wire path is canonical; the router-relative form is opt-in (deprecated).
+  assert.equal(response.status,signedPath==='/owned'?403:200,`mounted signed path ${signedPath}`);assert.equal(calls,signedPath==='/owned'?0:1);await response.text();count++;
  }
- for(const [wirePath,signedPath,status] of [['/payment-link/abc%2Fdef?x=1','/abc%2Fdef',200],['/payment-link/abc%2Fdef?x=1','/abc/def',403],['/payment-link/owned?x=1','/owned?x=1',403],['/payment-link/owned/','/owned/',200],['/payment-link/owned/','/owned',403],['/payment-link','/',200],['/payment-link/','/',200],['/payment-link/owned//','/owned//',404],['/PAYMENT-LINK/owned','/owned',200]]) {
+ process.env.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS='true';
+ try {
+  for(const signedPath of ['/owned','/payment-link/owned']) {
+   const stamp=new Date(),nonce='legacy';const signature=hmac.createHmacToken({method:'PUT',path:signedPath,body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
+   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/payment-link/owned`,{method:'PUT',headers:{'content-type':'application/json',authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`},body:'{"amount":"12"}'});
+   assert.equal(response.status,200,`opt-in relative signed path ${signedPath}`);assert.equal(calls,1);await response.text();count++;
+  }
+ } finally { delete process.env.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS; }
+ for(const [wirePath,signedPath,status] of [['/payment-link/abc%2Fdef?x=1','/payment-link/abc%2Fdef',200],['/payment-link/abc%2Fdef?x=1','/payment-link/abc/def',403],['/payment-link/owned?x=1','/payment-link/owned?x=1',403],['/payment-link/owned/','/payment-link/owned/',200],['/payment-link/owned/','/payment-link/owned',403],['/payment-link','/payment-link',200],['/payment-link/','/payment-link/',200],['/payment-link/owned//','/payment-link/owned//',404],['/PAYMENT-LINK/owned','/PAYMENT-LINK/owned',200],['/payment-link/owned','/owned',403],['/payment-link','/',403]]) {
   const stamp=new Date(),nonce='path';const signature=hmac.createHmacToken({method:'PUT',path:signedPath,body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{method:'PUT',headers:{'content-type':'application/json',authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`},body:'{"amount":"12"}'});
   assert.equal(response.status,status,`${wirePath} signed ${signedPath}`);assert.equal(calls,status===200?1:0);await response.text();count++;
@@ -75,7 +84,7 @@ try {
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/owned`,{method:'PUT',headers,body:raw});assert.equal(response.status,200);assert.equal(calls,1);await response.text();count++;
  }
  for(const wirePath of ['/payment-link/owned','/payment-link/owned/','/payment-link','/payment-link/','/outer/payment-link/owned/']) {
-  const signedPath=wirePath.includes('owned')?(wirePath.endsWith('/')?'/owned/':'/owned'):'/';const stamp=new Date(),nonce='head';
+  const signedPath=wirePath;const stamp=new Date(),nonce='head';
   const signature=hmac.createHmacToken({method:'HEAD',path:signedPath,timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{method:'HEAD',headers:{authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`}});assert.equal(response.status,200);assert.equal(calls,1);assert.equal(await response.text(),'');count++;
  }
@@ -83,17 +92,18 @@ try {
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{method:'OPTIONS',headers:authorization===undefined?{}:{authorization}});assert.equal(response.status,200);assert.equal(response.headers.get('allow'),'GET, HEAD, PUT');assert.equal(response.headers.get('content-type'),'text/plain');assert.equal(response.headers.get('x-content-type-options'),'nosniff');assert.equal(response.headers.get('content-length'),String(Buffer.byteLength('GET, HEAD, PUT')));assert.equal(calls,0);assert.equal(await response.text(),'GET, HEAD, PUT');count++;
  }
  for(const authorization of [undefined,'invalid','valid']) {
-  const stamp=new Date(),nonce='explicit';const signature=hmac.createHmacToken({method:'OPTIONS',path:'/explicit/owned',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
+  const stamp=new Date(),nonce='explicit';const signature=hmac.createHmacToken({method:'OPTIONS',path:'/payment-link/explicit/owned',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   const value=authorization==='valid'?`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`:authorization;
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/payment-link/explicit/owned`,{method:'OPTIONS',headers:value===undefined?{}:{authorization:value}});assert.equal(response.status,authorization==='valid'?202:401);assert.equal(calls,authorization==='valid'?1:0);assert.equal(response.headers.get('allow'),null);await response.text();count++;
  }
 
  for(const [wirePath,signedPath,status] of [
- ['/PAYMENT-LINK/MiXeD/SUCCESS','/MiXeD/SUCCESS',200],
- ['/PaYmEnT-LiNk/MiXeD/sUcCeSs?Keep=VaLuE','/MiXeD/sUcCeSs',200],
- ['/PaYmEnT-LiNk/MiXeD/sUcCeSs','/mixed/success',403],
- ['/PAYMENT-LINK/MiXeD%2FaBc/SUCCESS/','/MiXeD%2FaBc/SUCCESS/',200],
- ['/PAYMENT-LINK/MiXeD%2FaBc/SUCCESS','/MiXeD/aBc/SUCCESS',403],
+ ['/PAYMENT-LINK/MiXeD/SUCCESS','/PAYMENT-LINK/MiXeD/SUCCESS',200],
+ ['/PaYmEnT-LiNk/MiXeD/sUcCeSs?Keep=VaLuE','/PaYmEnT-LiNk/MiXeD/sUcCeSs',200],
+ ['/PaYmEnT-LiNk/MiXeD/sUcCeSs','/payment-link/mixed/success',403],
+ ['/PaYmEnT-LiNk/MiXeD/sUcCeSs','/MiXeD/sUcCeSs',403],
+ ['/PAYMENT-LINK/MiXeD%2FaBc/SUCCESS/','/PAYMENT-LINK/MiXeD%2FaBc/SUCCESS/',200],
+ ['/PAYMENT-LINK/MiXeD%2FaBc/SUCCESS','/PAYMENT-LINK/MiXeD/aBc/SUCCESS',403],
  ['/%70ayment-link/MiXeD/success','/MiXeD/success',404],
  ['/payment-link/MiXeD/%73uccess','/MiXeD/%73uccess',404],
  ['/payment-linK/MiXeD/success','/MiXeD/success',404],

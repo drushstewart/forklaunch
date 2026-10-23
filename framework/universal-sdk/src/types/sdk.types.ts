@@ -14,7 +14,7 @@ import type { ForkLaunchSdkConfig } from '../portableRuntime';
 export type UniversalSdkTransportOptions = Pick<
   ForkLaunchSdkConfig,
   'fetch' | 'maxSseEventBytes' | 'maxMultipartResponseBytes' | 'headers' |
-  'beforeRequest' | 'allowPlaintextDevelopment' | 'serviceBaseUrls'
+  'beforeRequest' | 'allowPlaintextDevelopment' | 'serviceBaseUrls' | 'hmac'
 >;
 
 /**

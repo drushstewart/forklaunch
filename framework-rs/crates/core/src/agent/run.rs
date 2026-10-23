@@ -302,6 +302,14 @@ impl Agent {
             })
     }
 
+    /// Fails with the same 503 a task would, before any work starts. Streaming
+    /// routes call it so a missing model is a status, not an `error` event.
+    /// # Errors
+    /// 503 when no valid model alias is configured.
+    pub fn check_ready(&self) -> Result<(), AgentError> {
+        self.model().map(drop)
+    }
+
     fn model(&self) -> Result<String, AgentError> {
         self.model_alias()
             .ok_or_else(|| AgentError::new(503, "Connect this agent to AI, then restart it."))

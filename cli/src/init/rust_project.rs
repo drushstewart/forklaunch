@@ -34,6 +34,7 @@ mod discovery;
 pub(crate) mod dependencies;
 mod mixed;
 mod agent;
+mod auth_env;
 mod language_images;
 mod local_runtime;
 mod typescript_image;
@@ -46,6 +47,9 @@ mod sdk_consumer;
 
 pub(crate) fn ensure_service_sdk_deletable(root: &Path, service_path: &str) -> Result<()> {
     sdk_consumer::ensure_service_deletable(root, service_path)
+}
+pub(crate) fn reconcile_rust_client_aggregate(root: &Path) -> Result<()> {
+    sdk_consumer::reconcile_local_aggregate(root)
 }
 pub(crate) fn rename_service_sdk_dependency(root: &Path, old_path: &str, new_path: &str, old: &str, new: &str) -> Result<()> {
     sdk_consumer::rename_service(root, old_path, new_path, old, new)
@@ -2519,6 +2523,10 @@ fn remove_rust_docker_compose_project(app_root: &Path, name: &str) -> Result<()>
             depends.shift_remove(&format!("{name}-migrate"));
         }
     }
+    let seed = format!("{name}-seed");
+    if compose.services.get(&seed).is_some_and(|service| modules::is_seed_job(service, name)) {
+        compose.services.shift_remove(&seed);
+    }
     write(&compose_path, yaml_to_string(&compose)?)
         .with_context(|| format!("Failed to update {}", compose_path.display()))
 }
@@ -2638,6 +2646,8 @@ fn ensure_rust_package_scripts(
 
     // The first native project may create the root package/workspace here.
     sdk_typescript::reconcile(app_root)?;
+    // The generated Rust `clients` aggregate re-exports every service SDK.
+    sdk_consumer::reconcile_local_aggregate(app_root)?;
     let package_path = app_root.join("package.json");
     if !package_path.exists() {
         return Ok(());

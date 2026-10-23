@@ -791,6 +791,7 @@ async fn records_service() -> (String, Arc<Mutex<Vec<Option<String>>>>) {
         "paths": {
             "/records/{id}": {
                 "get": {"operationId": "getRecord", "summary": "Get record",
+                        "responses": {"200": {"content": {"application/json": {"schema": {"type": "object"}}}}, "404": {"content": {"text/plain": {}}}},
                         "parameters": [{"in": "path", "name": "id", "required": true, "schema": {"$ref": "#/components/schemas/Id"}},
                                        {"in": "query", "name": "fields", "schema": {"type": "string"}}]},
                 "delete": {"operationId": "deleteRecord", "summary": "Delete record",
@@ -801,10 +802,17 @@ async fn records_service() -> (String, Arc<Mutex<Vec<Option<String>>>>) {
                 "put": {"operationId": "uploadRecord", "requestBody": {"content": {"multipart/form-data": {"schema": {}}}}}
             },
             "/health": {"get": {"operationId": "health"}},
+            "/internal/records/{id}/progress": {"post": {"operationId": "recordProgress", "x-forklaunch-access": "internal",
+                "requestBody": {"content": {"application/json": {"schema": {"type": "object"}}}}}},
+            "/records/{id}/sync": {"post": {"operationId": "syncRecord", "security": [{"hmacAuth": []}]}},
+            "/records/{id}/events": {"get": {"operationId": "watchRecord",
+                "responses": {"200": {"content": {"text/event-stream": {"schema": {"type": "string"}}}}}}},
+            "/records/{id}/file": {"get": {"operationId": "downloadRecord",
+                "responses": {"200": {"content": {"application/octet-stream": {"schema": {}}}}}}},
             "/records/{id}/archive": {"post": {"operationId": "archiveRecord", "x-mcp-annotations": {"readOnlyHint": false, "idempotentHint": true},
                 "parameters": [{"in": "path", "name": "id", "required": true, "schema": {"type": "string"}}]}}
         },
-        "components": {"schemas": {
+        "components": {"securitySchemes": {"hmacAuth": {"type": "http", "scheme": "hmac"}}, "schemas": {
             "Id": {"type": "string"},
             "Record": {"type": "object", "properties": {"title": {"type": "string"}, "parent": {"$ref": "#/components/schemas/Record"}}}
         }}
@@ -909,5 +917,43 @@ async fn service_tools_come_from_openapi_and_forward_authorization() {
     assert_eq!(
         serde_json::from_str::<Value>(&content).unwrap(),
         json!({"id": "a b/c", "query": "fields=title"})
+    );
+}
+
+#[tokio::test]
+async fn service_tools_offer_read_only_and_allowlisted_operations() {
+    let (base, _) = records_service().await;
+    let names = |tools: ServiceTools| async move {
+        let agent = Agent::builder("assistant")
+            .model("luna")
+            .streaming(false)
+            .continuation_secret(SECRET)
+            .model_backend(FakeModel::new(vec![]))
+            .service(tools)
+            .build()
+            .unwrap();
+        agent
+            .list_tools(&caller())
+            .await
+            .unwrap()
+            .tools
+            .into_iter()
+            .map(|tool| tool.name)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(
+        names(service_tools("records").url(&base).read_only()).await,
+        vec!["records__get_record"]
+    );
+    // An allowlist never re-admits internal, HMAC or streaming operations.
+    assert_eq!(
+        names(service_tools("records").url(&base).include([
+            "createRecord",
+            "recordProgress",
+            "syncRecord",
+            "watchRecord"
+        ]))
+        .await,
+        vec!["records__create_record"]
     );
 }

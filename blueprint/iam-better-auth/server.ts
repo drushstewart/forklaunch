@@ -170,11 +170,20 @@ registerDelegatedSurface(
     });
 
     //! registers the betterAuth middleware
-    app.internal.all(
-      mount.paths,
-      betterAuthTelemetryHookMiddleware,
-      enrichBetterAuthApi(ci.resolve(tokens.BetterAuth) as BetterAuth)
+    // One registration per path: Express accepts a path array, hyper-express
+    // takes a single pattern.
+    const betterAuthHandler = enrichBetterAuthApi(
+      ci.resolve(tokens.BetterAuth) as BetterAuth
     );
+    for (const path of Array.isArray(mount.paths)
+      ? mount.paths
+      : [mount.paths]) {
+      app.internal.all(
+        path,
+        betterAuthTelemetryHookMiddleware,
+        betterAuthHandler
+      );
+    }
   }
 );
 

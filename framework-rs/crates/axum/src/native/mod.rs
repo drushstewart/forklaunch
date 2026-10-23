@@ -181,3 +181,7 @@ pub use application::{ApplicationResult, NativeApplication, run_application, wit
 
 mod session_policy;
 pub use session_policy::SessionPolicy;
+#[cfg(feature = "native-jwt")]
+mod jwt;
+#[cfg(feature = "native-jwt")]
+pub use jwt::{jwt_policy, jwt_policy_from_env, optional_jwt_policy_from_env};

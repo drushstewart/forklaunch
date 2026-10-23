@@ -1,5 +1,12 @@
 //! The same free, non-AMA placeholder procedure codes as TypeScript CAC.
 //! This provider is deliberately unlicensed and never supplies clinical CPT data.
+//!
+//! Lookup is an exact, case-sensitive match over three codes (`PROC-001`
+//! Office Visit, `PROC-002` Annual Physical Exam, `PROC-003` Diagnostic Lab
+//! Panel); anything else, including real CPT codes such as `99213`, is not
+//! found. There is no fuzzy match or suggest-from-text operation, in either
+//! runtime. Applications that need real codes or suggestions implement
+//! [`CodeSetProvider`] over a licensed code set.
 #![forbid(unsafe_code)]
 
 #[cfg(feature = "http")]

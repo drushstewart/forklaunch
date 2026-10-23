@@ -248,3 +248,119 @@ async fn timeout_cancels_handler_but_not_streaming_responses() {
         "data: ready\n\n"
     );
 }
+
+#[tokio::test]
+async fn configured_cors_origins_pass_preflight_and_others_stay_denied() {
+    for invalid in [
+        "*",
+        "https://app.test/",
+        "http://app.test",
+        "https://u@app.test",
+    ] {
+        assert!(
+            policy().with_cors_origins([invalid]).is_err(),
+            "accepted {invalid}"
+        );
+    }
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    let app = secure(
+        Router::new().route(
+            "/notes",
+            get(move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+                async { "notes" }
+            }),
+        ),
+        policy()
+            .with_cors_origins(["http://localhost:5173", "https://app.example.test"])
+            .unwrap(),
+    );
+    let send = |method: &str, origin: &str, preflight: bool| {
+        let mut request = Request::builder()
+            .method(method)
+            .uri("/notes")
+            .header("origin", origin);
+        if preflight {
+            request = request
+                .header("access-control-request-method", "GET")
+                .header(
+                    "access-control-request-headers",
+                    "authorization,content-type",
+                );
+        }
+        app.clone().oneshot(
+            request
+                .header("sec-fetch-site", "cross-site")
+                .body(Body::empty())
+                .unwrap(),
+        )
+    };
+    let preflight = send("OPTIONS", "http://localhost:5173", true)
+        .await
+        .unwrap();
+    assert_eq!(preflight.status(), StatusCode::NO_CONTENT);
+    assert_eq!(
+        preflight.headers()["access-control-allow-origin"],
+        "http://localhost:5173"
+    );
+    assert_eq!(
+        preflight.headers()["access-control-allow-credentials"],
+        "true"
+    );
+    assert_eq!(
+        preflight.headers()["access-control-allow-headers"],
+        "authorization,content-type"
+    );
+    assert!(
+        preflight.headers()["access-control-allow-methods"]
+            .to_str()
+            .unwrap()
+            .contains("POST")
+    );
+    assert_eq!(calls.load(Ordering::SeqCst), 0);
+    let actual = send("GET", "https://app.example.test", false)
+        .await
+        .unwrap();
+    assert_eq!(actual.status(), StatusCode::OK);
+    assert_eq!(
+        actual.headers()["access-control-allow-origin"],
+        "https://app.example.test"
+    );
+    assert!(
+        actual
+            .headers()
+            .get_all("vary")
+            .iter()
+            .any(|value| value == "Origin")
+    );
+    assert_private(&actual);
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+    for (method, preflight) in [("OPTIONS", true), ("GET", false)] {
+        let denied = send(method, "https://evil.test", preflight).await.unwrap();
+        assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+        assert!(!denied.headers().contains_key("access-control-allow-origin"));
+    }
+    assert_eq!(calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn without_cors_origins_cross_origin_preflights_are_denied() {
+    let plain = secure(
+        Router::new().route("/notes", get(|| async { "notes" })),
+        policy(),
+    );
+    let response = plain
+        .oneshot(
+            Request::builder()
+                .method("OPTIONS")
+                .uri("/notes")
+                .header("origin", "http://localhost:5173")
+                .header("access-control-request-method", "GET")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}

@@ -1117,6 +1117,7 @@ impl CliCommand for ApplicationCommand {
                 service_data.is_billing = global_module_config.billing.is_some();
                 service_data.is_messaging = global_module_config.messaging.is_some();
                 service_data.is_cac = global_module_config.cac.is_some();
+                service_data.is_ecommerce = global_module_config.ecommerce.is_some();
                 service_data.is_better_auth = global_module_config
                     .iam
                     .as_ref()
@@ -1220,6 +1221,9 @@ impl CliCommand for ApplicationCommand {
                         forklaunch_common: Some(COMMON_VERSION.to_string()),
                         forklaunch_core: Some(CORE_VERSION.to_string()),
                         forklaunch_universal_sdk: Some(UNIVERSAL_SDK_VERSION.to_string()),
+                        // Inferred SDK client types (the Better Auth factory) name
+                        // the validator's schema types in declaration output.
+                        forklaunch_validator: Some(VALIDATOR_VERSION.to_string()),
                         better_auth: if global_module_config
                             .iam
                             .as_ref()
@@ -1250,6 +1254,7 @@ impl CliCommand for ApplicationCommand {
                             global_module_config.iam.is_some(),
                             global_module_config.messaging.is_some(),
                             global_module_config.cac.is_some(),
+                            global_module_config.ecommerce.is_some(),
                         ),
                         ..Default::default()
                     }),

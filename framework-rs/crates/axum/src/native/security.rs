@@ -25,6 +25,8 @@ const MANAGED_RESPONSE_HEADERS: [(&str, &str); 5] = [
 #[derive(Clone, Debug)]
 pub struct NativeHttpPolicy {
     origin: HeaderValue,
+    /// Exact browser origins allowed to call cross-origin (CORS); empty denies all.
+    cors_origins: Vec<HeaderValue>,
     max_body_bytes: usize,
     response_timeout: Duration,
 }
@@ -45,32 +47,87 @@ impl NativeHttpPolicy {
     /// # Errors
     /// Rejects malformed origins, credentials, paths, query strings and fragments.
     pub fn new(public_origin: &str) -> Result<Self, NativeHttpPolicyError> {
-        let uri: Uri = public_origin.parse().map_err(|_| NativeHttpPolicyError)?;
-        let scheme = uri.scheme_str().ok_or(NativeHttpPolicyError)?;
-        let authority = uri.authority().ok_or(NativeHttpPolicyError)?;
-        let host = authority
-            .host()
-            .trim_start_matches('[')
-            .trim_end_matches(']');
-        let loopback = host.eq_ignore_ascii_case("localhost")
-            || host
-                .parse::<std::net::IpAddr>()
-                .is_ok_and(|address| address.is_loopback());
-        if (scheme == "http" && !loopback)
-            || !matches!(scheme, "http" | "https")
-            || authority.as_str().contains('@')
-            || authority.host().is_empty()
-            || public_origin != format!("{scheme}://{authority}")
-        {
-            return Err(NativeHttpPolicyError);
-        }
         Ok(Self {
-            origin: public_origin.parse().map_err(|_| NativeHttpPolicyError)?,
+            origin: exact_origin(public_origin)?,
+            cors_origins: Vec::new(),
             max_body_bytes: 2 * 1024 * 1024,
             response_timeout: Duration::from_secs(30),
         })
     }
 
+    /// Allow these exact browser origins to call cross-origin, with credentials.
+    /// Each must be a valid origin (`https://app.example.com`, or plain http on
+    /// loopback only); `*` is never accepted. Preflights from an allowed origin
+    /// get `204` with the request's method and headers allowed; responses echo
+    /// the origin (never `*`) and vary on it. Any other cross-origin request is
+    /// still denied with `403`. Mirrors the TypeScript `CORS_ORIGINS` setting.
+    ///
+    /// # Errors
+    /// Rejects malformed origins, wildcards, paths, credentials and remote plain http.
+    pub fn with_cors_origins<I, O>(mut self, origins: I) -> Result<Self, NativeHttpPolicyError>
+    where
+        I: IntoIterator<Item = O>,
+        O: AsRef<str>,
+    {
+        for origin in origins {
+            let origin = exact_origin(origin.as_ref())?;
+            if origin != self.origin && !self.cors_origins.contains(&origin) {
+                self.cors_origins.push(origin);
+            }
+        }
+        Ok(self)
+    }
+
+    /// [`Self::with_cors_origins`] from the comma-separated `CORS_ORIGINS`
+    /// setting; unset or empty allows no cross-origin callers.
+    ///
+    /// # Errors
+    /// Rejects a non-Unicode setting or any invalid origin in it.
+    pub fn with_cors_origins_from_env(self) -> Result<Self, NativeHttpPolicyError> {
+        let value = match std::env::var("CORS_ORIGINS") {
+            Ok(value) => value,
+            Err(std::env::VarError::NotPresent) => return Ok(self),
+            Err(std::env::VarError::NotUnicode(_)) => return Err(NativeHttpPolicyError),
+        };
+        self.with_cors_origins(
+            value
+                .split(',')
+                .map(str::trim)
+                .filter(|origin| !origin.is_empty()),
+        )
+    }
+
+    fn cors_origin<'a>(&self, headers: &'a HeaderMap) -> Option<&'a HeaderValue> {
+        let mut origins = headers.get_all("origin").iter();
+        let origin = origins.next()?;
+        (origins.next().is_none() && self.cors_origins.contains(origin)).then_some(origin)
+    }
+}
+
+fn exact_origin(public_origin: &str) -> Result<HeaderValue, NativeHttpPolicyError> {
+    let uri: Uri = public_origin.parse().map_err(|_| NativeHttpPolicyError)?;
+    let scheme = uri.scheme_str().ok_or(NativeHttpPolicyError)?;
+    let authority = uri.authority().ok_or(NativeHttpPolicyError)?;
+    let host = authority
+        .host()
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    let loopback = host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback());
+    if (scheme == "http" && !loopback)
+        || !matches!(scheme, "http" | "https")
+        || authority.as_str().contains('@')
+        || authority.host().is_empty()
+        || public_origin != format!("{scheme}://{authority}")
+    {
+        return Err(NativeHttpPolicyError);
+    }
+    public_origin.parse().map_err(|_| NativeHttpPolicyError)
+}
+
+impl NativeHttpPolicy {
     /// Validate response header declarations against the managed security boundary.
     /// Call this before [`secure`] when composing a router without `NativeApplication`.
     /// # Errors
@@ -137,6 +194,9 @@ impl NativeHttpPolicy {
     /// # Errors
     /// Returns a fixed forbidden response for hostile, duplicated or malformed headers.
     pub fn check_origin(&self, headers: &HeaderMap) -> Result<(), NativeHttpRejection> {
+        if self.cors_origin(headers).is_some() {
+            return Ok(());
+        }
         let mut origins = headers.get_all("origin").iter();
         if let Some(origin) = origins.next()
             && (origin != self.origin || origins.next().is_some())
@@ -171,7 +231,35 @@ impl IntoResponse for NativeHttpRejection {
     }
 }
 
+const CORS_METHODS: &str = "GET,HEAD,PUT,PATCH,POST,DELETE";
+
 async fn protect(State(policy): State<NativeHttpPolicy>, request: Request, next: Next) -> Response {
+    let cors = policy.cors_origin(request.headers()).cloned();
+    if let Some(origin) = &cors
+        && request.method() == axum::http::Method::OPTIONS
+        && request
+            .headers()
+            .contains_key("access-control-request-method")
+    {
+        let mut response = StatusCode::NO_CONTENT.into_response();
+        let headers = response.headers_mut();
+        headers.insert(
+            "access-control-allow-methods",
+            HeaderValue::from_static(CORS_METHODS),
+        );
+        if let Some(requested) = request.headers().get("access-control-request-headers") {
+            headers.insert("access-control-allow-headers", requested.clone());
+        }
+        headers.insert("access-control-max-age", HeaderValue::from_static("600"));
+        headers.insert(
+            "vary",
+            HeaderValue::from_static(
+                "Origin, Access-Control-Request-Method, Access-Control-Request-Headers",
+            ),
+        );
+        cors_headers(&mut response, origin);
+        return response;
+    }
     let mut response = match policy.check_origin(request.headers()) {
         Err(rejection) => rejection.into_response(),
         Ok(()) => match tokio::time::timeout(policy.response_timeout, next.run(request)).await {
@@ -188,7 +276,22 @@ async fn protect(State(policy): State<NativeHttpPolicy>, request: Request, next:
             .headers_mut()
             .insert(name, HeaderValue::from_static(value));
     }
+    if let Some(origin) = &cors {
+        response
+            .headers_mut()
+            .append("vary", HeaderValue::from_static("Origin"));
+        cors_headers(&mut response, origin);
+    }
     response
+}
+
+fn cors_headers(response: &mut Response, origin: &HeaderValue) {
+    let headers = response.headers_mut();
+    headers.insert("access-control-allow-origin", origin.clone());
+    headers.insert(
+        "access-control-allow-credentials",
+        HeaderValue::from_static("true"),
+    );
 }
 
 /// Install `ForkLaunch`'s private API boundary after composing all routes and MCP.

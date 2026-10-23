@@ -199,6 +199,9 @@ impl LocalContext<'_> {
 /// A local value for a required compose variable, or None when only a person can supply it.
 fn local_value(name: &str, context: &mut LocalContext<'_>) -> Option<String> {
     let app = context.app;
+    if let Some(value) = super::auth_env::local_value(name, app) {
+        return Some(value);
+    }
     let url = |prefix: &str, suffix: &str| {
         format!("postgresql://{}@postgresql:5432/{}", role(prefix, suffix), database(app, prefix))
     };

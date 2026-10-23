@@ -28,6 +28,16 @@ pub struct RustModelTemplate {
     pub transparent: bool,
     pub has_default: bool,
     pub variants: Vec<RustUnionVariantTemplate>,
+    /// A closed set of string values, rendered as a fieldless enum with serde renames.
+    pub string_enum: bool,
+    pub enum_variants: Vec<RustEnumVariantTemplate>,
+}
+
+#[derive(Content, Debug, Clone, PartialEq, Eq)]
+pub struct RustEnumVariantTemplate {
+    pub name: String,
+    pub wire_name_literal: String,
+    pub first: bool,
 }
 
 #[derive(Content, Debug, Clone, PartialEq, Eq)]
@@ -344,6 +354,8 @@ pub(crate) fn rust_types_from_schema(
                         transparent: true,
                         has_default: true,
                         variants: vec![],
+                        string_enum: false,
+                        enum_variants: vec![],
                     },
                 );
             }
@@ -481,16 +493,8 @@ pub(crate) fn build_rust_type(
             .collect::<Vec<_>>();
         return build_rust_union(type_name, &alternatives, models);
     }
-    if let Some(value) = schema.get("const") {
-        return match value {
-            JsonValue::Null => "()",
-            JsonValue::Bool(_) => "bool",
-            JsonValue::Number(number) if number.is_i64() => "i64",
-            JsonValue::Number(_) => "f64",
-            JsonValue::String(_) => "::std::string::String",
-            _ => "::serde_json::Value",
-        }
-        .into();
+    if let Some(literal) = literal_rust_type(type_name, schema, models) {
+        return literal;
     }
 
     match schema_type(schema) {
@@ -561,6 +565,97 @@ fn integer_rust_type(schema: &JsonValue) -> &'static str {
     }
 }
 
+/// Closed value sets: a string `enum` becomes a Rust enum, a `const` its scalar type.
+fn literal_rust_type(
+    type_name: &str,
+    schema: &JsonValue,
+    models: &mut BTreeMap<String, RustModelTemplate>,
+) -> Option<String> {
+    if let Some(values) = string_enum_values(schema) {
+        return Some(build_rust_string_enum(type_name, &values, models));
+    }
+    let value = schema.get("const")?;
+    Some(
+        match value {
+            JsonValue::Null => "()",
+            JsonValue::Bool(_) => "bool",
+            JsonValue::Number(number) if number.is_i64() => "i64",
+            JsonValue::Number(_) => "f64",
+            JsonValue::String(_) => "::std::string::String",
+            _ => "::serde_json::Value",
+        }
+        .into(),
+    )
+}
+
+/// String values of a closed `enum` (`type: string` or untyped), if every member is a string.
+fn string_enum_values(schema: &JsonValue) -> Option<Vec<String>> {
+    if !matches!(schema_type(schema), None | Some("string"))
+        || schema.get("x-forklaunch-date-codec").is_some()
+    {
+        return None;
+    }
+    let values = schema.get("enum")?.as_array()?;
+    if values.is_empty() {
+        return None;
+    }
+    let mut seen = BTreeSet::new();
+    values
+        .iter()
+        .map(|value| value.as_str().map(str::to_owned))
+        .collect::<Option<Vec<_>>>()
+        .map(|values| values.into_iter().filter(|value| seen.insert(value.clone())).collect())
+}
+
+/// A fieldless Rust enum whose variants serialize to the exact wire strings.
+/// Identical value sets generated for the same name are shared.
+pub(crate) fn build_rust_string_enum(
+    type_name: &str,
+    values: &[String],
+    models: &mut BTreeMap<String, RustModelTemplate>,
+) -> String {
+    let mut used = BTreeSet::new();
+    let enum_variants = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let base = rust_type_name(value);
+            let base = if base == "GeneratedModel" || base.ends_with('_') {
+                format!("Value{}", index + 1)
+            } else {
+                base
+            };
+            let mut name = base.clone();
+            let mut suffix = 2;
+            while !used.insert(name.clone()) {
+                name = format!("{base}{suffix}");
+                suffix += 1;
+            }
+            RustEnumVariantTemplate {
+                name,
+                wire_name_literal: format!("{value:?}"),
+                first: index == 0,
+            }
+        })
+        .collect::<Vec<_>>();
+    let base = rust_type_name(type_name);
+    let mut name = base.clone();
+    let mut suffix = 2;
+    while let Some(existing) = models.get(&name) {
+        if existing.string_enum && existing.enum_variants == enum_variants {
+            return name;
+        }
+        name = format!("{base}{suffix}");
+        suffix += 1;
+    }
+    let mut model = empty_model(&name);
+    model.string_enum = true;
+    model.has_default = true;
+    model.enum_variants = enum_variants;
+    models.insert(name.clone(), model);
+    name
+}
+
 pub(crate) fn build_rust_union(
     type_name: &str,
     alternatives: &[JsonValue],
@@ -593,6 +688,8 @@ pub(crate) fn build_rust_union(
             transparent: false,
             has_default: true,
             variants: vec![],
+            string_enum: false,
+            enum_variants: vec![],
         },
     );
     let variants = alternatives
@@ -624,6 +721,8 @@ fn empty_model(model_name: &str) -> RustModelTemplate {
         transparent: false,
         has_default: true,
         variants: vec![],
+        string_enum: false,
+        enum_variants: vec![],
     }
 }
 
@@ -720,20 +819,10 @@ pub(crate) fn rust_model_from_schema(
                 .ok()
                 .flatten()
                 .map_or_else(String::new, |(_, name)| name),
-            name: model_name.clone(),
             fields,
-            union: false,
-            sequence: false,
-            sequence_len: 0,
-            sequence_min: 0,
-            sequence_max: 0,
-            sequence_rest: false,
-            sequence_rest_type: String::new(),
             deny_unknown_fields: schema.get("additionalProperties")
                 == Some(&JsonValue::Bool(false)),
-            transparent: false,
-            has_default: true,
-            variants: vec![],
+            ..empty_model(&model_name)
         },
     );
     model_name
@@ -817,6 +906,8 @@ fn build_rust_sequence(
             transparent: false,
             has_default: true,
             variants: vec![],
+            string_enum: false,
+            enum_variants: vec![],
         },
     );
     let fields = shape
@@ -1198,5 +1289,33 @@ mod sequence_tests {
         assert!(source.contains("deserialize_seq"));
         assert!(source.contains("extra tuple element"));
         assert!(!source.contains("PartialEq, Serialize, Deserialize)]\npub struct"));
+    }
+}
+
+#[cfg(test)]
+mod string_enum_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn closed_string_sets_become_serde_renamed_enums() {
+        let schema = json!({"type":"object","required":["currency","methods"],"properties":{
+            "currency":{"type":"string","enum":["USD","eur","usd","9x","self"]},
+            "methods":{"type":"array","items":{"enum":["card","klarna"]}},
+            "open":{"type":"string"},
+            "mixed":{"enum":["a",1]}
+        }});
+        let (models, aliases, root) = rust_types_from_schema("Payment", &schema);
+        let source = render_rust_models(&models, &aliases).unwrap();
+        assert_eq!(root, "Payment");
+        assert!(source.contains("pub enum PaymentCurrency {"), "{source}");
+        for (variant, wire) in [("Usd", "USD"), ("Eur", "eur"), ("Usd2", "usd"), ("Model9X", "9x"), ("Value5", "self")] {
+            assert!(source.contains(&format!("#[serde(rename = \"{wire}\")]\n    {variant},")), "{variant}");
+        }
+        assert!(source.contains("pub enum PaymentMethodsItem {"));
+        assert!(source.contains("::std::vec::Vec<PaymentMethodsItem>"));
+        assert!(source.contains("pub open: ::std::option::Option<::std::string::String>"));
+        assert!(!source.contains("pub enum PaymentMixed"));
+        assert!(source.contains("Self::Usd => \"USD\""));
     }
 }

@@ -12,18 +12,15 @@ DATABASE_URL="$DATABASE_OWNER_URL" cargo run -p {{{name}}} -- --migrate
 
 Grant the runtime role USAGE on the schema and SELECT/INSERT/UPDATE/DELETE on `fl_iam_users`, `fl_iam_organizations`, `fl_iam_roles`, `fl_iam_sessions`, `fl_iam_directory`, `fl_iam_directory_unique_claims`, and `fl_iam_directory_audit`, and (when browser sessions are enabled) `fl_iam_browser_sessions`. Grant USAGE on `fl_iam_directory_sequence_seq`. It must have neither SUPERUSER nor BYPASSRLS. Configure `DATABASE_URL`, a trusted `TENANT_ID`, `ENCRYPTION_KEY`, `HMAC_SECRET_KEY`, and `JWKS_PUBLIC_KEY_URL`, then run `cargo run -p {{{name}}}`. The service rejects privileged database roles. Environment files are examples; export variables before running.
 
-Create users and roles through `PostgresIamService`'s administrative methods in your application's trusted provisioning path. No default account or password is created.
+`{{{name}}} --seed` creates or updates the roles and login users listed in `seed.toml` (or the file named by `IAM_SEED_FILE`) with the restricted runtime `DATABASE_URL` and `TENANT_ID`. It is idempotent: roles and profiles are rewritten and passwords reset on each run, and nothing is deleted. Each user names the variable holding its password (`IAM_SEED_ADMIN_PASSWORD` for the default admin, which `forklaunch init` writes to the git-ignored root `.env`); the file itself holds no secrets. Docker Compose runs it as the one-shot `{{{name}}}-seed` service after migrations. The default roles match the TypeScript IAM migration: `viewer` (`platform:read`) and `editor`, `admin`, `system` (`platform:read`, `platform:write`). HTTP `createUser` writes a directory profile and ignores its password, exactly like the TypeScript iam-base mapper, so login users come from the seed or `PostgresIamService::create_user`.
 
-`POST /auth/login` accepts `{ "email": "...", "password": "..." }` and returns a session whose `id` is the bearer credential. Send `Authorization: Bearer <id>` for the legacy `/users`, `/organizations`, permission lookup, and logout routes. The legacy `/users/:id` SDK/MCP operation is `getSessionUser`. `POST /auth/logout` revokes the current session. `/health`, `/openapi.json`, and `/docs` are public. Login responses disable caching.
+`POST /auth/login` accepts `{ "email": "...", "password": "..." }` and returns a session whose `id` is the bearer credential. Send `Authorization: Bearer <id>` for the legacy `/users`, `/organizations`, permission lookup, and logout routes. `GET /users/:id` and `/users/:id/permissions` return the caller's own record; reading another user, `GET /users` and `GET /organizations` need the `platform:read` permission (403 otherwise). The legacy `/users/:id` SDK/MCP operation is `getSessionUser`. `POST /auth/logout` revokes the current session. `/health`, `/openapi.json`, `/docs` and `/api/auth/jwks` are public. Login responses disable caching.
 
-Opaque sessions are the default. To issue RS256 JWTs, configure all four of
-`SESSION_JWT_PRIVATE_KEY_PEM`, `SESSION_JWT_KEY_ID`, `SESSION_JWT_ISSUER` and
-`SESSION_JWT_AUDIENCE`. Partial or invalid signing configuration rejects startup.
-Publish the matching public key at the trusted JWKS endpoint configured by token
-consumers; this module does not automatically publish keys. New tokens contain a
-unique `jti`, subject, tenant ID, issuance/expiry times, issuer/audience and a
-snapshot of server-resolved roles/permissions. Tokens expire after one hour and
-must fit the existing 4096-byte bearer limit. Email/password fields are omitted.
+Sessions are RS256 JWTs by default: `forklaunch init` writes a development signing key (`SESSION_JWT_PRIVATE_KEY_PEM`, base64 of the PEM on one line, git-ignored), `SESSION_JWT_KEY_ID`, and a shared `JWT_ISSUER`/`JWT_AUDIENCE` to the root `.env`, and Compose passes them to this service. The service publishes the public half at `GET /api/auth/jwks`, which is what every generated `*_JWKS_PUBLIC_KEY_URL` points at, so other services accept the same token. Generate a separate production key (for example `openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 | base64`) and keep it in your secret store. Omitting all four `SESSION_JWT_*` values selects opaque sessions that only this service can verify; partial or invalid signing configuration rejects startup. New tokens contain a unique `jti`, subject, tenant ID, issuance/expiry times, issuer/audience and a snapshot of server-resolved roles/permissions. Tokens expire after one hour and must fit the existing 4096-byte bearer limit. Email/password fields are omitted.
+
+One token serves both route families: the legacy bearer routes look the token up as a stored session (so logout and disabling apply at once), and the directory routes verify its signature through JWKS and use its role/permission claims.
+
+Browsers on other origins can call IAM only when listed in `CORS_ORIGINS` (comma-separated exact origins). Responses then echo the origin with credentials allowed; `*` is never sent and unlisted origins get no CORS headers.
 
 Local session routes always check the full token's stored hash and current user
 state, preserving logout, password-change revocation, disabled users and tenant
@@ -57,7 +54,7 @@ token. GET `/auth/browser/session` returns current subject/grants/expiry.
 POST `/auth/browser/logout` requires the current CSRF proof, revokes the IAM
 credential and clears the cookie. All responses are no-store. Browser endpoints
 are excluded from SDK/MCP contracts; existing bearer routes still require their
-Authorization header. Applications own TLS termination and trusted-origin CORS.
+Authorization header. Applications own TLS termination; cross-origin browsers need `CORS_ORIGINS`.
 
 Cookie IDs are hashed in PostgreSQL; server-side records, including the backing
 IAM credential, are encrypted and bound to tenant, namespace, record ID and
