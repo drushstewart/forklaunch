@@ -105,9 +105,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: save
-          registry-key: cli
-          workspaces: cli
+          family: cli
 
       - name: Build CLI
         working-directory: ./cli
@@ -124,9 +122,9 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      - name: Compiler cache statistics
+      - name: Save compiler cache
         if: always()
-        run: '"$SCCACHE_PATH" --show-stats'
+        uses: ./.github/actions/rust-build-cache/save
 
   # The packaged-install check used to run inside Build CLI, after the build,
   # so every suite waited on it as well. It now runs beside Build CLI and,
@@ -150,9 +148,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: save
-          registry-key: generated
-          workspaces: framework-rs
+          family: generated
 
       - uses: actions/setup-python@v5
         with:
@@ -164,9 +160,9 @@ jobs:
       - name: Verify packaged CLI installation and Rust generation
         run: bash cli/tests/rust_packaged_install.sh
 
-      - name: Compiler cache statistics
+      - name: Save compiler cache
         if: always()
-        run: '"$SCCACHE_PATH" --show-stats'
+        uses: ./.github/actions/rust-build-cache/save
 
   test:
     needs: [changes, build-cli]
@@ -302,7 +298,9 @@ jobs:
 
   test-rust:
     needs: [changes, build-cli, verify-packaged-cli]
-    if: needs.changes.outputs.rust == 'true'
+    # Waits for the pre-warm but does not depend on it passing; a failure
+    # there still fails the aggregate check.
+    if: ${{ !cancelled() && needs.build-cli.result == 'success' && needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -339,9 +337,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: restore
-          registry-key: generated
-          workspaces: framework-rs
+          family: generated
 
       # rdkafka-sys (generated Kafka workers) builds librdkafka, which needs libcurl headers.
       - name: Install native build dependencies for generated workers
@@ -465,7 +461,9 @@ jobs:
   rust-native-lifecycle:
     name: Rust native ${{ matrix.suite }}
     needs: [changes, build-cli, verify-packaged-cli]
-    if: needs.changes.outputs.rust == 'true'
+    # Waits for the pre-warm but does not depend on it passing; a failure
+    # there still fails the aggregate check.
+    if: ${{ !cancelled() && needs.build-cli.result == 'success' && needs.changes.outputs.rust == 'true' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     strategy:
@@ -485,9 +483,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: restore
-          registry-key: generated
-          workspaces: framework-rs
+          family: generated
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

@@ -57,6 +57,8 @@ jobs:
       # publish job below builds nothing through it.
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
+        with:
+          family: ${{ matrix.scope }}-rs
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'

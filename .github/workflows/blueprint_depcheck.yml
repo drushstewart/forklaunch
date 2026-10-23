@@ -38,11 +38,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: save
-          registry-key: depcheck
-          workspaces: |
-            cli
-            .github/workflows/scripts/check_blueprint_deps
+          family: cli
 
       - name: Build CLI
         run: |

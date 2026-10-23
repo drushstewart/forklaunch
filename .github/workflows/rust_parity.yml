@@ -143,9 +143,8 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: save
-          registry-key: parity-framework
-          workspaces: framework-rs
+          family: framework-rs
+          size: 3G
       - name: Start isolated S3-compatible storage
         run: |
           docker run -d --name forklaunch-rust-s3 --memory 512m \
@@ -831,9 +830,9 @@ jobs:
       - run: node cli/tests/rust_field_encryption_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
-      - name: Compiler cache statistics
+      - name: Save compiler cache
         if: always()
-        run: '"$SCCACHE_PATH" --show-stats'
+        uses: ./.github/actions/rust-build-cache/save
 
   blueprint:
     needs: changes
@@ -885,9 +884,8 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: save
-          registry-key: parity-blueprint
-          workspaces: blueprint-rs
+          family: blueprint-rs
+          size: 3G
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -1277,9 +1275,9 @@ jobs:
       - name: Stop isolated Kafka-compatible broker
         if: always()
         run: docker rm -f forklaunch-rust-kafka-ci || true
-      - name: Compiler cache statistics
+      - name: Save compiler cache
         if: always()
-        run: '"$SCCACHE_PATH" --show-stats'
+        uses: ./.github/actions/rust-build-cache/save
 
   security-audit:
     needs: changes
@@ -1291,6 +1289,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
+          family: cli
           registry-cache: save
           registry-key: security-audit
           workspaces: cli

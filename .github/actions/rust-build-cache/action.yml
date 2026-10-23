@@ -1,13 +1,28 @@
 name: Rust build cache
 description: >-
-  Shared compiler cache for every Rust build in CI. Installs sccache backed by
-  the GitHub Actions cache and routes every later cargo invocation in the job
-  through it, including the ones test scripts run against scaffolded
-  applications: they inherit RUSTC_WRAPPER from the job environment.
+  Shared compiler cache for the Rust builds in CI. Installs sccache with its
+  local disk store, restores that store from the GitHub Actions cache for the
+  given family, and routes every later cargo invocation in the job through it,
+  including the ones test scripts run against scaffolded applications: they
+  inherit RUSTC_WRAPPER from the job environment. Jobs that should publish
+  what they compiled call ./.github/actions/rust-build-cache/save at the end.
   Optionally restores (and saves) the Cargo registry and git checkouts with
-  Swatinem/rust-cache; compiled output is left to sccache, so no target
-  directory is cached here.
+  Swatinem/rust-cache; no target directory is cached.
+#
+# Why a disk store saved as one cache entry, and not sccache's own GitHub
+# Actions backend: that backend uploads every compiled object as a separate
+# cache entry, and GitHub throttles cache uploads per repository. On the first
+# trial run 1,075 of 1,334 writes in a single job were rejected, with dozens
+# of jobs writing at once.
 inputs:
+  family:
+    description: >-
+      Which compiler cache to restore. Jobs that compile the same workspace
+      with the same profile and features share a family.
+    required: true
+  size:
+    description: Upper bound sccache keeps the local store under (SCCACHE_CACHE_SIZE).
+    default: 2G
   registry-cache:
     description: "'restore' restores the shared Cargo registry cache, 'save' also saves it at the end of the job, 'off' skips it."
     default: 'off'
@@ -28,17 +43,30 @@ runs:
     # reduced PATH, and the wrapper must still resolve there.
     # CARGO_INCREMENTAL=0 because sccache cannot cache incremental builds.
     # SCCACHE_IDLE_TIMEOUT=0 keeps one server for the whole job, so the stats
-    # printed at the end cover every compilation and no test step pays a
-    # server restart after a long stretch without compiling.
+    # cover every compilation and no step pays a server restart.
     - name: Route cargo through sccache
       shell: bash
+      env:
+        FAMILY: ${{ inputs.family }}
+        SIZE: ${{ inputs.size }}
       run: |
         {
-          echo "SCCACHE_GHA_ENABLED=true"
+          echo "SCCACHE_DIR=$HOME/.cache/sccache-ci"
+          echo "SCCACHE_CACHE_SIZE=$SIZE"
+          echo "SCCACHE_IDLE_TIMEOUT=0"
           echo "RUSTC_WRAPPER=$SCCACHE_PATH"
           echo "CARGO_INCREMENTAL=0"
-          echo "SCCACHE_IDLE_TIMEOUT=0"
+          echo "FORKLAUNCH_SCCACHE_FAMILY=$FAMILY"
         } >> "$GITHUB_ENV"
+    # Newest store of this family: this pull request's own, else the base
+    # branch's. Keys are unique per save, so the prefix picks the latest.
+    - name: Restore compiler cache
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/sccache-ci
+        key: sccache-v1-${{ runner.os }}-${{ inputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+        restore-keys: |
+          sccache-v1-${{ runner.os }}-${{ inputs.family }}-
     - name: Cache Cargo registry
       if: inputs.registry-cache != 'off'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

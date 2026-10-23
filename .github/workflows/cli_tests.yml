@@ -66,10 +66,12 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: save
-          registry-key: cli-tests
-          workspaces: cli
+          family: cli-tests
 
       - name: Run CLI tests
         working-directory: ./cli
         run: cargo test --verbose
+
+      - name: Save compiler cache
+        if: always()
+        uses: ./.github/actions/rust-build-cache/save

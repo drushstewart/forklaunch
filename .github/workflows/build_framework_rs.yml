@@ -41,9 +41,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          registry-cache: save
-          registry-key: framework-rs
-          workspaces: framework-rs
+          family: framework-rs
 
       - name: Check formatting
         run: python3 scripts/rust_format.py framework-rs/Cargo.toml

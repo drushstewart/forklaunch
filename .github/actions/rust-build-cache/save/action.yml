@@ -1,0 +1,43 @@
+name: Save Rust build cache
+description: >-
+  Prints sccache statistics and, when this job compiled enough that the
+  restored store was missing it, saves the store as a new entry of the family
+  set up by ./.github/actions/rust-build-cache. Run it last, with
+  `if: always()`: a failing job still compiled everything before the failure.
+inputs:
+  min-misses:
+    description: >-
+      Save only when at least this many compilations missed the restored
+      store. Keeps unchanged reruns from writing another copy of the same
+      store and evicting other caches under the repository's size limit.
+    default: '100'
+runs:
+  using: composite
+  steps:
+    - name: Compiler cache statistics
+      id: stats
+      shell: bash
+      env:
+        MIN_MISSES: ${{ inputs.min-misses }}
+      run: |
+        "$SCCACHE_PATH" --show-stats
+        misses=$("$SCCACHE_PATH" --show-stats --stats-format=json | python3 -c 'import json,sys; print(sum(json.load(sys.stdin)["stats"]["cache_misses"]["counts"].values()))')
+        echo "misses=$misses" >> "$GITHUB_OUTPUT"
+        if [ "$misses" -ge "$MIN_MISSES" ]; then
+          echo "save=true" >> "$GITHUB_OUTPUT"
+          echo "$misses misses: saving the $FORKLAUNCH_SCCACHE_FAMILY compiler cache"
+        else
+          echo "save=false" >> "$GITHUB_OUTPUT"
+          echo "$misses misses (under $MIN_MISSES): the restored $FORKLAUNCH_SCCACHE_FAMILY compiler cache is current"
+        fi
+    # Stop the server first so the store's index is flushed to disk.
+    - name: Stop sccache
+      if: steps.stats.outputs.save == 'true'
+      shell: bash
+      run: '"$SCCACHE_PATH" --stop-server || true'
+    - name: Save compiler cache
+      if: steps.stats.outputs.save == 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.cache/sccache-ci
+        key: sccache-v1-${{ runner.os }}-${{ env.FORKLAUNCH_SCCACHE_FAMILY }}-${{ github.run_id }}-${{ github.run_attempt }}
