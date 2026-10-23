@@ -16,6 +16,8 @@ try {
   await writeFile(path.join(temporary, 'Cargo.toml'), `[package]\nname="typed-request-proof"\nversion="0.0.0"\nedition="2024"\n[workspace]\n[dependencies]\nreqwest={version="0.13.2",features=["json","query"]}\nserde={version="1",features=["derive"]}\nserde_json="1"\nforklaunch-universal-sdk={path=${JSON.stringify(path.join(root,"framework-rs/crates/universal-sdk"))}}\nforklaunch-core={path=${JSON.stringify(path.join(root,"framework-rs/crates/core"))},features=["schema-validation"]}\ntokio={version="1",features=["macros","rt-multi-thread"]}\n`);
   await copyFile(path.join(root, 'cli/tests/fixtures/rust_sdk_typed_requests.rs'), path.join(temporary, 'tests/typed.rs'));
   await copyFile(path.join(root, 'framework-rs/Cargo.lock'), path.join(temporary, 'Cargo.lock'));
+  // Offline builds need every resolved package, including other targets' dependencies a host build never downloads; fetch them first.
+  cargo(['fetch', '--manifest-path', path.join(temporary, 'Cargo.toml')]);
   cargo(['test', '--offline', '--manifest-path', path.join(temporary, 'Cargo.toml')]);
   // A schema-object request cannot accidentally use the historical encoded-string API.
   await writeFile(path.join(temporary, 'src/main.rs'), `use typed_request_proof::*;\nfn main() { let _ = Client::new("http://localhost").create_request(CreateRequest { body: Some(String::from("{}")), ..Default::default() }); }\n`);

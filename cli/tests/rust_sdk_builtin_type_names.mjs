@@ -286,6 +286,8 @@ tokio-tungstenite="0.30"
     path.join(work, "src/lib.rs"),
     "pub mod http;pub mod socket;\n" + modules.join("\n"),
   );
+  // Offline builds need every resolved package, including other targets' dependencies a host build never downloads; fetch them first.
+  run("cargo", ["fetch", "--manifest-path", path.join(work, "Cargo.toml")]);
   run("cargo", [
     "rustc",
     "--offline",

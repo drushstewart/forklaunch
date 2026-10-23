@@ -46,6 +46,8 @@ try{
   return `mod case${index} {${item.source}\n#[test]fn conformance(){${checks}}}`;
  }).join('\n');
  writeFileSync(path.join(work,'src/lib.rs'),source);
+ // Offline builds need every resolved package, including other targets' dependencies a host build never downloads; fetch them first.
+ run('cargo',['fetch','--manifest-path',path.join(work,'Cargo.toml')]);
  run('cargo',['test','--offline','--manifest-path',path.join(work,'Cargo.toml')]);
  const types=generated.map((item,index)=>`namespace Case${index} {${Object.entries(item.definitions).map(([name,type])=>`export type ${name}=${type};`).join('\n')}export type Value=${item.typescript};${fixtures[index].cases.filter(item=>item.valid).map((item,i)=>`const valid${i}:Value=${JSON.stringify(item.value)};`).join("\n")}}`).join('\n');
  writeFileSync(path.join(work,'types.ts'),types);
