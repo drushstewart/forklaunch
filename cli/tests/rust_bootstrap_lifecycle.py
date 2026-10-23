@@ -61,7 +61,7 @@ try:
         assert exported.returncode == 0, exported.stderr
         assert json.loads(contract.read_text()) and json.loads(openapi.read_text())
         assert 'listening on' not in exported.stdout
-    for arguments, expected in [(['--unknown'], 'Expected no arguments or --migrate'), (['--migrate'], 'MIGRATION_DATABASE_URL is required')]:
+    for arguments, expected in [(['--unknown'], 'Expected no arguments or --migrate'), (['--migrate'], 'environment variable MIGRATION_DATABASE_URL is not set')]:
         # RUST_LOG is a required startup setting (7248a878d); provide it so these
         # probes reach argument and migration-URL validation.
         failed = subprocess.run([str(binaries / 'notes'), *arguments], cwd=app, env={**clean_env, 'RUST_LOG': 'info'}, capture_output=True, text=True, timeout=20)
