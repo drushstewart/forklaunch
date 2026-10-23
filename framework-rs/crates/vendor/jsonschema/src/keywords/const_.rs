@@ -54,7 +54,7 @@ impl<F: Json> Validate<F> for ConstArrayValidator {
                 && items
                     .elements()
                     .zip(&self.value)
-                    .all(|(item, expected)| item.equals_value(expected))
+                    .all(|(item, expected)| crate::keyed_cmp::node_equals::<F>(&item, expected))
         } else {
             false
         }
@@ -226,7 +226,7 @@ impl<F: Json> Validate<F> for ConstObjectValidator {
 
     #[inline]
     fn is_valid(&self, instance: &F::Node<'_>, _ctx: &mut ValidationContext) -> bool {
-        instance.equals_value(&self.value)
+        crate::keyed_cmp::node_equals::<F>(instance, &self.value)
     }
 }
 

@@ -23,7 +23,7 @@ pub use form::{
 };
 pub use versioning::{decode_multipart_value, parse_request_body, validate_parser_options};
 mod simple_query;
-pub use simple_query::parse_typescript_simple_query;
+pub use simple_query::{parse_typescript_simple_query, parse_typescript_simple_query_ordered};
 mod request_fields;
 pub use request_fields::{ParsedRequestFields, RequestFieldValues, RequestTransformOutput};
 pub mod default_errors;

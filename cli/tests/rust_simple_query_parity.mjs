@@ -66,14 +66,16 @@ const server=app.listen(0,'127.0.0.1');server.on('listening',()=>console.log('RE
   for(let second=0;second<256;second++)exhaustive.push('x='+a+'%'+second.toString(16).padStart(2,'0'));
  }
  for(const tail of ['%','%0','%GG','%E2%82','%F0%9F%92','%ED%A0%80'])for(const head of ['','a','%','%FF','%E2','+','%25'])exhaustive.push('x='+head+tail);
+ // Member order: array-index names ascending (up to 2**32-2), then first occurrence.
+ exhaustive.push('b=1&a=2&10=3&2=4&b=5&01=6&4294967295=x&4294967294=y&-1=z');
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','simple_query_parity']);
  const binary=join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/simple_query_parity');
  const result=spawnSync(binary,[],{input:exhaustive.map(value=>JSON.stringify(value)).join('\n')+'\n',encoding:'utf8',maxBuffer:32*1024*1024});
- assert.equal(result.status,0,result.stderr);const outputs=result.stdout.trim().split('\n').map(value=>JSON.parse(value));assert.equal(outputs.length,exhaustive.length);
- exhaustive.forEach((raw,index)=>assert.deepEqual(outputs[index],JSON.parse(JSON.stringify(parseQuery(raw??''))),JSON.stringify(raw)));
+ assert.equal(result.status,0,result.stderr);const lines=result.stdout.trim().split('\n').map(value=>JSON.parse(value));const outputs=lines.map(line=>line.fields);assert.equal(outputs.length,exhaustive.length);
+ exhaustive.forEach((raw,index)=>{assert.deepEqual(outputs[index],JSON.parse(JSON.stringify(parseQuery(raw??''))),JSON.stringify(raw));assert.deepEqual(lines[index].orderedKeys,Object.keys(parseQuery(raw??'')),`order ${JSON.stringify(raw)}`);});
  let wire=0;
  for(const raw of cases){const response=await fetch(ts+'/default'+(raw===null?'':'?'+raw));assert.equal(response.status,200);const value=await response.json();assert.deepEqual(value,outputs[wire],JSON.stringify(raw));wire++;}
- console.log(`PASS ${exhaustive.length} actual Node/native simple-query comparisons and ${wire} actual default ForkLaunch Express wire observations`);
+ console.log(`PASS ${exhaustive.length} actual Node/native simple-query comparisons (values and member order) and ${wire} actual default ForkLaunch Express wire observations`);
 }finally{
  for(const child of children){
   if(child.exitCode!==null||child.signalCode!==null)continue;

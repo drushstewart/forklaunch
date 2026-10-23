@@ -4,7 +4,7 @@ use crate::{
     keywords::CompilationResult,
     paths::{LazyLocation, Location, RefTracker},
     validator::{Validate, ValidationContext},
-    Array, Json, Node,
+    Json, Node,
 };
 use serde_json::{Map, Value};
 
@@ -12,7 +12,7 @@ fn has_unique_items<F: Json>(instance: &F::Node<'_>) -> bool {
     let Some(array) = instance.as_array() else {
         return true;
     };
-    array.is_unique()
+    crate::keyed_cmp::is_unique(&array)
 }
 
 pub(crate) struct UniqueItemsValidator {

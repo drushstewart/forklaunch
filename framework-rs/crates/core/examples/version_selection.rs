@@ -84,6 +84,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let mut output=json!({"version":version.version,"matched":version.matched_versions,"status":200});
                     if fixture["includeBody"] == true { output["body"]=version.parsed_body.as_deref().cloned().unwrap_or(Value::Null); }
                     if fixture["includePresence"] == true { output["bodyPresent"]=json!(version.parsed_body.is_some()); }
+                    // Handler-visible member order: every object key path, depth first.
+                    if fixture["includeKeyOrder"] == true { let mut keys=Vec::new(); if let Some(body)=version.parsed_body.as_deref() { key_paths(body,"",&mut keys); } output["bodyKeys"]=json!(keys); }
                     output
                 },
                 Err(errors)=>json!({"status":forklaunch_core::http::validation_error_response(&errors,"fixture").status_code}),
@@ -297,4 +299,22 @@ fn fixture_parser_hooks(fixture: &Value) -> forklaunch_core::http::BodyParserHoo
         });
     }
     hooks
+}
+
+fn key_paths(value: &Value, prefix: &str, out: &mut Vec<String>) {
+    match value {
+        Value::Object(members) => {
+            for (key, member) in members {
+                let path = format!("{prefix}/{key}");
+                out.push(path.clone());
+                key_paths(member, &path, out);
+            }
+        }
+        Value::Array(items) => {
+            for (index, item) in items.iter().enumerate() {
+                key_paths(item, &format!("{prefix}/{index}"), out);
+            }
+        }
+        _ => {}
+    }
 }

@@ -91,3 +91,10 @@ stay owned throughout compilation so pointer-keyed caches cannot reuse freed
 child addresses. The hook must be deterministic and cannot introduce resources.
 Regression tests cover scoped references, evaluated properties, discriminator
 and item optimizations, callback errors and unchanged default validation.
+
+`const`, `enum` and `uniqueItems` compare objects by member set rather than
+iteration order (`src/keyed_cmp.rs`). Upstream `jsonschema-value` zips object
+members, which is only correct for sorted maps; forklaunch-core enables
+`serde_json/preserve_order`, so equal objects with different key order were
+rejected (`const`/`enum`) or counted as distinct (`uniqueItems`). Comparisons
+without objects keep the backend's `equals_value`/`is_unique` fast path.

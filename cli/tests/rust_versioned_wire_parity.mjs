@@ -24,6 +24,12 @@ const {contentParse}=load('framework/express/src/middleware/content.parse.middle
  '@forklaunch/core/http':load('framework/core/src/http/router/discriminateBody.ts'),
  express:require('express'),busboy:require('busboy')
 });
+// Handler-visible member order (JavaScript Object.keys), as object key paths depth first.
+function keyPaths(value,prefix='',out=[]){
+ if(Array.isArray(value))value.forEach((item,index)=>keyPaths(item,`${prefix}/${index}`,out));
+ else if(value&&typeof value==='object'&&!Buffer.isBuffer(value))for(const key of Object.keys(value)){const path=`${prefix}/${key}`;out.push(path);keyPaths(value[key],path,out);}
+ return out;
+}
 const cases = [
  ['json',Buffer.from('{}')], ['json',Buffer.from('[]')], ['json',Buffer.alloc(0)],
  ['json',Buffer.from(' null')], ['json',Buffer.from('true')], ['json',Buffer.from('42')], ['json',Buffer.from('"text"')],
@@ -33,6 +39,8 @@ const cases = [
  ['text',Buffer.from('水')], ['text',Buffer.alloc(0)], ['text',Buffer.from('\ufefftext')], ['text',Buffer.from('\ufeff\ufefftext')],
  ['text',Buffer.from([255])], ['text',Buffer.from([0xe6,0xb0])], ['text',Buffer.from([0xc0,0xaf])], ['text',Buffer.from([0xed,0xa0,0x80])],
 ];
+// Member order: insertion order, except JavaScript array-index keys enumerate first.
+cases.push(['json',Buffer.from('{"b":1,"a":{"d":1,"c":2},"10":3,"2":4,"b2":[{"z":1,"y":2}]}')],['json',Buffer.from('{"b":1,"a":2,"b":3}')],['form',Buffer.from('b=1&a=2&10=3&2=4&x[d]=1&x[c]=2&x[1]=3')]);
 const iconv=require('iconv-lite');
 for(const charset of ['utf-8','utf-16le','utf-16be','utf-16','utf-32le','utf-32be','utf-32']) {
  for(const value of ['', 'abc 水 🦀', '\ufefftext']) {
@@ -154,10 +162,10 @@ for(const [kind,bytes,charset,parserOptions,contentEncoding,verify,reviver] of c
   assert.deepEqual(req._rawBody,contentEncoding?decompressors[contentEncoding](bytes):bytes);
   const body=Buffer.isBuffer(req.body)?[...req.body]:req.body;
   versions.push({name:'exact',schema:{...(kind==='file'?{type:'array'}:{}),const:body}});
-  expected.push([{version:'exact',matched:['fallback','exact'],status:200,body}]);
+  expected.push([{version:'exact',matched:['fallback','exact'],status:200,body,bodyKeys:keyPaths(req.body)}]);
  }
- fixtures.push({kind,contentType,contentEncoding,parserOptions,verify,reviver,wireBytes:true,includeBody:true,versions,cases:[[...bytes]]});
+ fixtures.push({kind,contentType,contentEncoding,parserOptions,verify,reviver,wireBytes:true,includeBody:true,includeKeyOrder:true,versions,cases:[[...bytes]]});
 }
 const native=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify(fixtures),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000,maxBuffer:32*1024*1024}));
 for(const [i,result] of native.entries()) assert.deepEqual(result.cases,expected[i],`${cases[i][0]} ${cases[i][2]} ${cases[i][4]} ${cases[i][1].subarray(0,64).toString('hex')}`);
-console.log(`PASS ${fixtures.length} actual TypeScript/native JSON/text/form/file wire-parser comparisons: parser options, charsets, compression and bounded decoded bytes`);
+console.log(`PASS ${fixtures.length} actual TypeScript/native JSON/text/form/file wire-parser comparisons: parser options, charsets, compression, bounded decoded bytes and member order`);
