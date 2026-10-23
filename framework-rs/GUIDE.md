@@ -41,7 +41,7 @@ Define each operation once with `RouteContract` and register it with
 status/body types and authorization metadata. Register the same routes in the
 exported `ContractRegistry`: code generation consumes that registry and does not
 infer unregistered Axum handlers. The generated `src/routes/mod.rs` is the
-application extension point. The [canonical service example](../blueprint-rs/crates/sample-service/examples/canonical_iam.rs)
+application extension point. The [canonical service example](../blueprint-rs/crates/implementations/iam/iam-base/examples/canonical_iam.rs)
 shows authenticated routing with request validation and contract metadata.
 
 Use internal mounts for application-owned raw protocols (for example, Better
