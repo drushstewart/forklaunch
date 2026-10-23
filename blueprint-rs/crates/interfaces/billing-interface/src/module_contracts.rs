@@ -53,9 +53,9 @@ fn configure(schema: &mut Value, family: &str, form: Form, stripe: bool) {
             .as_object_mut()
             .expect("object schema")
             .remove("providerFields");
-        // The actual validator's type<T>() is z.any(): OpenAPI describes an
-        // object and treats it as optional even when the TS member is required.
-        schema["properties"]["stripeFields"] = json!({"type":"object"});
+        // The actual validator's type<T>() is z.any(): OpenAPI leaves it
+        // unconstrained and optional even when the TS member is required.
+        schema["properties"]["stripeFields"] = json!({});
         if family == "PaymentLink" && form == Form::Create {
             schema["properties"]["stripeFields"] = json!({"type":"object", "properties": {
                 "line_items": {"type":"array", "items":{"type":"object", "additionalProperties":{}}}
@@ -66,11 +66,12 @@ fn configure(schema: &mut Value, family: &str, form: Form, stripe: bool) {
                 .push(json!("stripeFields"));
         }
         if family == "CheckoutSession" && form == Form::Read {
-            schema["properties"]["metadata"] = json!({"type":"object"});
+            schema["properties"]["metadata"] = json!({});
         }
     }
     if !stripe && schema["properties"].get("providerFields").is_some() {
-        schema["properties"]["providerFields"] = json!({"type":"object"});
+        // validator.unknown carries no type annotation (a821c0fe8).
+        schema["properties"]["providerFields"] = json!({});
     }
     for field in [
         "cadence",

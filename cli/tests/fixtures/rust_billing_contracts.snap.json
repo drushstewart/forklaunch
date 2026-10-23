@@ -645,8 +645,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "updatedAt": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -766,8 +765,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "status": {
             "enum": [
@@ -834,8 +832,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "uri": {
             "example": "a string",
@@ -933,8 +930,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "status": {
             "enum": [
@@ -1044,8 +1040,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "status": {
             "enum": [
@@ -1182,8 +1177,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           }
         },
         "required": [
@@ -1263,8 +1257,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "startDate": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -1376,8 +1369,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "status": {
             "enum": [
@@ -1536,8 +1528,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "updatedAt": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -1638,8 +1629,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "startDate": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -1694,8 +1684,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "uri": {
             "example": "a string",
@@ -1788,8 +1777,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "status": {
             "enum": [
@@ -1932,8 +1920,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           }
         },
         "required": [
@@ -2016,8 +2003,7 @@
           },
           "providerFields": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "startDate": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -2718,8 +2704,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "updatedAt": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -2856,8 +2841,7 @@
           },
           "metadata": {
             "example": "unknown",
-            "title": "Unknown",
-            "type": "object"
+            "title": "Unknown"
           },
           "paymentMethods": {
             "items": {
@@ -2925,8 +2909,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "successRedirectUri": {
             "example": "a string",
@@ -2985,8 +2968,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "uri": {
             "example": "a string",
@@ -3174,8 +3156,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "successRedirectUri": {
             "example": "a string",
@@ -3543,8 +3524,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           }
         },
         "required": [
@@ -3642,8 +3622,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           }
         },
         "required": [
@@ -3823,8 +3802,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "updatedAt": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -4001,8 +3979,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "updatedAt": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -4112,8 +4089,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "updatedAt": {
             "example": "2025-05-16T21:13:04.123Z",
@@ -4153,8 +4129,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           },
           "uri": {
             "example": "a string",
@@ -4328,8 +4303,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           }
         },
         "required": [
@@ -4490,8 +4464,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           }
         },
         "required": [
@@ -4583,8 +4556,7 @@
           },
           "stripeFields": {
             "example": "any",
-            "title": "Any",
-            "type": "object"
+            "title": "Any"
           }
         },
         "required": [
