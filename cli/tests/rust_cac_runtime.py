@@ -61,8 +61,9 @@ try:
     assert (app / 'src/cac/sdk/rust/.forklaunch-sdk-local').is_file()
     assert (app / 'src/cac/.forklaunch/contracts/Cargo.toml').is_file()
     assert not (app / 'src/client-sdk/typescript/cac').exists()
-    # Blueprint crates come from crates.io; the module binds their handlers.
+    # Blueprint crates come from crates.io; build against this checkout's.
     assert not (app / '.forklaunch/blueprint-rs').exists()
+    run('python3', repo / 'cli/tests/fixtures/local_crates_patch.py', app, repo, cwd=root)
     assert (app / 'src/cac/registrations.rs').is_file()
     assert not (app / 'src/cac/api/http').exists()
     library = app / 'src/cac/lib.rs'
