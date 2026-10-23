@@ -119,12 +119,12 @@ fn main() {
       if (mode === 'binary') return send(200, 'application/octet-stream', Buffer.from([0, 255, 13, 10]));
       if (mode === 'null') return send(200, 'application/json', 'null');
       if (mode === 'invalid') return send(200, 'application/json', '{broken');
-      if (mode === 'empty') return send(204);
-      if (mode === 'head') return send(200);
+      if (mode === 'empty') return send(204, 'application/json');
+      if (mode === 'head') return send(200, 'application/json');
       if (mode === 'error') return send(409, 'application/problem+json', JSON.stringify({ errorCode: 'CONFLICT' }));
       if (mode === 'several/created') return send(201, 'application/json', JSON.stringify({ createdAt: 'today' }));
       if (mode === 'several/queued') return send(202, 'application/json', JSON.stringify({ jobId: 42 }));
-      if (mode === 'several/empty') return send(204);
+      if (mode === 'several/empty') return send(204, 'application/json');
       return send(404, 'text/plain', 'Unknown fixture');
     }
     if (request.url.startsWith('/json')) assert.equal(decodeURIComponent(request.url), "/json/a'b&c");
