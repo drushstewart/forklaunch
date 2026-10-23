@@ -27,15 +27,19 @@ function pojo(value){
 const captured=[];
 const handlers=new Proxy({}, {get:(_,method)=>(_validator,_path,options)=>({method,options})});
 function router(prefix) {return new Proxy({}, {get:(_,method)=>(suffix,handler)=>{assert.equal(method,handler.method);captured.push({method:method.toUpperCase(),path:(prefix+suffix).replace(/\/$/,''),options:handler.options});return handler;}});}
-const ci={resolve:()=>({}),scopedResolver:()=>()=>({})},tokens=new Proxy({}, {get:(_,key)=>key});
+// Controllers bind runtime credentials eagerly (bindRuntimeAuth validates they
+// are non-empty strings); key and URL tokens resolve to fixture strings.
+const ci={resolve:token=>/(_KEY|_URL)$/.test(token)?`fixture-${token}`:{},scopedResolver:()=>()=>({})},tokens=new Proxy({}, {get:(_,key)=>key});
 let currentAction;
 let actual;
 actual=actualValidator(root,(spec,file,load)=>{
  if(spec.endsWith('/bootstrapper'))return {ci,tokens};
  if(spec==='jose')return {};
  if(spec.endsWith('/persistence/encryptedType'))return {withEncryptionContext:(_context,run)=>run()};
- if(spec==='@forklaunch/validator/zod')return actual.statics;
- if(spec==='@forklaunch/blueprint-core')return {...actual.statics,schemaValidator:actual.validator,handlers,forklaunchRouter:router,IdSchema:{id:actual.statics.uuid},IdsSchema:{ids:actual.statics.array(actual.statics.uuid)},...load(path.join(root,'blueprint/core/auth/rbac.ts'))};
+ // Contracts import a concrete validator that the CLI rewrites to the app's
+ // choice; this parity run selects Zod for every layer.
+ if(spec==='@forklaunch/validator/zod'||spec==='@forklaunch/validator/typebox')return actual.statics;
+ if(spec==='@forklaunch/blueprint-core')return {...actual.statics,schemaValidator:actual.validator,handlers,forklaunchRouter:router,IdSchema:{id:actual.statics.uuid},IdsSchema:{ids:actual.statics.array(actual.statics.uuid)},...load(path.join(root,'blueprint/core/auth/rbac.ts')),...load(path.join(root,'blueprint/core/auth/bindRuntimeAuth.ts'))};
  if(spec==='@forklaunch/core/mappers')return {...load(path.join(root,'framework/core/src/mappers/mapper.ts')),...load(path.join(root,'framework/core/src/mappers/mapServiceSchemas.ts'))};
  if(spec==='@forklaunch/internal')return load(path.join(root,'framework/internal/src/serviceSchemaResolver.ts'));
  if(spec==='@forklaunch/implementation-iam-base/schemas')return load(path.join(root,'blueprint/implementations/iam/base/domain/schemas/index.ts'));
