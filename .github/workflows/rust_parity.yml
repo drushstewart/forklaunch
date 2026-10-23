@@ -1445,6 +1445,8 @@ jobs:
       FORKLAUNCH_TEST_REDIS_URL: redis://127.0.0.1:6379/
       FORKLAUNCH_TEST_POSTGRES_URL: postgres://postgres:parity-test-only@127.0.0.1:5432/parity
       FORKLAUNCH_TEST_KAFKA_BROKERS: 127.0.0.1:9092
+      # Required at startup since 7248a878d; the module HTTP tests exercise /mcp.
+      MCP_ENABLED: 'true'
     steps:
       - uses: actions/checkout@v7
       # The runner context is not available in job-level env.
