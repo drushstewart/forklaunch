@@ -104,7 +104,7 @@ try:
     routes = service / 'api/routes/mod.rs'
     routes.write_text('pub mod sse_fixture;\n' + routes.read_text().replace('ContractRouter::new(contracts::registry())', 'ContractRouter::new(contracts::native_registry())'))
     manifest = service / 'Cargo.toml'
-    manifest.write_text(manifest.read_text().replace('[dependencies]\n', '[dependencies]\nfutures-util = "0.3"\n').replace('features = ["native-server"', 'features = ["native-server", "adapter", "sse"'))
+    manifest.write_text(manifest.read_text().replace('[dependencies]\n', '[dependencies]\nfutures-util = "0.3"\n').replace('"native-server"', '"native-server", "adapter", "sse"', 1))
     application = service / 'application.rs'
     application.write_text(application.read_text().replace('    Ok(router)', '''    let fixture = crate::api::routes::sse_fixture::register(forklaunch_axum::ForkLaunchRouter::new(
         forklaunch_core::ServiceInfo::new("streams", env!("CARGO_PKG_VERSION")),
