@@ -33,6 +33,16 @@ environment = {
     "KAFKA_OPERATION_TIMEOUT_MS": "15000",
     # Required at startup since 7248a878d.
     "RUST_LOG": "info",
+    "WORKER_QUEUE": "jobs",
+    "KAFKA_GROUP_ID": "workers",
+    "KAFKA_PARTITIONS": "3",
+    "KAFKA_REPLICATION_FACTOR": "1",
+    "KAFKA_SESSION_TIMEOUT_MS": "10000",
+    "WORKER_MAX_PAYLOAD_BYTES": "1048576",
+    "WORKER_MAX_ATTEMPTS": "3",
+    "WORKER_BACKOFF_SECONDS": "30",
+    "WORKER_HANDLER_TIMEOUT_MS": "300000",
+    "WORKER_DRAIN_MS": "30000",
 }
 payload = {
     "resourceId": resource,
@@ -113,7 +123,8 @@ def inspection_ready():
 
 
 wait_for(inspection_ready, "broker consumer-offset coordinator")
-reject("missing encryption key at startup", overrides={"ENCRYPTION_KEY_HEX": ""})
+# An empty required setting is reported as missing since 7248a878d.
+reject("missing encryption key at startup", overrides={"ENCRYPTION_KEY_HEX": ""}, error="config_missing")
 reject("nil tenant at startup", overrides={"TENANT_ID": "00000000-0000-0000-0000-000000000000"})
 reject("remote plaintext broker under default TLS policy", overrides={"WORKER_ALLOW_PLAINTEXT_DEVELOPMENT": "false"}, error="Configuration")
 reject("invalid operation UUID", "--enqueue", "container-job", json.dumps(payload))
