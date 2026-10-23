@@ -876,6 +876,34 @@ pub(super) fn prune_stale_migrations(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Required `${VAR:?…}` settings of native processes that the root `.env`
+/// leaves unset or empty, as (Compose service, variable).
+pub(super) fn env_gaps(root: &Path) -> Result<Vec<(String, String)>> {
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let compose_path = root.join(manifest.get("docker_compose_path").and_then(Value::as_str).unwrap_or("docker-compose.yaml"));
+    if !compose_path.is_file() {
+        return Ok(vec![]);
+    }
+    let compose = read_or_create_rust_docker_compose(&compose_path)?;
+    let (values, _) = parse_env(&read_to_string(root.join(".env")).unwrap_or_default());
+    let pattern = regex::Regex::new(r"\$\{([A-Z0-9_]+):\?").expect("fixed variable pattern");
+    let mut gaps = Vec::new();
+    for (name, service) in &compose.services {
+        if !binary(service).is_some_and(|binary| binary.starts_with("/app/bin/")) {
+            continue;
+        }
+        for value in service.environment.iter().flatten().map(|(_, value)| value) {
+            for captures in pattern.captures_iter(value) {
+                let variable = captures[1].to_owned();
+                if values.get(&variable).is_none_or(|value| value.is_empty()) && !gaps.contains(&(name.clone(), variable.clone())) {
+                    gaps.push((name.clone(), variable));
+                }
+            }
+        }
+    }
+    Ok(gaps)
+}
+
 /// The generated local Kafka broker leaves with the last process that read it.
 pub(super) fn release_unused_kafka(root: &Path) -> Result<()> {
     let path = root.join("docker-compose.yaml");

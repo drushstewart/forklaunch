@@ -637,6 +637,21 @@ impl RustProjectKind {
     }
 }
 
+/// Required settings of native processes that `.env` does not provide.
+pub(crate) fn native_env_gaps(app_root: &Path) -> Result<Vec<(String, String)>> {
+    local_runtime::env_gaps(app_root)
+}
+
+/// Fill the generated local values native processes need (as `init` does);
+/// returns what still needs a person.
+pub(crate) fn sync_native_env(app_root: &Path) -> Result<Vec<(String, String)>> {
+    if !is_rust_app_root(app_root)? || !app_root.join("Cargo.toml").is_file() {
+        return Ok(vec![]);
+    }
+    language_images::reconcile(app_root)?;
+    local_runtime::env_gaps(app_root)
+}
+
 pub(crate) fn is_rust_app_root(app_root: &Path) -> Result<bool> {
     let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
     if !manifest_path.exists() {
