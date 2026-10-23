@@ -962,6 +962,11 @@ fn renamed_project_value(value: &str, app: &str, old: &str, new: &str) -> String
     renamed_segment(&value, old, new)
 }
 
+/// `http://<old>:port` and `http://<old>-server:port` addresses of a renamed project.
+fn renamed_host(value: &str, old: &str, new: &str) -> String {
+    value.replace(&format!("://{old}:"), &format!("://{new}:")).replace(&format!("://{old}-server:"), &format!("://{new}-server:"))
+}
+
 /// Rename a project's Compose processes in place, keeping their settings,
 /// ports and infrastructure, and point every reference (depends_on, consumer
 /// `<OLD>_*` settings) at the new name. The root `.env` keys follow, and the
@@ -1011,7 +1016,7 @@ pub(super) fn rename_compose_project(root: &Path, old: &str, new: &str) -> Resul
                                 if key.starts_with(&old_upper) {
                                     (renamed_key(&key), renamed_project_value(&value, &app, old, new))
                                 } else {
-                                    (key, value.replace(&format!("${{{old_upper}"), &format!("${{{new_upper}")))
+                                    (key, renamed_host(&value.replace(&format!("${{{old_upper}"), &format!("${{{new_upper}")), old, new))
                                 }
                             })
                             .collect(),
@@ -1042,6 +1047,8 @@ pub(super) fn rename_compose_project(root: &Path, old: &str, new: &str) -> Resul
                 Some((key, value)) if !key.trim_start().starts_with('#') && (own || key.trim().starts_with(&old_upper)) => {
                     format!("{}={}", renamed_key(key.trim()), renamed_project_value(value, &app, old, new))
                 }
+                // Other settings that address the project's processes by hostname.
+                Some((key, value)) if !key.trim_start().starts_with('#') => format!("{key}={}", renamed_host(value, old, new)),
                 _ => line.to_owned(),
             })
             .collect();
@@ -1328,7 +1335,7 @@ mod tests {
       accounts:
         condition: service_started
 "#).unwrap();
-        write(root.join(".env"), "ACCOUNTS_DATABASE_URL=postgresql://accounts_app@postgresql:5432/kestrel_accounts\nACCOUNTS_STORAGE_ENCRYPTION_NAMESPACE=accounts-records\nACCOUNTSX_KEEP=1\nIAM_NOTE=accounts\n").unwrap();
+        write(root.join(".env"), "ACCOUNTS_DATABASE_URL=postgresql://accounts_app@postgresql:5432/kestrel_accounts\nACCOUNTS_STORAGE_ENCRYPTION_NAMESPACE=accounts-records\nACCOUNTSX_KEEP=1\nIAM_NOTE=accounts\nOTHER_URL=http://accounts:8000/x\n").unwrap();
         write(root.join("src/ledgers/.env.local"), "DATABASE_URL=postgresql://accounts_app@127.0.0.1:5432/kestrel_accounts\nPORT=8000\n").unwrap();
         rename_compose_project(root, "accounts", "ledgers").unwrap();
         let compose = read_or_create_rust_docker_compose(&root.join("docker-compose.yaml")).unwrap();
@@ -1344,7 +1351,7 @@ mod tests {
         assert_eq!(consumer.environment.as_ref().unwrap()["OTHER"], "keep-accounts-word");
         assert!(consumer.depends_on.as_ref().unwrap().contains_key("ledgers"));
         assert!(!compose.services.contains_key("accounts"));
-        assert_eq!(read_to_string(root.join(".env")).unwrap(), "LEDGERS_DATABASE_URL=postgresql://ledgers_app@postgresql:5432/kestrel_ledgers\nLEDGERS_STORAGE_ENCRYPTION_NAMESPACE=ledgers-records\nACCOUNTSX_KEEP=1\nIAM_NOTE=accounts\n");
+        assert_eq!(read_to_string(root.join(".env")).unwrap(), "LEDGERS_DATABASE_URL=postgresql://ledgers_app@postgresql:5432/kestrel_ledgers\nLEDGERS_STORAGE_ENCRYPTION_NAMESPACE=ledgers-records\nACCOUNTSX_KEEP=1\nIAM_NOTE=accounts\nOTHER_URL=http://ledgers:8000/x\n");
         assert_eq!(read_to_string(root.join("src/ledgers/.env.local")).unwrap(), "DATABASE_URL=postgresql://ledgers_app@127.0.0.1:5432/kestrel_ledgers\nPORT=8000\n");
     }
 

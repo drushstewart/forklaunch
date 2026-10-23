@@ -3300,8 +3300,36 @@ fn update_rust_project_local_library_dependencies(
         dependencies.insert(library.name.clone(), Value::Table(dependency));
     }
 
-    write(&cargo_path, toml::to_string_pretty(&cargo)?)
-        .with_context(|| format!("Failed to update {}", cargo_path.display()))
+    let updated = edited_dependencies(&content, &cargo)?;
+    if updated != content {
+        write(&cargo_path, updated).with_context(|| format!("Failed to update {}", cargo_path.display()))?;
+    }
+    Ok(())
+}
+
+/// `content` with its `[dependencies]` brought to those of `cargo`, editing
+/// only the entries that changed so the rest of the manifest keeps its layout.
+fn edited_dependencies(content: &str, cargo: &Value) -> Result<String> {
+    let original: Value = toml::from_str(content)?;
+    let empty = Map::new();
+    let before = original.get("dependencies").and_then(Value::as_table).unwrap_or(&empty);
+    let after = cargo.get("dependencies").and_then(Value::as_table).unwrap_or(&empty);
+    if before == after {
+        return Ok(content.to_owned());
+    }
+    let mut document: toml_edit::DocumentMut = content.parse()?;
+    if !document.contains_key("dependencies") {
+        document["dependencies"] = toml_edit::Item::Table(toml_edit::Table::new());
+    }
+    let table = document["dependencies"].as_table_like_mut().context("Cargo dependencies")?;
+    for key in before.keys().filter(|key| !after.contains_key(*key)) {
+        table.remove(key);
+    }
+    for (key, value) in after.iter().filter(|(key, value)| before.get(*key) != Some(*value)) {
+        let item: toml_edit::DocumentMut = format!("value = {value}").parse()?;
+        table.insert(key, item["value"].clone());
+    }
+    Ok(document.to_string())
 }
 
 // Custom library paths are not necessarily under crates/. Remove only the
@@ -4076,6 +4104,18 @@ mod workspace_tests {
     }
 
     use super::*;
+
+    #[test]
+    fn library_dependency_edits_keep_the_manifest_layout() {
+        let source = "# mine\n[package]\nname = \"api\"\n\n[dependencies]\naxum = \"0.8\"\nold = { path = \"../core/old\" }\n";
+        let mut cargo: Value = toml::from_str(source).unwrap();
+        let dependencies = cargo["dependencies"].as_table_mut().unwrap();
+        dependencies.remove("old");
+        dependencies.insert("shared".into(), toml::from_str::<Value>("path = '../core/shared'").unwrap());
+        assert_eq!(edited_dependencies(source, &cargo).unwrap(), "# mine\n[package]\nname = \"api\"\n\n[dependencies]\naxum = \"0.8\"\nshared = { path = \"../core/shared\" }\n");
+        let unchanged: Value = toml::from_str(source).unwrap();
+        assert_eq!(edited_dependencies(source, &unchanged).unwrap(), source);
+    }
 
     #[test]
     fn application_metadata_keeps_the_workspace_manifest_layout() {
