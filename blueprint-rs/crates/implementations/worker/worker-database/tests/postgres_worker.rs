@@ -9,6 +9,12 @@ use forklaunch_worker_interface::{
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::{collections::HashSet, time::Duration};
 
+/// Timing multiplier for the runner, control and retention windows. Runner queue
+/// operations are bounded by `renew_interval`, so a loaded CI runner needs
+/// headroom; the assertions depend only on the ratios between lease, renewal,
+/// handler and sleep durations, which scaling preserves.
+const T: u32 = 8;
+
 struct Fixture {
     owner: PgPool,
     pool: PgPool,
@@ -417,7 +423,7 @@ mod runner_tests {
         }
     }
     async fn until(mut condition: impl FnMut() -> bool) {
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(5) * T, async {
             while !condition() {
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
@@ -431,9 +437,9 @@ mod runner_tests {
             concurrency: 1,
             batch_size: 1,
             poll_interval: Duration::from_millis(5),
-            lease_duration: Duration::from_millis(600),
-            renew_interval: Duration::from_millis(150),
-            drain_timeout: Duration::from_secs(2),
+            lease_duration: Duration::from_millis(600) * T,
+            renew_interval: Duration::from_millis(150) * T,
+            drain_timeout: Duration::from_secs(2) * T,
         }
     }
 
@@ -459,7 +465,7 @@ mod runner_tests {
             let handler = Handler {
                 started: Arc::clone(&started),
                 active: Arc::clone(&active),
-                duration: Duration::from_millis(1400),
+                duration: Duration::from_millis(1400) * T,
                 fails: false,
             };
             tokio::spawn(async move {
@@ -469,7 +475,7 @@ mod runner_tests {
             })
         };
         until(|| started.load(Ordering::SeqCst)).await;
-        tokio::time::sleep(Duration::from_millis(800)).await;
+        tokio::time::sleep(Duration::from_millis(800) * T).await;
         assert!(active.load(Ordering::SeqCst));
         assert!(
             queue
@@ -528,7 +534,7 @@ mod runner_tests {
         };
         until(|| started.load(Ordering::SeqCst)).await;
         shutdown.notify_one();
-        let report = tokio::time::timeout(Duration::from_secs(2), task)
+        let report = tokio::time::timeout(Duration::from_secs(2) * T, task)
             .await
             .unwrap()
             .unwrap();
@@ -543,7 +549,7 @@ mod runner_tests {
                 .status,
             JobStatus::Processing
         );
-        tokio::time::sleep(Duration::from_millis(650)).await;
+        tokio::time::sleep(Duration::from_millis(650) * T).await;
         assert_eq!(
             queue
                 .claim("cancel", Duration::from_secs(30))
@@ -623,7 +629,7 @@ mod runner_tests {
                 .unwrap()
             })
         };
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(5) * T, async {
             loop {
                 if queue
                     .inspect("failure", "failure")
@@ -976,7 +982,7 @@ async fn verify_retention_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
     assert_eq!(report, RetentionReport::default());
     assert!(queue.inspect(name, "completed").await.unwrap().is_some());
     let report = retention::run(queue, name, &policy, async {
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        tokio::time::sleep(Duration::from_millis(150) * T).await;
     })
     .await
     .unwrap();
@@ -991,7 +997,7 @@ async fn verify_retention_contract<Q: AsyncWorkerAdmin>(queue: &Q, other: &Q) {
     policy.completed_age = None;
     policy.failed_age = Some(Duration::from_millis(1));
     let report = retention::run(queue, name, &policy, async {
-        tokio::time::sleep(Duration::from_millis(150)).await;
+        tokio::time::sleep(Duration::from_millis(150) * T).await;
     })
     .await
     .unwrap();
@@ -1018,12 +1024,12 @@ async fn verify_control_contract<Q: AsyncWorkerQueue>(queue: &Q) {
     struct ControlledHandler;
     impl JobHandler for ControlledHandler {
         async fn process(&self, _job: Job) -> forklaunch_core::domain::BlueprintResult<()> {
-            tokio::time::sleep(Duration::from_millis(600)).await;
+            tokio::time::sleep(Duration::from_millis(600) * T).await;
             Ok(())
         }
     }
     async fn wait<Q: AsyncWorkerQueue>(queue: &Q, id: &str, status: JobStatus) {
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(5) * T, async {
             loop {
                 if queue
                     .inspect("controlled", id)
@@ -1056,9 +1062,9 @@ async fn verify_control_contract<Q: AsyncWorkerQueue>(queue: &Q) {
         concurrency: 1,
         batch_size: 1,
         poll_interval: Duration::from_millis(5),
-        lease_duration: Duration::from_millis(300),
-        renew_interval: Duration::from_millis(75),
-        drain_timeout: Duration::from_secs(2),
+        lease_duration: Duration::from_millis(300) * T,
+        renew_interval: Duration::from_millis(75) * T,
+        drain_timeout: Duration::from_secs(2) * T,
     };
     let (report, ()) = tokio::join!(
         runner::run_controlled(
@@ -1074,7 +1080,7 @@ async fn verify_control_contract<Q: AsyncWorkerQueue>(queue: &Q) {
             assert!(control.resume());
             wait(queue, "first", JobStatus::Processing).await;
             assert!(control.pause());
-            tokio::time::sleep(Duration::from_millis(350)).await;
+            tokio::time::sleep(Duration::from_millis(350) * T).await;
             assert_eq!(
                 queue
                     .inspect("controlled", "first")
@@ -1248,11 +1254,13 @@ async fn verify_batch_runner_contract<Q: AsyncWorkerQueue>(queue: &Q) {
             panic!("single handler used for a configured batch");
         }
         async fn process_batch(&self, jobs: Vec<Job>) -> BlueprintResult<Vec<JobFailure>> {
-            tokio::time::sleep(Duration::from_millis(if jobs[0].queue == "batch-drain" {
-                700
-            } else {
-                400
-            }))
+            tokio::time::sleep(
+                Duration::from_millis(if jobs[0].queue == "batch-drain" {
+                    700
+                } else {
+                    400
+                }) * T,
+            )
             .await;
             let failure = |id: String| JobFailure {
                 id,
@@ -1296,11 +1304,11 @@ async fn verify_batch_runner_contract<Q: AsyncWorkerQueue>(queue: &Q) {
             concurrency: if drain { 2 } else { 1 },
             batch_size: 3,
             poll_interval: Duration::from_millis(5),
-            lease_duration: Duration::from_millis(300),
-            renew_interval: Duration::from_millis(75),
-            drain_timeout: Duration::from_secs(2),
+            lease_duration: Duration::from_millis(300) * T,
+            renew_interval: Duration::from_millis(75) * T,
+            drain_timeout: Duration::from_secs(2) * T,
         };
-        let (report, ()) = tokio::time::timeout(Duration::from_secs(5), async {
+        let (report, ()) = tokio::time::timeout(Duration::from_secs(5) * T, async {
             tokio::join!(
                 runner::run_controlled(queue, &Handler, &config, &control, std::future::pending()),
                 async {
