@@ -21,6 +21,9 @@ on:
       - "scripts/test_sync_rust_embedded_sources.py"
       - ".github/workflows/cli_tests.yml"
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest

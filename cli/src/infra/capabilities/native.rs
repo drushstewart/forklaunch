@@ -313,7 +313,7 @@ pub(super) fn apply(
             .is_some();
     let shared_contract = native_router || builtin_contract;
     let module_path = source_root.join("capabilities/mod.rs");
-    let nonce_store_path = source_root.join("capabilities/nonce_store.rs");
+    let replay_store_file = source_root.join("capabilities/nonce_store.rs");
     let inline_contract = native_router
         && edit
             .read(&source_root.join(".forklaunch/contracts/lib.rs"))?
@@ -432,8 +432,8 @@ pub(super) fn apply(
         registry_source = lib.clone();
     }
     if wants_events {
-        if edit.read(&nonce_store_path)?.is_none() {
-            edit.write(nonce_store_path.clone(), NONCE_STORE.into());
+        if edit.read(&replay_store_file)?.is_none() {
+            edit.write(replay_store_file.clone(), NONCE_STORE.into());
         }
         if !main.contains(&import) {
             main = after_inner_docs(&main, &import);
@@ -478,11 +478,11 @@ pub(super) fn apply(
             }
         }
     } else {
-        match edit.read(&nonce_store_path)? {
-            Some(text) if edit.is_generated(&nonce_store_path, &text, NONCE_STORE) => {
-                edit.delete(nonce_store_path)
+        match edit.read(&replay_store_file)? {
+            Some(text) if edit.is_generated(&replay_store_file, &text, NONCE_STORE) => {
+                edit.delete(replay_store_file)
             }
-            Some(_) => edit.note_kept(&nonce_store_path),
+            Some(_) => edit.note_kept(&replay_store_file),
             None => {}
         }
         if builtin_contract {

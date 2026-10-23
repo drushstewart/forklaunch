@@ -23,6 +23,9 @@ on:
       - 'cli/src/templates/project/iam-better-auth/**'
       - '.github/workflows/build_blueprint.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

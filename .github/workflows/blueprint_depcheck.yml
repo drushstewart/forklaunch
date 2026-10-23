@@ -21,6 +21,9 @@ on:
       - 'cli/src/core/cargo_toml/cargo_toml_constants.rs'
       - '.github/workflows/scripts/check_blueprint_deps/**'
 
+permissions:
+  contents: read
+
 jobs:
   depcheck:
     runs-on: ubuntu-latest

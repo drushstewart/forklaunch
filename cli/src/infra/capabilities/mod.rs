@@ -266,10 +266,16 @@ impl CapabilityEdit {
             return Ok(());
         };
         let kept = in_place::remove_env_pairs(&text, pairs);
-        for (key, _) in pairs {
-            if kept.lines().any(|line| in_place::env_key(line) == Some(*key)) {
-                self.note_kept_setting(&path, key);
-            }
+        // Name kept settings from the file itself, never from the pairs (whose
+        // values may be secrets).
+        let kept_names: Vec<String> = kept
+            .lines()
+            .filter_map(in_place::env_key)
+            .filter(|name| pairs.iter().any(|(added, _)| added == name))
+            .map(str::to_owned)
+            .collect();
+        for name in &kept_names {
+            self.note_kept_setting(&path, name);
         }
         if kept == text {
             return Ok(());

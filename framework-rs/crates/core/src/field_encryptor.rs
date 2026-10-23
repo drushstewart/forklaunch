@@ -219,8 +219,9 @@ impl FieldEncryptor {
         let mut mac =
             <Hmac<Sha256> as KeyInit>::new_from_slice(key.as_ref()).map_err(|_| crypto_error())?;
         mac.update(plaintext.as_bytes());
-        let mut iv = [0_u8; 12];
-        iv.copy_from_slice(&mac.finalize().into_bytes()[..12]);
+        // The IV is the leading 96 bits of the HMAC (TS-compatible deterministic envelope).
+        let digest = mac.finalize().into_bytes();
+        let iv: [u8; 12] = digest[..12].try_into().map_err(|_| crypto_error())?;
         let body = Self::encrypt_body(plaintext, &key, iv)?;
         Ok(match self.format {
             CiphertextFormat::V2 => format!("v2:{body}"),
@@ -407,55 +408,7 @@ impl FieldEncryptor {
     }
 }
 
+// Loaded through persistence.rs's #[path]; name the child file explicitly.
 #[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn envelopes_are_authenticated_tenant_bound_rotatable_and_random_when_sealed() {
-        let old = FieldEncryptor::new("old-test-key").unwrap();
-        let new = FieldEncryptor::new("new-test-key")
-            .unwrap()
-            .with_previous_keys(&["old-test-key".to_owned()])
-            .unwrap()
-            .with_format(CiphertextFormat::V3);
-        for ciphertext in [
-            old.encrypt("private", "tenant-a").unwrap(),
-            old.seal("private", "tenant-a", "anonymous").unwrap(),
-        ] {
-            let opened = new.open(&ciphertext, "tenant-a").unwrap();
-            assert_eq!(opened.plaintext, "private");
-            assert!(opened.stale);
-            assert!(!opened.current);
-            assert!(new.decrypt(&ciphertext, "tenant-b").is_err());
-            let rotated = new.rotate(&ciphertext, "tenant-a").unwrap();
-            assert!(new.open(&rotated, "tenant-a").unwrap().current);
-            assert!(!new.needs_rotation(&rotated, "tenant-a").unwrap());
-            assert_eq!(new.rotate(&rotated, "tenant-a").unwrap(), rotated);
-        }
-        assert_eq!(
-            old.encrypt("private", "tenant-a").unwrap(),
-            old.encrypt("private", "tenant-a").unwrap()
-        );
-        assert_ne!(
-            old.seal("private", "tenant-a", "anon").unwrap(),
-            old.seal("private", "tenant-a", "anon").unwrap()
-        );
-        assert_ne!(
-            old.blind_index("private", "tenant-a").unwrap(),
-            old.blind_index("private", "tenant-b").unwrap()
-        );
-        assert!(
-            new.blind_indexes("private", "tenant-a")
-                .unwrap()
-                .contains(&old.blind_index("private", "tenant-a").unwrap())
-        );
-        for malformed in [
-            "plain",
-            "v2:bad:bad:bad",
-            "v3:unknown:AAAA:AAAA:AAAA",
-            "v4:unknown:bad:bad:bad:bad",
-        ] {
-            assert!(new.decrypt(malformed, "tenant-a").is_err());
-        }
-    }
-}
+#[path = "field_encryptor/tests.rs"]
+mod tests;

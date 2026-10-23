@@ -150,7 +150,7 @@ pub(crate) fn account_path(dir: &Path, name: &str) -> PathBuf {
     accounts_dir(dir).join(format!("{name}.toml"))
 }
 
-fn legacy_token_path(dir: &Path) -> PathBuf {
+fn legacy_account_link(dir: &Path) -> PathBuf {
     dir.join("token")
 }
 
@@ -250,7 +250,7 @@ pub(crate) fn default_account_name(dir: &Path) -> Option<String> {
 fn default_token_path(dir: &Path) -> PathBuf {
     match default_account_name(dir) {
         Some(name) => account_path(dir, &name),
-        None => legacy_token_path(dir),
+        None => legacy_account_link(dir),
     }
 }
 
@@ -258,7 +258,7 @@ fn default_token_path(dir: &Path) -> PathBuf {
 /// the keyring and not a login of its own.
 #[cfg(unix)]
 fn pointer_target(dir: &Path) -> Option<String> {
-    let target = fs::read_link(legacy_token_path(dir)).ok()?;
+    let target = fs::read_link(legacy_account_link(dir)).ok()?;
     let target = if target.is_absolute() {
         target
     } else {
@@ -282,7 +282,7 @@ fn point_legacy_at(dir: &Path, name: &str) -> Result<()> {
         SEQUENCE.fetch_add(1, Ordering::Relaxed)
     ));
     std::os::unix::fs::symlink(Path::new("accounts").join(format!("{name}.toml")), &tmp)?;
-    fs::rename(&tmp, legacy_token_path(dir))?;
+    fs::rename(&tmp, legacy_account_link(dir))?;
     Ok(())
 }
 
@@ -307,7 +307,7 @@ fn set_aside(dir: &Path) -> Result<PathBuf> {
         "token.orphan-{}",
         chrono::Utc::now().timestamp_millis()
     ));
-    fs::rename(legacy_token_path(dir), &aside)?;
+    fs::rename(legacy_account_link(dir), &aside)?;
     Ok(aside)
 }
 
@@ -318,7 +318,7 @@ fn set_aside(dir: &Path) -> Result<PathBuf> {
 fn sync_pointer(dir: &Path, replace_login: bool) -> Result<Option<PathBuf>> {
     let default = default_account_name(dir);
     let pointer = pointer_target(dir);
-    let legacy = legacy_token_path(dir);
+    let legacy = legacy_account_link(dir);
     let in_sync = match &default {
         Some(name) => pointer.as_deref() == Some(name.as_str()),
         None => pointer.is_none(),
@@ -412,7 +412,7 @@ pub(crate) fn set_default(dir: &Path, name: &str, force: bool) -> Result<Option<
         bail!("{}", no_such_account(dir, name));
     }
     let mut index = read_index(dir)?;
-    if index.default.is_none() && is_regular_file(&legacy_token_path(dir)) && !force {
+    if index.default.is_none() && is_regular_file(&legacy_account_link(dir)) && !force {
         bail!(
             "The current default login is not saved in the keyring, and switching would \
              stop using it. Keep it with `forklaunch account save <name>`, or pass --force \
@@ -429,7 +429,7 @@ pub(crate) fn set_default(dir: &Path, name: &str, force: bool) -> Result<Option<
     #[cfg(not(unix))]
     {
         // No symlinks to lean on: give older CLIs a copy of the default.
-        let _ = fs::copy(account_path(dir, name), legacy_token_path(dir));
+        let _ = fs::copy(account_path(dir, name), legacy_account_link(dir));
         Ok(None)
     }
 }
@@ -453,7 +453,7 @@ pub(crate) fn save(dir: &Path, name: &str, from: Option<&Path>, force: bool) -> 
         bail!("An account named '{name}' already exists. Pass --force to replace it.");
     }
 
-    let legacy = legacy_token_path(dir);
+    let legacy = legacy_account_link(dir);
     let source = match from {
         Some(path) => path.to_path_buf(),
         None => {
@@ -642,7 +642,7 @@ pub(crate) fn list(dir: &Path) -> Result<Vec<AccountInfo>> {
         })
         .collect();
 
-    let legacy = legacy_token_path(dir);
+    let legacy = legacy_account_link(dir);
     if index.default.is_none() && is_regular_file(&legacy) {
         accounts.push(AccountInfo {
             name: None,
@@ -690,7 +690,7 @@ pub(crate) fn handoff(dir: &Path, selection: &Selection) -> Result<Option<Handof
 
     #[cfg(unix)]
     {
-        let legacy = legacy_token_path(dir);
+        let legacy = legacy_account_link(dir);
         if is_regular_file(&legacy) && default_account_name(dir).is_none() {
             bail!(
                 "This project pins an older forklaunch CLI, which can only be pointed at \
@@ -857,7 +857,7 @@ pub(crate) fn after_login() -> Result<Option<String>> {
     };
     let dir = forklaunch_dir()?;
     let has_default =
-        default_account_name(&dir).is_some() || is_regular_file(&legacy_token_path(&dir));
+        default_account_name(&dir).is_some() || is_regular_file(&legacy_account_link(&dir));
     if !has_default {
         set_default(&dir, &name, false)?;
         return Ok(Some(format!(
@@ -895,7 +895,7 @@ mod tests {
     fn legacy_home() -> TempDir {
         let home = TempDir::new().unwrap();
         fs::write(
-            legacy_token_path(home.path()),
+            legacy_account_link(home.path()),
             token_file("first@example.com", "org-1", "session-1"),
         )
         .unwrap();
@@ -922,7 +922,7 @@ mod tests {
 
     /// Who an older CLI, which reads only `~/.forklaunch/token`, would be.
     fn what_an_older_cli_reads(dir: &Path) -> Option<String> {
-        identity(&legacy_token_path(dir)).email
+        identity(&legacy_account_link(dir)).email
     }
 
     fn named(dir: &Path, name: &str) -> Selection {
@@ -935,7 +935,7 @@ mod tests {
         let selection = resolve(home.path(), None, None, None).unwrap();
         assert_eq!(selection.name, None);
         assert_eq!(selection.source, AccountSource::Default);
-        assert_eq!(selection.token_path, legacy_token_path(home.path()));
+        assert_eq!(selection.token_path, legacy_account_link(home.path()));
         // Nothing to hand off: the login is already where an older CLI looks.
         assert!(handoff(home.path(), &selection).unwrap().is_none());
         assert!(!index_path(home.path()).exists());
@@ -1090,7 +1090,7 @@ mod tests {
         let unbound = remove(dir, "first").unwrap();
         assert_eq!(unbound[0].id, "app-1");
         assert_eq!(default_account_name(dir), None);
-        assert!(legacy_token_path(dir).symlink_metadata().is_err());
+        assert!(legacy_account_link(dir).symlink_metadata().is_err());
     }
 
     #[test]
@@ -1268,16 +1268,16 @@ mod tests {
         let home = keyring(&[]);
         let dir = home.path();
 
-        fs::remove_file(legacy_token_path(dir)).unwrap();
+        fs::remove_file(legacy_account_link(dir)).unwrap();
         assert_eq!(sync_pointer(dir, false).unwrap(), None);
         assert_eq!(
             what_an_older_cli_reads(dir).as_deref(),
             Some("first@example.com")
         );
 
-        fs::remove_file(legacy_token_path(dir)).unwrap();
+        fs::remove_file(legacy_account_link(dir)).unwrap();
         fs::write(
-            legacy_token_path(dir),
+            legacy_account_link(dir),
             token_file("stray@example.com", "org-7", "session-7"),
         )
         .unwrap();
