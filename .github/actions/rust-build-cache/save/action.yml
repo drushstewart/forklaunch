@@ -11,6 +11,13 @@ inputs:
       store. Keeps unchanged reruns from writing another copy of the same
       store and evicting other caches under the repository's size limit.
     default: '100'
+  max-hit-rate:
+    description: >-
+      Save only when the hit rate (percent) was below this. Some misses recur
+      on every run (scratch crates the tests compile in fresh temporary
+      directories), so a miss count alone would rewrite a warm store each
+      time; a falling hit rate is what says the store has gone stale.
+    default: '85'
 runs:
   using: composite
   steps:
@@ -19,16 +26,17 @@ runs:
       shell: bash
       env:
         MIN_MISSES: ${{ inputs.min-misses }}
+        MAX_HIT_RATE: ${{ inputs.max-hit-rate }}
       run: |
         "$SCCACHE_PATH" --show-stats
-        misses=$("$SCCACHE_PATH" --show-stats --stats-format=json | python3 -c 'import json,sys; print(sum(json.load(sys.stdin)["stats"]["cache_misses"]["counts"].values()))')
-        echo "misses=$misses" >> "$GITHUB_OUTPUT"
-        if [ "$misses" -ge "$MIN_MISSES" ]; then
+        read -r hits misses < <("$SCCACHE_PATH" --show-stats --stats-format=json | python3 -c 'import json,sys; s=json.load(sys.stdin)["stats"]; print(sum(s["cache_hits"]["counts"].values()), sum(s["cache_misses"]["counts"].values()))')
+        rate=$(( (hits + misses) > 0 ? 100 * hits / (hits + misses) : 100 ))
+        if [ "$misses" -ge "$MIN_MISSES" ] && [ "$rate" -lt "$MAX_HIT_RATE" ]; then
           echo "save=true" >> "$GITHUB_OUTPUT"
-          echo "$misses misses: saving the $FORKLAUNCH_SCCACHE_FAMILY compiler cache"
+          echo "$hits hits, $misses misses ($rate%): saving the $FORKLAUNCH_SCCACHE_FAMILY compiler cache"
         else
           echo "save=false" >> "$GITHUB_OUTPUT"
-          echo "$misses misses (under $MIN_MISSES): the restored $FORKLAUNCH_SCCACHE_FAMILY compiler cache is current"
+          echo "$hits hits, $misses misses ($rate%): the restored $FORKLAUNCH_SCCACHE_FAMILY compiler cache is current enough"
         fi
     # Stop the server first so the store's index is flushed to disk.
     - name: Stop sccache
