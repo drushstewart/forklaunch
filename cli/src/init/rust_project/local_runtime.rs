@@ -511,18 +511,46 @@ fn migrations(compose: &DockerCompose, groups: &[DatabaseGroup]) -> BTreeMap<Str
     migrations
 }
 
-/// One built image for every generated Rust process. Every service keeps the
-/// same `build` (so any one can be started alone); BuildKit builds it once.
+/// One built image for every generated Rust process. Only one service carries
+/// the `build`; the rest run the same tag with `pull_policy: never`. When every
+/// service declared the build, Compose exported the multi-gigabyte image once
+/// per service at the same time, which filled the disk and stopped the Docker
+/// daemon. `docker compose up` still builds before it starts anything; start a
+/// single service with `docker compose up --build <builder> <service>`.
 fn share_rust_image(compose: &mut DockerCompose, app: &str) {
     let image = format!("{app}-rust:latest");
     let shared = |service: &DockerService| {
         service.build.as_ref().is_some_and(|build| build.dockerfile.trim_start_matches("./") == "Dockerfile")
             && binary(service).is_some_and(|binary| binary.starts_with("./target/release/"))
     };
-    let previous: BTreeSet<String> = compose.services.values().filter(|s| shared(s)).filter_map(|s| s.image.clone()).collect();
-    for service in compose.services.values_mut() {
-        if shared(service) || (service.build.is_none() && service.image.as_ref().is_some_and(|i| previous.contains(i))) {
-            service.image = Some(image.clone());
+    let previous: BTreeSet<String> = compose
+        .services
+        .values()
+        .filter(|service| shared(service) || service.image.as_ref() == Some(&image))
+        .filter_map(|service| service.image.clone())
+        .collect();
+    let members: BTreeSet<String> = compose
+        .services
+        .iter()
+        .filter(|(_, service)| shared(service) || service.image.as_ref().is_some_and(|i| previous.contains(i)))
+        .map(|(name, _)| name.clone())
+        .collect();
+    let build = compose
+        .services
+        .iter()
+        .filter(|(name, _)| members.contains(*name))
+        .find_map(|(_, service)| service.build.clone().filter(|_| shared(service)));
+    let Some(build) = build else { return };
+    // The first member by name builds; it is deterministic across regenerations.
+    let builder = members.iter().next().cloned();
+    for (name, service) in compose.services.iter_mut().filter(|(name, _)| members.contains(*name)) {
+        service.image = Some(image.clone());
+        if Some(name) == builder.as_ref() {
+            service.build = Some(build.clone());
+            service.additional_properties.remove("pull_policy");
+        } else {
+            service.build = None;
+            service.additional_properties.insert("pull_policy".into(), "never".into());
         }
     }
 }
@@ -922,6 +950,9 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
         wire_framework_contexts(root, &mut compose, "Dockerfile.rust");
         wire_framework_contexts(root, &mut compose, "Dockerfile.typescript");
     } else {
+        // Migrate and seed jobs added above copy their service's build; fold
+        // them back into the single shared builder.
+        share_rust_image(&mut compose, &app);
         wire_framework_contexts(root, &mut compose, "Dockerfile");
     }
     write(&compose_path, yaml_to_string(&compose)?)?;
