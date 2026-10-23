@@ -330,8 +330,12 @@ mod tests {
     fn generated_json_keeps_declaration_order_in_every_build() {
         // A lone package build and a workspace build unify serde_json
         // features differently; artifacts must not depend on which ran.
-        let value = serde_json::json!({"name": "x", "version": "0", "dependencies": {"b": 1, "a": 2}});
-        assert_eq!(serde_json::to_string(&value).unwrap(), r#"{"name":"x","version":"0","dependencies":{"b":1,"a":2}}"#);
+        let value =
+            serde_json::json!({"name": "x", "version": "0", "dependencies": {"b": 1, "a": 2}});
+        assert_eq!(
+            serde_json::to_string(&value).unwrap(),
+            r#"{"name":"x","version":"0","dependencies":{"b":1,"a":2}}"#
+        );
     }
 
     use super::*;
