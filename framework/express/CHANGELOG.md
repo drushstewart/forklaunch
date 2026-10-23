@@ -1,5 +1,11 @@
 # @forklaunch/express
 
+## 1.2.53
+
+### Patch Changes
+
+- ea72223: The Bun cluster shim's last-resort 500 response no longer stringifies non-Error throws in development; it shows an Error's message in development and `Internal Server Error` otherwise.
+
 ## 1.2.52
 
 ### Patch Changes
