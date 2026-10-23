@@ -13,7 +13,7 @@
 edition = "2021"
 rust-version = "1.85.0"
 name = "forklaunch-jsonschema-protocol"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Dmitry Dygalo <dmitry@dygalo.dev>"]
 build = false
 autolib = false
