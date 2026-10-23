@@ -1,8 +1,13 @@
 //! Process lifecycle: contract export, migrations, telemetry, registration and serving.
 use crate::{config::ServiceConfig, domain::services::PostgresIamService, error::Result, persistence::database, registrations, server, write_contract_artifacts};
-use forklaunch_core::{config, persistence::TenantContext, telemetry::otlp::TelemetryRuntime};
-use forklaunch_iam_base::seed::SeedConfig;
-use std::env;
+use forklaunch_core::{
+    config,
+    domain::AuditContext,
+    persistence::{TenantContext, encryption::FieldEncryptor},
+    telemetry::otlp::TelemetryRuntime,
+};
+use forklaunch_iam_base::{directory::postgres::PostgresDirectoryStore, seed::SeedConfig};
+use std::{env, sync::Arc};
 use tokio::net::TcpListener;
 
 pub async fn run() -> Result<()> {
@@ -46,7 +51,10 @@ async fn start() -> Result<()> {
 
 /// Creates or updates the roles and login users in `seed.toml` (or the file
 /// named by `IAM_SEED_FILE`), reading each password from the variable the file
-/// names. Idempotent; uses the restricted runtime `DATABASE_URL` and `TENANT_ID`.
+/// names, then the matching IAM directory records (permissions, roles,
+/// organizations and a directory user under each login id), as `POST /user`
+/// would. Idempotent; uses the restricted runtime `DATABASE_URL`, `TENANT_ID`
+/// and the service's `ENCRYPTION_KEY`.
 async fn seed() -> Result<()> {
     let source = match config::optional::<String>("IAM_SEED_FILE")? {
         Some(path) => std::fs::read_to_string(&path).map_err(|_| format!("Unable to read IAM_SEED_FILE {path}"))?,
@@ -54,10 +62,22 @@ async fn seed() -> Result<()> {
     };
     let seed = SeedConfig::from_toml(&source)?;
     let tenant = TenantContext::new(config::required::<String>("TENANT_ID")?)?;
+    let stored_sessions = config::optional::<String>("IAM_DIRECTORY_AUTHORIZATION")?.as_deref() == Some("stored-session");
+    let encryptor = Arc::new(FieldEncryptor::from_env()?);
     let pool = database::connect().await?;
     let result = async {
-        let iam = PostgresIamService::new(pool.clone(), tenant).await?;
-        seed.apply(&iam, |name| env::var(name).ok()).await
+        let iam = PostgresIamService::new(pool.clone(), tenant.clone()).await?;
+        let report = seed.apply(&iam, |name| env::var(name).ok()).await?;
+        let actor = format!("{}-seed", crate::SERVICE_NAME);
+        let directory = PostgresDirectoryStore::new(pool.clone(), tenant, encryptor, AuditContext::actor(&actor, &actor)).await?;
+        seed.apply_directory(&directory, &report).await?;
+        if stored_sessions {
+            // Stored-session directory routes resolve grants through this link.
+            for id in &report.user_ids {
+                directory.bind_auth_identity(id, id).await?;
+            }
+        }
+        Ok::<_, forklaunch_core::domain::BlueprintError>(report)
     }
     .await;
     pool.close().await;

@@ -10,11 +10,22 @@ pub(super) async fn create<T: DirectoryTransaction>(
     kind: DirectoryKind,
     request: Value,
 ) -> BlueprintResult<Value> {
+    create_with_id(tx, kind, request, None).await
+}
+
+/// `create`, keeping a caller-chosen id instead of generating one. Request DTO
+/// ids are always discarded; only trusted callers (the seed) supply `id`.
+pub(crate) async fn create_with_id<T: DirectoryTransaction>(
+    tx: &mut T,
+    kind: DirectoryKind,
+    request: Value,
+    id: Option<&str>,
+) -> BlueprintResult<Value> {
     let mut row = request.as_object().cloned().ok_or_else(invalid)?;
     validate_email(kind, &row)?;
     let add = ids(row.remove("addToRolesIds"))?;
     row.remove("id");
-    let id = uuid::Uuid::new_v4().to_string();
+    let id = id.map_or_else(|| uuid::Uuid::new_v4().to_string(), str::to_owned);
     row.insert("id".into(), json!(id));
     let now = chrono::Utc::now().to_rfc3339();
     row.insert("createdAt".into(), json!(now));
@@ -58,7 +69,7 @@ pub(super) async fn create<T: DirectoryTransaction>(
     Ok(row)
 }
 
-pub(super) async fn update<T: DirectoryTransaction>(
+pub(crate) async fn update<T: DirectoryTransaction>(
     tx: &mut T,
     kind: DirectoryKind,
     request: Value,

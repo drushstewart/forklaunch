@@ -8,7 +8,7 @@ The legacy bearer routes `GET /users/:id` and `/users/:id/permissions` return on
 
 `IamHttp::with_cors_origins` admits exact browser origins with credentials; without origins no CORS headers are sent and `*` is never emitted.
 
-The `seed` feature adds `seed::SeedConfig`: roles and login users from TOML, applied idempotently through `AsyncIamRepository` with passwords read from the variables each user names. Directory `createUser` keeps ignoring passwords, as the TypeScript iam-base mapper does.
+The `seed` feature adds `seed::SeedConfig`: roles and login users from TOML, applied idempotently through `AsyncIamRepository` with passwords read from the variables each user names. `SeedConfig::apply_directory` then writes the directory records `POST /user` would create (permissions, roles, organizations and a directory user under each login id), idempotently, so seeded users surface roles and pass organization-scoped directory routes. Directory `createUser` keeps ignoring passwords, as the TypeScript iam-base mapper does.
 
 Directory CRUD and credential/provider users remain independent unless an authorized administrator explicitly links existing identities. `PostgresDirectoryStore::bind_auth_identity(directory_id, auth_user_id)` creates a tenant-local, one-to-one association and an actor/correlation audit in one transaction. Repeating the same pair is idempotent. Email, profile fields, passwords, organizations and grants are never copied or used to infer a link. Directory create/update mappers continue to ignore passwords.
 
