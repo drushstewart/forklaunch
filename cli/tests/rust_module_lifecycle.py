@@ -31,8 +31,11 @@ def rust_image():
     binaries = [line[len(release):].split(' ')[0] for line in lines if line.startswith(release)]
     services = json.loads(subprocess.check_output(['docker', 'compose', '-f', str(app / 'docker-compose.yaml'),
         'config', '--no-interpolate', '--format', 'json'], cwd=app, text=True))['services']
+    # Long-running processes; one-shot migrate/seed jobs run the same binary
+    # with --migrate/--seed and are not processes.
     processes = {name: service for name, service in services.items()
-                 if (service.get('command') or [''])[0].startswith('/app/bin/')}
+                 if (service.get('command') or [''])[0].startswith('/app/bin/')
+                 and not set(service['command'][1:]) & {'--migrate', '--seed'}}
     # The one service that builds Dockerfile.rust names the shared image tag.
     images = {service['image'] for service in services.values()
               if Path((service.get('build') or {}).get('dockerfile', '')).name == 'Dockerfile.rust'}
