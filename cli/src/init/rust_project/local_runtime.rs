@@ -996,7 +996,58 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     write(&compose_path, yaml_to_string(&compose)?)?;
     let modules_path = manifest.get("modules_path").and_then(Value::as_str).unwrap_or("src");
     let values = write_env(root, modules_path, &app, &compose)?;
+    let superuser = compose
+        .services
+        .get("postgresql")
+        .and_then(|postgres| env(postgres, "POSTGRES_USER"))
+        .cloned()
+        .unwrap_or_else(|| "postgres".into());
+    typescript_local_owners(&root.join(modules_path), &typescript, &superuser)?;
+    if !typescript.is_empty() && compose.services.contains_key(PROVISION) {
+        provision_host_scripts(&root.join(modules_path).join("package.json"))?;
+    }
     write_local_envs(root, &compose, &values, &migrations)
+}
+
+/// The TypeScript workspace's database scripts (`migrate:init`, `seed`, ...)
+/// start PostgreSQL and connect as the owner roles, which only exist once
+/// `postgresql-provision` has run.
+fn provision_host_scripts(path: &Path) -> Result<()> {
+    const START: &str = "\"docker compose up -d --wait postgresql && ";
+    let Ok(existing) = read_to_string(path) else { return Ok(()) };
+    let provisioned = format!("{START}docker compose run --rm {PROVISION} && ");
+    let content = existing.replace(&provisioned, START).replace(START, &provisioned);
+    if content != existing {
+        write(path, content)?;
+    }
+    Ok(())
+}
+
+/// Host tooling of a TypeScript project (`pnpm migrate:*`, seeds) connects
+/// with its `.env.local` `DB_USER`. The generator writes the PostgreSQL
+/// superuser there, whose tables the restricted roles cannot see; use the
+/// owner role the `<name>-migrate` job migrates as. Other users are kept.
+fn typescript_local_owners(modules: &Path, typescript: &[TypescriptDatabase], superuser: &str) -> Result<()> {
+    for database in typescript.iter().filter(|database| database.service.to_case(Case::Snake) == database.role) {
+        let path = modules.join(&database.service).join(".env.local");
+        let Ok(existing) = read_to_string(&path) else { continue };
+        let owner = format!("{}_owner", database.role);
+        let content: Vec<String> = existing
+            .lines()
+            .map(|line| match line.split_once('=') {
+                Some((key, value)) if key.trim() == "DB_USER" && value.trim() == superuser => format!("DB_USER={owner}"),
+                _ => line.to_owned(),
+            })
+            .collect();
+        let mut content = content.join("\n");
+        if existing.ends_with('\n') {
+            content.push('\n');
+        }
+        if content != existing {
+            write(&path, content)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1088,6 +1139,34 @@ mod tests {
         assert_eq!(host("http://iam:8004/api/auth/jwks"), "http://127.0.0.1:8004/api/auth/jwks");
         assert_eq!(host("http://coding-server:3000"), "http://127.0.0.1:8001");
         assert_eq!(host("kafka:29092"), "127.0.0.1:9092");
+    }
+
+    #[test]
+    fn typescript_database_scripts_provision_roles_first() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("package.json");
+        std::fs::write(&path, r#"{"scripts":{"migrate:init":"docker compose up -d --wait postgresql && pnpm -r run migrate:init","dev":"pnpm dev"}}"#).unwrap();
+        provision_host_scripts(&path).unwrap();
+        let expected = r#"{"scripts":{"migrate:init":"docker compose up -d --wait postgresql && docker compose run --rm postgresql-provision && pnpm -r run migrate:init","dev":"pnpm dev"}}"#;
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+        // Idempotent.
+        provision_host_scripts(&path).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), expected);
+    }
+
+    #[test]
+    fn typescript_host_tooling_uses_the_owner_role() {
+        let root = tempfile::tempdir().unwrap();
+        for (project, user) in [("ecommerce", "postgresql"), ("intake", "custom")] {
+            std::fs::create_dir_all(root.path().join(project)).unwrap();
+            std::fs::write(root.path().join(project).join(".env.local"), format!("DB_HOST=localhost\nDB_USER={user}\n")).unwrap();
+        }
+        let database = |service: &str, role: &str| TypescriptDatabase { service: service.into(), database: "db".into(), role: role.into() };
+        let typescript = [database("ecommerce", "ecommerce"), database("ecommerce-worker", "ecommerce"), database("intake", "intake")];
+        typescript_local_owners(root.path(), &typescript, "postgresql").unwrap();
+        let read = |project: &str| std::fs::read_to_string(root.path().join(project).join(".env.local")).unwrap();
+        assert_eq!(read("ecommerce"), "DB_HOST=localhost\nDB_USER=ecommerce_owner\n");
+        assert_eq!(read("intake"), "DB_HOST=localhost\nDB_USER=custom\n");
     }
 
     #[test]
