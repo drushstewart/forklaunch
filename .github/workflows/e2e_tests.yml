@@ -173,7 +173,7 @@ jobs:
           family: generated
           stable-tmp: 'true'
           fallback-family: cli
-          size: 1200M
+          size: 2G
 
       - uses: actions/setup-python@v5
         with:
@@ -336,7 +336,7 @@ jobs:
         with:
           family: generated
           stable-tmp: 'true'
-          size: 1200M
+          size: 2G
 
       # rdkafka-sys (generated Kafka workers) builds librdkafka, which needs libcurl headers.
       - name: Install native build dependencies for generated workers
@@ -496,7 +496,7 @@ jobs:
         with:
           family: generated
           stable-tmp: 'true'
-          size: 1200M
+          size: 2G
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
