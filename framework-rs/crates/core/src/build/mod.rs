@@ -151,9 +151,37 @@ pub fn write_generated_output(path: impl AsRef<Path>, contents: impl AsRef<[u8]>
 
 fn write_output(path: &Path, contents: &str) -> Result<()> {
     write_generated_output(path, contents)?;
+    settle_generated_mtime(path);
     // A deleted generated file must trigger regeneration even with cached Cargo artifacts.
     println!("cargo:rerun-if-changed={}", path.display());
     Ok(())
+}
+
+/// Cargo treats a `rerun-if-changed` file newer than the build script's
+/// `invoked.timestamp` as dirty, so output this script just wrote would rerun it
+/// on the next build. Backdate freshly written output to that timestamp. Outside
+/// a build script, or if the timestamp is missing, leave the file as written.
+fn settle_generated_mtime(path: &Path) {
+    let Some(out_dir) = std::env::var_os("OUT_DIR").map(std::path::PathBuf::from) else {
+        return;
+    };
+    let Some(invoked) = out_dir
+        .parent()
+        .and_then(|dir| fs::metadata(dir.join("invoked.timestamp")).ok())
+        .and_then(|meta| meta.modified().ok())
+    else {
+        return;
+    };
+    let Ok(file) = fs::File::options().write(true).open(path) else {
+        return;
+    };
+    if file
+        .metadata()
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|written| written > invoked)
+    {
+        let _ = file.set_modified(invoked);
+    }
 }
 
 /// Generate a typed WebSocket client and its portable contract without running a server.
