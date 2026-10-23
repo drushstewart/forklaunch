@@ -718,7 +718,10 @@ permissions:
 
 jobs:
   framework:
-    runs-on: ubuntu-latest
+    # The V8 date oracle reads TZ through the host zoneinfo. Ubuntu 26.04's
+    # tzdata-legacy names (e.g. Eire) resolve differently in Node's ICU than the
+    # pinned 2025b rules; 24.04's zoneinfo matches them.
+    runs-on: ubuntu-24.04
     services:
       redis:
         image: redis:7-alpine
