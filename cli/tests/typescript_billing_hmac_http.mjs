@@ -62,22 +62,25 @@ try {
  for(const signedPath of ['/owned','/payment-link/owned']) {
   const stamp=new Date(),nonce='mounted';const signature=hmac.createHmacToken({method:'PUT',path:signedPath,body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/payment-link/owned`,{method:'PUT',headers:{'content-type':'application/json',authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`},body:'{"amount":"12"}'});
-  // The full wire path is canonical; the router-relative form is opt-in (deprecated).
-  assert.equal(response.status,signedPath==='/owned'?403:200,`mounted signed path ${signedPath}`);assert.equal(calls,signedPath==='/owned'?0:1);await response.text();count++;
+  // The full wire path is canonical; the deprecated router-relative form is still accepted by default.
+  assert.equal(response.status,200,`mounted signed path ${signedPath}`);assert.equal(calls,1);await response.text();count++;
  }
- process.env.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS='true';
+ process.env.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS='false';
  try {
   for(const signedPath of ['/owned','/payment-link/owned']) {
-   const stamp=new Date(),nonce='legacy';const signature=hmac.createHmacToken({method:'PUT',path:signedPath,body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
+   const stamp=new Date(),nonce='strict';const signature=hmac.createHmacToken({method:'PUT',path:signedPath,body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
    calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}/payment-link/owned`,{method:'PUT',headers:{'content-type':'application/json',authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`},body:'{"amount":"12"}'});
-   assert.equal(response.status,200,`opt-in relative signed path ${signedPath}`);assert.equal(calls,1);await response.text();count++;
+   assert.equal(response.status,signedPath==='/owned'?403:200,`strict signed path ${signedPath}`);assert.equal(calls,signedPath==='/owned'?0:1);await response.text();count++;
   }
  } finally { delete process.env.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS; }
+ // Path canonicalization is checked in strict mode, where only the full wire path verifies.
+ process.env.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS='false';
  for(const [wirePath,signedPath,status] of [['/payment-link/abc%2Fdef?x=1','/payment-link/abc%2Fdef',200],['/payment-link/abc%2Fdef?x=1','/payment-link/abc/def',403],['/payment-link/owned?x=1','/payment-link/owned?x=1',403],['/payment-link/owned/','/payment-link/owned/',200],['/payment-link/owned/','/payment-link/owned',403],['/payment-link','/payment-link',200],['/payment-link/','/payment-link/',200],['/payment-link/owned//','/payment-link/owned//',404],['/PAYMENT-LINK/owned','/PAYMENT-LINK/owned',200],['/payment-link/owned','/owned',403],['/payment-link','/',403]]) {
   const stamp=new Date(),nonce='path';const signature=hmac.createHmacToken({method:'PUT',path:signedPath,body:'{"amount":"12"}',timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   calls=0;const response=await fetch(`http://127.0.0.1:${server.address().port}${wirePath}`,{method:'PUT',headers:{'content-type':'application/json',authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`},body:'{"amount":"12"}'});
   assert.equal(response.status,status,`${wirePath} signed ${signedPath}`);assert.equal(calls,status===200?1:0);await response.text();count++;
  }
+ delete process.env.HMAC_ACCEPT_MOUNT_RELATIVE_PATHS;
  for(const raw of [undefined,'{"z":1,"a":2}',' { "amount" : "12" } ','{"value":"雪"}']) {
   const stamp=new Date(),nonce='raw';const signature=hmac.createHmacToken({method:'PUT',path:'/owned',body:raw,timestamp:stamp,nonce,secretKey:'owned-hmac-secret'});
   const headers={authorization:`HMAC keyId=default ts=${stamp.toISOString()} nonce=${nonce} signature=${signature}`};if(raw!==undefined)headers['content-type']='application/json';

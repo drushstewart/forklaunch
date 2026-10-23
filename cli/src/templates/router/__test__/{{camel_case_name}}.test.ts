@@ -16,7 +16,7 @@ describe('{{pascal_case_name}} Routes E2E Tests', () => {
     {{#is_database_enabled}}const setup = {{/is_database_enabled}}{{^is_database_enabled}}{{#is_cache_enabled}}const setup = {{/is_cache_enabled}}{{/is_database_enabled}}await setupTestDatabase();
     {{#is_database_enabled}}orm = setup.orm;{{/is_database_enabled}}
     {{#is_cache_enabled}}redis = setup.redis;{{/is_cache_enabled}}
-  }, 60000);
+  });
 
   beforeEach(async () => {
     await clearDatabase({{#is_database_enabled}}{{#is_cache_enabled}}{ orm, redis }{{/is_cache_enabled}}{{^is_cache_enabled}}{ orm }{{/is_cache_enabled}}{{/is_database_enabled}}{{^is_database_enabled}}{{#is_cache_enabled}}{ redis }{{/is_cache_enabled}}{{/is_database_enabled}});
@@ -27,7 +27,7 @@ describe('{{pascal_case_name}} Routes E2E Tests', () => {
 
   afterAll(async () => {
     await cleanupTestDatabase();
-  }, 30000);
+  });
 
   describe('GET /{{camel_case_name}} - {{camel_case_name}}Get', () => {
     it('should handle {{camel_case_name}} get request successfully', async () => {

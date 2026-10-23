@@ -3,9 +3,9 @@
 //! Signed path: the full wire path (`POST /payment-link`), matching the framework
 //! verifier, every other module and the generated Rust/TypeScript SDK signers.
 //! The Express router-relative path (`/` for `POST /payment-link`) that older
-//! TypeScript callers signed is deprecated and rejected unless explicitly enabled
-//! (`BillingBackend::with_mount_relative_hmac_paths` or
-//! `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true`), because it is not bound to a mount.
+//! TypeScript callers signed is deprecated but still accepted by default so they
+//! keep working. Turn it off with `BillingBackend::with_mount_relative_hmac_paths(false)`
+//! or `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=false`, because it is not bound to a mount.
 use forklaunch_axum::{
     module_auth::{HmacJwksAuth, HmacPayloadError},
     session::AuthenticatedSession,
@@ -78,10 +78,15 @@ fn part<'a>(value: &'a str, label: &str) -> Option<&'a str> {
     let (key, value) = value.split_once('=')?;
     (key == label && !value.is_empty()).then_some(value)
 }
-/// `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS` (`true`/`1`): deprecated, off by default.
-pub(super) fn mount_relative_from_env() -> bool {
-    std::env::var("HMAC_ACCEPT_MOUNT_RELATIVE_PATHS")
-        .is_ok_and(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "true" | "1"))
+/// `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS`: `false`/`0` rejects the deprecated
+/// router-relative form, `true`/`1` accepts it; unset leaves the default (accept).
+pub(super) fn mount_relative_from_env() -> Option<bool> {
+    let value = std::env::var("HMAC_ACCEPT_MOUNT_RELATIVE_PATHS").ok()?;
+    match value.trim().to_ascii_lowercase().as_str() {
+        "false" | "0" => Some(false),
+        "true" | "1" => Some(true),
+        _ => None,
+    }
 }
 pub(super) fn authenticate(
     auth: &HmacJwksAuth,
@@ -126,7 +131,7 @@ pub(super) fn authenticate(
         )
     };
     // The signed path is the full wire path, as every other module and both
-    // generated SDK signers use. The Express router-relative form is opt-in only.
+    // generated SDK signers use. The deprecated Express router-relative form is a fallback.
     let mut candidates = vec![wire_path];
     if accept_mount_relative
         && let Some(relative) = mount_relative(wire_path, mount(route).unwrap_or_default())

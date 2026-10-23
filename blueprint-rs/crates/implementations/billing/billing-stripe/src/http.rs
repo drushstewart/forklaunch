@@ -113,7 +113,7 @@ pub struct BillingBackend {
     bound_payment_link_expiration:
         Option<Arc<bound_payment_link_expiration::BoundPaymentLinkExpirationV1>>,
     configured_hmac: bool,
-    mount_relative_hmac: bool,
+    mount_relative_hmac: Option<bool>,
     configured_subscription_updates: bool,
     configured_payment_link_updates: bool,
     configured_cached_reads: bool,
@@ -150,7 +150,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_hmac: false,
-            mount_relative_hmac: false,
+            mount_relative_hmac: None,
             configured_subscription_updates: false,
             configured_payment_link_updates: false,
             configured_cached_reads: false,
@@ -187,7 +187,7 @@ impl BillingBackend {
             #[cfg(feature = "bound-checkout")]
             bound_subscription: None,
             configured_hmac: false,
-            mount_relative_hmac: false,
+            mount_relative_hmac: None,
             configured_subscription_updates: false,
             configured_payment_link_updates: false,
             configured_cached_reads: false,
@@ -204,15 +204,16 @@ impl BillingBackend {
         self.configured_subscription_updates = enabled;
         self
     }
-    /// Deprecated compatibility: also accept configured-HMAC signatures over the
+    /// Deprecated compatibility: whether configured-HMAC signatures over the
     /// Express router-relative path (`/` for `POST /payment-link`) that older
-    /// TypeScript callers produced. Off by default. A relative signature is not
-    /// bound to its mount, so one signed for `POST /plan` also verifies as
-    /// `POST /payment-link`; enable only temporarily while old clients migrate.
-    /// `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true` enables it at startup as well.
+    /// TypeScript callers produced are still accepted. On by default so existing
+    /// callers keep working. A relative signature is not bound to its mount, so
+    /// one signed for `POST /plan` also verifies as `POST /payment-link`; pass
+    /// `false` (or set `HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=false`) once every caller
+    /// signs the full path. This builder setting wins over the environment.
     #[must_use]
     pub const fn with_mount_relative_hmac_paths(mut self, enabled: bool) -> Self {
-        self.mount_relative_hmac = enabled;
+        self.mount_relative_hmac = Some(enabled);
         self
     }
     /// Select actual configured internal billing HMAC parsing. The signed path is
@@ -776,7 +777,10 @@ impl BillingRoutes {
 /// Response formats and request authentication selected by the backend.
 fn router_config(backend: &BillingBackend, auth: Arc<HmacJwksAuth>) -> RouterConfig {
     let configured_hmac = backend.configured_hmac;
-    let mount_relative = backend.mount_relative_hmac || configured_hmac::mount_relative_from_env();
+    let mount_relative = backend
+        .mount_relative_hmac
+        .or_else(configured_hmac::mount_relative_from_env)
+        .unwrap_or(true);
     RouterConfig {
         response_status_error_format: if backend.configured_cached_reads
             || backend.configured_payment_link_updates
