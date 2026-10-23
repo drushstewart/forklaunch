@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest';
 import { surfacingPath } from '../domain/utils/surfacingPath.util';
 
 describe('surfacingPath', () => {
