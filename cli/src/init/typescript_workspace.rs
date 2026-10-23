@@ -318,11 +318,14 @@ fn merge_workspace(stage: &Path, template: &Path, original: &Value) -> Result<()
         ] {
             scripts.insert(name.into(), Json::String(command.into()));
         }
+        // The TypeScript image installs from the nested modules workspace and
+        // copies its lockfile, so a root install must produce that one too.
+        scripts.insert("postinstall".into(), Json::String(format!("pnpm --dir {modules} install")));
     }
     let mut package: Json = if package_path.exists() {
         serde_json::from_str(&fs::read_to_string(&package_path)?)?
     } else {
-        serde_json::json!({"name": original["app_name"].as_str(), "private": true, "type": "module", "packageManager": "pnpm@10.0.0"})
+        serde_json::json!({"name": original["app_name"].as_str(), "private": true, "type": "module", "packageManager": "pnpm@11.28.7"})
     };
     for field in ["scripts", "devDependencies"] {
         merge_map_missing(&mut package, &generated_package, field)?;
