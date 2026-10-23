@@ -352,7 +352,7 @@ jobs:
         run: echo "CARGO_TARGET_DIR=$RUNNER_TEMP/forklaunch-generated-target" >> "$GITHUB_ENV"
 
       - name: Install TypeScript compiler for SDK checks
-        run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 qs@6.16.0 @types/qs@6.15.1 @types/node@22 @types/ws@8.18.1 ws@8.22.0 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @asyncapi/parser@3.6.3 stripe@22.6.2 bullmq@6.3.10 ioredis@6.0.0 zod@4.6.5 ts-deepmerge@8.0.0 cross-fetch@4.1.0 better-auth@1.7.6 esbuild@0.28.2
+        run: npm install --before="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 qs@6.16.0 @types/qs@6.15.1 @types/node@22 @types/ws@8.18.1 ws@8.22.0 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @asyncapi/parser@3.6.3 stripe@22.6.2 bullmq@6.3.10 ioredis@6.0.0 zod@4.6.5 ts-deepmerge@8.0.0 cross-fetch@4.1.0 better-auth@1.7.6 esbuild@0.28.2
 
       - name: Configure pinned worker and auth client fixtures
         run: |
@@ -584,7 +584,7 @@ jobs:
       - name: Install TypeScript compiler for real signature interoperability
         if: matrix.suite == 'capabilities'
         run: |
-          npm install --prefix "$RUNNER_TEMP/capabilities-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
+          npm install --before="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix "$RUNNER_TEMP/capabilities-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
           echo "TSC_BIN=$RUNNER_TEMP/capabilities-ts/node_modules/.bin/tsc" >> "$GITHUB_ENV"
       - name: Signed managed callbacks and ownership preservation
         if: matrix.suite == 'capabilities'

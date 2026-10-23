@@ -41,7 +41,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-api-inventory" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
+      - run: npm install --before="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix "$RUNNER_TEMP/fl-api-inventory" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
       - run: node scripts/test_rust_api_inventory.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-api-inventory/node_modules/.bin/tsc
