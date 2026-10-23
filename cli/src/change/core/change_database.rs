@@ -119,21 +119,15 @@ pub(crate) fn change_database_base_entity(
         entities_index_path.to_string_lossy(),
         RenderedTemplate {
             path: entities_index_path.clone(),
+            // One line per base-entity file, in the form (and order) init
+            // writes them: several SQL databases share one file, and the set
+            // of databases is unordered.
             content: all_projects_scan
                 .iter()
-                .map(|export_source| {
-                    let mut database_exports = String::new();
-                    let exclusive_files = export_source.metadata().exclusive_files;
-                    if let Some(export_sources) = exclusive_files {
-                        for export_source in export_sources {
-                            database_exports.push_str(&format!(
-                                "export * from './{}';",
-                                export_source.replace(".ts", "").to_string()
-                            ));
-                        }
-                    }
-                    database_exports
-                })
+                .flat_map(|export_source| export_source.metadata().exclusive_files.unwrap_or_default())
+                .map(|export_source| format!("export * from './{}'", export_source.replace(".ts", "")))
+                .collect::<std::collections::BTreeSet<String>>()
+                .into_iter()
                 .collect::<Vec<String>>()
                 .join("\n"),
             context: None,
@@ -162,7 +156,12 @@ pub(crate) fn change_database_base_entity(
         );
     }
 
-    if !all_projects_scan.contains(&existing_database)
+    // The old base-entity file goes only when no database left shares it
+    // (PostgreSQL to MySQL keeps sql.base.properties.ts).
+    let file_in_use = all_projects_scan.iter().any(|remaining| {
+        crate::core::database::get_base_entity_filename(remaining).ok() == Some(import_source_from)
+    });
+    if !file_in_use
         && apply_watermark(&RenderedTemplate {
             path: existing_base_entity_path.clone().into(),
             content: TEMPLATES_DIR

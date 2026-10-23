@@ -291,6 +291,22 @@ fn change_database(
         }
     }
 
+    // The workspace's shared database entries: the core driver and the
+    // migrate/seed compose services gain the new database, and lose the old
+    // one when no other project still uses it.
+    let workspace = base_path.parent().unwrap();
+    let old_in_use = crate::core::database::database_in_use(&manifest_data.projects, &existing_database);
+    if let Some(scripts) = application_package_json.scripts.as_mut() {
+        crate::core::database::set_database_in_application_scripts(scripts, database, true);
+        if !old_in_use {
+            crate::core::database::set_database_in_application_scripts(scripts, &existing_database, false);
+        }
+    }
+    crate::core::database::set_core_database(workspace, database, true, rendered_templates_cache)?;
+    if !old_in_use {
+        crate::core::database::set_core_database(workspace, &existing_database, false, rendered_templates_cache)?;
+    }
+
     Ok(())
 }
 
@@ -570,7 +586,8 @@ fn change_infrastructure(
                     .unwrap()
                     .forklaunch_infrastructure_redis = None;
 
-                project_package_json.dependencies.as_mut().unwrap().ioredis = None;
+                // ioredis stays: every generated service declares it,
+                // with or without a cache (see generate_service_package_json).
 
                 manifest_data.projects.iter_mut().for_each(|project| {
                     if project.name == manifest_data.service_name {
@@ -1305,7 +1322,7 @@ impl CliCommand for ServiceCommand {
                         path: service_base_path.join("package.json"),
                         content: serde_json::to_string_pretty(&project_package_json_to_write)?,
                         context: None,
-                    },
+                    }.preserving_json_layout(),
                 );
 
                 let rendered_templates: Vec<RenderedTemplate> = rendered_templates_cache
@@ -1533,7 +1550,7 @@ impl CliCommand for ServiceCommand {
                 path: application_package_json_path.into(),
                 content: serde_json::to_string_pretty(&application_package_json_to_write)?,
                 context: None,
-            },
+            }.preserving_json_layout(),
         );
 
         rendered_templates_cache.insert(
@@ -1545,7 +1562,7 @@ impl CliCommand for ServiceCommand {
                 path: project_package_json_path.into(),
                 content: serde_json::to_string_pretty(&project_json_to_write)?,
                 context: None,
-            },
+            }.preserving_json_layout(),
         );
 
         let rendered_templates: Vec<RenderedTemplate> = rendered_templates_cache

@@ -1954,9 +1954,31 @@ pub(crate) fn clean_up_unused_infrastructure_services(
         if service_still_referenced(docker_compose, &infrastructure) {
             continue;
         }
-        docker_compose
+        let removed = docker_compose
             .services
-            .shift_remove(&infrastructure.to_string());
+            .shift_remove(&infrastructure.to_string())
+            .is_some();
+        // A database's named data volume goes with it, unless another
+        // service still mounts it.
+        if removed && infrastructure.parse::<Database>().is_ok() {
+            let suffix = format!("-{infrastructure}-data");
+            let mounted = |volume: &str| {
+                docker_compose.services.values().any(|service| {
+                    service.volumes.as_ref().is_some_and(|volumes| {
+                        volumes.iter().any(|mount| mount.split(':').next() == Some(volume))
+                    })
+                })
+            };
+            let orphaned: Vec<String> = docker_compose
+                .volumes
+                .keys()
+                .filter(|volume| volume.ends_with(&suffix) && !mounted(volume))
+                .cloned()
+                .collect();
+            for volume in orphaned {
+                docker_compose.volumes.shift_remove(&volume);
+            }
+        }
     }
 
     Ok(())

@@ -805,7 +805,14 @@ pub(crate) fn sync_rust_project(app_root: &Path, kind: RustProjectKind, name: &s
     let templates = if flat && kind == RustProjectKind::Service {
         let host = contracts_layout::directory(&crate_dir).context("Missing service contracts")?.canonicalize()?;
         add_cargo_member(app_root, &host.strip_prefix(app_root.canonicalize()?)?.to_string_lossy(), false)?;
-        native_layout::service_templates(&crate_dir, name, &description)
+        // As init does: the mapper module is opt-in (`--mappers`), so a sync
+        // must not add the placeholder `domain/mappers/mod.rs` that nothing
+        // declares. A project with mappers already has the file.
+        native_mappers::templates(
+            &crate_dir,
+            false,
+            native_layout::service_templates(&crate_dir, name, &description),
+        )?
     } else {
         let templates = rust_crate_templates(&crate_dir, name, &description, kind);
         if flat {
@@ -4026,7 +4033,9 @@ fn read_manifest_value(path: &Path) -> Result<Value> {
 }
 
 fn write_manifest_value(path: &Path, value: &Value) -> Result<()> {
-    write(path, toml::to_string_pretty(value)?)
+    let mut value = value.clone();
+    crate::core::manifest::remove_retired_manifest_keys(&mut value);
+    write(path, toml::to_string_pretty(&value)?)
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 

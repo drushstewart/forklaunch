@@ -73,6 +73,7 @@ def stale(name, renamed=None):
     problems += [line for line in (app / '.env').read_text().splitlines() if line.startswith(upper)]
     manifest = tomllib.loads((app / '.forklaunch/manifest.toml').read_text())
     problems += [f"manifest {p['name']}" for p in manifest['projects'] if p['name'] == name]
+    problems += [f'manifest top-level {key}' for key in ['snake_case_name'] if key in manifest]
     for path in ['src/client-sdk/index.ts', 'src/client-sdk/clientSdk.ts', 'src/client-sdk/compliance.ts', 'package.json']:
         text = (app / path).read_text() if (app / path).exists() else ''
         if re.search(rf'[@/"]{re.escape(name)}["/:]', text):
@@ -97,6 +98,8 @@ try:
     forklaunch('change', 'application', '-N', 'kestrel', '-c')
     for path in ['docker-compose.yaml', '.env', 'src/accounts/.env.local', 'src/accounts/sdk/typescript/package.json']:
         assert not re.search(r'\bzebra[-_/]', (app / path).read_text()), f'{path} keeps the old application name'
+    holder = next(line for line in (app / 'src/LICENSE').read_text().splitlines() if line.startswith('Copyright'))
+    assert holder.split()[-1] == 'kestrel', f'LICENSE keeps the old application name: {holder}'
     forklaunch('change', 'application', '-L', 'Apache-2.0', '-c')
     assert 'Apache License' in (app / 'src/LICENSE').read_text()
     forklaunch('change', 'application', '-A', 'Jane Doe', '-c')
