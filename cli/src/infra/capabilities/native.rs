@@ -30,6 +30,11 @@ const END: &str = "// END FORKLAUNCH MANAGED CAPABILITIES\n";
 const LIB_EXPORT: &str = "pub mod capabilities;\n";
 const REGISTRY: &str = "    capabilities::register_contracts(&mut registry);\n";
 const STRIPE: &str = "forklaunch-billing-stripe";
+/// Marks a worker's HTTP server in docker-compose with the project it serves.
+const WORKER_OWNER: &str = "x-forklaunch-worker-for";
+/// The capabilities module while no capability receives events: the client
+/// factories alone, without the platform-events route.
+const FACTORIES_MODULE: &str = "// BEGIN FORKLAUNCH MANAGED CAPABILITIES\n// Clients for the platform-held capabilities `forklaunch infra add` gave this\n// project. Each factory reads the managed gateway settings\n// (`PLATFORM_GATEWAY_URL`, `INSTANCE_ID`, `INSTANCE_HMAC_KEY`) when called.\nuse forklaunch_core::domain::BlueprintResult;\nuse forklaunch_core::http::instance_gateway::InstanceGatewayClient;\nuse std::sync::OnceLock;\n__CLIENT_IMPORTS__\nfn instance_gateway() -> BlueprintResult<InstanceGatewayClient> {\n    // Reuse the connection pool after the first successful resolution. A\n    // configuration error is not cached, so it can be corrected by the caller.\n    static GATEWAY: OnceLock<InstanceGatewayClient> = OnceLock::new();\n    if let Some(gateway) = GATEWAY.get() { return Ok(gateway.clone()); }\n    let gateway = InstanceGatewayClient::from_env()?;\n    Ok(GATEWAY.get_or_init(|| gateway).clone())\n}\n\n__CLIENT_FACTORIES__\n// END FORKLAUNCH MANAGED CAPABILITIES\n";
 
 fn events_var(feature: &str) -> String {
     format!("MOCK_EVENTS_URL_{}", feature.to_uppercase())
@@ -120,18 +125,12 @@ fn retain_callback_target(
     previous: Option<String>,
     owners: &BTreeMap<String, String>,
 ) {
-    let Some(service) = owners.get(feature) else {
+    let Some(owner) = owners.get(feature) else {
         return;
     };
-    let port = compose
-        .services
-        .get(service)
-        .and_then(|service| service.environment.as_ref())
-        .and_then(|env| env.get("SERVICE_PORT").or_else(|| env.get("PORT")))
-        .cloned()
-        .unwrap_or_else(|| "8000".into());
+    let (service, port) = event_receiver(compose, owner);
     let target = previous
-        .filter(|url| retarget_service_url(url, removed, service).is_none())
+        .filter(|url| retarget_service_url(url, removed, &service).is_none())
         .unwrap_or_else(|| format!("http://{service}:{port}"));
     if let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE) {
         mock.environment
@@ -208,18 +207,22 @@ pub(crate) fn cleanup_deleted_native_service(
             .and_then(|mock| mock.environment.as_ref())
             .and_then(|env| env.get(&events_var(feature)))
             .cloned();
-        let events = super::find(feature).is_none_or(|c| c.receives_events);
-        release_gateway_mock(&mut compose, name, feature, events, true, false);
-        retain_callback_target(&mut compose, name, feature, previous, &remaining);
+        let events = receives_events(feature);
+        let (receiver, _) = event_receiver(&compose, name);
+        for key in compose_processes(&compose, name) {
+            release_gateway_mock(
+                &mut compose,
+                &key,
+                feature,
+                events && key == receiver,
+                true,
+                false,
+            );
+        }
+        retain_callback_target(&mut compose, &receiver, feature, previous, &remaining);
     }
-    for (feature, service) in &remaining {
-        let port = compose
-            .services
-            .get(service)
-            .and_then(|service| service.environment.as_ref())
-            .and_then(|env| env.get("SERVICE_PORT").or_else(|| env.get("PORT")))
-            .cloned()
-            .unwrap_or_else(|| "8000".into());
+    for (feature, owner) in &remaining {
+        let (service, port) = event_receiver(&compose, owner);
         if let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE) {
             mock.environment
                 .get_or_insert_with(Default::default)
@@ -235,6 +238,53 @@ pub(crate) fn cleanup_deleted_native_service(
         Ok(())
     })?;
     edit.commit()
+}
+
+/// The compose services that run a native project's code: the project's own
+/// service and, for a worker, the HTTP server marked
+/// `x-forklaunch-worker-for: <project>`. The last one serves HTTP and
+/// receives the gateway mock's events.
+pub(crate) fn compose_processes(compose: &DockerCompose, project: &str) -> Vec<String> {
+    let mut keys: Vec<String> = compose
+        .services
+        .contains_key(project)
+        .then(|| project.to_owned())
+        .into_iter()
+        .collect();
+    keys.extend(
+        compose
+            .services
+            .iter()
+            .filter(|(_, service)| {
+                service
+                    .additional_properties
+                    .get(WORKER_OWNER)
+                    .and_then(|owner| owner.as_str())
+                    == Some(project)
+            })
+            .map(|(name, _)| name.clone()),
+    );
+    keys
+}
+
+/// The compose service (and its port) that serves `project`'s
+/// `/platform-events` route.
+fn event_receiver(compose: &DockerCompose, project: &str) -> (String, String) {
+    let key = compose_processes(compose, project)
+        .pop()
+        .unwrap_or_else(|| project.to_owned());
+    let port = compose
+        .services
+        .get(&key)
+        .and_then(|service| service.environment.as_ref())
+        .and_then(|env| env.get("SERVICE_PORT").or_else(|| env.get("PORT")))
+        .cloned()
+        .unwrap_or_else(|| "8000".into());
+    (key, port)
+}
+
+fn receives_events(feature: &str) -> bool {
+    super::find(feature).is_none_or(|c| c.receives_events)
 }
 
 pub(super) fn apply(
@@ -285,9 +335,6 @@ pub(super) fn apply(
     } else {
         None
     };
-    if !edit.service_capabilities.is_empty() && edit.read(&nonce_store_path)?.is_none() {
-        edit.write(nonce_store_path.clone(), NONCE_STORE.into());
-    }
     let lib_path = source_root.join("lib.rs");
     let main_path = if native_router {
         source_root.join("api/routes/mod.rs")
@@ -342,28 +389,54 @@ pub(super) fn apply(
     let prefix = std::iter::repeat_n("..", depth)
         .collect::<Vec<_>>()
         .join("/");
-    let prefix = if prefix.is_empty() { "." } else { prefix.as_str() };
+    let prefix = if prefix.is_empty() {
+        "."
+    } else {
+        prefix.as_str()
+    };
     let add_stripe = |cargo: &mut DocumentMut| {
         ensure_dependency(
             cargo,
             STRIPE,
-            &format!("{prefix}/.forklaunch/blueprint-rs/crates/implementations/billing/billing-stripe"),
+            &format!(
+                "{prefix}/.forklaunch/blueprint-rs/crates/implementations/billing/billing-stripe"
+            ),
             None,
         )
     };
-    let handler = source_root.join(format!("capabilities/{}.rs", capability.id));
-    if adding {
-        if edit.read(&handler)?.is_none() {
-            edit.write(handler, HANDLER.into());
+    // The service's capabilities after this change: the module holds a
+    // client factory for each, and the platform-events route is mounted
+    // while any of them receives events (`models` does not).
+    let wants_module = !edit.service_capabilities.is_empty();
+    let wants_events = edit
+        .service_capabilities
+        .iter()
+        .any(|feature| receives_events(feature));
+
+    // This capability's event handler.
+    if capability.receives_events {
+        let handler = source_root.join(format!("capabilities/{}.rs", capability.id));
+        match edit.read(&handler)? {
+            None if adding => edit.write(handler, HANDLER.into()),
+            Some(text) if !adding && edit.is_generated(&handler, &text, HANDLER) => {
+                edit.delete(handler)
+            }
+            Some(_) if !adding => edit.note_kept(&handler),
+            _ => {}
         }
-        if !lib.contains(LIB_EXPORT) {
-            lib = format!("{LIB_EXPORT}{lib}");
+    }
+
+    // The platform-events route: its contract, registry hook, router mount
+    // and nonce store.
+    if registry_path == lib_path {
+        registry_source = lib.clone();
+    }
+    if wants_events {
+        if edit.read(&nonce_store_path)?.is_none() {
+            edit.write(nonce_store_path.clone(), NONCE_STORE.into());
         }
         if !main.contains(&import) {
             main = after_inner_docs(&main, &import);
-        }
-        if registry_path == lib_path {
-            registry_source = lib.clone();
         }
         if shared_contract {
             if !inline_contract && !builtin_contract && !registry_source.contains(CONTRACT_EXPORT) {
@@ -392,9 +465,6 @@ pub(super) fn apply(
                     .context("Contract registry must return its registry")?;
             registry_source.insert_str(end, registry_hook);
         }
-        if registry_path == lib_path {
-            lib = registry_source.clone();
-        }
         if !main.contains(".with_managed_capabilities()") {
             main = if native_router {
                 with_native_capability_router(&main)?
@@ -402,132 +472,12 @@ pub(super) fn apply(
                 with_capability_router(&main)?
             };
         }
-        // Platform clients live in the framework, as in `@forklaunch/core/http`.
-        ensure_dependency_feature(&mut cargo, "dependencies", "forklaunch-core", "instance-gateway")?;
-        if capability.id == "payments" {
-            add_stripe(&mut cargo)?;
-        }
         if builtin_contract {
             for scope in ["dependencies", "build-dependencies"] {
                 ensure_dependency_feature(&mut cargo, scope, "forklaunch-core", "typed-schema")?;
             }
         }
-        let pairs = local_gateway_env();
-        let pairs: Vec<_> = pairs
-            .iter()
-            .map(|(key, value)| (*key, value.as_str()))
-            .collect();
-        edit.ensure_env_local(&pairs)?;
-        let service_name = edit.service_name.clone();
-        let feature = capability.id;
-        let events = super::find(feature).is_none_or(|c| c.receives_events);
-        edit.update_compose(|compose| {
-            // One destination per feature, set here rather than appended.
-            ensure_gateway_mock(compose, &service_name, feature, false)?;
-            let service = compose
-                .services
-                .get_mut(&service_name)
-                .context("Native service is missing from Compose")?;
-            let env = service.environment.get_or_insert_with(Default::default);
-            env.entry("FORKLAUNCH_LOCAL_GATEWAY_MOCK".into())
-                .or_insert_with(|| "true".into());
-            let port = env
-                .get("SERVICE_PORT")
-                .or_else(|| env.get("PORT"))
-                .cloned()
-                .unwrap_or_else(|| "8000".into());
-            let current = compose
-                .services
-                .get(GATEWAY_MOCK_SERVICE)
-                .and_then(|mock| mock.environment.as_ref())
-                .and_then(|env| env.get(&events_var(feature)))
-                .cloned();
-            // The newest holder receives the events, unless the developer
-            // pointed them elsewhere.
-            if events
-                && current.is_none_or(|url| service_callback(compose, &url))
-                && let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE)
-            {
-                mock.environment
-                    .get_or_insert_with(Default::default)
-                    .insert(events_var(feature), format!("http://{service_name}:{port}"));
-            }
-            Ok(())
-        })?;
     } else {
-        match edit.read(&handler)? {
-            Some(text) if edit.is_generated(&handler, &text, HANDLER) => edit.delete(handler),
-            Some(_) => edit.note_kept(&handler),
-            None => {}
-        }
-        let service = edit.service_name.clone();
-        let feature = capability.id;
-        let service_empty = edit.service_capabilities.is_empty();
-        let app_empty = edit.app_capabilities.is_empty();
-        let manifest: toml::Value = toml::from_str(
-            &edit
-                .read(&edit.app_root.join(".forklaunch/manifest.toml"))?
-                .context("Application manifest is missing")?,
-        )?;
-        let owners = capability_owners(&manifest, Some((&service, &edit.service_capabilities)));
-        let mut compose = edit
-            .read(&edit.app_root.join("docker-compose.yaml"))?
-            .map(|text| serde_yml::from_str::<DockerCompose>(&text))
-            .transpose()?;
-        if let Some(compose) = compose.as_mut() {
-            let dependency = compose
-                .services
-                .get(&service)
-                .and_then(|target| target.depends_on.as_ref())
-                .and_then(|dependencies| dependencies.get(GATEWAY_MOCK_SERVICE))
-                .cloned();
-            let previous = compose
-                .services
-                .get(GATEWAY_MOCK_SERVICE)
-                .and_then(|mock| mock.environment.as_ref())
-                .and_then(|env| env.get(&events_var(feature)))
-                .cloned();
-            let events = super::find(feature).is_none_or(|c| c.receives_events);
-            release_gateway_mock(compose, &service, feature, events, service_empty, false);
-            retain_callback_target(compose, &service, feature, previous, &owners);
-            if service_empty && let Some(target) = compose.services.get_mut(&service) {
-                let env = target.environment.get_or_insert_with(Default::default);
-                if env
-                    .get("FORKLAUNCH_LOCAL_GATEWAY_MOCK")
-                    .is_some_and(|value| value == "true")
-                {
-                    env.shift_remove("FORKLAUNCH_LOCAL_GATEWAY_MOCK");
-                }
-                // A dependency with the developer's own options stays.
-                if let Some(dependency) = dependency
-                    && serde_json::to_value(&dependency)?
-                        != serde_json::to_value(generated_gateway_dependency())?
-                {
-                    target
-                        .depends_on
-                        .get_or_insert_with(Default::default)
-                        .insert(GATEWAY_MOCK_SERVICE.into(), dependency);
-                }
-            }
-            if app_empty {
-                release_unused_gateway_mock(edit, compose)?;
-            }
-        }
-        if let Some(compose) = compose {
-            edit.update_compose(|current| {
-                *current = compose;
-                Ok(())
-            })?;
-        }
-    }
-    let excluded = [source_root.join("capabilities")];
-    if !adding
-        && !edit.service_capabilities.iter().any(|id| id == "payments")
-        && !dependency_in_use(&edit.service_path, &cargo, STRIPE, &excluded)
-    {
-        release_dependency(edit, &cargo_path, &mut cargo, STRIPE, add_stripe)?;
-    }
-    if edit.service_capabilities.is_empty() {
         match edit.read(&nonce_store_path)? {
             Some(text) if edit.is_generated(&nonce_store_path, &text, NONCE_STORE) => {
                 edit.delete(nonce_store_path)
@@ -535,33 +485,10 @@ pub(super) fn apply(
             Some(_) => edit.note_kept(&nonce_store_path),
             None => {}
         }
-        release_dependency_feature(&mut cargo, "dependencies", "forklaunch-core", "instance-gateway")?;
         if builtin_contract {
             for scope in ["dependencies", "build-dependencies"] {
                 release_dependency_feature(&mut cargo, scope, "forklaunch-core", "typed-schema")?;
             }
-        }
-        if cargo.to_string() != cargo_text {
-            edit.write(cargo_path, cargo.to_string());
-        }
-        // The marked section is the CLI's; the rest of the module is the developer's.
-        let kept = match current_module {
-            Some(current) if current.contains(BEGIN) => replace_owned_block(&current, "")?,
-            Some(current) => current,
-            None => String::new(),
-        };
-        let module_kept = !kept.trim().is_empty();
-        if module_kept {
-            edit.note_kept(&module_path);
-            edit.write(module_path, kept);
-        } else {
-            edit.delete(module_path);
-            lib = lib.replace(LIB_EXPORT, "");
-        }
-        if registry_path == lib_path {
-            registry_source = lib.clone();
-        }
-        if builtin_contract {
             registry_source = builtin_capability_registry(&registry_source, false, false)?;
         } else if inline_contract {
             registry_source = inline_capability_registry(&registry_source, false)?;
@@ -588,22 +515,43 @@ pub(super) fn apply(
                 };
             }
         }
-        if registry_path == lib_path {
-            lib = registry_source.clone();
+        main = without_capability_router(&main_path, &main, &import);
+    }
+    if registry_path == lib_path {
+        lib = registry_source.clone();
+    }
+
+    // The capabilities module: a client factory per capability.
+    let excluded = [source_root.join("capabilities")];
+    if !adding
+        && !edit.service_capabilities.iter().any(|id| id == "payments")
+        && !dependency_in_use(&edit.service_path, &cargo, STRIPE, &excluded)
+    {
+        release_dependency(edit, &cargo_path, &mut cargo, STRIPE, add_stripe)?;
+    }
+    let pairs = local_gateway_env();
+    let pairs: Vec<_> = pairs
+        .iter()
+        .map(|(key, value)| (*key, value.as_str()))
+        .collect();
+    if wants_module {
+        if !lib.contains(LIB_EXPORT) {
+            crate::infra::native_local::insert_module_export(&mut lib, LIB_EXPORT, "capabilities");
         }
-        main = main
-            .replace(&import, "")
-            .replace(".with_managed_capabilities()?", "")
-            .replace(".with_managed_capabilities()", "");
-        let pairs = local_gateway_env();
-        let pairs: Vec<_> = pairs
-            .iter()
-            .map(|(key, value)| (*key, value.as_str()))
-            .collect();
-        edit.release_env_local(&pairs)?;
-    } else {
+        // Platform clients live in the framework, as in `@forklaunch/core/http`.
+        ensure_dependency_feature(
+            &mut cargo,
+            "dependencies",
+            "forklaunch-core",
+            "instance-gateway",
+        )?;
+        if adding && capability.id == "payments" {
+            add_stripe(&mut cargo)?;
+        }
         let generated = render_module_with_layout(&edit.service_capabilities, native_router)?;
-        let generated = if inline_contract {
+        let generated = if !wants_events {
+            generated
+        } else if inline_contract {
             inline_capability_module(&generated)
         } else if builtin_contract {
             builtin_capability_module(&generated)?
@@ -618,12 +566,169 @@ pub(super) fn apply(
             ),
             None => generated,
         };
+        // Staged in rustfmt's form on remove too: the module is regenerated
+        // from the remaining capabilities, not restored.
+        let module = if edit.format_rust {
+            module
+        } else {
+            crate::init::rust_project::format_rust_source(&module_path, &module)
+        };
         edit.write(module_path, module);
+        edit.ensure_env_local(&pairs)?;
         // Blueprint dependencies resolve through the application's
         // `[framework]` selection, like every generated manifest.
-        let updated = crate::init::rust_project::dependencies::render_for_path(&cargo_path, &cargo.to_string())?;
+        let updated = crate::init::rust_project::dependencies::render_for_path(
+            &cargo_path,
+            &cargo.to_string(),
+        )?;
         if updated != cargo_text {
             edit.write(cargo_path, updated);
+        }
+    } else {
+        release_dependency_feature(
+            &mut cargo,
+            "dependencies",
+            "forklaunch-core",
+            "instance-gateway",
+        )?;
+        if cargo.to_string() != cargo_text {
+            edit.write(cargo_path, cargo.to_string());
+        }
+        // The marked section is the CLI's; the rest of the module is the developer's.
+        let kept = match current_module {
+            Some(current) if current.contains(BEGIN) => replace_owned_block(&current, "")?,
+            Some(current) => current,
+            None => String::new(),
+        };
+        if !kept.trim().is_empty() {
+            edit.note_kept(&module_path);
+            edit.write(module_path, kept);
+        } else {
+            edit.delete(module_path);
+            lib = lib.replace(LIB_EXPORT, "");
+        }
+        edit.release_env_local(&pairs)?;
+    }
+
+    // docker-compose: every process of the project reaches the gateway mock;
+    // the one serving HTTP receives the feature's events.
+    let service_name = edit.service_name.clone();
+    let feature = capability.id;
+    let events = receives_events(feature);
+    if adding {
+        edit.update_compose(|compose| {
+            let keys = compose_processes(compose, &service_name);
+            anyhow::ensure!(!keys.is_empty(), "Native service is missing from Compose");
+            for key in &keys {
+                // One destination per feature, set below rather than appended.
+                ensure_gateway_mock(compose, key, feature, false)?;
+                let env = compose
+                    .services
+                    .get_mut(key)
+                    .context("Native service is missing from Compose")?
+                    .environment
+                    .get_or_insert_with(Default::default);
+                env.entry("FORKLAUNCH_LOCAL_GATEWAY_MOCK".into())
+                    .or_insert_with(|| "true".into());
+            }
+            let (receiver, port) = event_receiver(compose, &service_name);
+            let current = compose
+                .services
+                .get(GATEWAY_MOCK_SERVICE)
+                .and_then(|mock| mock.environment.as_ref())
+                .and_then(|env| env.get(&events_var(feature)))
+                .cloned();
+            // The newest holder receives the events, unless the developer
+            // pointed them elsewhere.
+            if events
+                && current.is_none_or(|url| service_callback(compose, &url))
+                && let Some(mock) = compose.services.get_mut(GATEWAY_MOCK_SERVICE)
+            {
+                mock.environment
+                    .get_or_insert_with(Default::default)
+                    .insert(events_var(feature), format!("http://{receiver}:{port}"));
+            }
+            Ok(())
+        })?;
+    } else {
+        let service_empty = edit.service_capabilities.is_empty();
+        let app_empty = edit.app_capabilities.is_empty();
+        let manifest: toml::Value = toml::from_str(
+            &edit
+                .read(&edit.app_root.join(".forklaunch/manifest.toml"))?
+                .context("Application manifest is missing")?,
+        )?;
+        let owners =
+            capability_owners(&manifest, Some((&service_name, &edit.service_capabilities)));
+        let mut compose = edit
+            .read(&edit.app_root.join("docker-compose.yaml"))?
+            .map(|text| serde_yml::from_str::<DockerCompose>(&text))
+            .transpose()?;
+        if let Some(compose) = compose.as_mut() {
+            let keys = compose_processes(compose, &service_name);
+            let (receiver, _) = event_receiver(compose, &service_name);
+            let dependencies: Vec<(String, Option<DependsOn>)> = keys
+                .iter()
+                .map(|key| {
+                    let dependency = compose
+                        .services
+                        .get(key)
+                        .and_then(|target| target.depends_on.as_ref())
+                        .and_then(|dependencies| dependencies.get(GATEWAY_MOCK_SERVICE))
+                        .cloned();
+                    (key.clone(), dependency)
+                })
+                .collect();
+            let previous = compose
+                .services
+                .get(GATEWAY_MOCK_SERVICE)
+                .and_then(|mock| mock.environment.as_ref())
+                .and_then(|env| env.get(&events_var(feature)))
+                .cloned();
+            for key in &keys {
+                release_gateway_mock(
+                    compose,
+                    key,
+                    feature,
+                    events && *key == receiver,
+                    service_empty,
+                    false,
+                );
+            }
+            retain_callback_target(compose, &receiver, feature, previous, &owners);
+            if service_empty {
+                for (key, dependency) in dependencies {
+                    let Some(target) = compose.services.get_mut(&key) else {
+                        continue;
+                    };
+                    let env = target.environment.get_or_insert_with(Default::default);
+                    if env
+                        .get("FORKLAUNCH_LOCAL_GATEWAY_MOCK")
+                        .is_some_and(|value| value == "true")
+                    {
+                        env.shift_remove("FORKLAUNCH_LOCAL_GATEWAY_MOCK");
+                    }
+                    // A dependency with the developer's own options stays.
+                    if let Some(dependency) = dependency
+                        && serde_json::to_value(&dependency)?
+                            != serde_json::to_value(generated_gateway_dependency())?
+                    {
+                        target
+                            .depends_on
+                            .get_or_insert_with(Default::default)
+                            .insert(GATEWAY_MOCK_SERVICE.into(), dependency);
+                    }
+                }
+            }
+            if app_empty {
+                release_unused_gateway_mock(edit, compose)?;
+            }
+        }
+        if let Some(compose) = compose {
+            edit.update_compose(|current| {
+                *current = compose;
+                Ok(())
+            })?;
         }
     }
     if registry_path != lib_path {
@@ -837,42 +942,72 @@ fn render_module_with_layout(features: &[String], native_router: bool) -> Result
     let mut factories = Vec::new();
     let mut clients = Vec::new();
     for feature in features {
-        if super::find(feature).is_none() {
+        let Some(capability) = super::find(feature) else {
             bail!("Unknown native managed capability '{feature}'");
+        };
+        if capability.receives_events {
+            modules.push(format!("pub mod {feature};"));
+            arms.push(format!(
+                "                        \"{feature}\" => {feature}::handle(event).await,"
+            ));
+            known.push(format!("\"{feature}\""));
         }
-        modules.push(format!("pub mod {feature};"));
-        arms.push(format!(
-            "                        \"{feature}\" => {feature}::handle(event).await,"
-        ));
-        known.push(format!("\"{feature}\""));
         let (module, ty) = match feature.as_str() {
             "email" => ("email_client", "EmailClient"),
             "sms" => ("sms_client", "SmsClient"),
             "whatsapp" => ("whatsapp_client", "WhatsAppClient"),
             "voice" => ("voice_client", "VoiceClient"),
             "payments" => ("payments_client", "PaymentsClient"),
-            _ => unreachable!(),
+            "models" => ("model_gateway", "ModelGatewayClient"),
+            _ => bail!("Native managed capability '{feature}' has no Rust client in this CLI"),
         };
         clients.push(format!("{module}::{ty}"));
-        if feature == "sms" {
-            factories.push("pub fn sms_client() -> BlueprintResult<SmsClient> {\n    // SMS stays deferred until the managed gateway settings are all present.\n    for name in [\"PLATFORM_GATEWAY_URL\", \"INSTANCE_ID\", \"INSTANCE_HMAC_KEY\"] {\n        if forklaunch_core::config::optional::<String>(name)?.is_none() {\n            return Ok(SmsClient::deferred());\n        }\n    }\n    Ok(SmsClient::new(instance_gateway()?))\n}".into());
+        let factory = if feature == "models" {
+            "models_client"
         } else {
-            factories.push(format!("pub fn {feature}_client() -> BlueprintResult<{ty}> {{ Ok({ty}::new(instance_gateway()?)) }}"));
+            &format!("{feature}_client")
+        };
+        let doc = match feature.as_str() {
+            "models" => {
+                "/// Platform-hosted models through the managed model gateway: no provider key;\n/// the platform enforces the product's model allowlist, token budget and rate\n/// limit. `models()` lists the catalog, `chat_completion` and\n/// `chat_completion_stream` call a model."
+            }
+            "email" => "/// Email through the platform (Amazon SES).",
+            "sms" => "/// Text messages through the platform.",
+            "whatsapp" => "/// WhatsApp messages through the platform (no Meta token in the app).",
+            "voice" => "/// Outbound phone calls through the platform.",
+            _ => {
+                "/// The instance's Stripe Connect account through the platform (no Stripe key in the app)."
+            }
+        };
+        if feature == "sms" {
+            factories.push(format!("{doc}\npub fn sms_client() -> BlueprintResult<SmsClient> {{\n    // SMS stays deferred until the managed gateway settings are all present.\n    for name in [\"PLATFORM_GATEWAY_URL\", \"INSTANCE_ID\", \"INSTANCE_HMAC_KEY\"] {{\n        if forklaunch_core::config::optional::<String>(name)?.is_none() {{\n            return Ok(SmsClient::deferred());\n        }}\n    }}\n    Ok(SmsClient::new(instance_gateway()?))\n}}"));
+        } else {
+            factories.push(format!("{doc}\npub fn {factory}() -> BlueprintResult<{ty}> {{ Ok({ty}::new(instance_gateway()?)) }}"));
         }
         if feature == "payments" {
-            factories.push("pub fn stripe_client() -> BlueprintResult<StripeBillingClient> { Ok(StripeBillingClient::with_gateway(instance_gateway()?)) }".into());
+            factories.push("/// Stripe billing through the platform's connected account.\npub fn stripe_client() -> BlueprintResult<StripeBillingClient> { Ok(StripeBillingClient::with_gateway(instance_gateway()?)) }".into());
         }
     }
     let mut imports = String::new();
     match clients.as_slice() {
         [] => {}
         [client] => imports.push_str(&format!("use forklaunch_core::http::{client};\n")),
-        clients => imports.push_str(&format!("use forklaunch_core::http::{{{}}};\n", clients.join(", "))),
+        clients => imports.push_str(&format!(
+            "use forklaunch_core::http::{{{}}};\n",
+            clients.join(", ")
+        )),
     }
     if features.iter().any(|feature| feature == "payments") {
         imports.push_str("use forklaunch_billing_stripe::client::StripeBillingClient;\n");
     }
-    Ok((if native_router { NATIVE_MODULE } else { MODULE })
+    let template = if known.is_empty() {
+        FACTORIES_MODULE
+    } else if native_router {
+        NATIVE_MODULE
+    } else {
+        MODULE
+    };
+    Ok(template
         .replace("__EVENT_MODULES__", &modules.join("\n"))
         .replace("__HANDLER_ARMS__", &arms.join("\n"))
         .replace("__KNOWN_FEATURES__", &known.join(" | "))
@@ -1173,6 +1308,25 @@ fn inline_capability_registry(source: &str, adding: bool) -> Result<String> {
     }
     syn::parse_file(&output).context("Managed contract host edit produced invalid Rust")?;
     Ok(output)
+}
+
+/// Undo the router mount and its import. Add formats the file, which can
+/// break the call chain over lines; a file still in rustfmt's form is
+/// formatted again, so it returns to the form it had before add.
+fn without_capability_router(path: &Path, source: &str, import: &str) -> String {
+    let call = regex::Regex::new(r"\s*\.with_managed_capabilities\(\)\??").expect("fixed pattern");
+    let stripped = call
+        .replace_all(&source.replace(import, ""), "")
+        .into_owned();
+    if stripped == source {
+        return stripped;
+    }
+    let format = |text: &str| crate::init::rust_project::format_rust_source(path, text);
+    if format(source) == source {
+        format(&stripped)
+    } else {
+        stripped
+    }
 }
 
 fn with_native_capability_router(source: &str) -> Result<String> {
@@ -1669,6 +1823,42 @@ mod tests {
                 assert_eq!(env["MOCK_EVENTS_URL_SMS"], "http://other:8123");
             }
         }
+    }
+
+    #[test]
+    fn models_render_a_gateway_client_factory_without_an_event_handler() {
+        for native_router in [false, true] {
+            let alone = render_module_with_layout(&["models".into()], native_router).unwrap();
+            syn::parse_file(&alone).unwrap();
+            assert!(
+                alone.contains("use forklaunch_core::http::model_gateway::ModelGatewayClient;")
+            );
+            assert!(
+                alone.contains("pub fn models_client() -> BlueprintResult<ModelGatewayClient>")
+            );
+            assert!(!alone.contains("platform_events"), "{alone}");
+            assert!(!alone.contains("nonce_store"), "{alone}");
+            assert!(alone.starts_with(BEGIN) && alone.ends_with(END));
+            let beside =
+                render_module_with_layout(&["models".into(), "email".into()], native_router)
+                    .unwrap();
+            assert!(beside.contains("model_gateway::ModelGatewayClient"));
+            assert!(beside.contains("pub fn models_client()"));
+            // Models have no events: the dispatch table lists email only.
+            assert!(beside.contains("\"email\" => email::handle(event).await"));
+            assert!(!beside.contains("\"models\""));
+            assert!(!beside.contains("pub mod models;"));
+        }
+        let inline = inline_capability_module(
+            &render_module_with_layout(&["models".into(), "sms".into()], true).unwrap(),
+        );
+        syn::parse_file(&inline).unwrap();
+    }
+
+    #[test]
+    fn an_unknown_capability_is_an_error_not_a_panic() {
+        let error = render_module_with_layout(&["telepathy".into()], true).unwrap_err();
+        assert!(error.to_string().contains("telepathy"), "{error}");
     }
 
     #[test]
