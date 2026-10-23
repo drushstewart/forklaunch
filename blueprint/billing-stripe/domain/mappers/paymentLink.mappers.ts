@@ -141,10 +141,9 @@ export const UpdatePaymentLinkMapper = {
     dto: Parameters<typeof UpdatePaymentLinkEntityMapper.toEntity>[0],
     provider: Stripe.PaymentLink
   ) => {
+    // provider.id is the Stripe id (plink_...), not the public dto.id; the
+    // service has already checked it against the stored Stripe id.
     validateProviderCreation(provider, 'payment_link');
-    if (provider.id !== dto.id) {
-      throw new Error('Invalid Stripe billing response');
-    }
     let amount = 0;
     const data = provider.line_items?.data;
     if (data !== undefined) {
@@ -208,7 +207,8 @@ export const UpdatePaymentLinkMapper = {
   ) => {
     // The base read has already normalized the configured response DTO once.
     // Validate the patch without mutating either input or using cached provider
-    // references as mutation authority. Provider target dispatch is unchanged.
+    // references as mutation authority. The service resolves the Stripe target
+    // from the stored Stripe id after this check.
     if (
       typeof existing.id !== 'string' ||
       !existing.id.trim() ||

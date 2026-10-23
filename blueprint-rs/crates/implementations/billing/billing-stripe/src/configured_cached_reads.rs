@@ -165,15 +165,16 @@ impl<S: BillingStore> StripeBillingService<S> {
             .ok_or_else(invalid)?;
         serde_json::from_value(raw).map_err(|_| invalid())
     }
+    /// Returns the checked cached DTO; its stored Stripe id is the dispatch target.
     pub(crate) async fn configured_preflight_payment_link_update(
         &self,
         request: &UpdatePaymentLinkDto,
-    ) -> BlueprintResult<()> {
+    ) -> BlueprintResult<PaymentLinkDto> {
         let local: PaymentLinkDto = self
             .configured_cached_dto(BillingKind::PaymentLink, &request.id)
             .await?;
-        // This checks the configured cache DTO and patch only. In particular,
-        // providerFields remain opaque and never replace the dispatch target.
+        // This checks the configured cache DTO and patch only; the caller
+        // resolves the Stripe target from the stored providerFields id.
         local_fields(
             &local.id,
             &request.id,
@@ -193,7 +194,8 @@ impl<S: BillingStore> StripeBillingService<S> {
                 .as_deref()
                 .unwrap_or(&local.payment_methods),
             request.status.as_deref().unwrap_or(&local.status),
-        )
+        )?;
+        Ok(local)
     }
     pub(crate) async fn configured_get_checkout_session(
         &self,

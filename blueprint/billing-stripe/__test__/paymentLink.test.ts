@@ -232,11 +232,7 @@ describe('PaymentLink Routes E2E Tests with PostgreSQL Container', () => {
   });
 
   describe('PUT /payment-link/:id - updatePaymentLink', () => {
-    // Skipped: the generated module calls Stripe with the payment link's
-    // public UUID rather than its Stripe id (plink_...), which Stripe rejects
-    // as a missing resource. Un-skip once provider ids are resolved before
-    // provider mutations.
-    it.skip('should update an existing payment link successfully', async () => {
+    it('should update an existing payment link successfully', async () => {
       const { createPaymentLinkRoute, updatePaymentLinkRoute } = await import(
         '../api/routes/paymentLink.routes'
       );
@@ -353,11 +349,7 @@ describe('PaymentLink Routes E2E Tests with PostgreSQL Container', () => {
   });
 
   describe('DELETE /payment-link/:id - expirePaymentLink', () => {
-    // Skipped: the generated module calls Stripe with the payment link's
-    // public UUID rather than its Stripe id (plink_...), which Stripe rejects
-    // as a missing resource. Un-skip once provider ids are resolved before
-    // provider mutations.
-    it.skip('should expire an existing payment link successfully', async () => {
+    it('should expire an existing payment link successfully', async () => {
       const { createPaymentLinkRoute, expirePaymentLinkRoute } = await import(
         '../api/routes/paymentLink.routes'
       );
@@ -526,11 +518,7 @@ describe('PaymentLink Routes E2E Tests with PostgreSQL Container', () => {
   });
 
   describe('GET /payment-link/:id/success - handlePaymentSuccess', () => {
-    // Skipped: the generated module calls Stripe with the payment link's
-    // public UUID rather than its Stripe id (plink_...), which Stripe rejects
-    // as a missing resource. Un-skip once provider ids are resolved before
-    // provider mutations.
-    it.skip('should handle payment success successfully', async () => {
+    it('should handle payment success successfully', async () => {
       const { createPaymentLinkRoute, handlePaymentSuccessRoute } =
         await import('../api/routes/paymentLink.routes');
 
@@ -565,11 +553,7 @@ describe('PaymentLink Routes E2E Tests with PostgreSQL Container', () => {
   });
 
   describe('GET /payment-link/:id/failure - handlePaymentFailure', () => {
-    // Skipped: the generated module calls Stripe with the payment link's
-    // public UUID rather than its Stripe id (plink_...), which Stripe rejects
-    // as a missing resource. Un-skip once provider ids are resolved before
-    // provider mutations.
-    it.skip('should handle payment failure successfully', async () => {
+    it('should handle payment failure successfully', async () => {
       const { createPaymentLinkRoute, handlePaymentFailureRoute } =
         await import('../api/routes/paymentLink.routes');
 

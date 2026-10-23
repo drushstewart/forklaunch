@@ -1,6 +1,6 @@
 # Configured payment-link reads
 
-The configured TypeScript mappers expose public UUIDs while retaining Stripe `plink_` references in cached provider fields. GET and list use those references for read-only Stripe retrieval and preserve the public IDs. Cache evidence alone does not prove provider account ownership; native explicitly provisioned, tenant-scoped aliases and the managed account-generation protocol remain separate mechanisms. Provider mutations do not use these cache hooks.
+The configured TypeScript mappers expose public UUIDs while retaining Stripe `plink_` references in cached provider fields. GET and list use those references for read-only Stripe retrieval and preserve the public IDs. Cache evidence alone does not prove provider account ownership; native explicitly provisioned, tenant-scoped aliases and the managed account-generation protocol remain separate mechanisms. Provider mutations do not use these cache hooks, but they do use the stored Stripe id: update, expire, success and failure read the cached record and call Stripe with its stored `plink_` id (checkout expire, success and failure likewise use the stored `cs_` id). A record without a stored Stripe id fails before any Stripe call.
 
 List behavior with the configured `readCachedDto` and `validateCachedRead` hooks:
 

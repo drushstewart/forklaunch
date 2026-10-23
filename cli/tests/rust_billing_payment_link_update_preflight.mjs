@@ -38,7 +38,7 @@ let cases=0;
   const good={id,amount:12,currency:'USD',paymentMethods:['card'],status:'PENDING',stripeFields:{id:'plink_cached_reference',object:'payment_link',livemode:false,nested:{date:'2026-01-01'}},createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-02T00:00:00.000Z'};
   let value=structuredClone(good),provider=0,orm=0,writes=0,normalized=0,hookCalls=0;
   const stop=new Error('owned provider seam');
-  const client={paymentLinks:{async update(target,fields){provider++;assert.equal(target,id,'cached provider reference must not replace public dispatch');assert.equal(JSON.stringify(fields),JSON.stringify({metadata:{note:'unchanged'}}));throw stop;}}};
+  const client={paymentLinks:{async update(target,fields){provider++;assert.equal(target,'plink_cached_reference','the stored Stripe id, not the public id, is the dispatch target');assert.equal(JSON.stringify(fields),JSON.stringify({metadata:{note:'unchanged'}}));throw stop;}}};
   const em=new Proxy({}, {get(){orm++;throw new Error('unexpected ORM operation');}});
   const cache={getTtlMilliseconds:()=>1000,async readRecord(){return value?{value:JSON.parse(JSON.stringify(value))}:undefined;},async putRecord(){writes++;}};
   const mappers={...configured,PaymentLinkMapper:{...configured.PaymentLinkMapper,normalizeCachedDto(value){normalized++;return configured.PaymentLinkMapper.normalizeCachedDto(value);}},UpdatePaymentLinkMapper:{...configured.UpdatePaymentLinkMapper,async validateCachedUpdate(dto,existing){hookCalls++;assert.ok(existing.createdAt instanceof Date);assert.equal(existing.stripeFields.nested.date,'2026-01-01');const before=JSON.stringify(existing),created=existing.createdAt;await configured.UpdatePaymentLinkMapper.validateCachedUpdate(dto,existing);assert.equal(JSON.stringify(existing),before);assert.equal(existing.createdAt,created);}}};
@@ -52,8 +52,17 @@ let cases=0;
   value=undefined;await assert.rejects(service.updatePaymentLink({id,amount:34}));assert.equal(provider,0);assert.equal(orm,0);assert.equal(writes,0);cases++;
   value=structuredClone(good);const patch={id,stripeFields:{metadata:{note:'unchanged'}}},original=structuredClone(patch);normalized=0;hookCalls=0;
   await assert.rejects(service.updatePaymentLink(patch),error=>error===stop);assert.equal(normalized,1);assert.equal(hookCalls,1);assert.equal(provider,1);assert.equal(orm,0);assert.equal(writes,0);assert.deepEqual(value,good);assert.deepEqual(patch,original);cases++;
-  const legacy=new Service(client,em,{async readRecord(){throw new Error('legacy preflight must remain absent');}}, {},actual.validator,{...mappers,UpdatePaymentLinkMapper:{...mappers.UpdatePaymentLinkMapper,validateCachedUpdate:undefined}},{enableDatabaseBackup:backup});
-  await assert.rejects(legacy.updatePaymentLink(patch),error=>error===stop);assert.equal(provider,2);assert.equal(orm,0);cases++;
+  // A cached record without a stored Stripe id fails before any provider call.
+  const nested={date:'2026-01-01'};
+  for(const stripeFields of [{object:'payment_link',nested},{id,object:'payment_link',nested},{id:'cs_wrong_kind',nested},{id:'plink_',nested},{id:7,nested}]){
+   value={...structuredClone(good),stripeFields};
+   await assert.rejects(service.updatePaymentLink(structuredClone(patch)),{message:`Payment link ${id} has no stored Stripe payment link id`});assert.equal(provider,1);assert.equal(orm,0);assert.equal(writes,0);cases++;
+  }
+  value=structuredClone(good);
+  // Without the configured hook the record is still read once, for its stored Stripe id only.
+  let legacyReads=0;
+  const legacy=new Service(client,em,{getTtlMilliseconds:()=>1000,async readRecord(){legacyReads++;return{value:JSON.parse(JSON.stringify(good))};},async putRecord(){writes++;}}, {},actual.validator,{...mappers,UpdatePaymentLinkMapper:{...mappers.UpdatePaymentLinkMapper,validateCachedUpdate:undefined}},{enableDatabaseBackup:backup});
+  await assert.rejects(legacy.updatePaymentLink(patch),error=>error===stop);assert.equal(legacyReads,1);assert.equal(provider,2);assert.equal(orm,0);assert.equal(writes,0);cases++;
  }
 }
-console.log(`PASS ${cases} actual configured Stripe PaymentLink update preflight cases: zero side effects on invalid input/cache, one normalization, unchanged target/input, backup and custom fallback`);
+console.log(`PASS ${cases} actual configured Stripe PaymentLink update preflight cases: zero side effects on invalid input/cache or a missing stored Stripe id, one normalization, stored Stripe id dispatch with unchanged public id/input, backup and custom fallback`);

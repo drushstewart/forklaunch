@@ -1,4 +1,4 @@
-//! Configured cache/patch preflight only: the mutation target remains public ID.
+//! Configured cache/patch preflight, then dispatch to the stored Stripe id.
 use axum::{
     Json, Router,
     extract::State,
@@ -29,7 +29,7 @@ async fn provider(State(state): State<Provider>, method: Method, uri: Uri) -> Js
     )
 }
 fn record() -> Value {
-    json!({"id":"public-id","amount":12,"currency":"USD","status":"PENDING","paymentMethods":["card"],"providerFields":{"id":"plink_not_mutation_authority","object":"payment_link","livemode":false}})
+    json!({"id":"public-id","amount":12,"currency":"USD","status":"PENDING","paymentMethods":["card"],"providerFields":{"id":"plink_stored_reference","object":"payment_link","livemode":false}})
 }
 fn patch(value: Value) -> UpdatePaymentLinkDto {
     let mut value = value;
@@ -161,7 +161,8 @@ async fn configured_payment_link_update_preflight_and_generic_sequence() {
     input.amount = Some(f64::NAN);
     assert!(service.update_payment_link(input).await.is_err());
     assert!(state.calls.lock().await.is_empty());
-    // No provider reference is required for this hook: the cache is not authority.
+    // A record without a stored Stripe id fails before any Stripe call rather
+    // than sending Stripe the public id.
     let mut no_reference = original.clone();
     no_reference
         .as_object_mut()
@@ -176,15 +177,34 @@ async fn configured_payment_link_update_preflight_and_generic_sequence() {
         )
         .await
         .unwrap();
+    assert_eq!(
+        service
+            .update_payment_link(patch(json!({"status":"COMPLETED"})))
+            .await
+            .unwrap_err()
+            .code,
+        "billing_provider_reference_missing"
+    );
+    assert!(state.calls.lock().await.is_empty());
+    store
+        .insert(
+            Scope::Cache,
+            BillingKind::PaymentLink,
+            original.clone(),
+            Duration::from_secs(60),
+        )
+        .await
+        .unwrap();
     let updated = service
         .update_payment_link(patch(json!({"status":"COMPLETED"})))
         .await
         .unwrap();
+    assert_eq!(updated.id, "public-id");
     assert_eq!(updated.status, "COMPLETED");
     assert_eq!(updated.amount.to_bits(), 34.0_f64.to_bits());
     assert_eq!(
         *state.calls.lock().await,
-        vec!["POST /v1/payment_links/public-id"]
+        vec!["POST /v1/payment_links/plink_stored_reference"]
     );
     for amount in [f64::INFINITY, f64::NEG_INFINITY] {
         state.calls.lock().await.clear();
@@ -194,17 +214,22 @@ async fn configured_payment_link_update_preflight_and_generic_sequence() {
         assert_eq!(result.amount.to_bits(), 34.0_f64.to_bits());
         assert_eq!(state.calls.lock().await.len(), 1);
     }
-    // Generic/custom retains provider-first failure ordering for a missing row.
+    // Generic/custom also resolves the stored Stripe id first, so a missing row
+    // fails before any Stripe call.
     state.calls.lock().await.clear();
     let generic = StripeBillingService::new(
         BaseBillingService::new(Arc::new(MemoryBillingStore::new())),
         client.clone(),
     );
-    assert!(generic.update_payment_link(patch(json!({}))).await.is_err());
     assert_eq!(
-        *state.calls.lock().await,
-        vec!["POST /v1/payment_links/public-id"]
+        generic
+            .update_payment_link(patch(json!({})))
+            .await
+            .unwrap_err()
+            .code,
+        "billing_not_found"
     );
+    assert!(state.calls.lock().await.is_empty());
     // Read selection does not silently grant the new update preflight behavior.
     state.calls.lock().await.clear();
     let read_only = StripeBillingService::new(
@@ -218,9 +243,6 @@ async fn configured_payment_link_update_preflight_and_generic_sequence() {
             .await
             .is_err()
     );
-    assert_eq!(
-        *state.calls.lock().await,
-        vec!["POST /v1/payment_links/public-id"]
-    );
+    assert!(state.calls.lock().await.is_empty());
     server.abort();
 }

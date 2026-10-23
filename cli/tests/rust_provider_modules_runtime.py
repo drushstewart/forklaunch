@@ -72,6 +72,8 @@ try:
             command('infra', 'add', provider, feature)
     app.rename(root / 'relocated')
     app = root / 'relocated'
+    # Build against this checkout's crates, not crates.io.
+    run('python3', repo / 'cli/tests/fixtures/local_crates_patch.py', app, repo)
     source = app / 'src' / provider
     marker = f'USER_{family.upper()}_MARKER'
     with (source / 'lib.rs').open('a') as file:
