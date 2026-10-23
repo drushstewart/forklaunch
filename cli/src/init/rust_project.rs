@@ -162,6 +162,36 @@ pub(super) fn prepare_mixed_workspace_images(root: &Path) -> Result<()> {
     language_images::reconcile(root)
 }
 
+/// Records `metadata.language = "typescript"` for a TypeScript project of a
+/// mixed application. Prebuilt TypeScript modules other than IAM never pass
+/// through the contract build that records it, and a project without a
+/// language reads as native to the mixed-runtime wiring.
+pub(crate) fn record_typescript_language(root: &Path, name: &str) -> Result<()> {
+    let path = root.join(".forklaunch/manifest.toml");
+    let source = read_to_string(&path)?;
+    let mut document: toml_edit::DocumentMut = source.parse()?;
+    if document.get("language").and_then(|item| item.as_str()) != Some("mixed") {
+        return Ok(());
+    }
+    let Some(projects) = document.get_mut("projects").and_then(|item| item.as_array_of_tables_mut()) else {
+        return Ok(());
+    };
+    let Some(project) = projects.iter_mut().find(|project| project.get("name").and_then(|item| item.as_str()) == Some(name)) else {
+        return Ok(());
+    };
+    let metadata = project
+        .entry("metadata")
+        .or_insert(toml_edit::Item::Table(toml_edit::Table::new()))
+        .as_table_mut()
+        .context("Project metadata must be a table")?;
+    if metadata.contains_key("language") {
+        return Ok(());
+    }
+    metadata.insert("language", toml_edit::value("typescript"));
+    write(&path, document.to_string())?;
+    Ok(())
+}
+
 pub(crate) fn refresh_mixed_images(root: &Path) -> Result<()> {
     let path = root.join(".forklaunch/manifest.toml");
     if path.is_file() && (read_manifest_value(&path)?.get("language").and_then(Value::as_str) == Some("mixed") || crate::sdk::typescript_build::any_contract_builds(root)?) {
@@ -4143,6 +4173,25 @@ mod compliance_artifact_tests {
 #[cfg(test)]
 mod local_env_tests {
     use super::*;
+
+    #[test]
+    fn typescript_modules_of_mixed_apps_record_their_language() {
+        let root = tempfile::tempdir().unwrap();
+        create_dir_all(root.path().join(".forklaunch")).unwrap();
+        let manifest = "language = \"mixed\"\n\n[[projects]]\nname = \"ecommerce\"\nvariant = \"ecommerce-stripe\"\n\n[[projects]]\nname = \"billing\"\n\n[projects.metadata]\nlanguage = \"rust\"\n";
+        write(root.path().join(".forklaunch/manifest.toml"), manifest).unwrap();
+        record_typescript_language(root.path(), "ecommerce").unwrap();
+        record_typescript_language(root.path(), "billing").unwrap();
+        let value = read_manifest_value(&root.path().join(".forklaunch/manifest.toml")).unwrap();
+        let language = |index: usize| value["projects"][index]["metadata"]["language"].as_str().map(str::to_owned);
+        assert_eq!(language(0).as_deref(), Some("typescript"));
+        assert_eq!(language(1).as_deref(), Some("rust"));
+        // TypeScript-only applications are left as they are.
+        let plain = "[[projects]]\nname = \"ecommerce\"\n";
+        write(root.path().join(".forklaunch/manifest.toml"), plain).unwrap();
+        record_typescript_language(root.path(), "ecommerce").unwrap();
+        assert_eq!(read_to_string(root.path().join(".forklaunch/manifest.toml")).unwrap(), plain);
+    }
 
     #[test]
     fn http_processes_get_their_required_settings_and_keep_existing_values() {

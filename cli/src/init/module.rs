@@ -461,6 +461,7 @@ impl CliCommand for ModuleCommand {
             if matches!(module, Module::BaseIam | Module::BetterAuthIam) {
                 crate::sdk::typescript_build::prepare_default_service(&app_root_path, "iam", &service_data.runtime, true)?;
             }
+            rust_project::record_typescript_language(&app_root_path, &get_service_module_name(&module))?;
             rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(
                 stdout,

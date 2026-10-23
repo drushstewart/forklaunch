@@ -183,8 +183,17 @@ pub(super) fn enable(
                 package["scripts"][script].is_string(),
                 "Development process script missing"
             );
-            service["entrypoint"] =
-                json!([if runtime == "bun" { "bun" } else { "pnpm" }, "run", script]);
+            // The `<name>-migrate` job migrates as the database owner; the
+            // service's restricted role cannot, so it skips the script's own step.
+            let migrated = compose["services"].get(format!("{name}-migrate")).is_some();
+            service["entrypoint"] = match package["scripts"][script]
+                .as_str()
+                .and_then(without_migrations)
+                .filter(|_| migrated)
+            {
+                Some(command) => json!(["sh", "-c", command]),
+                None => json!([if runtime == "bun" { "bun" } else { "pnpm" }, "run", script]),
+            };
             service["command"] = json!([]);
             service["working_dir"] = json!(format!(
                 "/app/{}/{}",
@@ -212,6 +221,19 @@ pub(super) fn enable(
                 }
             }
             service["build"] = build;
+            // The builder stage has no curl; probe health with the runtime.
+            if let Some(url) = service["healthcheck"]["test"]
+                .as_array()
+                .filter(|test| test.len() == 4 && test[..3] == [json!("CMD"), json!("curl"), json!("-f")])
+                .and_then(|test| test[3].as_str())
+            {
+                let probe = format!(
+                    "fetch({}).then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))",
+                    serde_json::to_string(url)?
+                );
+                service["healthcheck"]["test"] =
+                    json!(["CMD", if runtime == "bun" { "bun" } else { "node" }, "-e", probe]);
+            }
             service["image"] = json!(format!(
                 "{}-{name}-dev:local",
                 compose["services"][name]["image"]
@@ -360,10 +382,57 @@ pub(super) fn enable(
     Ok(Value::Object(changes))
 }
 
+/// A development script without its `migrate:up` steps, when it has any.
+fn without_migrations(script: &str) -> Option<String> {
+    let steps: Vec<&str> = script.split("&&").map(str::trim).collect();
+    let kept: Vec<&str> = steps
+        .iter()
+        .copied()
+        .filter(|step| !step.split_whitespace().any(|word| word == "migrate:up"))
+        .collect();
+    (kept.len() < steps.len() && !kept.is_empty()).then(|| kept.join(" && "))
+}
+
 #[cfg(test)]
 mod tests {
 
     use super::*;
+
+    #[test]
+    fn development_scripts_drop_their_migration_step() {
+        assert_eq!(
+            without_migrations("DOTENV_FILE_PATH=.env.local pnpm run migrate:up && DOTENV_FILE_PATH=.env.local pnpm tsx watch server.ts").as_deref(),
+            Some("DOTENV_FILE_PATH=.env.local pnpm tsx watch server.ts")
+        );
+        assert_eq!(without_migrations("pnpm migrate:up && pnpm tsx watch server.ts").as_deref(), Some("pnpm tsx watch server.ts"));
+        assert_eq!(without_migrations("pnpm tsx watch server.ts"), None);
+        assert_eq!(without_migrations("pnpm migrate:up"), None);
+    }
+
+    #[test]
+    fn migrated_services_start_without_their_own_migration_step() {
+        let root = tempfile::tempdir().unwrap();
+        fs::create_dir_all(root.path().join("modules/api")).unwrap();
+        fs::create_dir_all(root.path().join(".forklaunch")).unwrap();
+        fs::write(root.path().join("modules/api/server.ts"), "").unwrap();
+        fs::write(
+            root.path().join("modules/api/package.json"),
+            r#"{"scripts":{"dev":"pnpm migrate:up && pnpm tsx watch server.ts"}}"#,
+        )
+        .unwrap();
+        let plan = json!({"services": {"api": {"directory": "api", "entry": "server"}, "api-migrate": {"directory": "api", "entry": "migrate"}}});
+        fs::write(
+            root.path().join("Dockerfile.typescript"),
+            crate::core::forklaunch_state::stamp(&format!("COPY <<\"FORKLAUNCH_EOF\" /forklaunch/production.json\n{plan}\nFORKLAUNCH_EOF\n")),
+        )
+        .unwrap();
+        let manifest: toml::Value =
+            toml::from_str("modules_path='modules'\nruntime='node'\n[[projects]]\nname='api'\ntype='Service'\n").unwrap();
+        let mut compose = json!({"services":{"api":{"image":"demo-typescript:local","working_dir":"/app/api","command":["node","/app/api/production/server.mjs"],"volumes":[],"build":{"context":".","dockerfile":"Dockerfile.typescript"}},"api-migrate":{"image":"demo-typescript:local","command":["node","/app/api/production/migrate.mjs"]}}});
+        enable(root.path(), &manifest, &BTreeSet::from(["api".into()]), &mut compose, &json!({})).unwrap();
+        let entrypoint = compose["services"]["api"]["entrypoint"].as_array().unwrap();
+        assert_eq!(entrypoint[entrypoint.len() - 3..], [json!("sh"), json!("-c"), json!("pnpm tsx watch server.ts")]);
+    }
 
     #[test]
     fn owned_production_process_uses_isolated_builder_image_for_development() {
@@ -387,7 +456,7 @@ mod tests {
             &format!("modules_path='modules'\nruntime='{runtime}'\n[[projects]]\nname='api'\ntype='Service'\n"),
         )
         .unwrap();
-            let mut compose = json!({"services":{"api":{"image":"demo-typescript:local","working_dir":"/app/api","command":["node","--enable-source-maps","/app/api/production/server.mjs"],"volumes":[]},"api-migrate":{"image":"demo-typescript:local","command":["node","/app/api/production/migrate.mjs"],"build":{"context":".","dockerfile":"Dockerfile.typescript","additional_contexts":{"framework":"/checkout/framework-rs"},"args":{"FRAMEWORK_ROOT":"/checkout"}}}}});
+            let mut compose = json!({"services":{"api":{"image":"demo-typescript:local","working_dir":"/app/api","healthcheck":{"test":["CMD","curl","-f","http://localhost:8000/health"],"interval":"30s"},"command":["node","--enable-source-maps","/app/api/production/server.mjs"],"volumes":[]},"api-migrate":{"image":"demo-typescript:local","command":["node","/app/api/production/migrate.mjs"],"build":{"context":".","dockerfile":"Dockerfile.typescript","additional_contexts":{"framework":"/checkout/framework-rs"},"args":{"FRAMEWORK_ROOT":"/checkout"}}}}});
             enable(
                 root.path(),
                 &manifest,
@@ -397,6 +466,11 @@ mod tests {
             )
             .unwrap();
             assert_eq!(compose["services"]["api"]["build"]["target"], "builder");
+            // The builder image has no curl; health is probed with the runtime.
+            let test = &compose["services"]["api"]["healthcheck"]["test"];
+            assert_eq!(test[1], if runtime == "bun" { "bun" } else { "node" });
+            assert!(test[3].as_str().unwrap().starts_with("fetch(\"http://localhost:8000/health\")"));
+            assert_eq!(compose["services"]["api"]["healthcheck"]["interval"], "30s");
             // Named contexts and arguments of the image's build carry over.
             assert_eq!(compose["services"]["api"]["build"]["additional_contexts"]["framework"], "/checkout/framework-rs");
             assert_eq!(compose["services"]["api"]["build"]["args"]["FRAMEWORK_ROOT"], "/checkout");
