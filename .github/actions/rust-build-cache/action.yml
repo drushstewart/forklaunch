@@ -18,8 +18,14 @@ inputs:
   family:
     description: >-
       Which compiler cache to restore. Jobs that compile the same workspace
-      with the same profile and features share a family.
+      with the same profile and features share a family. No family name may
+      be a prefix of another followed by '-' (restore matches by prefix).
     required: true
+  fallback-family:
+    description: >-
+      Family to start from when this one has no store yet, for instance the
+      CLI's store for a job that also builds the CLI.
+    default: ''
   size:
     description: Upper bound sccache keeps the local store under (SCCACHE_CACHE_SIZE).
     default: 2G
@@ -39,7 +45,14 @@ runs:
       uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       with:
         version: v0.18.0
-    # The absolute path, not the bare name: a few test scripts run cargo with a
+    # sccache hashes every CARGO_* variable in rustc's environment, and the
+    # test scripts each pick their own CARGO_TARGET_DIR, so the same crate
+    # compiled by two scripts (or two jobs) never matched: the first trial run
+    # had 0 hits out of 714 in a Rust suite that restored a 1.2 GB store.
+    # rustc does not read the variable (cargo has already turned it into
+    # --out-dir, which sccache leaves out of the hash), and no crate in the
+    # graph reads it at compile time, so the wrapper drops it.
+    # An absolute path, not a bare name: a few test scripts run cargo with a
     # reduced PATH, and the wrapper must still resolve there.
     # CARGO_INCREMENTAL=0 because sccache cannot cache incremental builds.
     # SCCACHE_IDLE_TIMEOUT=0 keeps one server for the whole job, so the stats
@@ -50,11 +63,17 @@ runs:
         FAMILY: ${{ inputs.family }}
         SIZE: ${{ inputs.size }}
       run: |
+        # Named `sccache` so cc-rs still recognises it and routes the C
+        # compilers of -sys crates through the cache too.
+        mkdir -p "$RUNNER_TEMP/sccache-wrapper"
+        wrapper="$RUNNER_TEMP/sccache-wrapper/sccache"
+        printf '#!/bin/sh\nunset CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR\nexec "%s" "$@"\n' "$SCCACHE_PATH" > "$wrapper"
+        chmod +x "$wrapper"
         {
           echo "SCCACHE_DIR=$HOME/.cache/sccache-ci"
           echo "SCCACHE_CACHE_SIZE=$SIZE"
           echo "SCCACHE_IDLE_TIMEOUT=0"
-          echo "RUSTC_WRAPPER=$SCCACHE_PATH"
+          echo "RUSTC_WRAPPER=$wrapper"
           echo "CARGO_INCREMENTAL=0"
           echo "FORKLAUNCH_SCCACHE_FAMILY=$FAMILY"
         } >> "$GITHUB_ENV"
@@ -67,6 +86,7 @@ runs:
         key: sccache-v1-${{ runner.os }}-${{ inputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
         restore-keys: |
           sccache-v1-${{ runner.os }}-${{ inputs.family }}-
+          ${{ inputs.fallback-family && format('sccache-v1-{0}-{1}-', runner.os, inputs.fallback-family) || '' }}
     - name: Cache Cargo registry
       if: inputs.registry-cache != 'off'
       uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2

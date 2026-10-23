@@ -149,6 +149,7 @@ jobs:
         uses: ./.github/actions/rust-build-cache
         with:
           family: generated
+          fallback-family: cli
 
       - uses: actions/setup-python@v5
         with:

@@ -66,7 +66,7 @@ jobs:
       - name: Rust build cache
         uses: ./.github/actions/rust-build-cache
         with:
-          family: cli-tests
+          family: tests-cli
 
       - name: Run CLI tests
         working-directory: ./cli
