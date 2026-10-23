@@ -52,9 +52,11 @@ export async function verifyTypes(sdk = createForkLaunchSdk()) {
   const crossFetch = require(crossFetchPath);
   mkdirSync(join(temporary, 'node_modules'));
   symlinkSync(crossFetchPath, join(temporary, 'node_modules/cross-fetch'));
+  // Generated SDKs import their schema runtime (Ajv); link the pinned packages.
+  for (const name of ['ajv', 'ajv-formats', 'ajv-draft-04', 'qs', '@types']) symlinkSync(join(dirname(tsc), '..', name), join(temporary, 'node_modules', name));
   writeFileSync(join(temporary, 'tsconfig.json'), JSON.stringify({ compilerOptions: {
     strict: true, target: 'ES2022', module: 'NodeNext', moduleResolution: 'NodeNext',
-    lib: ['ES2022', 'DOM'], types: [], outDir: 'compiled'
+    lib: ['ES2022', 'DOM', 'DOM.Iterable'], types: [], outDir: 'compiled'
   }, include: ['*.ts'] }));
   run(process.env.TSC_BIN || join(root, 'framework/node_modules/.bin/tsc'), ['--project', join(temporary, 'tsconfig.json')]);
   appendFileSync(join(temporary, 'native-sdk.rs'), String.raw`
@@ -112,17 +114,17 @@ fn main() {
   server = createServer(async (request, response) => {
     if (request.url.startsWith('/responses/')) {
       const mode = request.url.slice('/responses/'.length);
-      const send = (code, mime, value) => { response.writeHead(code, { 'content-type': mime }); response.end(value); };
+      const send = (code, mime, value) => { response.writeHead(code, mime === undefined ? {} : { 'content-type': mime }); response.end(value); };
       if (mode === 'text') return send(200, 'text/plain; charset=utf-8', 'hello 水\n');
       if (mode === 'binary') return send(200, 'application/octet-stream', Buffer.from([0, 255, 13, 10]));
       if (mode === 'null') return send(200, 'application/json', 'null');
       if (mode === 'invalid') return send(200, 'application/json', '{broken');
-      if (mode === 'empty') return send(204, 'application/json');
-      if (mode === 'head') return send(200, 'application/json');
+      if (mode === 'empty') return send(204);
+      if (mode === 'head') return send(200);
       if (mode === 'error') return send(409, 'application/problem+json', JSON.stringify({ errorCode: 'CONFLICT' }));
       if (mode === 'several/created') return send(201, 'application/json', JSON.stringify({ createdAt: 'today' }));
       if (mode === 'several/queued') return send(202, 'application/json', JSON.stringify({ jobId: 42 }));
-      if (mode === 'several/empty') return send(204, 'application/json');
+      if (mode === 'several/empty') return send(204);
       return send(404, 'text/plain', 'Unknown fixture');
     }
     if (request.url.startsWith('/json')) assert.equal(decodeURIComponent(request.url), "/json/a'b&c");
@@ -178,11 +180,12 @@ fn main() {
       assert.deepEqual([...new Uint8Array(await parsed.get('file').arrayBuffer())], [0, 255, 1]);
     } else assert.equal([...parsed].length, 0);
   }
-  const urlencoded = await typed.urlencoded.postUrlencoded({ body: { key: ['a', '水'], empty: [], number: 42 } });
+  // Generated clients encode form collections with bracket keys and refuse empty
+  // ones, which have no lossless wire form (fb1e03d21).
+  const urlencoded = await typed.urlencoded.postUrlencoded({ body: { key: ['a', '水'], number: 42 } });
   const encoded = new URLSearchParams(Buffer.from(urlencoded.response.body, 'hex').toString());
-  assert.equal(encoded.get('key'), '["a","水"]');
-  assert.equal(encoded.get('empty'), '[]');
-  assert.equal(encoded.get('number'), '42');
+  assert.deepEqual([...encoded], [['key[0]', 'a'], ['key[1]', '水'], ['number', '42']]);
+  await assert.rejects(typed.urlencoded.postUrlencoded({ body: { empty: [] } }), /Empty form collection has no lossless wire representation/);
   assert.equal((await typed.responses.readText()).response, 'hello 水\n');
   assert.deepEqual([...(await typed.responses.readBinary()).response], [0, 255, 13, 10]);
   assert.equal((await typed.responses.readNull()).response, null);
