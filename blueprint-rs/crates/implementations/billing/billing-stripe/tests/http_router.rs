@@ -125,8 +125,8 @@ async fn persistent_billing_http_mcp_and_provider_startup() {
     let keys = Arc::new(FieldEncryptor::new("billing-http-owned-key").unwrap());
     let client = Client::new();
     let provider=Router::new().route("/v1/plans",post(|headers:HeaderMap,Form(fields):Form<HashMap<String,String>>|async move {
-        assert_eq!(headers["authorization"],"Bearer sk_owned");assert_eq!(headers["stripe-version"],"2026-08-26.dahlia");assert_eq!(fields["amount"],"1999");Json(json!({"id":"provider_plan"}))
-    })).route("/v1/plans/{id}",axum::routing::get(||async {Json(json!({"id":"provider_plan","product":{"id":"prod_owned","private":"private-provider-value"}}))}));
+        assert_eq!(headers["authorization"],"Bearer sk_owned");assert_eq!(headers["stripe-version"],"2026-08-26.dahlia");assert_eq!(fields["amount"],"1999");Json(json!({"id":"provider_plan","object":"plan"}))
+    })).route("/v1/plans/{id}",axum::routing::get(||async {Json(json!({"id":"provider_plan","object":"plan","product":{"id":"prod_owned","object":"product","private":"private-provider-value"}}))}));
     let (provider_base, provider_stop, provider_task) = serve(provider).await;
     for stripe in [false, true] {
         let tenant = TenantContext::new(format!("billing-http-{stripe}-{suffix}")).unwrap();

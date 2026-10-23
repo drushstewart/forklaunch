@@ -973,6 +973,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '24.2.0'
+      # Node's ICU validates TZ against the host zoneinfo. Ubuntu moved legacy
+      # zone names (CET, EST5EDT, US/*, ...) to tzdata-legacy, and without
+      # them TZ=CET silently becomes UTC in the oracle.
+      - name: Install legacy zone names for the V8 date oracle
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tzdata-legacy
       - run: node cli/tests/rust_v8_date_parity.mjs
         env:
           CARGO_TARGET_DIR: framework-rs/target
