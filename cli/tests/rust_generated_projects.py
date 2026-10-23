@@ -63,7 +63,7 @@ try:
     assert not (app / '.forklaunch/blueprint-rs').exists(), 'Blueprint crates resolve from the blueprint workspace'
     for name, _ in MODULES:
         assert (app / f'src/{name}/registrations.rs').is_file(), f'{name} uses the service layout'
-        assert not (app / f'src/{name}/api/http').exists(), f'{name} owns controllers; blueprint logic stays in the crates'
+        assert not (app / f'src/{name}/api/http').exists(), f'{name} binds blueprint handlers instead of copying them'
     assert 'variant = "agent"' in manifest, 'Agents are services tagged variant = "agent"'
     for path in ('agent/mod.rs', 'agent/tools/current_time.rs', '__test__/agent.rs'):
         assert (app / 'src/assistant' / path).is_file(), f'agent {path}'
