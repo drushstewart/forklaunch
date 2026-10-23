@@ -447,7 +447,14 @@ pub(super) fn plan_typescript_sdk(
     }
     add_packages(&mut workspace, &additions)?;
     // Parse and validate both files before publishing either update.
-    let package = serde_json::to_string_pretty(&package)? + "\n";
+    // An existing root package.json keeps its key order and final newline.
+    let package = match fs::read_to_string(&package_path) {
+        Ok(original) => crate::core::package_json::preserve_json_layout(
+            &original,
+            &serde_json::to_string_pretty(&package)?,
+        ),
+        Err(_) => serde_json::to_string_pretty(&package)? + "\n",
+    };
     let workspace = serde_yml::to_string(&workspace)?;
     outputs.push(("package.json".into(), package));
     outputs.push(("pnpm-workspace.yaml".into(), workspace));

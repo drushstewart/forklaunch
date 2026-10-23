@@ -158,6 +158,92 @@ pub(crate) fn strip_retired_manifest_keys(text: &str) -> String {
     doc.to_string()
 }
 
+/// `rendered` (a manifest a command wrote from its own model) laid out like
+/// `original`, the file on disk: unchanged content keeps the original bytes;
+/// otherwise every table keeps the original's key order (new keys after) and
+/// the original's leading comment. The TypeScript commands write the manifest
+/// from a struct in field order and the Rust ones from a sorted table, so
+/// without this each rewrote the whole file into its own order.
+pub(crate) fn preserve_manifest_layout(original: &str, rendered: &str) -> String {
+    use toml_edit::{DocumentMut, Item, Table};
+    let (Ok(before), Ok(after)) = (
+        toml::from_str::<toml::Value>(original),
+        toml::from_str::<toml::Value>(rendered),
+    ) else {
+        return rendered.to_string();
+    };
+    if before == after {
+        return original.to_string();
+    }
+    let (Ok(source), Ok(mut doc)) = (original.parse::<DocumentMut>(), rendered.parse::<DocumentMut>()) else {
+        return rendered.to_string();
+    };
+    fn order(table: &mut Table, source: &Table) {
+        let rank: HashMap<String, usize> =
+            source.iter().enumerate().map(|(i, (key, _))| (key.to_string(), i)).collect();
+        table.sort_values_by(|a, _, b, _| {
+            rank.get(a.get()).unwrap_or(&usize::MAX).cmp(rank.get(b.get()).unwrap_or(&usize::MAX))
+        });
+        for (key, item) in table.iter_mut() {
+            match (item, source.get(key.get())) {
+                (Item::Table(inner), Some(Item::Table(source))) => order(inner, source),
+                (Item::ArrayOfTables(tables), Some(Item::ArrayOfTables(sources))) => {
+                    for (i, inner) in tables.iter_mut().enumerate() {
+                        // Projects are matched by name, other entries by place.
+                        let name = inner.get("name").and_then(Item::as_str).map(str::to_owned);
+                        let matched = name
+                            .and_then(|name| {
+                                sources.iter().find(|t| t.get("name").and_then(Item::as_str) == Some(name.as_str()))
+                            })
+                            .or_else(|| sources.get(i));
+                        if let Some(source) = matched {
+                            order(inner, source);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    fn renumber(table: &mut Table, position: &mut isize) {
+        for (_, item) in table.iter_mut() {
+            match item {
+                Item::Table(inner) => {
+                    inner.set_position(Some(*position));
+                    *position += 1;
+                    renumber(inner, position);
+                }
+                Item::ArrayOfTables(tables) => {
+                    for inner in tables.iter_mut() {
+                        inner.set_position(Some(*position));
+                        *position += 1;
+                        renumber(inner, position);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    // The leading comment is the first key's decor: it stays at the top as
+    // the original had it, whichever key comes first after sorting.
+    fn first_prefix(table: &Table) -> Option<String> {
+        let (key, _) = table.iter().next()?;
+        table.key(key)?.leaf_decor().prefix()?.as_str().map(str::to_owned)
+    }
+    fn set_first_prefix(table: &mut Table, prefix: &str) {
+        if let Some((mut key, _)) = table.iter_mut().next() {
+            key.leaf_decor_mut().set_prefix(prefix);
+        }
+    }
+    let header = first_prefix(source.as_table()).unwrap_or_default();
+    set_first_prefix(doc.as_table_mut(), "");
+    order(doc.as_table_mut(), source.as_table());
+    set_first_prefix(doc.as_table_mut(), &header);
+    let mut position = 1;
+    renumber(doc.as_table_mut(), &mut position);
+    doc.to_string()
+}
+
 /// The `toml::Value` form of [`strip_retired_manifest_keys`].
 pub(crate) fn remove_retired_manifest_keys(value: &mut toml::Value) {
     if let Some(table) = value.as_table_mut() {
@@ -787,6 +873,20 @@ mod retired_key_tests {
         // A project's own key of that name is not top-level and stays.
         let nested = "app_name = \"zebra\"\n\n[[projects]]\nname = \"a\"\nsnake_case_name = \"a\"\n";
         assert_eq!(strip_retired_manifest_keys(nested), nested);
+    }
+
+    #[test]
+    fn manifest_writes_keep_the_files_key_and_table_order() {
+        let original = "app_name = \"zebra\"\nid = \"x\"\n\n[[projects]]\nname = \"a\"\ntype = \"Service\"\n\n[projects.resources]\ndatabase = \"postgresql\"\n\n[[projects]]\nname = \"b\"\ntype = \"Library\"\n\n[project_peer_topology]\nzebra = [\"a\"]\n";
+        // Same content in struct order: the original bytes come back.
+        let reordered = "# Generated by ForkLaunch\n\nid = \"x\"\napp_name = \"zebra\"\n\n[project_peer_topology]\nzebra = [\"a\"]\n\n[[projects]]\ntype = \"Service\"\nname = \"a\"\n\n[projects.resources]\ndatabase = \"postgresql\"\n\n[[projects]]\ntype = \"Library\"\nname = \"b\"\n";
+        assert_eq!(preserve_manifest_layout(original, reordered), original);
+        // A change keeps the order, and a new key follows the existing ones.
+        let changed = reordered.replace("id = \"x\"\n", "id = \"x\"\nlicense = \"MIT\"\n").replace("\"Library\"", "\"Worker\"");
+        assert_eq!(
+            preserve_manifest_layout(original, &changed),
+            original.replace("id = \"x\"\n", "id = \"x\"\nlicense = \"MIT\"\n").replace("\"Library\"", "\"Worker\"")
+        );
     }
 
     #[test]

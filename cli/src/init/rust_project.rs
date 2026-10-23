@@ -2908,7 +2908,14 @@ fn ensure_rust_package_scripts(
         }
     }
 
-    write(&package_path, serde_json::to_string_pretty(&package)?)
+    let rendered = serde_json::to_string_pretty(&package)?;
+    write(
+        &package_path,
+        match read_to_string(&package_path) {
+            Ok(original) => crate::core::package_json::preserve_json_layout(&original, &rendered),
+            Err(_) => rendered,
+        },
+    )
         .with_context(|| format!("Failed to update {}", package_path.display()))?;
     Ok(())
 }
@@ -2935,7 +2942,14 @@ fn remove_rust_package_scripts(app_root: &Path, name: &str) -> Result<()> {
         }
     }
 
-    write(&package_path, serde_json::to_string_pretty(&package)?)
+    let rendered = serde_json::to_string_pretty(&package)?;
+    write(
+        &package_path,
+        match read_to_string(&package_path) {
+            Ok(original) => crate::core::package_json::preserve_json_layout(&original, &rendered),
+            Err(_) => rendered,
+        },
+    )
         .with_context(|| format!("Failed to update {}", package_path.display()))?;
     sdk_typescript::reconcile(app_root)
 }
@@ -4040,7 +4054,11 @@ fn read_manifest_value(path: &Path) -> Result<Value> {
 fn write_manifest_value(path: &Path, value: &Value) -> Result<()> {
     let mut value = value.clone();
     crate::core::manifest::remove_retired_manifest_keys(&mut value);
-    write(path, toml::to_string_pretty(&value)?)
+    let mut content = toml::to_string_pretty(&value)?;
+    if let Ok(original) = read_to_string(path) {
+        content = crate::core::manifest::preserve_manifest_layout(&original, &content);
+    }
+    write(path, content)
         .with_context(|| format!("Failed to write {}", path.display()))
 }
 
