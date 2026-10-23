@@ -148,6 +148,7 @@ jobs:
         with:
           family: framework-rs
           size: 1500M
+          free-disk: 'true'
       - name: Start isolated S3-compatible storage
         run: |
           docker run -d --name forklaunch-rust-s3 --memory 512m \
@@ -889,6 +890,7 @@ jobs:
         with:
           family: blueprint-rs
           size: 1500M
+          free-disk: 'true'
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
