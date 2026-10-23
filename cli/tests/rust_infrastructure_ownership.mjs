@@ -27,7 +27,9 @@ for(const id of ['redis','s3'])assert.equal(existsSync(path.join(app,`src/flagge
 run('change','service','--path',path.join(app,'src/flagged'),'--infrastructure','redis','--confirm');
 assert.ok(read('src/flagged/server.rs').includes('Human flag customization'));
 run('delete','service','flagged','--path',app,'--continue');
-const pristine=Object.fromEntries(['Cargo.toml','lib.rs','server.rs'].map(file=>[file,read(`src/alpha/${file}`)]));
+// Generated services carry their startup settings in .env.local; resources
+// added and removed again must leave it as generated.
+const pristine=Object.fromEntries(['Cargo.toml','lib.rs','server.rs','.env.local'].map(file=>[file,read(`src/alpha/${file}`)]));
 for(const id of ['redis','s3']){
  edit('add','alpha',id,'--dryrun');
  assert.equal(existsSync(path.join(app,`src/alpha/infrastructure/${id}.rs`)),false);
@@ -38,7 +40,6 @@ edit('add','alpha','redis');edit('add','alpha','email');edit('add','alpha','s3')
 manifestOnly();
 edit('remove','alpha','redis');edit('remove','alpha','email');edit('remove','alpha','s3');
 for(const [file,text] of Object.entries(pristine))assert.equal(read(`src/alpha/${file}`),text,file);
-assert.equal(existsSync(path.join(app,'src/alpha/.env.local')),false);
 assert.deepEqual(compose().services.redis,originalBackends.redis);assert.deepEqual(compose().services.minio,originalBackends.minio);
 // Shared backend remains until the final owner leaves, including deletion.
 for(const id of ['redis','s3']){edit('add','alpha',id);edit('add','beta',id);edit('remove','alpha',id);}

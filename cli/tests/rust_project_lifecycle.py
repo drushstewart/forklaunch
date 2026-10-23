@@ -354,8 +354,11 @@ def check_paths():
         assert rust_projects()['clients']['metadata']['cratePath'] == relative
         assert relative in cargo(app)['workspace']['members']
         aggregate_manifest = cargo(aggregate)
+        # The aggregate re-exports every service-local SDK (e3842817d);
+        # --sdk-services lists the ones needed now.
         assert aggregate_manifest['dependencies'] == {
             'accounts': {'package': 'accounts-sdk', 'path': '../../accounts/sdk/rust'},
+            'products': {'package': 'products-sdk', 'path': '../../products/sdk/rust'},
         }, aggregate_manifest
         assert 'build-dependencies' not in aggregate_manifest
         assert not (aggregate / 'build.rs').exists(), 'Aggregate reexports existing SDKs without duplicate generation'
@@ -371,13 +374,16 @@ def check_paths():
         assert not project('accounts').exists()
         assert cargo(aggregate)['dependencies'] == {
             'accounts': {'package': 'customer-accounts-sdk', 'path': '../../customer-accounts/sdk/rust'},
+            'products': {'package': 'products-sdk', 'path': '../../products/sdk/rust'},
         }, cargo(aggregate)
         assert (aggregate / 'lib.rs').read_bytes() == public_exports
         assert extension.read_bytes() == extension_source
-        before = snapshot()
-        deletion = command('delete', 'service', 'customer-accounts', '--continue', check=False)
-        assert deletion.returncode != 0 and 'referenced by the Rust client aggregate' in deletion.stdout + deletion.stderr
-        assert snapshot() == before, 'Refused deletion changed the service or its SDK consumer'
+        # Deleting a service drops its re-export instead of blocking (e3842817d).
+        extension.write_text('//! Application-owned SDK extensions.\n')
+        command('delete', 'service', 'products', '--continue')
+        assert not project('products').exists()
+        assert 'products' not in cargo(aggregate)['dependencies'], cargo(aggregate)
+        assert b'pub use products' not in (aggregate / 'lib.rs').read_bytes()
         compile_projects()
 
 

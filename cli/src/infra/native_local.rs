@@ -302,7 +302,11 @@ fn release_backend(
     if crate::core::docker::service_still_referenced(compose, backend) {
         return Ok(());
     }
-    if serde_json::to_value(current)? == serde_json::to_value(generated.services.get(backend))? {
+    // `init --infrastructure` and `infra add` serialize the same backend with
+    // and without empty fields (`environment: {}`); neither is a user edit.
+    if without_empty(serde_json::to_value(current)?)
+        == without_empty(serde_json::to_value(generated.services.get(backend))?)
+    {
         compose.services.shift_remove(backend);
         // And the named volumes it brought, once no other service mounts them.
         for (name, volume) in &generated.volumes {
@@ -323,6 +327,27 @@ fn release_backend(
         edit.note_kept_setting(&compose_path, &format!("service {backend}"));
     }
     Ok(())
+}
+
+/// A compose value without null, empty-object and empty-array fields.
+fn without_empty(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Object(map) => serde_json::Value::Object(
+            map.into_iter()
+                .map(|(key, value)| (key, without_empty(value)))
+                .filter(|(_, value)| match value {
+                    serde_json::Value::Null => false,
+                    serde_json::Value::Object(map) => !map.is_empty(),
+                    serde_json::Value::Array(items) => !items.is_empty(),
+                    _ => true,
+                })
+                .collect(),
+        ),
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(without_empty).collect())
+        }
+        other => other,
+    }
 }
 
 /// Insert where rustfmt's module ordering expects it, so `cargo fmt --check`
@@ -442,5 +467,10 @@ mod tests {
         referenced.services.insert("user".into(), user);
         release_backend(&mut edit, &mut referenced, &generated, "redis").unwrap();
         assert!(referenced.services.contains_key("redis"));
+        // `init --infrastructure` writes the same backend with `environment: {}`.
+        let mut initialized = generated.clone();
+        initialized.services.get_mut("redis").unwrap().environment = Some(Default::default());
+        release_backend(&mut edit, &mut initialized, &generated, "redis").unwrap();
+        assert!(!initialized.services.contains_key("redis"));
     }
 }
