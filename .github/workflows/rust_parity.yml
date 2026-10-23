@@ -1567,17 +1567,17 @@ jobs:
       - name: Configured Checkout and PaymentLink cached reads
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_cached_reads
-          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_cached_reads -- --ignored --nocapture
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_cached_reads -- --ignored --nocapture --test-threads=1
       - name: Configured PaymentLink update preflight, coercion, HTTP and MCP
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_payment_link_update
-          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout,typescript-routing --test http_configured_payment_link_update -- --ignored --nocapture
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout,typescript-routing --test http_configured_payment_link_update -- --ignored --nocapture --test-threads=1
       - name: Configured Subscription update preflight and HTTP dispatch
         run: |
           cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --test configured_subscription_update
-          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_subscription_update -- --ignored --nocapture
+          cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features bound-checkout --test http_configured_subscription_update -- --ignored --nocapture --test-threads=1
       - name: Bound PaymentLink expiration recovery HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_payment_link_expiration_recovery_runtime.mjs
       - name: Bound PaymentLink expiration HTTP, MCP and both SDKs
@@ -1585,23 +1585,23 @@ jobs:
       - name: Bound Subscription creation HTTP, MCP and both SDKs
         run: node cli/tests/rust_billing_bound_subscription_creation_runtime.mjs
       - name: Stored Portal provenance and original-lifetime PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_reads -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_reads -- --ignored --nocapture --test-threads=1
       - name: Stored Portal local expiration, immutable history and uncertain commit PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_expiration -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_portal_expiration -- --ignored --nocapture --test-threads=1
       - name: Bound Plan read provenance, provider and race PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_plan_reads -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_plan_reads -- --ignored --nocapture --test-threads=1
       - name: PaymentLink event-linked expiration recovery PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_payment_link_expiration_recovery -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_payment_link_expiration_recovery -- --ignored --nocapture --test-threads=1
       - name: PaymentLink metadata expiration and migration PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_payment_link_expiration -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_payment_link_expiration -- --ignored --nocapture --test-threads=1
       - name: Created PaymentLink bounded list PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_created_payment_link_list -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_created_payment_link_list -- --ignored --nocapture --test-threads=1
       - name: Created PaymentLink read provenance and provider PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_created_payment_link_reads -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_created_payment_link_reads -- --ignored --nocapture --test-threads=1
       - name: Bound Subscription read provenance and provider PostgreSQL checks
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_subscription_creation bound_subscription_created_read_matrix -- --ignored --nocapture
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features postgres-identity --test bound_subscription_creation bound_subscription_created_read_matrix -- --ignored --nocapture --test-threads=1
       - name: Billing date HTTP, MCP and generated SDK profile
-        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features http --test http_request_dates -- --ignored
+        run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features http --test http_request_dates -- --ignored --test-threads=1
       - run: node cli/tests/rust_billing_dto_types.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1818,37 +1818,37 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
       - run: cargo test --manifest-path blueprint-rs/Cargo.toml --workspace --all-features
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test services -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test subscription_creation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_checkout -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_payment_link -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_creation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_plan_creation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test customer_registration -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_subscription_creation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_portal_creation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_checkout_creation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test paused_effect -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features http --test http_router -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test business_rules -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test provider_bindings -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test payment_resume -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test bound_reads -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_cancellation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_capture -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test bound_reads -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test scoped_cancellation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test reconciliation -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test http_router -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_jwt_sessions -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features provider_ -- --include-ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features encrypted_directory -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features directory_identity_binding -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features directory_unit_of_work_restricted -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-database --all-features postgres_worker -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-redis --all-features redis_worker -- --ignored
-      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-kafka --all-features --test kafka_worker -- --ignored
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test services -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-base --all-features --test subscription_creation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_checkout -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_payment_link -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_creation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_plan_creation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test customer_registration -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_subscription_creation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_portal_creation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test bound_checkout_creation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --all-features --test paused_effect -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-billing-stripe --features http --test http_router -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test business_rules -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test provider_bindings -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test payment_resume -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test bound_reads -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_cancellation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test scoped_capture -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test bound_reads -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-paypal --all-features --test scoped_cancellation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-base --all-features --test reconciliation -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-ecommerce-stripe --all-features --test http_router -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_backend -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features postgres_jwt_sessions -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features provider_ -- --include-ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features encrypted_directory -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features directory_identity_binding -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-iam-base --all-features directory_unit_of_work_restricted -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-database --all-features postgres_worker -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-redis --all-features redis_worker -- --ignored --test-threads=1
+      - run: cargo test --manifest-path blueprint-rs/Cargo.toml -p forklaunch-worker-kafka --all-features --test kafka_worker -- --ignored --test-threads=1
       - name: Stop isolated Kafka-compatible broker
         if: always()
         run: docker rm -f forklaunch-rust-kafka-ci || true
