@@ -62,7 +62,9 @@ try:
         assert json.loads(contract.read_text()) and json.loads(openapi.read_text())
         assert 'listening on' not in exported.stdout
     for arguments, expected in [(['--unknown'], 'Expected no arguments or --migrate'), (['--migrate'], 'MIGRATION_DATABASE_URL is required')]:
-        failed = subprocess.run([str(binaries / 'notes'), *arguments], cwd=app, env=clean_env, capture_output=True, text=True, timeout=20)
+        # RUST_LOG is a required startup setting (7248a878d); provide it so these
+        # probes reach argument and migration-URL validation.
+        failed = subprocess.run([str(binaries / 'notes'), *arguments], cwd=app, env={**clean_env, 'RUST_LOG': 'info'}, capture_output=True, text=True, timeout=20)
         assert failed.returncode != 0 and expected in failed.stderr, failed.stderr
         assert 'listening on' not in failed.stdout
     # Identical generated package names can share a build cache across workspaces.
