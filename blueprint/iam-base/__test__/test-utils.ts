@@ -1,8 +1,10 @@
+import { forklaunchRouter, schemaValidator } from '@forklaunch/blueprint-core';
 import { getEnvVar } from '@forklaunch/common';
 import {
   BlueprintTestHarness,
   clearTestDatabase,
   DatabaseType,
+  surfaceFromTestClaims,
   TEST_TOKENS,
   TestSetupResult
 } from '@forklaunch/testing';
@@ -41,7 +43,9 @@ export const setupTestDatabase = async (): Promise<TestSetupResult> => {
     },
     databaseType: getEnvVar('DATABASE_TYPE') as DatabaseType,
     useMigrations: hasMigrations,
-    migrationsPath
+    migrationsPath,
+    // Serve a JWKS for JWKS_PUBLIC_KEY_URL and mint session tokens (setup.jwt).
+    jwt: true
   });
 
   return await harness.setup();
@@ -52,6 +56,31 @@ export const cleanupTestDatabase = async (): Promise<void> => {
     await harness.cleanup();
   }
 };
+
+/**
+ * Gives a router the auth options the IAM server mounts it with, but with
+ * roles and permissions read from the test token's `roles` / `permissions`
+ * claims. Local SDK calls made with {@link withMiddlewares} then run the real
+ * JWT verification, session decoding and RBAC checks.
+ */
+export async function mountWithClaimsAuth(router: object): Promise<void> {
+  const { ci, tokens } = await import('../bootstrapper');
+  forklaunchRouter('/', schemaValidator, ci.resolve(tokens.OtelCollector), {
+    auth: surfaceFromTestClaims
+  }).use(router as never);
+}
+
+/**
+ * Local SDK calls skip middlewares unless asked. This wraps an SDK call so it
+ * runs them (parsing and authentication included), as a request through the
+ * server would: `withMiddlewares(route.sdk.getUser)({ params, headers })`.
+ */
+export const withMiddlewares =
+  <Request extends object, Response>(
+    call: (request: Request) => Promise<Response>
+  ) =>
+  (request: Request): Promise<Response> =>
+    call({ ...request, executeMiddlewares: true });
 
 export async function clearDatabase(options?: {
   orm?: TestSetupResult['orm'];
@@ -170,13 +199,13 @@ export const mockUpdatePermissionData = {
 
 export const mockRoleData = {
   name: 'editor',
-  permissions: ['123e4567-e89b-12d3-a456-426614174002']
+  permissionIds: ['123e4567-e89b-12d3-a456-426614174002']
 };
 
 export const mockUpdateRoleData = {
   id: '123e4567-e89b-12d3-a456-426614174000',
   name: 'super-admin',
-  permissions: ['123e4567-e89b-12d3-a456-426614174002']
+  permissionIds: ['123e4567-e89b-12d3-a456-426614174002']
 };
 
 // Expected response templates
