@@ -372,7 +372,7 @@ pub(crate) fn transform_registrations_ts_service_to_worker(
                 }}
             }});",
             worker_type_name,
-            get_worker_producer_factory(worker_type),
+            get_worker_producer_factory(worker_type, &pascal_case_name),
             pascal_case_name,
             pascal_case_name,
             worker_type_name,
@@ -400,7 +400,7 @@ pub(crate) fn transform_registrations_ts_service_to_worker(
                     factory: {}
                 }}
             }});",
-            get_worker_producer_factory(worker_type),
+            get_worker_producer_factory(worker_type, &pascal_case_name),
             pascal_case_name,
             pascal_case_name,
             worker_type_name,

@@ -23,7 +23,7 @@ use crate::{
         },
         manifest::{ProjectEntry, ProjectType},
         package_json::{
-            package_json_constants::{BETTER_AUTH_VERSION, CORE_VERSION},
+            package_json_constants::{BETTER_AUTH_VERSION, CORE_VERSION, VALIDATOR_VERSION},
             project_package_json::ProjectPackageJson,
         },
         rendered_template::{RenderedTemplate, RenderedTemplatesCache},
@@ -252,6 +252,7 @@ pub(crate) fn get_client_sdk_additional_deps(
     is_iam_enabled: bool,
     is_messaging_enabled: bool,
     is_cac_enabled: bool,
+    is_ecommerce_enabled: bool,
 ) -> HashMap<String, String> {
     let mut additional_deps = HashMap::new();
 
@@ -266,6 +267,9 @@ pub(crate) fn get_client_sdk_additional_deps(
     }
     if is_cac_enabled {
         additional_deps.insert(format!("@{app_name}/cac"), "workspace:*".to_string());
+    }
+    if is_ecommerce_enabled {
+        additional_deps.insert(format!("@{app_name}/ecommerce"), "workspace:*".to_string());
     }
     additional_deps
 }
@@ -330,6 +334,11 @@ pub(crate) fn add_project_to_client_sdk(
     dependencies
         .forklaunch_core
         .get_or_insert_with(|| CORE_VERSION.to_string());
+    // Inferred SDK client types (the Better Auth factory) name the validator's
+    // schema types in declaration output.
+    dependencies
+        .forklaunch_validator
+        .get_or_insert_with(|| VALIDATOR_VERSION.to_string());
     if better_auth {
         dependencies
             .better_auth
@@ -523,6 +532,16 @@ mod compliance_tests {
             "metadata":{"language":language}
         }))
         .unwrap()
+    }
+
+    #[test]
+    fn client_sdk_depends_on_every_module_package_it_exports() {
+        // compliance.ts imports `<module>SdkClient` from clientSdk.ts for every
+        // db-backed module, so the client SDK must depend on ecommerce too.
+        let deps = get_client_sdk_additional_deps(&"shop".to_string(), true, true, false, false, true);
+        assert_eq!(deps.get("@shop/ecommerce").map(String::as_str), Some("workspace:*"));
+        let deps = get_client_sdk_additional_deps(&"shop".to_string(), true, true, false, false, false);
+        assert!(!deps.contains_key("@shop/ecommerce"));
     }
 
     fn generated(projects: &[ProjectEntry]) -> String {

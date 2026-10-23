@@ -479,7 +479,7 @@ pub(crate) fn transform_registrations_ts_worker_type(
                     }}
                 }})",
             worker_type,
-            get_worker_producer_factory(r#type),
+            get_worker_producer_factory(r#type, pascal_case_name),
             pascal_case_name,
             pascal_case_name,
             worker_type,
@@ -507,7 +507,7 @@ pub(crate) fn transform_registrations_ts_worker_type(
                         factory: {}
                     }}
                 }})",
-            get_worker_producer_factory(r#type),
+            get_worker_producer_factory(r#type, pascal_case_name),
             pascal_case_name,
             pascal_case_name,
             worker_type,
