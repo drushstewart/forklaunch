@@ -210,9 +210,19 @@ pub(crate) fn change(
         .as_deref()
         .map(serde_yml::from_str::<DockerCompose>)
         .transpose()?;
+    // One-shot migrate/seed jobs run the project's binary with its settings,
+    // so they gain and lose infrastructure settings with it.
     let keys = compose
         .as_ref()
-        .map(|compose| super::capabilities::compose_processes(compose, &project.name))
+        .map(|compose| {
+            let mut keys = super::capabilities::compose_processes(compose, &project.name);
+            keys.extend(
+                [format!("{}-migrate", project.name), format!("{}-seed", project.name)]
+                    .into_iter()
+                    .filter(|job| compose.services.contains_key(job)),
+            );
+            keys
+        })
         .unwrap_or_default();
     let bucket = format!("{}-{}-dev", manifest.app_name, project.name);
     // The Redis database: the one the project's processes already select,

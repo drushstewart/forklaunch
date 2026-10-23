@@ -859,6 +859,182 @@ pub(super) fn prune_stale_migrations(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Drop root `.env` settings for project `name` (`<NAME>_*`) that no Compose
+/// service references any more, after its backend changed or it was deleted.
+/// With `local_keys`, the project's `.env.local` loses those generated keys
+/// once its processes no longer set them.
+pub(super) fn prune_project_env(root: &Path, name: &str, local_keys: &[&str]) -> Result<()> {
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let compose_path = root.join(manifest.get("docker_compose_path").and_then(Value::as_str).unwrap_or("docker-compose.yaml"));
+    let compose_text = read_to_string(&compose_path).unwrap_or_default();
+    let prefix = format!("{}_", name.to_case(Case::UpperSnake));
+    let referenced = |key: &str| ["}", ":", "-"].iter().any(|end| compose_text.contains(&format!("${{{key}{end}")));
+    let path = root.join(".env");
+    if let Ok(existing) = read_to_string(&path) {
+        let updated: String = existing
+            .split_inclusive('\n')
+            .filter(|line| {
+                let line = line.trim_start();
+                let key = line.trim_start_matches('#').trim_start().split('=').next().unwrap_or_default().trim();
+                !(key.starts_with(&prefix) && line.contains('=') && !referenced(key))
+            })
+            .collect();
+        if updated != existing {
+            write(&path, updated)?;
+        }
+    }
+    if local_keys.is_empty() {
+        return Ok(());
+    }
+    let Some(relative) = crate_path_for_project(&manifest, name) else { return Ok(()) };
+    let local = root.join(relative).join(".env.local");
+    let Ok(existing) = read_to_string(&local) else { return Ok(()) };
+    let compose = read_or_create_rust_docker_compose(&compose_path)?;
+    let mut set: BTreeSet<String> = compose
+        .services
+        .iter()
+        .filter(|(key, service)| *key == name || worker_owner(service) == Some(name))
+        .flat_map(|(_, service)| service.environment.iter().flatten().map(|(key, _)| key.clone()))
+        .collect();
+    if set.contains("DATABASE_URL") {
+        set.extend(["MIGRATION_DATABASE_URL".into(), "SQLX_OFFLINE".into()]);
+    }
+    let updated: String = existing
+        .split_inclusive('\n')
+        .filter(|line| {
+            let key = line.split('=').next().unwrap_or_default().trim();
+            !(local_keys.contains(&key) && !set.contains(key))
+        })
+        .collect();
+    if updated != existing {
+        write(&local, updated)?;
+    }
+    Ok(())
+}
+
+/// Compose services that run project `name`: its process, migrate/seed jobs and
+/// worker or module processes tagged with it.
+fn owned_by(key: &str, service: &DockerService, name: &str) -> bool {
+    key == name
+        || [format!("{name}-migrate"), format!("{name}-seed"), format!("{name}-server"), format!("{name}-worker")].iter().any(|owned| owned == key)
+        || ["x-forklaunch-worker-for", "x-forklaunch-ecommerce-worker-for"]
+            .iter()
+            .any(|tag| service.additional_properties.get(*tag).and_then(serde_yml::Value::as_str) == Some(name))
+}
+
+/// `old` as a whole name segment in `text` (delimited by anything but a
+/// letter, digit or underscore) becomes `new`.
+fn renamed_segment(text: &str, old: &str, new: &str) -> String {
+    let pattern = regex::Regex::new(&format!(r"(^|[^A-Za-z0-9_]){}($|[^A-Za-z0-9_])", regex::escape(old))).expect("escaped name");
+    // Two passes: adjacent matches share a delimiter.
+    let once = pattern.replace_all(text, |c: &regex::Captures| format!("{}{new}{}", &c[1], &c[2])).into_owned();
+    pattern.replace_all(&once, |c: &regex::Captures| format!("{}{new}{}", &c[1], &c[2])).into_owned()
+}
+
+/// Values generated for a project that a rename changes: `${OLD_…}` references,
+/// roles, database names, namespaces, hostnames and binaries.
+fn renamed_project_value(value: &str, app: &str, old: &str, new: &str) -> String {
+    let (old_upper, new_upper) = (old.to_case(Case::UpperSnake), new.to_case(Case::UpperSnake));
+    let (old_snake, new_snake) = (old.to_case(Case::Snake), new.to_case(Case::Snake));
+    let app_snake = app.replace('-', "_");
+    let value = value.replace(&format!("${{{old_upper}_"), &format!("${{{new_upper}_"));
+    let value = value
+        .replace(&format!("/{app_snake}_{old_snake}"), &format!("/{app_snake}_{new_snake}"))
+        .replace(&format!("//{old_snake}_app@"), &format!("//{new_snake}_app@"))
+        .replace(&format!("//{old_snake}_owner@"), &format!("//{new_snake}_owner@"));
+    renamed_segment(&value, old, new)
+}
+
+/// Rename a project's Compose processes in place, keeping their settings,
+/// ports and infrastructure, and point every reference (depends_on, consumer
+/// `<OLD>_*` settings) at the new name. The root `.env` keys follow, and the
+/// generated values in it and in `.env.local` files are rewritten.
+pub(super) fn rename_compose_project(root: &Path, old: &str, new: &str) -> Result<()> {
+    if old == new {
+        return Ok(());
+    }
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let app = rust_app_name(root)?;
+    let compose_path = root.join(manifest.get("docker_compose_path").and_then(Value::as_str).unwrap_or("docker-compose.yaml"));
+    let (old_upper, new_upper) = (format!("{}_", old.to_case(Case::UpperSnake)), format!("{}_", new.to_case(Case::UpperSnake)));
+    let renamed_key = |key: &str| key.strip_prefix(&old_upper).map_or_else(|| key.to_owned(), |rest| format!("{new_upper}{rest}"));
+    if compose_path.is_file() {
+        let mut compose = read_or_create_rust_docker_compose(&compose_path)?;
+        let renames: BTreeMap<String, String> = compose
+            .services
+            .iter()
+            .filter(|(key, service)| owned_by(key, service, old))
+            .map(|(key, _)| (key.clone(), key.strip_prefix(old).map_or_else(|| key.clone(), |rest| format!("{new}{rest}"))))
+            .collect();
+        compose.services = std::mem::take(&mut compose.services)
+            .into_iter()
+            .map(|(key, mut service)| {
+                if let Some(target) = renames.get(&key) {
+                    service.hostname = service.hostname.map(|hostname| if hostname == key { target.clone() } else { renamed_segment(&hostname, old, new) });
+                    service.container_name = service.container_name.map(|name| renamed_segment(&name, old, new));
+                    if let Some(command) = service.command.as_mut() {
+                        match command {
+                            DockerCommand::Simple(command) => *command = renamed_segment(command, old, new),
+                            DockerCommand::Multiple(parts) => parts.iter_mut().for_each(|part| *part = renamed_segment(part, old, new)),
+                        }
+                    }
+                    for tag in ["x-forklaunch-worker-for", "x-forklaunch-ecommerce-worker-for"] {
+                        if service.additional_properties.get(tag).and_then(serde_yml::Value::as_str) == Some(old) {
+                            service.additional_properties.insert(tag.into(), serde_yml::Value::String(new.into()));
+                        }
+                    }
+                    if let Some(env) = service.environment.as_mut() {
+                        env.values_mut().for_each(|value| *value = renamed_project_value(value, &app, old, new));
+                    }
+                } else if let Some(env) = service.environment.take() {
+                    // Consumers address the renamed project by `<OLD>_*` settings.
+                    service.environment = Some(
+                        env.into_iter()
+                            .map(|(key, value)| {
+                                if key.starts_with(&old_upper) {
+                                    (renamed_key(&key), renamed_project_value(&value, &app, old, new))
+                                } else {
+                                    (key, value.replace(&format!("${{{old_upper}"), &format!("${{{new_upper}")))
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+                if let Some(depends) = service.depends_on.take() {
+                    service.depends_on = Some(depends.into_iter().map(|(key, condition)| (renames.get(&key).cloned().unwrap_or(key), condition)).collect());
+                }
+                (renames.get(&key).cloned().unwrap_or(key), service)
+            })
+            .collect();
+        write(&compose_path, yaml_to_string(&compose)?)?;
+    }
+    // The renamed crate's own `.env.local` holds only its settings; elsewhere
+    // only `<OLD>_*` settings belong to it.
+    let mut env_files = vec![(root.join(".env"), false)];
+    for project in manifest.get("projects").and_then(Value::as_array).into_iter().flatten() {
+        let name = project.get("name").and_then(Value::as_str);
+        if let Some(relative) = name.and_then(|name| crate_path_for_project(&manifest, name)) {
+            env_files.push((root.join(relative).join(".env.local"), name == Some(new)));
+        }
+    }
+    for (path, own) in env_files {
+        let Ok(existing) = read_to_string(&path) else { continue };
+        let updated: String = existing
+            .split_inclusive('\n')
+            .map(|line| match line.split_once('=') {
+                Some((key, value)) if !key.trim_start().starts_with('#') && (own || key.trim().starts_with(&old_upper)) => {
+                    format!("{}={}", renamed_key(key.trim()), renamed_project_value(value, &app, old, new))
+                }
+                _ => line.to_owned(),
+            })
+            .collect();
+        if updated != existing {
+            write(&path, updated)?;
+        }
+    }
+    Ok(())
+}
+
 /// Replace the application-derived prefixes an application rename changes:
 /// `<old>-` names (containers, networks, volumes, queues, namespaces, Kafka
 /// and JWT identities) and `/<old>_` database names in URLs.
@@ -1045,6 +1221,74 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn project_rename_keeps_compose_settings_and_rewires_references() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        create_dir_all(root.join(".forklaunch")).unwrap();
+        create_dir_all(root.join("src/ledgers")).unwrap();
+        write(root.join(".forklaunch/manifest.toml"), "app_name = \"kestrel\"\n[[projects]]\nname = \"ledgers\"\ntype = \"Service\"\n[projects.metadata]\nlanguage = \"rust\"\ncratePath = \"src/ledgers\"\n").unwrap();
+        write(root.join("docker-compose.yaml"), r#"services:
+  accounts:
+    hostname: accounts
+    container_name: kestrel-accounts-rust
+    environment:
+      PORT: '8000'
+      DATABASE_URL: ${ACCOUNTS_DATABASE_URL:?Configure}
+    depends_on:
+      accounts-migrate:
+        condition: service_completed_successfully
+    ports:
+    - 8000:8000
+    command:
+    - /app/bin/accounts
+  accounts-migrate:
+    command:
+    - /app/bin/accounts
+    - --migrate
+  accountsx:
+    environment:
+      ACCOUNTS_URL: http://accounts:8000
+      OTHER: keep-accounts-word
+    depends_on:
+      accounts:
+        condition: service_started
+"#).unwrap();
+        write(root.join(".env"), "ACCOUNTS_DATABASE_URL=postgresql://accounts_app@postgresql:5432/kestrel_accounts\nACCOUNTS_STORAGE_ENCRYPTION_NAMESPACE=accounts-records\nACCOUNTSX_KEEP=1\nIAM_NOTE=accounts\n").unwrap();
+        write(root.join("src/ledgers/.env.local"), "DATABASE_URL=postgresql://accounts_app@127.0.0.1:5432/kestrel_accounts\nPORT=8000\n").unwrap();
+        rename_compose_project(root, "accounts", "ledgers").unwrap();
+        let compose = read_or_create_rust_docker_compose(&root.join("docker-compose.yaml")).unwrap();
+        let ledgers = &compose.services["ledgers"];
+        assert_eq!(ledgers.hostname.as_deref(), Some("ledgers"));
+        assert_eq!(ledgers.container_name.as_deref(), Some("kestrel-ledgers-rust"));
+        assert_eq!(ledgers.environment.as_ref().unwrap()["DATABASE_URL"], "${LEDGERS_DATABASE_URL:?Configure}");
+        assert_eq!(ledgers.ports.as_ref().unwrap(), &vec!["8000:8000".to_string()]);
+        assert!(ledgers.depends_on.as_ref().unwrap().contains_key("ledgers-migrate"));
+        assert!(matches!(&compose.services["ledgers-migrate"].command, Some(DockerCommand::Multiple(c)) if c[0] == "/app/bin/ledgers"));
+        let consumer = &compose.services["accountsx"];
+        assert_eq!(consumer.environment.as_ref().unwrap()["LEDGERS_URL"], "http://ledgers:8000");
+        assert_eq!(consumer.environment.as_ref().unwrap()["OTHER"], "keep-accounts-word");
+        assert!(consumer.depends_on.as_ref().unwrap().contains_key("ledgers"));
+        assert!(!compose.services.contains_key("accounts"));
+        assert_eq!(read_to_string(root.join(".env")).unwrap(), "LEDGERS_DATABASE_URL=postgresql://ledgers_app@postgresql:5432/kestrel_ledgers\nLEDGERS_STORAGE_ENCRYPTION_NAMESPACE=ledgers-records\nACCOUNTSX_KEEP=1\nIAM_NOTE=accounts\n");
+        assert_eq!(read_to_string(root.join("src/ledgers/.env.local")).unwrap(), "DATABASE_URL=postgresql://ledgers_app@127.0.0.1:5432/kestrel_ledgers\nPORT=8000\n");
+    }
+
+    #[test]
+    fn unreferenced_project_settings_leave_env_files() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        create_dir_all(root.join(".forklaunch")).unwrap();
+        create_dir_all(root.join("src/jobs")).unwrap();
+        write(root.join(".forklaunch/manifest.toml"), "app_name = \"kestrel\"\n[[projects]]\nname = \"jobs\"\ntype = \"Worker\"\n[projects.metadata]\nlanguage = \"rust\"\ncratePath = \"src/jobs\"\n").unwrap();
+        write(root.join("docker-compose.yaml"), "services:\n  jobs:\n    environment:\n      REDIS_URL: ${JOBS_REDIS_URL:?Configure Redis}\n      TENANT_ID: ${JOBS_TENANT_ID:?Configure}\n").unwrap();
+        write(root.join(".env"), "JOBS_DATABASE_URL=postgresql://jobs_app@postgresql:5432/kestrel_jobs\nJOBS_REDIS_URL=redis://redis:6379/1\nJOBS_TENANT_ID=t\nOTHER_DATABASE_URL=x\n").unwrap();
+        write(root.join("src/jobs/.env.local"), "DATABASE_URL=postgresql://x\nMIGRATION_DATABASE_URL=postgresql://y\nSQLX_OFFLINE=true\nREDIS_URL=redis://127.0.0.1:6379/1\nMINE=1\n").unwrap();
+        prune_project_env(root, "jobs", &["DATABASE_URL", "MIGRATION_DATABASE_URL", "SQLX_OFFLINE", "REDIS_URL"]).unwrap();
+        assert_eq!(read_to_string(root.join(".env")).unwrap(), "JOBS_REDIS_URL=redis://redis:6379/1\nJOBS_TENANT_ID=t\nOTHER_DATABASE_URL=x\n");
+        assert_eq!(read_to_string(root.join("src/jobs/.env.local")).unwrap(), "REDIS_URL=redis://127.0.0.1:6379/1\nMINE=1\n");
+    }
 
     #[test]
     fn application_rename_rewrites_generated_names_only() {

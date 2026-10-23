@@ -29,6 +29,7 @@ use crate::core::{
 };
 
 mod conversion;
+mod kind_change;
 mod library_rename;
 mod discovery;
 pub(crate) mod dependencies;
@@ -1078,6 +1079,50 @@ pub(crate) fn change_rust_project(
         );
     }
 
+    let producer_worker = current_project
+        .and_then(|project| project.get("metadata"))
+        .is_some_and(|metadata| {
+            metadata.get("workerService").and_then(Value::as_bool) == Some(true)
+                && metadata.get("workerRuntime").and_then(Value::as_str) != Some("apalis")
+        });
+    if current_kind == RustProjectKind::Worker && target_kind == RustProjectKind::Worker && convert_worker && producer_worker
+        && let (Some(from), Some(to)) = (current_backend, target_backend)
+    {
+        // Rename and describe first, then move the queue backend.
+        let name = if current_name != target_name || description.is_some() {
+            change_rust_project(app_root, current_name, new_name, description, None, None, None, dryrun)?
+        } else {
+            current_name.to_owned()
+        };
+        let planned = worker::change_producer_backend(app_root, if dryrun { current_name } else { &name }, from, to, dryrun)?;
+        if dryrun {
+            let mut planned = planned;
+            planned.extend([".forklaunch/manifest.toml".into(), "docker-compose.yaml".into(), ".env".into()]);
+            crate::core::rendered_template::log_dryrun_plan(&mut StandardStream::stdout(ColorChoice::Always), &planned)?;
+        }
+        return Ok(name);
+    }
+    let native_service = current_kind == RustProjectKind::Service
+        && persistent_module.is_none()
+        && contracts_layout::is_native_service(&app_root.join(&current_crate_path));
+    let kind_change = match (current_kind, target_kind) {
+        (RustProjectKind::Service, RustProjectKind::Worker) if native_service => Some(Some(target_backend.context("Choose the worker type (-t database|redis|kafka)")?)),
+        (RustProjectKind::Worker, RustProjectKind::Service) if producer_worker => Some(None),
+        _ => None,
+    };
+    if let Some(backend) = kind_change {
+        // Rename and describe first, then change the generated shape.
+        let name = if current_name != target_name || description.is_some() {
+            change_rust_project(app_root, current_name, new_name, description, None, None, None, dryrun)?
+        } else {
+            current_name.to_owned()
+        };
+        let planned = kind_change::change_kind(app_root, if dryrun { current_name } else { &name }, backend, dryrun)?;
+        if dryrun {
+            crate::core::rendered_template::log_dryrun_plan(&mut StandardStream::stdout(ColorChoice::Always), &planned)?;
+        }
+        return Ok(name);
+    }
     if current_kind != target_kind || convert_worker {
         conversion::preflight(app_root, current_name, current_kind)?;
     }
@@ -1117,6 +1162,24 @@ pub(crate) fn change_rust_project(
         }
     }
     if dryrun {
+        let mut planned = vec![".forklaunch/manifest.toml".to_string()];
+        if current_name != target_name {
+            planned.insert(0, format!("{target_crate_path} (moved from {current_crate_path})"));
+            planned.push("Cargo.toml (workspace members)".into());
+        }
+        if description.is_some() {
+            planned.push(format!("{target_crate_path}/Cargo.toml"));
+        }
+        if current_name != target_name || current_kind != target_kind || worker_type.is_some() || database.is_some() {
+            planned.extend([
+                format!("{target_crate_path} sources"),
+                manifest.get("docker_compose_path").and_then(Value::as_str).unwrap_or("docker-compose.yaml").to_string(),
+                ".env".into(),
+                "package.json (scripts)".into(),
+                "generated SDK and contract outputs".into(),
+            ]);
+        }
+        crate::core::rendered_template::log_dryrun_plan(&mut StandardStream::stdout(ColorChoice::Always), &planned)?;
         return Ok(target_name.to_string());
     }
 
@@ -1265,6 +1328,10 @@ pub(crate) fn change_rust_project(
             .remove("variant");
     }
     write_manifest_value(&manifest_path, &manifest)?;
+    if current_name != target_name && current_kind == target_kind {
+        // Processes keep their settings, ports and infrastructure; only names move.
+        local_runtime::rename_compose_project(app_root, current_name, target_name)?;
+    }
 
     for (path, source) in library_edits {
         write(&path, source).with_context(|| format!("Failed to update library consumer {}", path.display()))?;
@@ -1321,8 +1388,10 @@ pub(crate) fn change_rust_project(
             RustProjectKind::Library => ensure_library_shape(&crate_dir, target_name)?,
         }
     }
-    if current_name != target_name || current_kind != target_kind {
+    if current_kind != target_kind {
         remove_rust_docker_compose_project(app_root, current_name)?;
+    }
+    if current_name != target_name || current_kind != target_kind {
         remove_rust_package_scripts(app_root, current_name)?;
     }
     ensure_rust_docker_compose_project(app_root, target_kind, target_name, false)?;

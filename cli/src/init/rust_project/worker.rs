@@ -477,7 +477,19 @@ pub(super) fn compose(root: &Path, name: &str, backend: Backend) -> Result<()> {
         environment.entry("PUBLIC_ORIGIN".into()).or_insert_with(|| format!("http://localhost:{producer_port}"));
         // Internal callers sign producer requests with the shared service key.
         environment.entry("INTERNAL_HMAC_SECRET_KEY".into()).or_insert_with(|| "${INTERNAL_HMAC_SECRET_KEY:?Configure the shared internal service HMAC key}".into());
+        let consumer = compose.services[name].clone();
         let producer = compose.services.entry(format!("{name}-server")).or_insert(producer);
+        // An existing producer gains the queue settings the consumer gained
+        // (a backend change); its own listener settings stay.
+        let environment = producer.environment.get_or_insert_with(IndexMap::new);
+        for (key, value) in consumer.environment.iter().flatten() {
+            if !matches!(key.as_str(), "HOST" | "PORT" | "MCP_ENABLED" | "PUBLIC_ORIGIN") {
+                environment.entry(key.clone()).or_insert_with(|| value.clone());
+            }
+        }
+        for (key, condition) in consumer.depends_on.iter().flatten() {
+            producer.depends_on.get_or_insert_with(IndexMap::new).entry(key.clone()).or_insert_with(|| condition.clone());
+        }
         repair_legacy_producer_origin(producer, name);
     }
     write(path, yaml_to_string(&compose)?)?;
@@ -703,6 +715,106 @@ fn producer_loopback_origin(service: &DockerService) -> Option<String> {
         return None;
     }
     Some(format!("http://localhost:{port}"))
+}
+
+/// A producer worker's generated files for `backend`, as `init worker` writes them.
+pub(super) fn producer_templates(root: &Path, dir: &Path, name: &str, description: &str, backend: Backend) -> Result<Vec<RenderedTemplate>> {
+    let worker = templates(root, dir, name, description, backend)?;
+    let worker = native_layout::flatten(dir, name, RustProjectKind::Worker, worker);
+    let files = service_templates(dir, name, description, worker, false, backend)?;
+    let files = native_mappers::templates(dir, dir.join("domain/mappers/health.rs").is_file(), files)?;
+    Ok(native_layout::framework_paths(root, files))
+}
+
+/// Move a producer worker (HTTP/MCP producer plus consumer) to another queue
+/// backend. Only files still exactly as generated for the current backend are
+/// replaced, application-added Cargo dependencies are kept, and Compose and
+/// `.env` follow. Anything customized stops the change before a write.
+pub(super) fn change_producer_backend(root: &Path, name: &str, from: Backend, to: Backend, dryrun: bool) -> Result<Vec<String>> {
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let dir = root.join(crate_path_for_project(&manifest, name).context("Worker crate path missing")?);
+    anyhow::ensure!(dir.join("consumer/lib.rs").is_file(), "Worker {name} is not a producer worker");
+    let description = cargo_description(&dir.join("Cargo.toml"))?.unwrap_or_default();
+    let current = producer_templates(root, &dir, name, &description, from)?;
+    let target = producer_templates(root, &dir, name, &description, to)?;
+    let planned = super::kind_change::replace_generated(root, &dir, current, target, dryrun)?;
+    if dryrun {
+        return Ok(planned);
+    }
+    mark(root, name, to)?;
+    switch_compose_backend(root, name, from, to)?;
+    compose(root, name, to)?;
+    local_runtime::prune_project_env(root, name, &[
+        "DATABASE_URL", "MIGRATION_DATABASE_URL", "SQLX_OFFLINE", "REDIS_URL", "WORKER_NAMESPACE",
+        "KAFKA_BROKERS", "KAFKA_TRANSACTIONAL_ID", "KAFKA_PUBLISHER_ID", "KAFKA_GROUP_ID", "KAFKA_PARTITIONS",
+        "KAFKA_REPLICATION_FACTOR", "KAFKA_OPERATION_TIMEOUT_MS", "KAFKA_SESSION_TIMEOUT_MS",
+        "WORKER_MAX_PAYLOAD_BYTES", "WORKER_HANDLER_TIMEOUT_MS", "WORKER_BATCH_SIZE", "WORKER_POLL_MS",
+        "WORKER_LEASE_MS", "WORKER_RENEW_MS", "WORKER_CONCURRENCY",
+    ])?;
+    Ok(planned)
+}
+
+/// Settings and one-shot jobs only the previous backend used. Values that are
+/// not the generated ones stay.
+fn switch_compose_backend(root: &Path, name: &str, from: Backend, to: Backend) -> Result<()> {
+    let path = root.join("docker-compose.yaml");
+    let mut compose = read_or_create_rust_docker_compose(&path)?;
+    let prefix = name.to_case(Case::UpperSnake);
+    let generated: &[(&str, String)] = &match from {
+        Backend::Postgres => vec![("DATABASE_URL", format!("${{{prefix}_DATABASE_URL:?Configure a restricted PostgreSQL role}}"))],
+        Backend::Redis => vec![
+            ("REDIS_URL", format!("${{{prefix}_REDIS_URL:?Configure Redis}}")),
+            ("WORKER_NAMESPACE", format!("${{{prefix}_NAMESPACE:?Configure a worker namespace}}")),
+        ],
+        Backend::Kafka => vec![
+            ("KAFKA_BROKERS", format!("${{{prefix}_KAFKA_BROKERS:?Configure Kafka brokers}}")),
+            ("WORKER_NAMESPACE", format!("${{{prefix}_NAMESPACE:?Configure a worker namespace}}")),
+            ("KAFKA_TRANSACTIONAL_ID", format!("${{{prefix}_KAFKA_TRANSACTIONAL_ID:?Configure a stable unique identity for {name}}}")),
+            ("KAFKA_PUBLISHER_ID", format!("${{{prefix}_KAFKA_PUBLISHER_ID:?Configure a stable publisher identity for {name}}}")),
+        ],
+    };
+    let leased = |backend: Backend| backend != Backend::Kafka;
+    let runner: &[(&str, &str)] = match (leased(from), leased(to)) {
+        (true, false) => &[("WORKER_BATCH_SIZE", "1"), ("WORKER_POLL_MS", "250"), ("WORKER_LEASE_MS", "30000"), ("WORKER_RENEW_MS", "10000"), ("WORKER_CONCURRENCY", "1")],
+        (false, true) => &[("KAFKA_GROUP_ID", "workers"), ("KAFKA_PARTITIONS", "3"), ("KAFKA_REPLICATION_FACTOR", "1"), ("KAFKA_OPERATION_TIMEOUT_MS", "5000"), ("KAFKA_SESSION_TIMEOUT_MS", "10000"), ("WORKER_MAX_PAYLOAD_BYTES", "1048576"), ("WORKER_HANDLER_TIMEOUT_MS", "300000")],
+        _ => &[],
+    };
+    // Redis and Kafka both name their worker namespace.
+    let generated: Vec<(&str, String)> = generated.iter().filter(|(key, _)| !(*key == "WORKER_NAMESPACE" && to != Backend::Postgres)).cloned().collect();
+    let generated = generated.as_slice();
+    let processes: Vec<String> = compose.services.iter()
+        .filter(|(key, service)| *key == name || producer_owner(service) == Some(name))
+        .map(|(key, _)| key.clone())
+        .collect();
+    for key in &processes {
+        let service = compose.services.get_mut(key).unwrap();
+        if let Some(env) = service.environment.as_mut() {
+            env.retain(|variable, value| {
+                !generated.iter().any(|(generated, expected)| generated == variable && expected == value)
+                    && !runner.iter().any(|(generated, expected)| generated == variable && expected == value)
+            });
+        }
+        // The broker the process no longer reads.
+        let env = service.environment.clone().unwrap_or_default();
+        if let Some(depends) = service.depends_on.as_mut() {
+            if from == Backend::Redis && !env.contains_key("REDIS_URL") { depends.shift_remove("redis"); }
+            if from == Backend::Kafka && !env.contains_key("KAFKA_BROKERS") { depends.shift_remove("kafka"); }
+            if depends.is_empty() { service.depends_on = None; }
+        }
+    }
+    // The previous backend's migration job (tables or topics) is regenerated
+    // for the new backend when it needs one.
+    let migrate = format!("{name}-migrate");
+    compose.services.shift_remove(&migrate);
+    for service in compose.services.values_mut() {
+        if let Some(depends) = service.depends_on.as_mut() {
+            depends.shift_remove(&migrate);
+            if depends.is_empty() { service.depends_on = None; }
+        }
+    }
+    write(&path, yaml_to_string(&compose)?)?;
+    // The producer runs with the consumer's settings.
+    Ok(())
 }
 
 #[cfg(test)]

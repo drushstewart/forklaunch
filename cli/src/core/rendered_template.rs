@@ -66,7 +66,10 @@ pub(crate) fn write_rendered_templates(
 /// "Would write" lines rendered templates print.
 pub(crate) fn log_dryrun_plan<S: AsRef<str>>(stdout: &mut StandardStream, paths: &[S]) -> Result<()> {
     for path in paths {
-        writeln!(stdout, "Would write {}", path.as_ref())?;
+        match path.as_ref().strip_suffix(" (removed)") {
+            Some(removed) => writeln!(stdout, "Would remove {removed}")?,
+            None => writeln!(stdout, "Would write {}", path.as_ref())?,
+        }
     }
     Ok(())
 }

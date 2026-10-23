@@ -773,7 +773,20 @@ pub(super) fn rename_project(dir: &Path, old: &str, new: &str) -> Result<()> {
                 .replace(
                     &format!("PACKAGE := {old}\n"),
                     &format!("PACKAGE := {new}\n"),
-                );
+                )
+                .replace(&format!("PACKAGE := {old}-sdk\n"), &format!("PACKAGE := {new}-sdk\n"))
+                .replace(&format!("\"{old} listening on "), &format!("\"{new} listening on "));
+            if changed != source {
+                write(path, changed)?;
+            }
+        } else if path.file_name().is_some_and(|file| file == "README.md") {
+            // Generated project documentation names the project's binaries.
+            let source = read_to_string(&path)?;
+            let changed = source
+                .replacen(&format!("# {old} "), &format!("# {new} "), 1)
+                .replace(&format!("--bin {old}`"), &format!("--bin {new}`"))
+                .replace(&format!("--bin {old}-worker`"), &format!("--bin {new}-worker`"))
+                .replace(&format!("-p {old}`"), &format!("-p {new}`"));
             if changed != source {
                 write(path, changed)?;
             }
@@ -785,6 +798,19 @@ pub(super) fn rename_project(dir: &Path, old: &str, new: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rename_updates_startup_message_and_sdk_package_task() {
+        let root = tempfile::tempdir().unwrap();
+        create_dir_all(root.path().join("sdk/rust")).unwrap();
+        write(root.path().join("bootstrapper.rs"), "println!(\"notes listening on http://{}\", address);\n").unwrap();
+        write(root.path().join("sdk/rust/Makefile"), "PACKAGE := notes-sdk\n").unwrap();
+        write(root.path().join("README.md"), "# notes worker\n\nRun `cargo run --bin notes` and `cargo run --bin notes-worker`; notes stay.\n").unwrap();
+        rename_project(root.path(), "notes", "records").unwrap();
+        assert_eq!(read_to_string(root.path().join("README.md")).unwrap(), "# records worker\n\nRun `cargo run --bin records` and `cargo run --bin records-worker`; notes stay.\n");
+        assert_eq!(read_to_string(root.path().join("bootstrapper.rs")).unwrap(), "println!(\"records listening on http://{}\", address);\n");
+        assert_eq!(read_to_string(root.path().join("sdk/rust/Makefile")).unwrap(), "PACKAGE := records-sdk\n");
+    }
 
     #[test]
     fn rename_updates_host_contract_package_tasks() {
