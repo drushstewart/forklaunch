@@ -120,7 +120,6 @@ fn parse_short(entry: &str) -> Option<(Option<String>, Option<String>, String)> 
 /// Fail before `docker compose up` when a port the selected services publish
 /// is taken by anything other than this Compose project.
 // Wired into `forklaunch dev` just before `docker compose up`.
-#[allow(dead_code)]
 pub(crate) fn preflight(compose: &Value, services: &[String]) -> Result<()> {
     let project = compose.get("name").and_then(Value::as_str).unwrap_or_default().to_owned();
     check(&published_ports(compose, services), |port| probe(&project, port))

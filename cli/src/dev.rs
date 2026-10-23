@@ -469,6 +469,11 @@ impl CliCommand for DevCommand {
                 );
             }
         }
+        // Fail before Compose starts anything: a taken host port otherwise leaves
+        // a container created with no published port that still looks healthy.
+        let starting: Vec<String> =
+            active_services(&planned, &selected, !matches.get_flag("no_deps"))?.into_iter().collect();
+        crate::core::host_ports::preflight(&planned, &starting)?;
         let mut run = Process::new(&docker);
         run.args(["compose", "--project-directory"])
             .arg(&root)
