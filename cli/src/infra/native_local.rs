@@ -482,6 +482,7 @@ pub(crate) fn change(
         crate::init::rust_project::ensure_native_infrastructure_sources(root)?;
     }
     edit.commit()?;
+    refresh_lockfile(root);
     println!(
         "{} {id} {} {}",
         if adding { "Added" } else { "Removed" },
@@ -504,6 +505,27 @@ pub(crate) fn change(
         );
     }
     Ok(())
+}
+
+/// Bring the workspace `Cargo.lock` in line with the edited manifests: the
+/// generated Rust image builds `--locked`. Resolution adds only the new
+/// dependencies' entries and prunes the ones a removal left unused.
+pub(crate) fn refresh_lockfile(root: &Path) {
+    if !root.join("Cargo.lock").is_file() || !root.join("Cargo.toml").is_file() {
+        return;
+    }
+    let refreshed = std::process::Command::new("cargo")
+        .args(["metadata", "--format-version", "1", "--manifest-path"])
+        .arg(root.join("Cargo.toml"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !refreshed {
+        eprintln!(
+            "note: Cargo.lock was not updated; run `cargo update --workspace` before `docker compose up --build`, which builds --locked"
+        );
+    }
 }
 
 /// Undo [`ensure_minio_buckets`] for `bucket` once no compose service uses

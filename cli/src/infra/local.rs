@@ -519,6 +519,9 @@ fn change_capability(
         crate::init::rust_project::ensure_native_infrastructure_sources(&app_root)?;
     }
     edit.commit()?;
+    if native {
+        super::native_local::refresh_lockfile(&app_root);
+    }
     println!(
         "{} {} {service}: {}",
         if adding { "Added" } else { "Removed" },
