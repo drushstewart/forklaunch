@@ -23,7 +23,7 @@ try {
  run(join(dependencies,'node_modules/.bin/esbuild'),['omission.ts','--bundle','--platform=node','--format=esm','--packages=external','--tsconfig=tsconfig.json','--outfile=omission.mjs']);run(process.execPath,['omission.mjs']);
  console.log('PASS 140 actual registered FastMCP/Express omission, framing and downstream schema assertions');
  run('cargo',['build','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','rmcp-server','--example','mcp_body_admission'],root);
- child=spawn(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/body_admission'),[],{stdio:['ignore','pipe','pipe']});
+ child=spawn(join(process.env.CARGO_TARGET_DIR??join(root,'framework-rs/target'),'debug/examples/mcp_body_admission'),[],{stdio:['ignore','pipe','pipe']});
  const base=await new Promise((resolve,reject)=>{let output='';const timeout=setTimeout(()=>reject(Error(output)),30000);for(const stream of [child.stdout,child.stderr])stream.on('data',chunk=>{output+=chunk;const match=output.match(/READY (http:\/\/127\.0\.0\.1:\d+)/);if(match){clearTimeout(timeout);resolve(match[1]);}});child.on('exit',()=>{clearTimeout(timeout);reject(Error(output));});});
  async function rpc(method,params){const response=await fetch(base+'/mcp',{method:'POST',headers:{'content-type':'application/json',accept:'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id:1,method,params})});assert.equal(response.status,200);return response.json();}
  const listed=await rpc('tools/list',{});assert.equal(listed.result.tools.length,20);
