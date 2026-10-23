@@ -40,7 +40,9 @@ try:
   assert tomllib.loads((app/'.forklaunch/manifest.toml').read_text())['http_framework']=='hyper-express'
  else:
   command('change','application','--validator','typebox','--confirm')
- assert json.loads(config.read_text())['validator']=='typebox'
+ # The validator is an application setting; the service carries it as a dependency.
+ assert tomllib.loads((app/'.forklaunch/manifest.toml').read_text())['validator']=='typebox'
+ assert '@sinclair/typebox' in json.loads(config.read_text())['dependencies']
  assert all(p.read_bytes()==value for p,value in files.items())
  run(['pnpm','install','--ignore-scripts'],app/'modules')
  sample=app/'modules/api/tooling.test.ts';sample.write_text("import { expect, test } from 'vitest'; test('new runner',()=>expect(2+2).toBe(4));\n")

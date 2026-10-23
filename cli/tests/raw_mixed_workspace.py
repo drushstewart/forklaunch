@@ -30,7 +30,9 @@ try:
         cargo = tomllib.loads((app / 'Cargo.toml').read_text())
         assert 'vendor/framework' not in cargo['workspace'].get('exclude', []), cargo
         assert (app / 'src/api/Cargo.toml').is_file()
-        assert (app / 'src/api-contracts/Cargo.toml').is_file()
+        # Contract hosts live inside the service, not as a sibling crate.
+        assert (app / 'src/api/.forklaunch/contracts/Cargo.toml').is_file()
+        assert not (app / 'src/api-contracts').exists()
         assert not (app / 'src/api/domain/Cargo.toml').exists()
         assert (app / 'src/iam/package.json').is_file()
         assert not (app / 'modules').exists()
