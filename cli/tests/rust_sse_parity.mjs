@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFile, realpath, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { cliTypescriptSdkRuntime, linkTypescriptPrefix, cliSdkCompilerOptions } from './fixtures/cli_typescript_sdk_runtime.mjs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const require = createRequire(import.meta.url);
 const tsc = process.env.TSC_BIN ?? path.join(root, 'framework/node_modules/.bin/tsc');
@@ -19,19 +21,26 @@ async function fetcher() {
     else controller.enqueue(Uint8Array.from(chunks[index++]));
   } }), { headers: { 'content-type': 'text/event-stream' } });
 }
-async function load(file, imports = {}) {
-  const compiled = ts.transpileModule(await readFile(path.join(root, file), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+// Relative imports execute their actual source unless stubbed; other packages
+// come from the pinned TypeScript fixture prefix.
+const external = createRequire(path.join(path.dirname(path.dirname(path.dirname(path.dirname(await realpath(tsc))))), 'package.json'));
+function loadSync(absolute, imports, cache) {
+  const file = existsSync(absolute) ? absolute : existsSync(absolute + '.ts') ? absolute + '.ts' : path.join(absolute, 'index.ts');
+  if (cache.has(file)) return cache.get(file);
+  const compiled = ts.transpileModule(readFileSync(file, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true } }).outputText;
   const exports = {};
-  vm.runInNewContext(compiled, { exports, require(spec) { if (spec in imports) return imports[spec]; throw Error(`unexpected import ${spec}`); }, fetch: fetcher, Buffer, URL, URLSearchParams, Response, FormData, Blob, File, TextDecoder, ReadableStream });
+  cache.set(file, exports);
+  vm.runInNewContext(compiled, { exports, require(spec) { if (spec in imports) return imports[spec]; if (spec.startsWith('.')) return loadSync(path.resolve(path.dirname(file), spec.replace(/\.js$/, '')), imports, cache); return external(spec); }, fetch: fetcher, Buffer, URL, URLSearchParams, Response, FormData, Blob, File, TextDecoder, ReadableStream, TextEncoder, TextDecoder, structuredClone, crypto: globalThis.crypto, console });
   return exports;
 }
+async function load(file, imports = {}) {
+  return loadSync(path.join(root, file), imports, new Map());
+}
 try {
-  const template = (await readFile(path.join(root, 'cli/src/templates/sdk/typescript/index.ts'), 'utf8'))
-    .replace('{{{transport_source}}}', await readFile(path.join(root, 'cli/src/templates/sdk/typescript/transport.ts'), 'utf8')).replace('{{{form_stringify_source}}}', await readFile(path.join(root, 'framework/common/src/safeStringify.ts'), 'utf8'))
-    .replace('{{{sse_source}}}', await readFile(path.join(root, 'cli/src/templates/sdk/typescript/sse.ts'), 'utf8'));
-  const runtime = template.slice(0, template.indexOf('{{#operation_types}}')) + template.slice(template.indexOf('function pathWithParams'), template.indexOf('export function createForkLaunchSdk')) + '\nexport { request };\n';
+  const runtime = await cliTypescriptSdkRuntime(root);
+  await linkTypescriptPrefix(tsc, temporary);
   await writeFile(path.join(temporary, 'runtime.ts'), runtime);
-  await writeFile(path.join(temporary, 'tsconfig.json'), JSON.stringify({ compilerOptions: { strict: true, target: 'ES2022', module: 'CommonJS', lib: ['ES2022', 'DOM'], types: [], outDir: 'compiled' }, include: ['runtime.ts'] }));
+  await writeFile(path.join(temporary, 'tsconfig.json'), JSON.stringify({ compilerOptions: cliSdkCompilerOptions, include: ['runtime.ts'] }));
   execFileSync(tsc, ['--project', path.join(temporary, 'tsconfig.json')], { encoding: 'utf8', timeout: 120000 });
   const { request } = require(path.join(temporary, 'compiled/runtime.js'));
   const common = { ...(await load('framework/common/src/safeStringify.ts')), ...(await load('framework/common/src/safeParse.ts')), ...(await load('framework/common/src/openApiCompliantPath.ts')) };
@@ -39,8 +48,8 @@ try {
   const specialTypes = await load('framework/universal-sdk/src/core/coerceSpecialTypes.ts');
   const referenced = await load('framework/universal-sdk/src/core/coerceReferenced.ts', { './coerceSpecialTypes': specialTypes });
   const responseSchemas = await load('framework/universal-sdk/src/core/responseSchema.ts', { './coerceSpecialTypes': specialTypes, './coerceReferenced': referenced });
-  const { UniversalSdk } = await load('framework/universal-sdk/src/universalSdk.ts', { './core/responseSchema': responseSchemas, '@forklaunch/common': common, ajv: { default: class {} }, 'ajv-formats': { default() {} }, './core/coerceSpecialTypes': { coerceSpecialTypes: value => value }, './core/mapContentType': { mapContentType: value => value }, './core/openApi': { refreshOpenApi() { throw Error('unexpected refresh'); } }, './core/resolvePath': { getSdkPath } });
-  const universal = new UniversalSdk('http://127.0.0.1:9000', { validate: () => true }, {}, undefined);
+  const { UniversalSdk } = await load('framework/universal-sdk/src/universalSdk.ts', { './core/responseSchema': responseSchemas, '@forklaunch/common': common, './core/coerceSpecialTypes': { coerceSpecialTypes: value => value }, './core/mapContentType': { mapContentType: value => value }, './core/openApi': { ...(await load('framework/universal-sdk/src/core/openApi.ts', { '@forklaunch/common': { safeStringify: JSON.stringify, openApiCompliantPath: value => value, safeParse: JSON.parse } })), refreshOpenApi() { throw Error('unexpected refresh'); } }, './core/resolvePath': { getSdkPath } });
+  const universal = new UniversalSdk('http://127.0.0.1:9000', new (external('ajv').default ?? external('ajv'))({ strict: false }), {}, undefined);
   universal.registryOpenApiJson = { latest: { paths: { '/events': { get: {
     responses: { 200: { content: { 'text/event-stream': { schema: {} } } } }
   } } } } };
@@ -60,7 +69,7 @@ try {
     const events = [];
     for await (const event of response.response) events.push(event);
     assert.deepEqual(JSON.parse(JSON.stringify(events)), native[index], `actual TypeScript SSE case ${index}`);
-    const generated = await request({ baseUrl: 'http://127.0.0.1:9000', fetch: fetcher }, { service: 'streams', router: 'events', operation: 'watchEvents', method: 'GET', path: '/events', responseKinds: { 200: 'sse' }, input: {} });
+    const generated = await request({ baseUrl: 'http://127.0.0.1:9000', fetch: fetcher }, { service: 'streams', router: 'events', operation: 'watchEvents', method: 'GET', path: '/events', responseKinds: { '200:text/event-stream': 'sse' }, responseSchemas: { '200:text/event-stream': {} }, input: {} });
     const actual = [];
     for await (const event of generated.response) actual.push(event);
     assert.deepEqual(actual, native[index], `generated TypeScript SSE case ${index}`);
