@@ -398,3 +398,36 @@ impl BillingPortalService for BillingService {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn path_ids_fill_a_missing_body_id_and_reject_non_objects() {
+        assert_eq!(
+            with_path_id("path", None, json!({"name": "Pro"})).unwrap(),
+            json!({"name": "Pro", "id": "path"})
+        );
+        assert_eq!(
+            with_path_id("path", None, json!({"id": "body"})).unwrap()["id"],
+            "body"
+        );
+        assert_eq!(
+            with_path_id("path", None, json!([1])).unwrap_err().code,
+            "billing_validation"
+        );
+    }
+
+    #[test]
+    fn list_queries_take_an_optional_json_ids_array() {
+        assert_eq!(list_ids(None).unwrap(), None);
+        assert_eq!(
+            list_ids(Some("ids=%5B%22a%22%5D")).unwrap(),
+            Some(vec!["a".to_owned()])
+        );
+        for query in ["ids=a", "ids=%5B1%5D", "ids=%5B%5D&ids=%5B%5D"] {
+            assert!(list_ids(Some(query)).is_err(), "{query}");
+        }
+    }
+}

@@ -841,3 +841,33 @@ async fn import_catalog(
 ) -> Response {
     response(service!(backend, session).import_catalog(input).await)
 }
+
+#[cfg(test)]
+mod controller_api_tests {
+    use super::*;
+    use axum::{body::Body, extract::FromRequest, http::Request};
+
+    async fn text(response: Response) -> String {
+        let body = axum::body::to_bytes(response.into_body(), 1024)
+            .await
+            .unwrap();
+        String::from_utf8(body.to_vec()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn failures_and_bodies_keep_the_packaged_responses() {
+        let response =
+            Failure(BlueprintError::new("ecommerce_not_found", "private")).into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(text(response).await, "Ecommerce operation failed");
+        let request = Request::builder()
+            .header("content-type", "application/json")
+            .body(Body::from("{"))
+            .unwrap();
+        let Err(rejection) = JsonBody::<CreateCartDto>::from_request(request, &()).await else {
+            panic!("malformed body accepted");
+        };
+        assert_eq!(rejection.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(text(rejection).await, "Invalid ecommerce request body");
+    }
+}

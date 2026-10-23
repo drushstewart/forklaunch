@@ -522,6 +522,18 @@ mod tests {
     use forklaunch_iam_interface::contracts;
     use tower::ServiceExt;
 
+    #[test]
+    fn request_mappers_reject_what_the_packaged_handlers_reject() {
+        assert!(decode::<Value>(json!({"ids": 5})).is_err());
+        assert!(decode::<Value>(json!({"ids": ["a"], "name": "x"})).is_ok());
+        assert_eq!(batch_ids(Some("ids=%5B%22a%22%5D")).unwrap(), vec!["a"]);
+        for query in [None, Some("ids=a"), Some("ids=%5B%5D&ids=%5B%5D")] {
+            assert_eq!(batch_ids(query).unwrap_err().code, "iam_directory_invalid");
+        }
+        let response = DirectoryFailure(invalid()).into_response();
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
     #[tokio::test]
     async fn directory_and_session_auth_errors_follow_their_declared_content_types() {
         let directory = module_contracts::registry()
