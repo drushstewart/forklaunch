@@ -94,6 +94,15 @@ try:
     run([cli, 'init', 'agent', 'helper', '--language', 'rust', '-D', 'Helper', '--path', app])
     run([cli, 'init', 'library', 'shared', '--language', 'rust', '-D', 'Shared', '--path', app])
 
+    # sync all keeps the manifest's key and table order (it rewrote the file
+    # in its own order).
+    def layout():
+        text = (app / '.forklaunch/manifest.toml').read_text()
+        return re.findall(r'^(\[\[?[^\]]+\]\]?|[A-Za-z_]+)\s*(?:=|$)', text, re.M)
+    before = layout()
+    run([cli, 'sync', 'all', '-c', '--path', app])
+    assert layout() == before, f'sync all reordered the manifest:\n{before}\n{layout()}'
+
     # Application: rename reaches Compose, .env and package scopes; license keeps a LICENSE file.
     forklaunch('change', 'application', '-N', 'kestrel', '-c')
     for path in ['docker-compose.yaml', '.env', 'src/accounts/.env.local', 'src/accounts/sdk/typescript/package.json']:

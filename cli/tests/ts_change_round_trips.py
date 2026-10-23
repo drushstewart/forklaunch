@@ -9,13 +9,20 @@ scripts, and no reordered ones.
   - change application -r bun / -r node, and -N (which also renames the
     LICENSE copyright holder);
   - infra add / remove of the cache and the object store;
-  - init service / worker on another database, then delete;
-  - the manifest never gains a top-level snake_case_name.
+  - init service / worker on another database (sqlite and better-sqlite
+    included), then delete; the generated production image lists the new
+    service while it exists;
+  - change service -d to another database and back (mikro-orm.config.ts,
+    test-utils.ts, the core base entity and Compose included);
+  - sync all leaves the manifest byte for byte;
+  - the manifest never gains a top-level snake_case_name, and the MIT
+    license names the year.
 
 No package installs; only the CLI runs. Set FORKLAUNCH_CLI to a built binary.
 """
 import argparse
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -68,6 +75,9 @@ try:
          '-L', 'MIT', '-o', 'src'], root)
     run([cli, 'init', 'service', 'accounts', '-d', 'postgresql', '-D', 'Accounts', '--path', '.'], base)
     no_stray_manifest_keys(base, None)
+    holder = next(line for line in (base / 'src/LICENSE').read_text().splitlines() if line.startswith('Copyright'))
+    assert re.fullmatch(r'Copyright \(c\) \d{4} zebra', holder), holder
+    assert 'src/accounts/' in (base / 'Dockerfile').read_text(), 'init service did not refresh the generated image'
     git('init', '-q', cwd=base)
     git('add', '-A', cwd=base)
     git('-c', 'user.email=ci@forklaunch.com', '-c', 'user.name=ci', 'commit', '-qm', 'base', cwd=base)
@@ -95,12 +105,24 @@ try:
         core = (app / 'src/core/package.json').read_text()
         assert core.count('"@mikro-orm/migrations"') <= 1, core
         no_stray_manifest_keys(app, command)
+        if command[:2] == ['init', 'service']:
+            assert f'src/{command[2]}/' in (app / 'Dockerfile').read_text(), 'generated image not refreshed'
 
-    for database in ['mysql', 'mongodb', 'postgresql']:
+    for database in ['mysql', 'mongodb', 'postgresql', 'sqlite', 'better-sqlite']:
         round_trip(f'service-{database}', ['init', 'service', 'ledger', '-d', database, '-D', 'Ledger', '--path', '.'],
                    ['delete', 'service', 'ledger', '-c', '--path', '.'], check=core_dependencies)
     round_trip('worker-mysql', ['init', 'worker', 'jobs', '-t', 'database', '-d', 'mysql', '-D', 'Jobs', '--path', '.'],
                ['delete', 'worker', 'jobs', '-c', '--path', '.'], check=core_dependencies)
+    for database in ['mysql', 'mongodb', 'sqlite']:
+        round_trip(f'change-database-{database}', ['change', 'service', '-d', database, '-c', '--path', 'src/accounts'],
+                   ['change', 'service', '-d', 'postgresql', '-c', '--path', 'src/accounts'])
+
+    # sync all may add env settings, but the manifest stays as written.
+    synced = root / 'sync'
+    shutil.copytree(base, synced, symlinks=True)
+    run([cli, 'sync', 'all', '-c', '--path', '.'], synced)
+    assert not git('status', '--porcelain', '--', '.forklaunch/manifest.toml', cwd=synced), git('diff', cwd=synced)[:3000]
+    print('PASS sync-manifest', flush=True)
     print('PASS TypeScript change round trips', flush=True)
 finally:
     if args.keep:
