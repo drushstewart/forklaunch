@@ -308,9 +308,9 @@ pub(crate) const WORKER_DATABASE_VERSION: &str = "~1.1.0";
 // @forklaunch/implementation-worker-kafka
 pub(crate) const WORKER_KAFKA_VERSION: &str = "~1.0.41";
 // @forklaunch/infrastructure-redis
-pub(crate) const INFRASTRUCTURE_REDIS_VERSION: &str = "~1.4.21";
+pub(crate) const INFRASTRUCTURE_REDIS_VERSION: &str = "~1.4.22";
 // @forklaunch/infrastructure-s3
-pub(crate) const INFRASTRUCTURE_S3_VERSION: &str = "~1.5.3";
+pub(crate) const INFRASTRUCTURE_S3_VERSION: &str = "~1.5.4";
 // @forklaunch/interfaces-billing
 pub(crate) const BILLING_INTERFACES_VERSION: &str = "~1.0.40";
 // @forklaunch/interfaces-ecommerce
@@ -328,7 +328,7 @@ pub(crate) const INTERNAL_VERSION: &str = "~1.2.35";
 // @forklaunch/testing
 pub(crate) const TESTING_VERSION: &str = "~1.3.0";
 // @forklaunch/universal-sdk
-pub(crate) const UNIVERSAL_SDK_VERSION: &str = "~1.4.0";
+pub(crate) const UNIVERSAL_SDK_VERSION: &str = "~1.4.1";
 // @forklaunch/validator
 pub(crate) const VALIDATOR_VERSION: &str = "~1.3.0";
 // @mikro-orm/core

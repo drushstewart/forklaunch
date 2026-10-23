@@ -21,8 +21,8 @@ importers:
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
       '@forklaunch/universal-sdk':
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.4.1
+        version: 1.4.1
       '@forklaunch/validator':
         specifier: ^1.3.0
         version: 1.3.0
@@ -115,8 +115,8 @@ importers:
         specifier: workspace:^
         version: link:../implementations/billing/base
       '@forklaunch/infrastructure-redis':
-        specifier: ^1.4.21
-        version: 1.4.21(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
+        specifier: ^1.4.22
+        version: 1.4.22(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/interfaces-billing':
         specifier: workspace:^
         version: link:../interfaces/billing
@@ -239,8 +239,8 @@ importers:
         specifier: workspace:^
         version: link:../implementations/billing/stripe
       '@forklaunch/infrastructure-redis':
-        specifier: ^1.4.21
-        version: 1.4.21(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
+        specifier: ^1.4.22
+        version: 1.4.22(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/interfaces-billing':
         specifier: workspace:^
         version: link:../interfaces/billing
@@ -460,8 +460,8 @@ importers:
         specifier: ^1.2.32
         version: 1.2.32
       '@forklaunch/universal-sdk':
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.4.1
+        version: 1.4.1
       better-auth:
         specifier: ^1.7.11
         version: 1.7.12(@opentelemetry/api@1.9.1)(mongodb@7.7.0)(mysql2@3.24.5(@types/node@26.6.5))(pg@8.23.1)(vitest@5.0.5(@opentelemetry/api@1.9.1)(@types/node@26.6.5)(vite@8.2.2(@types/node@26.6.5)(esbuild@0.28.2)(tsx@4.23.15)(yaml@2.9.1)))
@@ -576,8 +576,8 @@ importers:
         specifier: workspace:^
         version: link:../implementations/worker/redis
       '@forklaunch/infrastructure-redis':
-        specifier: ^1.4.21
-        version: 1.4.21(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
+        specifier: ^1.4.22
+        version: 1.4.22(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/interfaces-ecommerce':
         specifier: workspace:^
         version: link:../interfaces/ecommerce
@@ -1626,8 +1626,8 @@ importers:
         specifier: workspace:^
         version: link:../implementations/messaging/base
       '@forklaunch/infrastructure-redis':
-        specifier: ^1.4.21
-        version: 1.4.21(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
+        specifier: ^1.4.22
+        version: 1.4.22(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/interfaces-messaging':
         specifier: workspace:^
         version: link:../interfaces/messaging
@@ -1747,8 +1747,8 @@ importers:
         specifier: workspace:^
         version: link:../implementations/messaging/twilio
       '@forklaunch/infrastructure-redis':
-        specifier: ^1.4.21
-        version: 1.4.21(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
+        specifier: ^1.4.22
+        version: 1.4.22(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/interfaces-messaging':
         specifier: workspace:^
         version: link:../interfaces/messaging
@@ -1878,17 +1878,17 @@ importers:
         specifier: workspace:^
         version: link:../implementations/worker/redis
       '@forklaunch/infrastructure-redis':
-        specifier: ^1.4.21
-        version: 1.4.21(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
+        specifier: ^1.4.22
+        version: 1.4.22(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/infrastructure-s3':
-        specifier: ^1.5.3
-        version: 1.5.3(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
+        specifier: ^1.5.4
+        version: 1.5.4(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/interfaces-worker':
         specifier: workspace:^
         version: link:../interfaces/worker
       '@forklaunch/universal-sdk':
-        specifier: ^1.4.0
-        version: 1.4.0
+        specifier: ^1.4.1
+        version: 1.4.1
       '@mikro-orm/core':
         specifier: 7.2.5
         version: 7.2.5
@@ -2802,11 +2802,11 @@ packages:
     peerDependencies:
       uWebSockets.js: '*'
 
-  '@forklaunch/infrastructure-redis@1.4.21':
-    resolution: {integrity: sha512-UdwZyRWXZkXmewF74EJT3AFhHJFYDeZ43PayYxU18Jgap+uPXF7eReJ4Be9HBSkt+zZoX+5LhwU2j8f5dkH+dw==}
+  '@forklaunch/infrastructure-redis@1.4.22':
+    resolution: {integrity: sha512-R3zuo75lytHNYdf+Mt/S7sLpEJbtjRT89U3W+BJJ+5FTUHvff6dSInEkv6jYVzwovj6DqUf+nPQdjk2o6S7JxQ==}
 
-  '@forklaunch/infrastructure-s3@1.5.3':
-    resolution: {integrity: sha512-qUSPHmRz/BpvzMU4Uop78Ex93EzfliG6sSYSj1P0aaccUOktkYGCdJ7BJiHMNXhdmmx2CB70+oYQxtYd2V21Fw==}
+  '@forklaunch/infrastructure-s3@1.5.4':
+    resolution: {integrity: sha512-O9Sr5FNpIbuLjbsWwbyq8mLOoLxR5POb/JBxxfoQik9Xoqy95YZmm46TXmpkj2keAYOkHi580FFvdWzcc9GYdg==}
 
   '@forklaunch/internal@1.2.35':
     resolution: {integrity: sha512-7Q/PFMRs+EKT7CzRiqaWRTmBQ9gvlSDs3nWUG1MZ8hwh1DixO9n5GCqnhHH9z5VsKB6CNZ6w0mSXUpYq5xOLHw==}
@@ -2822,8 +2822,8 @@ packages:
     peerDependencies:
       vitest: ^3.0.0
 
-  '@forklaunch/universal-sdk@1.4.0':
-    resolution: {integrity: sha512-Gg+vlrzm9VvP/+RL7sMqfnkK+5X56/IU0jH94THTrc4bG9obraVOO2eZI9retyc6jkPMX0ysL+HDQOJygXyWzQ==}
+  '@forklaunch/universal-sdk@1.4.1':
+    resolution: {integrity: sha512-H7KuuPfhy+1vaxzuLdbx/mZmaO/2ImlhHaoUWgCD/4+Y6dCa07bqvvmUB/xTFMl8JW0xWxx/M73cTK33cUUhPQ==}
 
   '@forklaunch/validator@1.3.0':
     resolution: {integrity: sha512-usbakpy+ybch2R3ZOo55WkiMH7llWIOLX+iQldglzYQm4E4MeSOTQkak99HleAR56xDzTJ/DTnBtsEIGJlegWA==}
@@ -9596,7 +9596,7 @@ snapshots:
       - sury
       - utf-8-validate
 
-  '@forklaunch/infrastructure-redis@1.4.21(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)':
+  '@forklaunch/infrastructure-redis@1.4.22(@opentelemetry/api@1.9.1)(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)':
     dependencies:
       '@forklaunch/common': 1.2.32
       '@forklaunch/core': 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
@@ -9624,7 +9624,7 @@ snapshots:
       - supports-color
       - sury
 
-  '@forklaunch/infrastructure-s3@1.5.3(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)':
+  '@forklaunch/infrastructure-s3@1.5.4(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)':
     dependencies:
       '@aws-sdk/client-s3': 3.1155.0
       '@aws-sdk/lib-storage': 3.1155.0(@aws-sdk/client-s3@3.1155.0)
@@ -9686,7 +9686,7 @@ snapshots:
       - react-native-b4a
       - supports-color
 
-  '@forklaunch/universal-sdk@1.4.0':
+  '@forklaunch/universal-sdk@1.4.1':
     dependencies:
       '@forklaunch/common': 1.2.32
       '@types/qs': 6.15.1
