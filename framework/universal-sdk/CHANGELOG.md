@@ -1,5 +1,14 @@
 # @forklaunch/universal-sdk
 
+## 1.4.1
+
+### Patch Changes
+
+- 78d65e2: Typed SDK calls accept a `content-type` header on bodyless responses (HEAD, 204, 205, 304) when the operation declares an empty response. Real servers commonly label these; the client previously rejected them as an undeclared content type.
+- 48a22be: `hmacSignedFetch` stays assignable to Bun's `typeof fetch`: the signed wrapper now carries `preconnect` and forwards it to the underlying fetch when that fetch has one.
+- 303eb29: The portable runtime type-checks its `qs` import with or without `esModuleInterop`, and SSE events whose data is not JSON are delivered as text again.
+- 1d79034: `universalSdk({ registryOptions: { raw } })` rejects an invalid in-process registry document at creation again. 1.4.0 deferred every registry error to the first call so an unreachable registry would not fail creation; a supplied document is always reachable.
+
 ## 1.4.0
 
 ### Minor Changes
