@@ -31,6 +31,8 @@ environment = {
     "KAFKA_TRANSACTIONAL_ID": "container-cli",
     "KAFKA_PUBLISHER_ID": "container-enqueue",
     "KAFKA_OPERATION_TIMEOUT_MS": "15000",
+    # Required at startup since 7248a878d.
+    "RUST_LOG": "info",
 }
 payload = {
     "resourceId": resource,

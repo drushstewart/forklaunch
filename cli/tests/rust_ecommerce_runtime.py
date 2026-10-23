@@ -82,6 +82,12 @@ try:
         extra={'OTEL_EXPORTER_OTLP_ENDPOINT': 'invalid', 'OTEL_EXPORTER_OTLP_PROTOCOL': 'invalid'})
     runtime = root / 'public-runtime'
     entry = build_public_runtime(run, app, runtime, repo)
+    # The webhook reference loads the pinned Stripe SDK next to the fixture
+    # TypeScript; keep pointing at it once TSC_BIN moves to the public runtime.
+    if 'STRIPE_SDK_PATH' not in env and env.get('TSC_BIN'):
+        pinned = Path(os.path.realpath(env['TSC_BIN'])).parents[2] / 'stripe'
+        if pinned.is_dir():
+            env['STRIPE_SDK_PATH'] = str(pinned)
     env['TSC_BIN'] = str(runtime / 'node_modules/.bin/tsc')
     for origin in ['contract', 'openapi']:
         command('sdk', 'generate', '--target', 'all', '--from', origin)
