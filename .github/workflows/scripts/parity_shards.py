@@ -18,6 +18,10 @@ and run in every shard: duplicated, never lost. Run it after adding steps:
     python3 .github/workflows/scripts/parity_shards.py          # rewrite
     python3 .github/workflows/scripts/parity_shards.py --check  # verify
 
+--check exits 1 when a shard would run no test step or a job's matrix
+lists different shards than SHARDS (both fail CI), and 2 when the
+conditions are merely out of date (CI warns).
+
 Shards listed in FULL_ONLY run only on full runs (push to main, nightly,
 dispatch with full); the matrix in the workflow says which.
 """
@@ -127,14 +131,41 @@ def rewrite(source):
     return '\n'.join(out)
 
 
+def problems(source):
+    """Shards that would run no test step, and matrices that disagree with SHARDS."""
+    lines = source.split('\n')
+    found = []
+    for job, first, end in jobs(lines):
+        declared = {rule['shard'] for rule in SHARDS[job]}
+        counts = dict.fromkeys(declared, 0)
+        for a, b in steps(lines, first, end):
+            match = re.search(r"matrix\.shard == '([a-z-]+)' " + MARK + r'$', '\n'.join(lines[a:b]), re.M)
+            if match and 'Save compiler cache' not in '\n'.join(lines[a:b]):
+                counts[match.group(1)] = counts.get(match.group(1), 0) + 1
+        found += [f'{job}: shard {name!r} has no test steps' for name, count in sorted(counts.items()) if not count]
+        block = '\n'.join(lines[first:end])
+        listed = set(re.findall(r'"([a-z-]+)"|\b([a-z-]+)\b(?=[,\]])', block.split('shard:', 1)[1].split('\n', 1)[0])) if 'shard:' in block else set()
+        listed = {a or b for a, b in listed}
+        if listed and listed != declared:
+            found.append(f'{job}: matrix shards {sorted(listed)} differ from SHARDS {sorted(declared)}')
+        if SAVE_SHARD[job] not in declared:
+            found.append(f'{job}: SAVE_SHARD {SAVE_SHARD[job]!r} is not a shard')
+    return found
+
+
 def main():
     source = WORKFLOW.read_text()
     result = rewrite(source)
+    errors = problems(result)
+    for error in errors:
+        print(f'error: {error}')
     if '--check' in sys.argv:
         if result != source:
             print(f'{WORKFLOW.name} is not sharded as {Path(__file__).name} says; run it without --check')
-            return 1
-        return 0
+            return 2 if not errors else 1
+        return 1 if errors else 0
+    if errors:
+        return 1
     WORKFLOW.write_text(result)
     return 0
 

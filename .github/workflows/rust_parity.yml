@@ -54,12 +54,18 @@ jobs:
         with:
           fetch-depth: ${{ (steps.mode.outputs.full != 'true' && github.event_name != 'pull_request') && '0' || '1' }}
           sparse-checkout: .github
-      # A test step added without re-running the shard script runs in every
-      # shard: nothing is lost, but say so.
+      # Fails when a shard would run no test step or a matrix disagrees with
+      # the shard table. A test step added without re-running the script
+      # runs in every shard: nothing is lost, so that only warns.
       - name: Shard layout is current
         run: |
-          python3 .github/workflows/scripts/parity_shards.py --check ||
+          status=0
+          python3 .github/workflows/scripts/parity_shards.py --check || status=$?
+          if [ "$status" = 2 ]; then
             echo "::warning file=.github/workflows/rust_parity.yml::Run python3 .github/workflows/scripts/parity_shards.py; new steps currently run in every shard"
+          elif [ "$status" != 0 ]; then
+            exit "$status"
+          fi
       - id: filter
         if: steps.mode.outputs.full != 'true'
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
