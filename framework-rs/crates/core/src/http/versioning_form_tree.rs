@@ -1,4 +1,5 @@
 //! qs-style bracket paths, sparse arrays and object merging for UTF-8 forms.
+use indexmap::IndexMap;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 
@@ -6,11 +7,12 @@ use std::collections::BTreeMap;
 pub(super) enum Node {
     Text(String),
     Array(BTreeMap<u64, Self>),
-    Object(BTreeMap<String, Self>, Option<u64>),
+    /// Insertion-ordered like a JavaScript object; see [`Node::into_value`].
+    Object(IndexMap<String, Self>, Option<u64>),
 }
 impl Node {
     pub(super) fn empty() -> Self {
-        Self::Object(BTreeMap::new(), None)
+        Self::Object(IndexMap::new(), None)
     }
     pub(super) fn values(values: Vec<Value>) -> Self {
         let mut nodes: Vec<_> = values
@@ -32,7 +34,7 @@ impl Node {
                 .collect(),
         )
     }
-    fn object(self) -> (BTreeMap<String, Self>, Option<u64>) {
+    fn object(self) -> (IndexMap<String, Self>, Option<u64>) {
         match self {
             Self::Object(fields, overflow) => (fields, overflow),
             Self::Array(fields) => (
@@ -77,7 +79,7 @@ impl Node {
                 Self::Object(fields, Some(max + 1))
             }
             (target @ Self::Text(_), Self::Object(fields, Some(max))) => {
-                let mut result = BTreeMap::from([("0".into(), target)]);
+                let mut result = IndexMap::from([("0".into(), target)]);
                 for (key, node) in fields {
                     let digits: String = key.chars().take_while(char::is_ascii_digit).collect();
                     let shifted = digits
@@ -120,11 +122,17 @@ impl Node {
                     {
                         *max = (*max).max(index);
                     }
-                    let value = match target.remove(&key) {
-                        Some(previous) => previous.merge(value, limit),
-                        None => value,
-                    };
-                    target.insert(key, value);
+                    // Assigning an existing JavaScript property keeps its position.
+                    match target.get_mut(&key) {
+                        Some(previous) => {
+                            let merged =
+                                std::mem::replace(previous, Self::empty()).merge(value, limit);
+                            *previous = merged;
+                        }
+                        None => {
+                            target.insert(key, value);
+                        }
+                    }
                 }
                 Self::Object(target, overflow)
             }
@@ -141,11 +149,17 @@ impl Node {
                 .map(|node| node.into_value(depth + 1))
                 .collect::<Option<Vec<_>>>()
                 .map(Value::Array),
-            Self::Object(fields, _) => fields
-                .into_iter()
-                .map(|(key, node)| Some((key, node.into_value(depth + 1)?)))
-                .collect::<Option<Map<_, _>>>()
-                .map(Value::Object),
+            Self::Object(fields, _) => {
+                // qs builds plain objects, so handlers see JavaScript enumeration
+                // order: array-index keys ascending, then the rest as inserted.
+                let mut fields: Vec<_> = fields.into_iter().collect();
+                fields.sort_by_key(|(key, _)| array_index(key).map_or((1, 0), |index| (0, index)));
+                fields
+                    .into_iter()
+                    .map(|(key, node)| Some((key, node.into_value(depth + 1)?)))
+                    .collect::<Option<Map<_, _>>>()
+                    .map(Value::Object)
+            }
         }
     }
     pub(super) fn within_depth(&self, depth: usize) -> bool {
@@ -159,6 +173,13 @@ impl Node {
         }
     }
 }
+// Canonical JavaScript array-index property names enumerate first, ascending.
+fn array_index(key: &str) -> Option<u32> {
+    key.parse::<u32>()
+        .ok()
+        .filter(|index| *index != u32::MAX && index.to_string() == key)
+}
+
 // Number strings outside the exactly representable JS integer range stay keys.
 fn numeric(key: &str) -> Option<u64> {
     key.parse::<u64>()
@@ -171,7 +192,7 @@ pub(super) fn wrap(key: &str, mut leaf: Node, limit: u64, depth: usize) -> Optio
         return Some(if key.is_empty() || key == "__proto__" {
             Node::empty()
         } else {
-            Node::Object(BTreeMap::from([(key.into(), leaf)]), None)
+            Node::Object(IndexMap::from([(key.into(), leaf)]), None)
         });
     }
     if key.is_empty() {
@@ -221,12 +242,12 @@ pub(super) fn wrap(key: &str, mut leaf: Node, limit: u64, depth: usize) -> Optio
             if index < limit {
                 Node::Array(BTreeMap::from([(index, leaf)]))
             } else {
-                Node::Object(BTreeMap::from([(name.into(), leaf)]), Some(index))
+                Node::Object(IndexMap::from([(name.into(), leaf)]), Some(index))
             }
         } else if name == "__proto__" {
             Node::empty()
         } else {
-            Node::Object(BTreeMap::from([(name.into(), leaf)]), None)
+            Node::Object(IndexMap::from([(name.into(), leaf)]), None)
         };
     }
     Some(leaf)

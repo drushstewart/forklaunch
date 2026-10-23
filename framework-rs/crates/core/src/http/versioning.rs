@@ -528,6 +528,22 @@ fn decode_body_value(
     limits: MultipartLimits,
     multipart_text: Option<&crate::http::BusboyTextOptions>,
 ) -> Result<Option<Value>, ContractValidationError> {
+    let mut value =
+        decode_body_value_in_wire_order(kind, parsers, request, hooks, limits, multipart_text)?;
+    if let Some(value) = &mut value {
+        json_request::javascript_member_order(value);
+    }
+    Ok(value)
+}
+
+fn decode_body_value_in_wire_order(
+    kind: BodyKind,
+    parsers: &forklaunch_core::contract::BodyParserOptions,
+    request: &FrameworkRequest,
+    hooks: &BodyParserHooks,
+    limits: MultipartLimits,
+    multipart_text: Option<&crate::http::BusboyTextOptions>,
+) -> Result<Option<Value>, ContractValidationError> {
     let bytes = match &request.body {
         Body::Empty => &[][..],
         Body::Text(text) => text.as_bytes(),

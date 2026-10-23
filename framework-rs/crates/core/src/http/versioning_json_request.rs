@@ -200,7 +200,7 @@ impl JsonRequestParsers {
         if let Some(value) = &mut original {
             normalize_numbers(value);
         }
-        let value = if entry.hooks.has_json_reviver() {
+        let mut value = if entry.hooks.has_json_reviver() {
             let text = charset::decode(&decoded, &charset)?;
             if text.is_empty() {
                 original
@@ -210,11 +210,36 @@ impl JsonRequestParsers {
         } else {
             original
         };
+        if let Some(value) = &mut value {
+            javascript_member_order(value);
+        }
         Ok(Some(ParsedJsonBody {
             value: value.map(Arc::new),
             raw_body: Some(Arc::new(decoded.into_owned())),
             transformed: false,
         }))
+    }
+}
+/// Reorder object members the way a JavaScript object enumerates them, so Rust
+/// handlers see the TypeScript key order: canonical array-index keys ascending,
+/// then every other key in insertion (wire) order. Values are unchanged.
+pub(super) fn javascript_member_order(value: &mut Value) {
+    fn index(key: &str) -> Option<u32> {
+        key.parse::<u32>()
+            .ok()
+            .filter(|index| *index != u32::MAX && index.to_string() == key)
+    }
+    match value {
+        Value::Array(values) => values.iter_mut().for_each(javascript_member_order),
+        Value::Object(members) => {
+            if members.keys().any(|key| index(key).is_some()) {
+                let mut ordered: Vec<_> = std::mem::take(members).into_iter().collect();
+                ordered.sort_by_key(|(key, _)| index(key).map_or((1, 0), |index| (0, index)));
+                members.extend(ordered);
+            }
+            members.values_mut().for_each(javascript_member_order);
+        }
+        _ => {}
     }
 }
 pub(super) fn normalize_numbers(value: &mut Value) {

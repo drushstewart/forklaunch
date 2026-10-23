@@ -45,11 +45,21 @@ const cases=[
  [['label',null,'ok'],['file','',[],'application/octet-stream']],
  [['label',null,'ok'],['file','text.txt','hello 水','text/plain']],
 ];
+// Member order: insertion order, except JavaScript array-index names enumerate first.
+const orderCase=[['b',null,'1'],['label',null,'ok'],['a',null,'2'],['10',null,'3'],['2',null,'4'],['file','x.bin',[1]]];
+// Handler-visible member order (JavaScript Object.keys), as object key paths depth first.
+function keyPaths(value,prefix='',out=[]){
+ if(Array.isArray(value))value.forEach((item,index)=>keyPaths(item,`${prefix}/${index}`,out));
+ else if(value&&typeof value==='object'&&!Buffer.isBuffer(value))for(const key of Object.keys(value)){const path=`${prefix}/${key}`;out.push(path);keyPaths(value[key],path,out);}
+ return out;
+}
 const temporary=mkdtempSync(join(tmpdir(),'fl-multipart-extract-'));
 try{
  const fixtures=[];
  for(const parts of cases){const bytes=wire(parts);fixtures.push({bytes:[...bytes],expected:await parse(bytes)});}
- const versions=fixtures.map(({bytes,expected})=>({kind:'multipart',versions:[{name:'fallback',schema:{type:'object'}},{name:'exact',schema:{const:expected}}],cases:[bytes]}));
+ const orderedBytes=wire(orderCase);
+ const exactFixtures=[...fixtures,{bytes:[...orderedBytes],expected:await parse(orderedBytes)}];
+ const versions=exactFixtures.map(({bytes,expected})=>({kind:'multipart',includeKeyOrder:true,versions:[{name:'fallback',schema:{type:'object'}},{name:'exact',schema:{const:expected}}],cases:[bytes]}));
  const extraBytes=wire([['label',null,'ok'],['file',null,'text file fallback']]);
  const fileFixtures=[...fixtures,{bytes:[...extraBytes],expected:await parse(extraBytes)}];
  for(const {bytes,expected} of fileFixtures) {
@@ -72,8 +82,8 @@ try{
   }
  }
  const selected=JSON.parse(execFileSync('cargo',['run','--quiet','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--features','http','--example','version_selection'],{input:JSON.stringify(versions),encoding:'utf8',env:{...process.env,CARGO_INCREMENTAL:'0'},timeout:300000}));
- for(const [index,result] of selected.entries())assert.deepEqual(result.cases,index<fixtures.length?[{version:'exact',matched:['fallback','exact'],status:200}]:[{version:'file',matched:['file'],status:200}],`multipart schema ${index}`);
- console.log(`PASS ${versions.length} actual multipart parser/file-validator/native version comparisons`);
+ for(const [index,result] of selected.entries())assert.deepEqual(result.cases,index<exactFixtures.length?[{version:'exact',matched:['fallback','exact'],status:200,bodyKeys:keyPaths(exactFixtures[index].expected)}]:[{version:'file',matched:['file'],status:200}],`multipart schema ${index}`);
+ console.log(`PASS ${versions.length} actual multipart parser/file-validator/native version comparisons, including member order`);
  const path=join(temporary,'cases.json');writeFileSync(path,JSON.stringify(fixtures));
  execFileSync('cargo',['test','--manifest-path',join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-axum','--features','multipart','multipart_matches_typescript_parser','--','--nocapture'],{env:{...process.env,CARGO_INCREMENTAL:'0',FORKLAUNCH_TEST_MULTIPART_CASES:path},stdio:'inherit',timeout:300000});
  console.log(`PASS ${cases.length} actual TypeScript content-parser / native typed multipart comparisons`);
