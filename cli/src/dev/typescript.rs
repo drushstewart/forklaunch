@@ -191,8 +191,27 @@ pub(super) fn enable(
                 modules.strip_prefix(&root)?.display(),
                 name
             ));
-            service["build"] =
+            let mut build =
                 json!({"context":root,"dockerfile":"Dockerfile.typescript","target":"builder"});
+            // The builder stage still needs the production build's named
+            // contexts and arguments (a `--framework-path` checkout, ...).
+            // An image-only service takes them from its image's builder.
+            let image = &compose["services"][name]["image"];
+            let production = compose["services"][name]["build"]
+                .as_object()
+                .or_else(|| {
+                    compose["services"].as_object()?.values().find_map(|candidate| {
+                        (!image.is_null() && candidate["image"] == *image)
+                            .then(|| candidate["build"].as_object())
+                            .flatten()
+                    })
+                });
+            for key in ["additional_contexts", "args"] {
+                if let Some(value) = production.and_then(|build| build.get(key)) {
+                    build[key] = value.clone();
+                }
+            }
+            service["build"] = build;
             service["image"] = json!(format!(
                 "{}-{name}-dev:local",
                 compose["services"][name]["image"]
@@ -368,7 +387,7 @@ mod tests {
             &format!("modules_path='modules'\nruntime='{runtime}'\n[[projects]]\nname='api'\ntype='Service'\n"),
         )
         .unwrap();
-            let mut compose = json!({"services":{"api":{"image":"demo-typescript:local","working_dir":"/app/api","command":["node","--enable-source-maps","/app/api/production/server.mjs"],"volumes":[]},"api-migrate":{"image":"demo-typescript:local","command":["node","/app/api/production/migrate.mjs"]}}});
+            let mut compose = json!({"services":{"api":{"image":"demo-typescript:local","working_dir":"/app/api","command":["node","--enable-source-maps","/app/api/production/server.mjs"],"volumes":[]},"api-migrate":{"image":"demo-typescript:local","command":["node","/app/api/production/migrate.mjs"],"build":{"context":".","dockerfile":"Dockerfile.typescript","additional_contexts":{"framework":"/checkout/framework-rs"},"args":{"FRAMEWORK_ROOT":"/checkout"}}}}});
             enable(
                 root.path(),
                 &manifest,
@@ -378,6 +397,9 @@ mod tests {
             )
             .unwrap();
             assert_eq!(compose["services"]["api"]["build"]["target"], "builder");
+            // Named contexts and arguments of the image's build carry over.
+            assert_eq!(compose["services"]["api"]["build"]["additional_contexts"]["framework"], "/checkout/framework-rs");
+            assert_eq!(compose["services"]["api"]["build"]["args"]["FRAMEWORK_ROOT"], "/checkout");
             assert_eq!(
                 compose["services"]["api"]["image"],
                 "demo-typescript-api-dev:local"

@@ -62,6 +62,16 @@ fn build_emits_artifacts(root: &Path, project: &toml::Value) -> bool {
         .is_ok_and(|source| source.contains("service_sdks_at("))
 }
 
+/// Shell `forklaunch-native-run` evaluates before each process start.
+pub(super) const PRESTART: &str = "FORKLAUNCH_DEV_PRESTART";
+
+enum Startup {
+    /// `--no-watch`: the export joins the one-shot build-and-exec entrypoint.
+    Entrypoint(String),
+    /// Reloads: the export runs before every in-place restart.
+    Prestart(String),
+}
+
 pub(super) fn enable(
     root: &Path,
     manifest: &toml::Value,
@@ -137,21 +147,34 @@ pub(super) fn enable(
             }
             paths.push(Path::new("/app").join(destination.strip_prefix(root.canonicalize()?)?));
         }
+        let export = script(&scratch, &paths[0], &paths[1])?;
+        if change["entrypoint"][0] == "forklaunch-native-run" {
+            // Reloading processes export before every in-place restart.
+            plans.push((service.clone(), Startup::Prestart(export.replace('$', "$$"))));
+            continue;
+        }
         let startup = change["entrypoint"][2]
             .as_str()
             .context("Native startup missing")?;
         let build = startup
             .strip_suffix(" && exec \"$@\"")
             .context("Unsupported native startup")?;
-        let export = script(&scratch, &paths[0], &paths[1])?;
         plans.push((
             service.clone(),
-            format!("{build} && {export} && exec \"$@\"").replace('$', "$$"),
+            Startup::Entrypoint(format!("{build} && {export} && exec \"$@\"").replace('$', "$$")),
         ));
     }
-    for (service, script) in plans {
-        compose["services"][&service]["entrypoint"][2] = json!(script);
-        changes[&service]["entrypoint"][2] = json!(script);
+    for (service, startup) in plans {
+        match startup {
+            Startup::Entrypoint(script) => {
+                compose["services"][&service]["entrypoint"][2] = json!(script);
+                changes[&service]["entrypoint"][2] = json!(script);
+            }
+            Startup::Prestart(script) => {
+                compose["services"][&service]["environment"][PRESTART] = json!(script);
+                changes[&service]["environment"][PRESTART] = json!(script);
+            }
+        }
     }
     Ok(())
 }

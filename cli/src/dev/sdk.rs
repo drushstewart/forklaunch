@@ -90,6 +90,18 @@ pub(super) fn rust_watch(
     let root = canonical_root.as_path();
     let paths = rust_paths(root, manifest)?;
     let mut directories = BTreeSet::new();
+    // With reloads the builder watches these paths; processes restart when
+    // the build relinks their binary.
+    let mut builder = false;
+    for path in &paths {
+        if super::watch_native_path(compose, root, path) {
+            builder = true;
+            directories.insert(path.clone());
+        }
+    }
+    if builder {
+        return Ok(directories.into_iter().collect());
+    }
     for (name, change) in changes
         .as_object_mut()
         .context("Native development changes missing")?

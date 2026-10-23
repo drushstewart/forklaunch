@@ -188,7 +188,9 @@ def probe_surfaces(expected, native_status='ok', timeout=180):
     last_failure = ''
     while time.monotonic() < deadline:
         assert process.poll() is None, log_path.read_text()[-20000:]
-        active = inspect(owned_ids())
+        # The long-lived native builder is not a probed surface.
+        active = [item for item in inspect(owned_ids())
+            if item['Config']['Labels']['com.docker.compose.service'] != 'forklaunch-native-build']
         epochs = sorted((item['Id'], item['State']['StartedAt'], item['State']['Running'],
             json.dumps(item['NetworkSettings']['Ports'], sort_keys=True)) for item in active)
         if epochs != observed:
@@ -285,6 +287,10 @@ try:
     assert (app / "src/legacy-api/sdk/openapi.json").is_file()
     contract = app / 'src/native-api/sdk/typescript/contract.json'
     assert json.loads(contract.read_text())['generator'] == 'framework-rs'
+    def native_started():
+        return next(item['State']['StartedAt'] for item in inspect(owned_ids())
+            if item['Config']['Labels']['com.docker.compose.service'] == 'native-api')
+    native_epoch = native_started()
     source = app / 'src/native-api/domain/services/health.rs'
     schema = app / 'src/native-api/domain/schemas/mod.rs'
     assert 'status: "ok".into()' in source.read_text()
@@ -293,6 +299,8 @@ try:
     native = wait_json(lambda: endpoint('native-api', native_port) + '/health', 'status', 'native-reloaded', timeout=180).removesuffix('/health')
     wait_sdk("developmentMarker")
     assert 'developmentMarker' in contract.read_text()
+    # Native reloads restart the process inside the running container.
+    assert native_started() == native_epoch, 'Native reload restarted its container'
     print(f'PASS {runtime} native source reload and generated TypeScript SDK refresh', flush=True)
     if runtime == 'bun':
         original_socket_source = socket_source.read_text()

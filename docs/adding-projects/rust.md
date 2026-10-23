@@ -410,9 +410,43 @@ existing custom scripts are preserved. If JavaScript tooling lives only under
 
 Native services compile debug binaries inside a Rust development image, with the
 application mounted at `/app` and Cargo output/registry/git caches in separate
-project-scoped Docker volumes. Registered native crate paths, libraries, bundled
-frameworks, native SDKs and Cargo manifests trigger a restart and rebuild. Native
-auxiliary workers retain their launch arguments. TypeScript services retain their
+project-scoped Docker volumes. Development containers are never shipped; deployments
+build from the generated Dockerfiles.
+
+Rust reloads happen inside the running containers, without restarting them:
+
+- One `forklaunch-native-build` container builds the whole selection once (the
+  warm-up), then keeps watching the mounted sources with a pinned
+  [watchexec](https://github.com/watchexec/watchexec) (2.7.4, checksum-verified and
+  cached in the image). Registered native crate paths, libraries, a local
+  `--framework-path` checkout, native SDKs and Cargo manifests are watched; `target/`,
+  `node_modules/` and generated SDK artifacts are not.
+- On a change it runs one incremental `cargo build` (dev profile) for every selected
+  package and binary. Only this container runs Cargo, so service containers never
+  wait on Cargo's build lock, and features resolve the same way as in the warm-up.
+- After a successful build it marks each binary Cargo relinked. Each service runs its
+  binary under `forklaunch-native-run --watch`, which restarts only that process when
+  its binary changes. Edit a handler and only that service restarts; edit a shared
+  crate and every dependent restarts. The log reports `forklaunch dev: built in Ns;
+  restarting: ...`.
+- A failed build changes nothing: every process keeps serving its last good build.
+  The builder container counts as healthy after its first successful build. Authored
+  service healthchecks apply unchanged, because the running process keeps serving
+  while a rebuild runs.
+- Migration and seed jobs run once per `forklaunch dev`, after the warm-up.
+- Editing `rust-toolchain.toml` rebuilds the builder image through Compose watch. Native
+  services get no Compose restart rules; authored `develop.watch` rules are kept.
+
+Host edits do not reach containers as inotify events on Docker Desktop or OrbStack, so
+on macOS and Windows the builder polls the mounted sources every 500 ms. Set
+`FORKLAUNCH_DEV_POLL_MS` to change the interval, or to `off` (Linux hosts use native
+events by default). Each edit is picked up within one poll interval.
+
+`cargo dev` is not a built-in Cargo command, and an alias can only run other Cargo
+subcommands. The development loop is the dev profile under the in-container watcher.
+To get the same loop on the host, run `watchexec -r -- cargo run -p <crate>`.
+
+Native auxiliary workers keep their launch arguments. TypeScript services keep their
 existing Compose development commands and reload behavior. Ctrl-C or SIGTERM
 stops Compose before the CLI removes its private temporary configuration; the
 application's Compose files and production Dockerfiles are preserved.
@@ -449,14 +483,15 @@ checks native socket artifact/SDK creation, edits, removal and restoration. Sepa
 TypeScript-only replays validate shared-library reloads; Bun covers `--no-build` image
 reuse with Compose watching. See the parity inventory for the retained evidence.
 
-Native reloads require [Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
-Use `--no-watch` to start without Compose reloads, `--no-build` to reuse images,
+Compose watch (TypeScript restarts, the toolchain rebuild, authored rules) requires
+[Docker Compose 2.32 or later](https://docs.docker.com/reference/compose-file/develop/).
+Use `--no-watch` to start without reloads (one build, then each process starts once), `--no-build` to reuse images,
 and `--project-name` to select the Compose project. With reloads enabled,
 `--no-build` requires existing local images for build-backed services; it removes
 image build definitions from the private development plan and retains restart
 watches. Custom `rebuild` watch rules are rejected for this combination.
 `--no-deps` starts only the
-named services; configure required databases or providers through the existing
+named services, plus the native builder when any of them is native; configure required databases or providers through the existing
 Compose/environment settings. Automatic native startup supports generated binary
 commands; custom entrypoints require an explicit development setup. Dry-run shows
 native and TypeScript changes without starting containers or writing application files.
