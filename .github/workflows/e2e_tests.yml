@@ -474,7 +474,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        suite: [scaffolding, projects, changes, mixed, infrastructure, postgres-service, capabilities, observability, containers, registry, published-registry, release-guard, sdk-http, sdk-socket, sdk-combined, socket-compilers, docs, dev-node, dev-bun, http, sse]
+        # Suites that take a few minutes share a job (space-separated), so
+        # fewer jobs wait for a runner and repeat the setup. Every suite in a
+        # job runs even when an earlier one fails.
+        suite:
+          - scaffolding
+          - projects
+          - mixed capabilities
+          - infrastructure
+          - postgres-service
+          - changes observability docs socket-compilers
+          - containers
+          - registry
+          - published-registry
+          - release-guard
+          - sdk-http sdk-socket sdk-combined
+          - dev-node
+          - dev-bun
+          - http sse
     env:
       CARGO_INCREMENTAL: '0'
       CARGO_BUILD_JOBS: '2'
@@ -504,7 +521,7 @@ jobs:
       # with oven/bun:<BUN_VERSION> and run a frozen install of the bun.lock the
       # suite wrote, which another release may not be able to read.
       - uses: oven-sh/setup-bun@v2
-        if: startsWith(matrix.suite, 'sdk-') || startsWith(matrix.suite, 'dev-')
+        if: contains(matrix.suite, 'sdk-') || startsWith(matrix.suite, 'dev-')
         with:
           bun-version: 1.4.2
       - uses: actions/download-artifact@v4
@@ -513,12 +530,12 @@ jobs:
           path: cli-bin
       - run: chmod +x "$FORKLAUNCH_CLI"
       - name: Raw scaffolding, generated mappers and HTTP/MCP startup
-        if: matrix.suite == 'scaffolding'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' scaffolding ') }}
         run: |
           python3 cli/tests/rust_bootstrap_lifecycle.py
           python3 cli/tests/rust_checked_mapper.py
       - name: Raw init, custom module paths, sync discovery, deletion and local SDKs
-        if: matrix.suite == 'projects'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' projects ') }}
         run: |
           bash cli/tests/rust_init_commands.sh
           bash cli/tests/init_rust_projects.sh
@@ -527,35 +544,35 @@ jobs:
           bash cli/tests/rust_sdk_openapi_commands.sh
           bash cli/tests/rust_package_sources.sh
       - name: Change commands preserve and compile application code
-        if: matrix.suite == 'changes'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' changes ') }}
         run: |
           bash cli/tests/rust_change_commands.sh
           python3 cli/tests/rust_conversion_preservation.py
       - name: Mixed workspace discovery, package membership and both HTTP/MCP surfaces
-        if: matrix.suite == 'mixed'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' mixed ') }}
         run: |
           bash cli/tests/rust_mixed_sync.sh
           bash cli/tests/rust_typescript_attach.sh
       - name: Service-local SDK workspace repair with real Node and Bun installs and builds
-        if: matrix.suite == 'sdk-http'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' sdk-http ') }}
         run: bash cli/tests/rust_sdk_workspace.sh
       - name: Current and legacy HTTP SDKs, wire validation and public transport
-        if: matrix.suite == 'http'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' http ') }}
         run: bash cli/tests/rust_http_runtime.sh
       - name: Current and legacy SSE SDKs, authentication, cancellation and cleanup
-        if: matrix.suite == 'sse'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' sse ') }}
         run: bash cli/tests/rust_sse_runtime.sh
       - name: Registry socket compilation and optional schema compiler settings
-        if: matrix.suite == 'socket-compilers'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' socket-compilers ') }}
         run: python3 cli/tests/rust_socket_compiler_sources.py
       - name: Native documentation HTML and pinned framework compatibility
-        if: matrix.suite == 'docs'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' docs ') }}
         run: python3 cli/tests/rust_native_docs_runtime.py
       - name: WebSocket SDK workspace ownership and real Node and Bun builds
-        if: matrix.suite == 'sdk-socket'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' sdk-socket ') }}
         run: bash cli/tests/rust_socket_workspace.sh
       - name: Combined HTTP and WebSocket SDK workspace ownership
-        if: matrix.suite == 'sdk-combined'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' sdk-combined ') }}
         env:
           FORKLAUNCH_TEST_COMBINED_SDK: '1'
         run: bash cli/tests/rust_socket_workspace.sh
@@ -565,37 +582,37 @@ jobs:
           FORKLAUNCH_TEST_DEV_RUNTIME: ${{ matrix.suite == 'dev-bun' && 'bun' || 'node' }}
         run: bash cli/tests/rust_mixed_dev.sh
       - name: Generated telemetry propagation, export and shutdown
-        if: matrix.suite == 'observability'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' observability ') }}
         run: bash cli/tests/rust_generated_otlp_runtime.sh
       - name: Relocated source-snapshot shared Docker image
-        if: matrix.suite == 'containers'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' containers ') }}
         run: bash cli/tests/rust_container_runtime.sh
       - name: Infrastructure ownership, dependency modes and actual encrypted stores
-        if: matrix.suite == 'infrastructure'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' infrastructure ') }}
         run: |
           bash cli/tests/rust_infrastructure_sources.sh
           bash cli/tests/rust_infrastructure_runtime.sh
       - name: PostgreSQL routers, restricted-role tenant isolation and audited protected fields
-        if: startsWith(matrix.suite, 'postgres-service')
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' postgres-service ') }}
         run: bash cli/tests/rust_postgres_service_runtime.sh
       - name: Generated optimized builds and shared-image release manifests
-        if: matrix.suite == 'release-guard'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' release-guard ') }}
         run: bash cli/tests/rust_generated_release_runtime.sh
       - name: Install TypeScript compiler for real signature interoperability
-        if: matrix.suite == 'capabilities'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' capabilities ') }}
         run: |
           npm install --prefix "$RUNNER_TEMP/capabilities-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3
           echo "TSC_BIN=$RUNNER_TEMP/capabilities-ts/node_modules/.bin/tsc" >> "$GITHUB_ENV"
       - name: Signed managed callbacks and ownership preservation
-        if: matrix.suite == 'capabilities'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' capabilities ') }}
         run: bash cli/tests/rust_capabilities_runtime.sh
       - name: Generate against packaged framework registry dependencies
-        if: matrix.suite == 'registry'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' registry ') }}
         run: |
           python3 scripts/rust_release.py prepare --scope framework --allow-dirty --output "$RUNNER_TEMP/framework-packages"
           python3 cli/tests/rust_registry_scaffold.py --staging --default-source --release "$RUNNER_TEMP/framework-packages"
       - name: Public framework default, mixed build hooks and Docker HTTP/MCP startup
-        if: matrix.suite == 'published-registry'
+        if: ${{ !cancelled() && contains(format(' {0} ', matrix.suite), ' published-registry ') }}
         run: |
           python3 scripts/rust_release.py prepare --scope framework --allow-dirty --output "$RUNNER_TEMP/framework-packages"
           python3 cli/tests/rust_registry_scaffold.py --default-source --mixed --docker --release "$RUNNER_TEMP/framework-packages"
