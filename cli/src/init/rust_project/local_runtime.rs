@@ -907,7 +907,13 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             }
         }
     }
-    wire_framework_contexts(root, &mut compose, if mixed { "Dockerfile.rust" } else { "Dockerfile" });
+    if mixed {
+        // The TypeScript image compiles native SDK crates too.
+        wire_framework_contexts(root, &mut compose, "Dockerfile.rust");
+        wire_framework_contexts(root, &mut compose, "Dockerfile.typescript");
+    } else {
+        wire_framework_contexts(root, &mut compose, "Dockerfile");
+    }
     write(&compose_path, yaml_to_string(&compose)?)?;
     let modules_path = manifest.get("modules_path").and_then(Value::as_str).unwrap_or("src");
     let values = write_env(root, modules_path, &app, &compose)?;

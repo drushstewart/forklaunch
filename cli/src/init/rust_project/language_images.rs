@@ -55,6 +55,28 @@ fn provided(external: &[PathBuf], path: &Path) -> bool {
     path.canonicalize().is_ok_and(|path| external.iter().any(|context| path.starts_with(context)))
 }
 
+/// Dockerfile lines for a local framework checkout: empty named stages that
+/// docker-compose.yaml overrides with build contexts, and the COPY lines that
+/// recreate the checkout at its host path (workspace manifests and crates/
+/// only, never target/). Both empty for published crates.
+pub(super) fn framework_inputs(root: &Path) -> Result<(String, String)> {
+    let Some((_, contexts)) = super::local_runtime::framework_contexts(root) else {
+        return Ok((String::new(), String::new()));
+    };
+    let mut stages = String::new();
+    let mut copies = String::new();
+    for (name, path) in contexts {
+        stages.push_str(&format!("FROM scratch AS {name}\n"));
+        let path = path.to_string_lossy();
+        copies.push_str(&format!(
+            "COPY --from={name} {}\nCOPY --from={name} {}\n",
+            serde_json::to_string(&vec!["Cargo.tom[l]".to_owned(), "Cargo.loc[k]".to_owned(), format!("{path}/")])?,
+            serde_json::to_string(&vec!["crates".to_owned(), format!("{path}/crates")])?,
+        ));
+    }
+    Ok((stages, copies))
+}
+
 pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
     let framework = super::local_runtime::framework_contexts(root);
     let external: Vec<PathBuf> = framework
@@ -249,26 +271,11 @@ pub(super) fn plan(root: &Path) -> Result<(String, Vec<String>, Vec<String>)> {
             "Unsupported Docker binary name"
         );
     }
+    let (stages, copies) = framework_inputs(&root)?;
     let mut docker = "# Generated shared Rust image. Run cargo generate-lockfile before the first image build.\n".to_owned();
-    if let Some((_, contexts)) = &framework {
-        // docker-compose.yaml passes the checkout as these named contexts.
-        for (name, _) in contexts {
-            docker.push_str(&format!("FROM scratch AS {name}\n"));
-        }
-    }
+    docker.push_str(&stages);
     docker.push_str("FROM rust:1.98.0-slim-bookworm AS builder\nWORKDIR /app\nRUN apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev libcurl4-openssl-dev ca-certificates cmake make g++ perl && rm -rf /var/lib/apt/lists/*\n");
-    if let Some((_, contexts)) = &framework {
-        // The checkout is recreated at its host path, which the Cargo manifests
-        // reference; only workspace manifests and crates/ are transferred.
-        for (name, path) in contexts {
-            let path = path.to_string_lossy();
-            docker.push_str(&format!(
-                "COPY --from={name} {}\nCOPY --from={name} {}\n",
-                serde_json::to_string(&vec!["Cargo.tom[l]".to_owned(), "Cargo.loc[k]".to_owned(), format!("{path}/")])?,
-                serde_json::to_string(&vec!["crates".to_owned(), format!("{path}/crates")])?,
-            ));
-        }
-    }
+    docker.push_str(&copies);
     for input in &inputs {
         docker.push_str(&format!(
             "COPY {}\n",

@@ -380,6 +380,11 @@ fn merge_workspace(stage: &Path, template: &Path, original: &Value) -> Result<()
             stage.join("Dockerfile.rust.dockerignore"),
         )?;
     }
+    // Register the native services' TypeScript SDK packages in both the root and
+    // the nested modules workspace. The nested workspace is the install and image
+    // unit, so TypeScript projects depending on them resolve workspace links,
+    // not the registry.
+    crate::sdk::include_typescript_sdk(stage)?;
     super::rust_project::prepare_mixed_workspace_images(stage)?;
     Ok(())
 }
