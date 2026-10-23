@@ -53,3 +53,17 @@ impl CliCommand for DeleteCommand {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delete_subcommands_describe_deletion() {
+        let command = DeleteCommand::new().command();
+        for subcommand in command.get_subcommands() {
+            let about = subcommand.get_about().map(ToString::to_string).unwrap_or_default();
+            assert!(about.starts_with("Delete "), "{}: {about}", subcommand.get_name());
+        }
+    }
+}

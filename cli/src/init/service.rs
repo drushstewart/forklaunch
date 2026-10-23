@@ -643,7 +643,7 @@ pub(crate) fn generate_service_package_json(
                 },
                 pino: Some(PINO_VERSION.to_string()),
                 ioredis: Some(IOREDIS_VERSION.to_string()),
-                additional_deps: HashMap::new(),
+                additional_deps: indexmap::IndexMap::new(),
             }
         }),
         dev_dependencies: Some(if let Some(dev_dependencies) = dev_dependencies_override {
@@ -691,7 +691,7 @@ pub(crate) fn generate_service_package_json(
                 types_ioredis: None,
                 pino: None,
                 ioredis: None,
-                additional_deps: HashMap::new(),
+                additional_deps: indexmap::IndexMap::new(),
             }
         }),
         mikro_orm: Some(ProjectMikroOrm {

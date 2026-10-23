@@ -188,7 +188,7 @@ pub(crate) struct ApplicationDevDependencies {
     pub(crate) vitest: Option<String>,
 
     #[serde(flatten)]
-    pub(crate) additional_deps: HashMap<String, String>,
+    pub(crate) additional_deps: indexmap::IndexMap<String, String>,
 }
 
 impl<'de> Deserialize<'de> for ApplicationDevDependencies {
@@ -236,7 +236,7 @@ impl<'de> Deserialize<'de> for ApplicationDevDependencies {
                     typescript_native_preview: None,
                     typescript_eslint: None,
                     vitest: None,
-                    additional_deps: HashMap::new(),
+                    additional_deps: indexmap::IndexMap::new(),
                 };
 
                 while let Some((key, value)) = access.next_entry::<String, String>()? {

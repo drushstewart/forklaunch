@@ -204,6 +204,15 @@ fn localize_item(item: &mut toml_edit::Item, index: &std::collections::BTreeMap<
             spec.remove("version");
             spec.insert("path", toml_edit::value(directory.to_string_lossy().into_owned()));
             *changed = true;
+            if let Some(inline) = child.as_inline_table_mut() {
+                // Keep inline specs readable: the path leads, as in templates.
+                let path = inline.remove("path").expect("inserted above");
+                let mut ordered = toml_edit::InlineTable::new();
+                ordered.insert("path", path);
+                ordered.extend(inline.iter().map(|(key, value)| (key.to_owned(), value.clone())));
+                ordered.fmt();
+                *inline = ordered;
+            }
             continue;
         }
         localize_item(child, index, changed);
@@ -232,6 +241,7 @@ fn rewrite_item(item: &mut toml_edit::Item, config: &Value, changed: &mut bool) 
                     let mut ordered = toml_edit::InlineTable::new();
                     ordered.insert("version", version);
                     ordered.extend(inline.iter().map(|(key, value)| (key.to_owned(), value.clone())));
+                    ordered.fmt();
                     *inline = ordered;
                 }
                 return;
@@ -338,6 +348,10 @@ mod tests {
         assert!(value["dependencies"]["core"].get("version").is_none());
         assert!(value["dependencies"]["forklaunch-worker-interface"]["path"].as_str().unwrap().ends_with("blueprint-rs/crates/interfaces/worker-interface"));
         assert_eq!(value["dependencies"]["serde"]["version"].as_str(), Some("1"));
+        // Switching back and forth leaves an inline spec the way a template writes it.
+        let inline = "[dependencies]\nforklaunch-core = { version = \"=0.2.0\", features = [\"build\"] }\n";
+        let local = rewrite_in_place(root.path(), inline).unwrap().unwrap();
+        assert_eq!(local, format!("[dependencies]\nforklaunch-core = {{ path = \"{}\", features = [\"build\"] }}\n", framework.join("crates/core").display()));
     }
 
     #[test]

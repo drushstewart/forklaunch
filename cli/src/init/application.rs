@@ -264,7 +264,7 @@ fn generate_application_package_json(
             } else {
                 None
             },
-            additional_deps: HashMap::new(),
+            additional_deps: indexmap::IndexMap::new(),
         }),
         pnpm: None,
         patched_dependencies: None,
@@ -1255,7 +1255,7 @@ impl CliCommand for ApplicationCommand {
                             global_module_config.messaging.is_some(),
                             global_module_config.cac.is_some(),
                             global_module_config.ecommerce.is_some(),
-                        ),
+                        ).into_iter().collect(),
                         ..Default::default()
                     }),
                     _ => None,

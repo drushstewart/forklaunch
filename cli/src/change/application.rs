@@ -792,9 +792,16 @@ fn change_validator(
 fn preflight_http_framework(base_path: &Path, http_framework: &str, runtime: &str) -> Result<()> {
     if http_framework == "hyper-express" && runtime == "node" {
         let package: serde_json::Value = serde_json::from_str(&read_to_string(base_path.join("package.json"))?)?;
+        // Moving a Bun workspace to Node writes the default pnpm policy, which
+        // blocks the Git-distributed dependency.
+        anyhow::ensure!(
+            !package["packageManager"].as_str().is_some_and(|manager| manager.starts_with("bun@")),
+            "HyperExpress on Node requires Git-distributed uWebSockets.js, which the default pnpm policy blocks. Change the HTTP framework to express in the same command (-F express), or keep the Bun runtime. Existing application files are preserved");
         let pinned_pnpm11 = package["packageManager"].as_str().is_some_and(|manager| manager.starts_with("pnpm@11."));
         if !pinned_pnpm11 { return Ok(()); }
         let path = base_path.join("pnpm-workspace.yaml");
+        anyhow::ensure!(path.is_file(),
+            "HyperExpress on Node requires Git-distributed uWebSockets.js, which the default pnpm policy blocks. Change the HTTP framework to express in the same command (-F express), or keep the Bun runtime. Existing application files are preserved");
         let workspace: serde_yml::Value = serde_yml::from_str(&read_to_string(&path)?)?;
         anyhow::ensure!(!pinned_pnpm11 || workspace["blockExoticSubdeps"].as_bool() == Some(false),
             "HyperExpress requires Git-distributed uWebSockets.js. The current pnpm policy blocks this dependency; explicitly review its dependency policy before selecting HyperExpress. Existing application files are preserved");
@@ -1584,20 +1591,17 @@ fn change_license(
     manifest_data.license = license.to_string();
     let license_path = base_path.join("LICENSE");
 
-    let mut removal_template = None;
-    if exists(&license_path)? {
-        removal_template = Some(RemovalTemplate {
-            path: license_path.clone(),
-        });
-    }
-
     application_json_to_write.license = Some(license.to_string());
 
+    // A new license text replaces the file in place; the file is removed only
+    // when the new license has none. Removing a path also drops any write to
+    // it, so doing both deleted the new LICENSE.
     if let Some(license_file_contents) = generate_license(base_path, &manifest_data)? {
         rendered_templates_cache.insert(license_path.to_string_lossy(), license_file_contents);
+        return Ok(None);
     }
 
-    Ok(removal_template)
+    Ok(exists(&license_path)?.then(|| RemovalTemplate { path: license_path.clone() }))
 }
 
 impl CliCommand for ApplicationCommand {
@@ -1738,8 +1742,17 @@ impl CliCommand for ApplicationCommand {
         crate::init::rust_project::preflight_mixed_images(&app_root_path)?;
 
         let current_manifest: toml::Value = toml::from_str(&read_to_string(&manifest_path)?)?;
-        let mixed_tooling = current_manifest.get("language").and_then(toml::Value::as_str) == Some("mixed")
-            && ["formatter", "linter", "test-framework", "validator", "http-framework", "runtime"].iter().any(|key| matches.get_one::<String>(key).is_some());
+        let mixed = current_manifest.get("language").and_then(toml::Value::as_str) == Some("mixed");
+        let previous_app_name = current_manifest.get("app_name").and_then(toml::Value::as_str).map(str::to_owned);
+        // TypeScript tooling, and a rename while TypeScript packages carry the
+        // application scope, go through the TypeScript change first.
+        let typescript_workspace = current_manifest
+            .get("modules_path")
+            .and_then(toml::Value::as_str)
+            .is_some_and(|modules| app_root_path.join(modules).join("package.json").is_file());
+        let mixed_tooling = mixed
+            && (["formatter", "linter", "test-framework", "validator", "http-framework", "runtime"].iter().any(|key| matches.get_one::<String>(key).is_some())
+                || (typescript_workspace && ["name", "description", "author", "license"].iter().any(|key| matches.get_one::<String>(key).is_some())));
         if rust_project::is_rust_app_root(&app_root_path)? && !mixed_tooling {
             if matches.get_one::<String>("formatter").is_some()
                 || matches.get_one::<String>("linter").is_some()
@@ -1767,6 +1780,7 @@ impl CliCommand for ApplicationCommand {
                 matches.get_one::<String>("description").map(String::as_str),
                 matches.get_one::<String>("author").map(String::as_str),
                 matches.get_one::<String>("license").map(String::as_str),
+                None,
                 matches.get_flag("dryrun"),
             )?;
             if !matches.get_flag("dryrun") {
@@ -2036,7 +2050,7 @@ impl CliCommand for ApplicationCommand {
             crate::sdk::typescript_build::preflight_application(&app_root_path)?;
         }
 
-        if let Some(name) = name {
+        if let Some(name) = &name {
             if !dryrun {
             clean_application(
                 &app_path,
@@ -2212,14 +2226,22 @@ impl CliCommand for ApplicationCommand {
         create_symlinks(&symlink_templates, dryrun, &mut stdout)?;
         if !dryrun {
             if mixed_tooling {
-                rust_project::change_rust_application(&app_root_path, None,
+                rust_project::change_rust_application(&app_root_path, name.as_deref(),
                     matches.get_one::<String>("description").map(String::as_str),
                     matches.get_one::<String>("author").map(String::as_str),
-                    matches.get_one::<String>("license").map(String::as_str), false)?;
+                    matches.get_one::<String>("license").map(String::as_str),
+                    previous_app_name.as_deref(), false)?;
             }
             crate::init::rust_project::refresh_mixed_images(&app_root_path)?;
             log_ok!(stdout, "{} changed successfully!", &manifest_data.app_name);
             format_code(&app_path, &manifest_data.runtime.parse()?);
+        } else if mixed_tooling {
+            // The native half: Cargo metadata, Compose and local env files.
+            rust_project::change_rust_application(&app_root_path, name.as_deref(),
+                matches.get_one::<String>("description").map(String::as_str),
+                matches.get_one::<String>("author").map(String::as_str),
+                matches.get_one::<String>("license").map(String::as_str),
+                previous_app_name.as_deref(), true)?;
         }
 
         Ok(())
@@ -2241,7 +2263,7 @@ mod adapter_migration_tests {
         assert_eq!(std::fs::read_to_string(root.path().join("package.json")).unwrap(), package);
         std::fs::remove_file(root.path().join("pnpm-workspace.yaml")).unwrap();
         std::fs::write(root.path().join("package.json"), r#"{"packageManager":"bun@1.3.14"}"#).unwrap();
-        preflight_http_framework(root.path(), "hyper-express", "node").unwrap();
+        assert!(preflight_http_framework(root.path(), "hyper-express", "node").unwrap_err().to_string().contains("-F express"));
     }
 
     #[test]
@@ -2261,5 +2283,28 @@ mod adapter_migration_tests {
         assert!(staged.contains("label = '@forklaunch/validator/zod'"));
         assert_eq!(std::fs::read_to_string(path).unwrap(), source);
         assert_eq!(cache.get(root.path().join("api/dist/schema.ts")).unwrap().unwrap().content, source);
+    }
+}
+
+#[cfg(test)]
+mod license_tests {
+    use super::*;
+
+    #[test]
+    fn changing_license_rewrites_license_file_instead_of_deleting_it() {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::write(root.path().join("LICENSE"), "MIT License\n").unwrap();
+        let mut manifest: ApplicationManifestData = toml::from_str(
+            "id='x'\ncli_version='1.0.0'\napp_name='demo'\nmodules_path='src'\nruntime='node'\nformatter='prettier'\nlinter='oxlint'\nvalidator='zod'\nhttp_framework='express'\ntest_framework='vitest'\napp_description='d'\nauthor='a'\nlicense='MIT'\nprojects=[]\nproject_peer_topology={}\n",
+        )
+        .unwrap();
+        let mut package = ApplicationPackageJson::default();
+        let mut cache = RenderedTemplatesCache::new();
+        let removal = change_license(root.path(), &License::Apache, &mut manifest, &mut package, &mut cache).unwrap();
+        assert!(removal.is_none());
+        let rendered = cache.get(root.path().join("LICENSE")).unwrap().unwrap();
+        assert!(rendered.content.contains("Apache License"), "{}", &rendered.content[..80]);
+        let removal = change_license(root.path(), &License::None, &mut manifest, &mut package, &mut cache).unwrap();
+        assert_eq!(removal.unwrap().path, root.path().join("LICENSE"));
     }
 }

@@ -859,6 +859,71 @@ pub(super) fn prune_stale_migrations(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Replace the application-derived prefixes an application rename changes:
+/// `<old>-` names (containers, networks, volumes, queues, namespaces, Kafka
+/// and JWT identities) and `/<old>_` database names in URLs.
+fn renamed_application_text(text: &str, old: &str, new: &str) -> String {
+    let (old_kebab, new_kebab) = (old.to_case(Case::Kebab), new.to_case(Case::Kebab));
+    let (old_snake, new_snake) = (old.to_case(Case::Snake), new.to_case(Case::Snake));
+    let prefix = regex::Regex::new(&format!(r"(^|[^A-Za-z0-9_-]){}-", regex::escape(&old_kebab))).expect("escaped name");
+    let renamed = prefix.replace_all(text, |captures: &regex::Captures| format!("{}{new_kebab}-", &captures[1]));
+    renamed.replace(&format!("/{old_snake}_"), &format!("/{new_snake}_"))
+}
+
+/// An application rename keeps local runtime files consistent with a fresh
+/// scaffold of the new name: Compose names and the generated values in the
+/// root `.env` and each crate's `.env.local` (database names, namespaces,
+/// identities). Values a person changed away from the old defaults stay.
+pub(super) fn rename_application(root: &Path, old: &str, new: &str) -> Result<()> {
+    if old == new {
+        return Ok(());
+    }
+    let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
+    let compose_path = root.join(
+        manifest.get("docker_compose_path").and_then(Value::as_str).unwrap_or("docker-compose.yaml"),
+    );
+    let mut files = vec![compose_path, root.join(".env")];
+    let (old_scope, new_scope) = (format!("\"@{}/", old.to_case(Case::Kebab)), format!("\"@{}/", new.to_case(Case::Kebab)));
+    for project in manifest.get("projects").and_then(Value::as_array).into_iter().flatten() {
+        let rust = project.get("metadata").and_then(|m| m.get("language")).and_then(Value::as_str) == Some("rust");
+        if let Some(relative) = project.get("name").and_then(Value::as_str).and_then(|name| crate_path_for_project(&manifest, name)) {
+            files.push(root.join(&relative).join(".env.local"));
+            if !rust {
+                continue;
+            }
+            // Generated TypeScript SDK and event packages carry the
+            // application scope; build scripts keep the name they find.
+            for entry in walkdir::WalkDir::new(root.join(&relative)).into_iter().filter_entry(|entry| !matches!(entry.file_name().to_str(), Some("node_modules" | "target"))).flatten() {
+                if entry.file_name() == "package.json"
+                    && let Ok(existing) = read_to_string(entry.path())
+                    && existing.contains(&old_scope)
+                {
+                    write(entry.path(), existing.replace(&old_scope, &new_scope))?;
+                }
+            }
+        }
+    }
+    for path in files {
+        let Ok(existing) = read_to_string(&path) else { continue };
+        let updated = if path.extension().is_some_and(|extension| extension == "yaml" || extension == "yml") {
+            renamed_application_text(&existing, old, new)
+        } else {
+            // Only values change; keys and comments stay as written.
+            existing
+                .split_inclusive('\n')
+                .map(|line| match line.split_once('=') {
+                    Some((key, value)) if !key.trim_start().starts_with('#') => format!("{key}={}", renamed_application_text(value, old, new)),
+                    _ => line.to_owned(),
+                })
+                .collect()
+        };
+        if updated != existing {
+            write(&path, updated)?;
+        }
+    }
+    Ok(())
+}
+
 pub(super) fn reconcile(root: &Path) -> Result<()> {
     let manifest = read_manifest_value(&root.join(".forklaunch/manifest.toml"))?;
     let compose_path = root.join(
@@ -980,6 +1045,30 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn application_rename_rewrites_generated_names_only() {
+        let text = "QUEUE_NAME=zebra-jobs-dev\nDATABASE_URL=postgresql://a@postgresql:5432/zebra_accounts\nPATH_HINT=/srv/old-zebra-x\nOTHER=zebras-keep\n";
+        assert_eq!(
+            renamed_application_text(text, "zebra", "kestrel"),
+            "QUEUE_NAME=kestrel-jobs-dev\nDATABASE_URL=postgresql://a@postgresql:5432/kestrel_accounts\nPATH_HINT=/srv/old-zebra-x\nOTHER=zebras-keep\n"
+        );
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        create_dir_all(root.join(".forklaunch")).unwrap();
+        create_dir_all(root.join("src/jobs")).unwrap();
+        write(root.join(".forklaunch/manifest.toml"), "app_name = \"kestrel\"\n[[projects]]\nname = \"jobs\"\ntype = \"Worker\"\n[projects.metadata]\nlanguage = \"rust\"\ncratePath = \"src/jobs\"\n").unwrap();
+        write(root.join("docker-compose.yaml"), "networks:\n  zebra-network:\n    name: zebra-network\n").unwrap();
+        write(root.join(".env"), "# zebra-keep comment\nJOBS_NAMESPACE=zebra-jobs\n").unwrap();
+        write(root.join("src/jobs/.env.local"), "WORKER_NAMESPACE=zebra-jobs\nCUSTOM=mine\n").unwrap();
+        create_dir_all(root.join("src/jobs/sdk/typescript")).unwrap();
+        write(root.join("src/jobs/sdk/typescript/package.json"), "{\"name\": \"@zebra/jobs\"}").unwrap();
+        rename_application(root, "zebra", "kestrel").unwrap();
+        assert_eq!(read_to_string(root.join("src/jobs/sdk/typescript/package.json")).unwrap(), "{\"name\": \"@kestrel/jobs\"}");
+        assert_eq!(read_to_string(root.join("docker-compose.yaml")).unwrap(), "networks:\n  kestrel-network:\n    name: kestrel-network\n");
+        assert_eq!(read_to_string(root.join(".env")).unwrap(), "# zebra-keep comment\nJOBS_NAMESPACE=kestrel-jobs\n");
+        assert_eq!(read_to_string(root.join("src/jobs/.env.local")).unwrap(), "WORKER_NAMESPACE=kestrel-jobs\nCUSTOM=mine\n");
+    }
 
     #[test]
     fn database_prefix_reads_required_service_urls_only() {

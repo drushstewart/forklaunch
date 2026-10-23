@@ -58,7 +58,7 @@ impl RouterCommand {
 
 impl CliCommand for RouterCommand {
     fn command(&self) -> Command {
-        command("router", "Initialize a new router")
+        command("router", "Delete a router")
             .alias("rtr")
             .alias("controller")
             .arg(Arg::new("name").help("The name of the router"))

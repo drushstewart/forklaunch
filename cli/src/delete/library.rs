@@ -43,7 +43,7 @@ impl LibraryCommand {
 
 impl CliCommand for LibraryCommand {
     fn command(&self) -> Command {
-        command("library", "Initialize a new library")
+        command("library", "Delete a library")
             .alias("lib")
             .arg(Arg::new("name").help("The name of the library"))
             .arg(

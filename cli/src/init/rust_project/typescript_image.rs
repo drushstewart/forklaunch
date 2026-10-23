@@ -436,6 +436,20 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
                 }
             }
         }
+        // Entries this reconcile generated for dependencies that are gone
+        // (a renamed scope, a deleted project) go with them.
+        let mut pruned = false;
+        if let Some(metadata) = package.get_mut("dependenciesMeta").and_then(JsonValue::as_object_mut) {
+            let before = metadata.len();
+            metadata.retain(|name, value| local.contains(name) || *value != json!({"injected": false}));
+            pruned = metadata.len() != before;
+            if metadata.is_empty() && local.is_empty() {
+                package.as_object_mut().context("package.json must be an object")?.remove("dependenciesMeta");
+            }
+        }
+        if local.is_empty() && pruned {
+            workspace_package_updates.push((directory.join("package.json"), serde_json::to_string_pretty(package)?));
+        }
         if local.is_empty() {
             continue;
         }
@@ -1433,6 +1447,21 @@ mod tests {
             .unwrap();
             assert_eq!(workspace["injectWorkspacePackages"], true);
         }
+    }
+
+    #[test]
+    fn stale_generated_dependency_metadata_is_pruned() {
+        let root = fixture();
+        let path = root.path().join("modules/jobs/package.json");
+        let mut package: JsonValue = serde_json::from_str(&read_to_string(&path).unwrap()).unwrap();
+        package["dependencies"] = json!({"@demo/api":"workspace:*"});
+        // A renamed scope or deleted project leaves generated entries behind;
+        // explicit settings stay.
+        package["dependenciesMeta"] = json!({"@old/api":{"injected":false},"@demo/gone":{"injected":false},"custom":{"injected":true}});
+        write(&path, serde_json::to_string(&package).unwrap()).unwrap();
+        reconcile(root.path()).unwrap();
+        let package: JsonValue = serde_json::from_str(&read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(package["dependenciesMeta"], json!({"@demo/api":{"injected":false},"custom":{"injected":true}}));
     }
 
     #[test]

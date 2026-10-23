@@ -226,7 +226,7 @@ pub(crate) struct ProjectDependencies {
     pub(crate) pino: Option<String>,
     pub(crate) ioredis: Option<String>,
 
-    pub(crate) additional_deps: HashMap<String, String>,
+    pub(crate) additional_deps: indexmap::IndexMap<String, String>,
 }
 
 impl Serialize for ProjectDependencies {
@@ -703,7 +703,7 @@ pub(crate) struct ProjectDevDependencies {
     pub(crate) typescript_eslint: Option<String>,
 
     #[serde(flatten)]
-    pub(crate) additional_deps: HashMap<String, String>,
+    pub(crate) additional_deps: indexmap::IndexMap<String, String>,
 }
 
 impl<'de> Deserialize<'de> for ProjectDevDependencies {
@@ -742,7 +742,7 @@ impl<'de> Deserialize<'de> for ProjectDevDependencies {
                     ioredis: None,
                     typedoc: None,
                     typescript_eslint: None,
-                    additional_deps: HashMap::new(),
+                    additional_deps: indexmap::IndexMap::new(),
                 };
 
                 while let Some((key, value)) = access.next_entry::<String, String>()? {

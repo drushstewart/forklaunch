@@ -48,7 +48,7 @@ impl ServiceCommand {
 
 impl CliCommand for ServiceCommand {
     fn command(&self) -> Command {
-        command("service", "Initialize a new service")
+        command("service", "Delete a service")
             .alias("svc")
             .arg(Arg::new("name").help("The name of the service"))
             .arg(

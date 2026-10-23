@@ -62,6 +62,15 @@ pub(crate) fn write_rendered_templates(
     Ok(())
 }
 
+/// The dry-run plan of a native change that edits files in place: the same
+/// "Would write" lines rendered templates print.
+pub(crate) fn log_dryrun_plan<S: AsRef<str>>(stdout: &mut StandardStream, paths: &[S]) -> Result<()> {
+    for path in paths {
+        writeln!(stdout, "Would write {}", path.as_ref())?;
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 pub(crate) struct RenderedTemplatesCache {
     internal_cache: HashMap<String, RenderedTemplate>,

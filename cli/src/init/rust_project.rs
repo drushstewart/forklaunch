@@ -1431,6 +1431,7 @@ pub(crate) fn change_rust_application(
     description: Option<&str>,
     author: Option<&str>,
     license: Option<&str>,
+    previous_name: Option<&str>,
     dryrun: bool,
 ) -> Result<String> {
     let manifest_path = app_root.join(".forklaunch").join("manifest.toml");
@@ -1441,8 +1442,26 @@ pub(crate) fn change_rust_application(
         .context("Rust application manifest is missing app_name")?
         .to_string();
     let target_name = new_name.unwrap_or(&current_name).to_string();
+    // A mixed application's TypeScript rename has already written the new
+    // name; it passes the name it replaced.
+    let previous_name = previous_name.unwrap_or(&current_name).to_string();
 
     if dryrun {
+        let compose = manifest.get("docker_compose_path").and_then(Value::as_str).unwrap_or("docker-compose.yaml");
+        let mut planned = vec![".forklaunch/manifest.toml".to_string()];
+        if author.is_some() || license.is_some() {
+            planned.push("Cargo.toml".into());
+        }
+        if app_root.join("README.md").is_file() && (new_name.is_some() || description.is_some()) {
+            planned.push("README.md".into());
+        } else if new_name.is_some() {
+            planned.push(format!("{}/README.md", manifest.get("modules_path").and_then(Value::as_str).unwrap_or("src")));
+        }
+        if new_name.is_some() {
+            planned.extend([compose.to_string(), ".env".into(), "<crate>/.env.local".into(), "<crate>/**/package.json".into()]);
+        }
+        let mut stdout = StandardStream::stdout(ColorChoice::Always);
+        crate::core::rendered_template::log_dryrun_plan(&mut stdout, &planned)?;
         return Ok(target_name);
     }
 
@@ -1453,6 +1472,20 @@ pub(crate) fn change_rust_application(
         .context("ForkLaunch manifest root must be a TOML table")?;
     if new_name.is_some() {
         root.insert("app_name".to_string(), Value::String(target_name.clone()));
+        if let Some(topology) = root.get_mut("project_peer_topology").and_then(Value::as_table_mut)
+            && previous_name != target_name
+            && let Some(group) = topology.remove(&previous_name)
+        {
+            topology.insert(target_name.clone(), group);
+        }
+        for project in root.get_mut("projects").and_then(Value::as_array_mut).into_iter().flatten() {
+            if let Some(description) = project.get_mut("description")
+                && let Some(text) = description.as_str()
+            {
+                let renamed = text.replace(&format!(" for {previous_name},"), &format!(" for {target_name},"));
+                *description = Value::String(renamed);
+            }
+        }
     }
     if let Some(description) = description {
         root.insert(
@@ -1469,8 +1502,11 @@ pub(crate) fn change_rust_application(
 
     write_manifest_value(&manifest_path, &manifest)?;
     update_rust_root_cargo_metadata(app_root, author, license)?;
-    update_rust_readme(app_root, &target_name, description)?;
-    if new_name.is_some() { language_images::reconcile(app_root)?; }
+    update_rust_readme(app_root, &previous_name, &target_name, description)?;
+    if new_name.is_some() {
+        local_runtime::rename_application(app_root, &previous_name, &target_name)?;
+        language_images::reconcile(app_root)?;
+    }
 
     Ok(target_name)
 }
@@ -3456,45 +3492,55 @@ fn update_rust_root_cargo_metadata(
     }
 
     let cargo_path = app_root.join("Cargo.toml");
-    let mut cargo = toml::from_str::<Value>(
-        &read_to_string(&cargo_path)
-            .with_context(|| format!("Failed to read {}", cargo_path.display()))?,
-    )
-    .with_context(|| format!("Failed to parse {}", cargo_path.display()))?;
-    let workspace = cargo
-        .as_table_mut()
-        .context("Root Cargo.toml must be a TOML table")?
-        .entry("workspace")
-        .or_insert_with(|| Value::Table(Map::new()))
-        .as_table_mut()
-        .context("Root Cargo.toml workspace must be a TOML table")?;
-    let workspace_package = workspace
-        .entry("package")
-        .or_insert_with(|| Value::Table(Map::new()))
-        .as_table_mut()
-        .context("Root Cargo.toml workspace.package must be a TOML table")?;
-
-    if let Some(author) = author {
-        workspace_package.insert(
-            "authors".to_string(),
-            Value::Array(if author.trim().is_empty() {
-                Vec::new()
-            } else {
-                vec![Value::String(author.to_string())]
-            }),
-        );
-    }
-    if let Some(license) = license {
-        workspace_package.insert("license".to_string(), Value::String(license.to_string()));
-    }
-
-    write(&cargo_path, toml::to_string_pretty(&cargo)?)
+    let existing = read_to_string(&cargo_path)
+        .with_context(|| format!("Failed to read {}", cargo_path.display()))?;
+    write(&cargo_path, cargo_metadata_source(&existing, author, license)?)
         .with_context(|| format!("Failed to update {}", cargo_path.display()))
 }
 
-fn update_rust_readme(app_root: &Path, target_name: &str, description: Option<&str>) -> Result<()> {
+/// The workspace manifest with new `[workspace.package]` authors/license, the
+/// rest of the file (member order, comments, key order) as written.
+fn cargo_metadata_source(existing: &str, author: Option<&str>, license: Option<&str>) -> Result<String> {
+    let mut cargo = existing
+        .parse::<toml_edit::DocumentMut>()
+        .context("Failed to parse the root Cargo.toml")?;
+    let workspace = cargo
+        .entry("workspace")
+        .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()))
+        .as_table_mut()
+        .context("Root Cargo.toml workspace must be a TOML table")?;
+    let package = workspace
+        .entry("package")
+        .or_insert_with(|| toml_edit::Item::Table(toml_edit::Table::new()))
+        .as_table_mut()
+        .context("Root Cargo.toml workspace.package must be a TOML table")?;
+    if let Some(author) = author {
+        let mut authors = toml_edit::Array::new();
+        if !author.trim().is_empty() {
+            authors.push(author);
+        }
+        package["authors"] = toml_edit::value(authors);
+    }
+    if let Some(license) = license {
+        package["license"] = toml_edit::value(license);
+    }
+    Ok(cargo.to_string())
+}
+
+fn update_rust_readme(app_root: &Path, previous_name: &str, target_name: &str, description: Option<&str>) -> Result<()> {
     let readme_path = app_root.join("README.md");
     if !readme_path.exists() {
+        // The workspace README lives with the modules; only its generated
+        // title follows a rename.
+        let modules = read_manifest_value(&app_root.join(".forklaunch/manifest.toml"))?
+            .get("modules_path").and_then(Value::as_str).unwrap_or("src").to_string();
+        let path = app_root.join(modules).join("README.md");
+        if let Ok(existing) = read_to_string(&path)
+            && let Some(rest) = existing.strip_prefix(&format!("# {previous_name}\n"))
+            && previous_name != target_name
+        {
+            write(&path, format!("# {target_name}\n{rest}"))?;
+        }
         return Ok(());
     }
     let existing = read_to_string(&readme_path)
@@ -3901,6 +3947,13 @@ mod workspace_tests {
     }
 
     use super::*;
+
+    #[test]
+    fn application_metadata_keeps_the_workspace_manifest_layout() {
+        let source = "[workspace]\nresolver = \"3\"\nmembers = [\n    \"src/b\",\n    \"src/a\",\n]\n\n[workspace.package]\nversion = \"0.1.0\"\nlicense = \"MIT\"\nauthors = [\"ForkLaunch\"]\n";
+        let updated = cargo_metadata_source(source, Some("Jane Doe"), Some("Apache-2.0")).unwrap();
+        assert_eq!(updated, source.replace("\"MIT\"", "\"Apache-2.0\"").replace("[\"ForkLaunch\"]", "[\"Jane Doe\"]"));
+    }
 
     #[test]
     fn removing_custom_library_dependency_preserves_user_overrides() {

@@ -48,7 +48,7 @@ impl WorkerCommand {
 
 impl CliCommand for WorkerCommand {
     fn command(&self) -> Command {
-        command("worker", "Initialize a new worker")
+        command("worker", "Delete a worker")
             .alias("wrkr")
             .arg(Arg::new("name").help("The name of the worker"))
             .arg(

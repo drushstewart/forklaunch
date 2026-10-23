@@ -395,12 +395,12 @@ pub(crate) fn remove_project_from_client_sdk(
     if let Some(ref mut dev_deps) = client_sdk_project_json.dev_dependencies {
         dev_deps
             .additional_deps
-            .remove(&format!("@{}/{}", &kebab_case_app_name, &kebab_case_name));
+            .shift_remove(&format!("@{}/{}", &kebab_case_app_name, &kebab_case_name));
     }
 
     if let Some(ref mut deps) = client_sdk_project_json.dependencies {
         deps.additional_deps
-            .remove(&format!("@{}/{}", &kebab_case_app_name, &kebab_case_name));
+            .shift_remove(&format!("@{}/{}", &kebab_case_app_name, &kebab_case_name));
     }
 
     rendered_templates_cache.insert(
@@ -458,7 +458,7 @@ pub(crate) fn change_project_in_client_sdk(
         .unwrap()
         .additional_deps;
 
-    additional_deps.remove(&format!(
+    additional_deps.shift_remove(&format!(
         "@{}/{}",
         &kebab_case_app_name, &kebab_case_existing_name
     ));
