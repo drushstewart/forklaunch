@@ -137,7 +137,11 @@ for (const flavor of ['zod', 'typebox']) {
         false,
         flavor + JSON.stringify(stripeFields)
       );
-      await assert.rejects(service.createPaymentLink(dto), /line_items/);
+      // Configured creation preflight (validateCreate) rejects first.
+      await assert.rejects(
+        service.createPaymentLink(dto),
+        /Invalid paymentLink creation/
+      );
       assert.equal(calls.length, 0);
       assert.equal(writes, 0);
       assert.equal(allocations, 0);
