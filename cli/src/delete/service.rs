@@ -246,6 +246,7 @@ impl CliCommand for ServiceCommand {
                 &manifest_data.app_name,
                 &manifest_data.projects,
                 &database,
+                &service_name,
                 Some(&mut docker_compose),
                 &mut rendered_templates_cache,
             )?;

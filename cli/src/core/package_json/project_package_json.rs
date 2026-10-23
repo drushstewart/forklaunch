@@ -530,14 +530,17 @@ impl<'de> Deserialize<'de> for ProjectDependencies {
                         }
                         continue;
                     }
-                    if key.starts_with("@mikro-orm") && key.ends_with("sqlite") {
-                        deps.databases.insert(Database::SQLite);
+                    // Before the plain `sqlite` check, which `better-sqlite`
+                    // also ends with (it read as SQLite, so deleting the last
+                    // better-sqlite project could not drop its driver).
+                    if key.starts_with("@mikro-orm") && key.ends_with("better-sqlite") {
+                        deps.databases.insert(Database::BetterSQLite);
                         deps.mikro_orm_database = Some(value);
                         continue;
                     }
-                    if key.starts_with("@mikro-orm") && key.ends_with("better-sqlite") {
-                        deps.databases.insert(Database::BetterSQLite);
-                        deps.better_sqlite3 = Some(value);
+                    if key.starts_with("@mikro-orm") && key.ends_with("sqlite") {
+                        deps.databases.insert(Database::SQLite);
+                        deps.mikro_orm_database = Some(value);
                         continue;
                     }
                     if key.starts_with("@mikro-orm") && key.ends_with("libsql") {

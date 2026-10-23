@@ -166,7 +166,10 @@ fn generate_basic_service(
             .with_context(|| ERROR_FAILED_TO_ADD_BASE_ENTITY_TO_CORE)?,
     );
 
-    if manifest_data.is_in_memory_database {
+    // The per-workspace Dockerfile gets the native build tools in-memory
+    // databases need. A generated shared image at the application root
+    // replaces it (and installs them already), so there may be none here.
+    if manifest_data.is_in_memory_database && base_path.join("Dockerfile").is_file() {
         rendered_templates.push(RenderedTemplate {
             path: base_path.join("Dockerfile"),
             content: update_dockerfile_contents(

@@ -198,6 +198,11 @@ pub(crate) fn refresh_mixed_images(root: &Path) -> Result<()> {
     if path.is_file() && (read_manifest_value(&path)?.get("language").and_then(Value::as_str) == Some("mixed") || crate::sdk::typescript_build::any_contract_builds(root)?) {
         language_images::preflight(root)?;
         language_images::reconcile(root)?;
+    } else if path.is_file() && typescript_image::managed_image(root).is_some_and(|(_, unchanged)| unchanged) {
+        // A pure TypeScript application's generated image lists every
+        // package and process; adding or removing one must refresh it, as
+        // the mixed path above does. An edited image is the user's.
+        typescript_image::reconcile(root)?;
     }
     // Every TypeScript project command ends here; CI follows language changes.
     crate::core::github_configs::reconcile_github_configs(root)

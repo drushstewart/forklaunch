@@ -245,6 +245,7 @@ impl CliCommand for WorkerCommand {
                 &manifest_data.app_name,
                 &manifest_data.projects,
                 &database,
+                &worker_name,
                 Some(&mut docker_compose),
                 &mut rendered_templates_cache,
             )?;

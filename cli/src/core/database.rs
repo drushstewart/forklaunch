@@ -170,20 +170,26 @@ pub(crate) fn add_base_entity_to_core(
             .join(filename),
     );
 
-    Ok(vec![
-        RenderedTemplate {
+    // An existing base-entity file (init application writes it, and any
+    // project on the same kind of database) stays as it is.
+    let mut templates = Vec::new();
+    if !entity_path.exists() {
+        templates.push(RenderedTemplate {
             path: entity_path,
             content: template.unwrap().contents_utf8().unwrap().to_string(),
             context: None,
-        },
+        });
+    }
+    templates.extend([
         generate_index_ts_database_export(
             base_path,
             Some(vec![database.to_string()]),
             Some(manifest_data),
         )
         .with_context(|| ERROR_FAILED_TO_CREATE_DATABASE_EXPORT_INDEX_TS)?,
-        update_core_package_json(manifest_data, base_path)?,
-    ])
+        update_core_package_json(manifest_data, base_path)?.preserving_json_layout(),
+    ]);
+    Ok(templates)
 }
 
 pub(crate) fn is_in_memory_database(database: &Database) -> bool {
@@ -330,11 +336,30 @@ pub(crate) fn release_database(
     app_name: &str,
     remaining: &[super::manifest::ProjectEntry],
     database: &Database,
+    deleted: &str,
     compose: Option<&mut super::docker::DockerCompose>,
     cache: &mut super::rendered_template::RenderedTemplatesCache,
 ) -> Result<Vec<std::path::PathBuf>> {
     let mut removals = Vec::new();
     if database_in_use(remaining, database) {
+        return Ok(removals);
+    }
+    // The application's own database (init application -d) is in core before
+    // any project uses it, and nothing records it apart from that. The last
+    // database core lists is therefore kept: deleting the only service on
+    // it returns the application to how init left it.
+    // Compose is different: init application starts no database service, so
+    // the service goes with the last project whatever core lists.
+    let core_path = workspace.join("core").join("package.json");
+    let application_database = match cache.get(&core_path)? {
+        Some(core) => {
+            let package: ProjectPackageJson = from_str(&core.content)?;
+            package.dependencies.map(|d| d.databases).unwrap_or_default().len() <= 1
+        }
+        None => false,
+    };
+    if application_database {
+        release_compose_database(app_name, database, deleted, compose);
         return Ok(removals);
     }
     set_core_database(workspace, database, false, cache)?;
@@ -398,10 +423,26 @@ pub(crate) fn release_database(
         }
     }
 
+    release_compose_database(app_name, database, deleted, compose);
+    Ok(removals)
+}
+
+/// Remove `database`'s Compose service and data volume unless a service other
+/// than the deleted project's own still depends on it.
+fn release_compose_database(
+    app_name: &str,
+    database: &Database,
+    deleted: &str,
+    compose: Option<&mut super::docker::DockerCompose>,
+) {
     if let Some(compose) = compose {
         let services = database_compose_services(database);
+        // The deleted project's own processes (`<name>-migrate`, …) do not
+        // count; the image reconciler removes them afterwards.
+        let own = |name: &str| name == deleted || name.starts_with(&format!("{deleted}-"));
         let depended_on = compose.services.iter().any(|(name, service)| {
             !services.contains(name)
+                && !own(name)
                 && service
                     .depends_on
                     .as_ref()
@@ -414,7 +455,6 @@ pub(crate) fn release_database(
             compose.volumes.shift_remove(&format!("{app_name}-{}-data", database.to_string()));
         }
     }
-    Ok(removals)
 }
 
 #[cfg(test)]
@@ -482,10 +522,15 @@ mod release_tests {
 
         let mut cache = RenderedTemplatesCache::new();
         let remaining = [project("other", "mysql")];
-        release_database(root.path(), "app", &remaining, &Database::MySQL, None, &mut cache).unwrap();
+        release_database(root.path(), "app", &remaining, &Database::MySQL, "gone", None, &mut cache).unwrap();
         assert_eq!(cache.get(root.path().join("core/package.json")).unwrap().unwrap().content, added);
 
-        release_database(root.path(), "app", &[], &Database::MySQL, None, &mut cache).unwrap();
+        release_database(root.path(), "app", &[], &Database::MySQL, "gone", None, &mut cache).unwrap();
+        assert_eq!(cache.get(root.path().join("core/package.json")).unwrap().unwrap().content, core);
+        // PostgreSQL is now core's only database (the application's own): kept.
+        std::fs::write(root.path().join("core/package.json"), core).unwrap();
+        let mut cache = RenderedTemplatesCache::new();
+        release_database(root.path(), "app", &[], &Database::PostgreSQL, "gone", None, &mut cache).unwrap();
         assert_eq!(cache.get(root.path().join("core/package.json")).unwrap().unwrap().content, core);
     }
 }
