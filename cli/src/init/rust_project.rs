@@ -2364,7 +2364,7 @@ fn mixed_typescript_sdk_templates(root_path: &Path, name: &str, sdk_targets: &[S
                 "name": package_name,
                 "private": true,
                 "type": "module",
-                "packageManager": "pnpm@10.0.0",
+                "packageManager": "pnpm@11.28.7",
                 "scripts": {
                     "dev": "forklaunch dev",
                     "rust:build": "cargo build --workspace",
