@@ -10,7 +10,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{Context, Result, bail};
@@ -1320,6 +1320,11 @@ fn plan_with(
     Ok((compose, Value::Object(changes)))
 }
 
+/// How long Compose may take to stop gracefully after an interrupt before it
+/// is asked to force-stop, and how long that may take before it is killed.
+const SHUTDOWN_GRACE: Duration = Duration::from_secs(30);
+const SHUTDOWN_FORCE: Duration = Duration::from_secs(15);
+
 fn supervise(
     mut command: Process,
     sdk: Option<Process>,
@@ -1341,6 +1346,13 @@ fn supervise(
         .spawn()
         .context("Failed to start development stack")?;
     let mut forwarded = 0;
+    // Compose can keep running after a graceful stop (some Compose 2.x
+    // releases leave `up --watch` alive once its containers stopped), so an
+    // interrupt escalates: a second SIGINT (Compose's force stop) after a
+    // grace period, then SIGKILL. `compose stop` afterwards stops anything
+    // still running.
+    let mut interrupted_at: Option<Instant> = None;
+    let mut escalated = 0;
     loop {
         if let Some(watcher) = &mut sdk {
             watcher.report_exit();
@@ -1359,7 +1371,39 @@ fn supervise(
             bail!("Development stack exited with {status}");
         }
         let received = interrupts.load(Ordering::SeqCst);
+        if let Some(since) = interrupted_at {
+            let due = match escalated {
+                0 => Some(SHUTDOWN_GRACE),
+                1 => Some(SHUTDOWN_GRACE + SHUTDOWN_FORCE),
+                _ => None,
+            };
+            if due.is_some_and(|due| since.elapsed() >= due) {
+                escalated += 1;
+                eprintln!(
+                    "forklaunch dev: Compose did not stop within {}s; {}",
+                    since.elapsed().as_secs(),
+                    if escalated == 1 { "forcing it to stop" } else { "killing it" }
+                );
+                #[cfg(unix)]
+                {
+                    use nix::{
+                        sys::signal::{Signal, killpg},
+                        unistd::Pid,
+                    };
+                    let id = i32::try_from(child.id()).context("Invalid Compose process ID")?;
+                    if id > 1 {
+                        let signal = if escalated == 1 { Signal::SIGINT } else { Signal::SIGKILL };
+                        let _ = killpg(Pid::from_raw(id), signal);
+                    }
+                }
+                #[cfg(not(unix))]
+                if escalated == 2 {
+                    let _ = child.kill();
+                }
+            }
+        }
         if received > forwarded {
+            interrupted_at.get_or_insert_with(Instant::now);
             // Stop regenerating SDKs first: a regeneration during shutdown
             // would trigger Compose watch restarts.
             sdk = None;
