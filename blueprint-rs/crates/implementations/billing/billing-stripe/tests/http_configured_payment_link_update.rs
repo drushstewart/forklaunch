@@ -166,8 +166,7 @@ async fn matrix(f: &Fixture) {
     let http = reqwest::Client::new();
     let id = Uuid::new_v4().to_string();
     let cached = json!({"id":id,"amount":12,"currency":"USD","status":"PENDING","paymentMethods":["card"],"providerFields":{"id":"plink_retained","object":"payment_link","livemode":false}});
-    *state.response.lock().await =
-        json!({"id":"plink_retained","object":"payment_link","line_items":{"data":[{"amount_total":34}]}});
+    *state.response.lock().await = json!({"id":"plink_retained","object":"payment_link","line_items":{"data":[{"amount_total":34}]}});
     for correlation in [None, Some("preflight"), Some("")] {
         let response = update(&http, &url, &id, &json!({}), correlation).await;
         assert_eq!(response.status(), 500);
