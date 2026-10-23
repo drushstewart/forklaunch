@@ -45,9 +45,18 @@ toml = { version = "1", default-features = false, features = ["std", "parse", "s
 tracing = { version = "0.1", optional = true }
 tower-http = { version = "0.7", features = ["cors"], optional = true }
 
+[[example]]
+name = "canonical_iam"
+path = "examples/canonical_iam.rs"
+
 [lints]
 workspace = true
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util", "signal"] }
+# canonical_iam: the TypeScript/Rust HTTP parity fixture (rust_canonical_http_parity).
+axum = "0.8"
+forklaunch-axum = { version = "=0.2.2", path = "../../../../../framework-rs/crates/axum" }
+forklaunch-validator = { version = "=0.2.2", path = "../../../../../framework-rs/crates/validator" }
+form_urlencoded = "1"
 tower = { version = "0.5", features = ["util"] }
