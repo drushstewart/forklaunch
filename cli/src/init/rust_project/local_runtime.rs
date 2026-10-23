@@ -996,10 +996,32 @@ fn owned_by(key: &str, service: &DockerService, name: &str) -> bool {
 /// `old` as a whole name segment in `text` (delimited by anything but a
 /// letter, digit or underscore) becomes `new`.
 pub(super) fn renamed_segment(text: &str, old: &str, new: &str) -> String {
-    let pattern = regex::Regex::new(&format!(r"(^|[^A-Za-z0-9_]){}($|[^A-Za-z0-9_])", regex::escape(old))).expect("escaped name");
-    // Two passes: adjacent matches share a delimiter.
-    let once = pattern.replace_all(text, |c: &regex::Captures| format!("{}{new}{}", &c[1], &c[2])).into_owned();
-    pattern.replace_all(&once, |c: &regex::Captures| format!("{}{new}{}", &c[1], &c[2])).into_owned()
+    // One scan over the original text: adjacent occurrences may share a
+    // delimiter, and the replacement is never rescanned (a new name that
+    // contains the old one, such as jobs -> email-jobs, must not grow again).
+    if old.is_empty() {
+        return text.to_owned();
+    }
+    let word = |c: char| c.is_ascii_alphanumeric() || c == '_';
+    let mut out = String::with_capacity(text.len());
+    let mut rest = 0;
+    let mut search = 0;
+    while let Some(found) = text[search..].find(old) {
+        let start = search + found;
+        let end = start + old.len();
+        let before = text[..start].chars().next_back();
+        let after = text[end..].chars().next();
+        if before.is_none_or(|c| !word(c)) && after.is_none_or(|c| !word(c)) {
+            out.push_str(&text[rest..start]);
+            out.push_str(new);
+            rest = end;
+            search = end;
+        } else {
+            search = start + text[start..].chars().next().map_or(1, char::len_utf8);
+        }
+    }
+    out.push_str(&text[rest..]);
+    out
 }
 
 /// Values generated for a project that a rename changes: `${OLD_…}` references,
@@ -1366,6 +1388,14 @@ fn typescript_local_owners(modules: &Path, typescript: &[TypescriptDatabase], su
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn renamed_segment_replaces_whole_segments_once() {
+        assert_eq!(renamed_segment("./target/release/jobs", "jobs", "email-jobs"), "./target/release/email-jobs");
+        assert_eq!(renamed_segment("app-jobs-rust", "jobs", "email-jobs"), "app-email-jobs-rust");
+        assert_eq!(renamed_segment("jobs-jobs", "jobs", "x"), "x-x");
+        assert_eq!(renamed_segment("myjobs jobs_db jobs", "jobs", "x"), "myjobs jobs_db x");
+    }
 
     #[test]
     fn project_rename_keeps_compose_settings_and_rewires_references() {
