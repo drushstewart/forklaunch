@@ -474,8 +474,10 @@ pub(crate) fn generate_rust_router(matches: &ArgMatches) -> Result<()> {
             let source = native_router_rs(&router_name);
             let (contract, handler) = source.split_once("pub fn register(").context("module route template")?;
             write_text_file_preserving_existing(&service_path.join("api/contracts/extensions").join(format!("{router_module}.rs")),
-                &contract.replace("use forklaunch_axum::ForkLaunchRouter;", ""), dryrun, &mut stdout)?;
-            format!("use forklaunch_axum::ForkLaunchRouter;\npub use crate::api::contracts::extensions::{router_module}::{{contract, contracts, ROUTE_NAME}};\npub fn register({handler}")
+                // Declarations compile in the contract host, which has no
+                // runtime dependencies; handler imports stay with the handler.
+                &contract.replace("use forklaunch_axum::ForkLaunchRouter;", "").replace("use axum::Json;\n", ""), dryrun, &mut stdout)?;
+            format!("use axum::Json;\nuse forklaunch_axum::ForkLaunchRouter;\npub use crate::api::contracts::extensions::{router_module}::{{contract, contracts, ROUTE_NAME}};\npub fn register({handler}")
         } else if builtin {
             native_router_rs(&router_name)
         } else {
