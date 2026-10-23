@@ -26,6 +26,14 @@ inputs:
       Family to start from when this one has no store yet, for instance the
       CLI's store for a job that also builds the CLI.
     default: ''
+  stable-tmp:
+    description: >-
+      'true' makes mkdtemp in Python, Node and `mktemp -d` in shell scripts
+      pick deterministic names (<prefix>fl0000, fl0001, ...) for the rest of
+      the job. sccache keys include the working directory, so applications
+      the tests scaffold under random temporary directories never matched
+      between runs. See stable-tmp/sitecustomize.py.
+    default: 'false'
   free-disk:
     description: >-
       'true' first deletes preinstalled toolchains this repository never uses
@@ -105,6 +113,18 @@ runs:
         } >> "$GITHUB_ENV"
     # Newest store of this family: this pull request's own, else the base
     # branch's. Keys are unique per save, so the prefix picks the latest.
+    - name: Deterministic temporary directories
+      if: inputs.stable-tmp == 'true'
+      shell: bash
+      env:
+        STABLE_TMP: ${{ github.action_path }}/stable-tmp
+      run: |
+        {
+          echo "FORKLAUNCH_STABLE_TMP=1"
+          echo "PYTHONPATH=$STABLE_TMP${PYTHONPATH:+:$PYTHONPATH}"
+          echo "NODE_OPTIONS=--require=$STABLE_TMP/preload.cjs${NODE_OPTIONS:+ $NODE_OPTIONS}"
+        } >> "$GITHUB_ENV"
+        echo "$STABLE_TMP/bin" >> "$GITHUB_PATH"
     - name: Restore compiler cache
       uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:

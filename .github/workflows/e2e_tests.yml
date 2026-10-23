@@ -149,6 +149,7 @@ jobs:
         uses: ./.github/actions/rust-build-cache
         with:
           family: generated
+          stable-tmp: 'true'
           fallback-family: cli
           size: 1200M
 
@@ -340,6 +341,7 @@ jobs:
         uses: ./.github/actions/rust-build-cache
         with:
           family: generated
+          stable-tmp: 'true'
           size: 1200M
 
       # rdkafka-sys (generated Kafka workers) builds librdkafka, which needs libcurl headers.
@@ -487,6 +489,7 @@ jobs:
         uses: ./.github/actions/rust-build-cache
         with:
           family: generated
+          stable-tmp: 'true'
           size: 1200M
       - uses: actions/setup-python@v5
         with:
