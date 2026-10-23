@@ -875,7 +875,26 @@ pub(crate) fn delete_rust_project(
     kind: RustProjectKind,
     name: &str,
 ) -> Result<()> {
-    delete_rust_project_inner(app_root, kind, name, true)
+    delete_rust_project_inner(app_root, kind, name, true)?;
+    warn_if_workspace_empty(app_root)
+}
+
+/// Cargo rejects a workspace without members, which the generated root
+/// scripts (`build`, `test`, `lint`) run.
+fn warn_if_workspace_empty(app_root: &Path) -> Result<()> {
+    let empty = read_to_string(app_root.join("Cargo.toml"))
+        .ok()
+        .and_then(|source| source.parse::<toml_edit::DocumentMut>().ok())
+        .and_then(|cargo| cargo.get("workspace")?.get("members")?.as_array().map(|members| members.is_empty()))
+        .unwrap_or(false);
+    if empty {
+        let mut stdout = StandardStream::stdout(ColorChoice::Always);
+        log_warn!(
+            stdout,
+            "No Rust projects remain. Cargo rejects the empty workspace, so the root build, test and lint scripts fail until you add a Rust project or remove the Rust workspace files (Cargo.toml, Cargo.lock, Dockerfile.rust, rust-toolchain.toml, rustfmt.toml, clippy.toml) and the cargo steps in package.json."
+        );
+    }
+    Ok(())
 }
 
 fn delete_rust_project_inner(
@@ -927,6 +946,7 @@ fn delete_rust_project_inner(
     cleanup_generated_outputs_for_deleted_rust_project(app_root, kind, name, metadata.as_ref())?;
     remove_rust_docker_compose_project(app_root, name)?;
     crate::infra::native_local::release_deleted_service(app_root)?;
+    local_runtime::release_unused_kafka(app_root)?;
     remove_rust_package_scripts(app_root, name)?;
     if kind == RustProjectKind::Library {
         remove_registered_library_dependency(app_root, &manifest, name, &crate_path)?;
@@ -942,6 +962,8 @@ fn delete_rust_project_inner(
     if reconcile {
         language_images::reconcile(app_root)?;
     }
+    // Local values only the deleted project's processes read.
+    local_runtime::prune_project_env(app_root, name, &[])?;
     Ok(())
 }
 
@@ -1583,7 +1605,8 @@ pub(crate) fn change_rust_application(
             if let Some(description) = project.get_mut("description")
                 && let Some(text) = description.as_str()
             {
-                let renamed = text.replace(&format!(" for {previous_name},"), &format!(" for {target_name},"));
+                // Generated descriptions name the application ("Core library for <app>, …").
+                let renamed = local_runtime::renamed_segment(text, &previous_name, &target_name);
                 *description = Value::String(renamed);
             }
         }
@@ -2655,9 +2678,19 @@ fn remove_rust_docker_compose_project(app_root: &Path, name: &str) -> Result<()>
     compose
         .services
         .retain(|_, service| modules::ecommerce_worker_owner(service) != Some(name) && worker::producer_owner(service) != Some(name));
+    // Nothing may wait on a removed process.
+    let removed: Vec<String> = [name.to_owned(), format!("{name}-migrate"), format!("{name}-server"), format!("{name}-seed")]
+        .into_iter()
+        .filter(|key| !compose.services.contains_key(key) || key.ends_with("-migrate"))
+        .collect();
     for service in compose.services.values_mut() {
         if let Some(depends) = service.depends_on.as_mut() {
-            depends.shift_remove(&format!("{name}-migrate"));
+            for key in &removed {
+                depends.shift_remove(key);
+            }
+            if depends.is_empty() {
+                service.depends_on = None;
+            }
         }
     }
     let seed = format!("{name}-seed");

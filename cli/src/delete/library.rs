@@ -50,13 +50,13 @@ impl CliCommand for LibraryCommand {
                 Arg::new("base_path")
                     .short('p')
                     .long("path")
-                    .help("The application path to initialize the library in"),
+                    .help("The application path to delete the library from"),
             )
             .arg(
                 Arg::new("continue")
                     .short('c')
                     .long("continue")
-                    .help("Continue the eject operation")
+                    .help("Delete without asking for confirmation")
                     .action(ArgAction::SetTrue),
             )
     }

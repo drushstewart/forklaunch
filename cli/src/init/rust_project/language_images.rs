@@ -337,7 +337,30 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     reconcile_images(root)?;
     super::auth_env::compose(root)?;
     super::local_runtime::reconcile(root)?;
-    super::auth_env::local_envs(root)
+    super::auth_env::local_envs(root)?;
+    refresh_client_compliance(root)
+}
+
+/// The TypeScript client SDK's compliance aggregate lists every database
+/// service; native renames and deletes keep it current like TypeScript ones.
+fn refresh_client_compliance(root: &Path) -> Result<()> {
+    let Ok(source) = read_to_string(root.join(".forklaunch/manifest.toml")) else { return Ok(()) };
+    let Ok(manifest) = toml::from_str::<crate::core::manifest::application::ApplicationManifestData>(&source) else {
+        return Ok(());
+    };
+    let modules = root.join(&manifest.modules_path);
+    if !modules.join("client-sdk/compliance.ts").is_file() {
+        return Ok(());
+    }
+    let mut cache = crate::core::rendered_template::RenderedTemplatesCache::new();
+    crate::core::client_sdk::regenerate_client_sdk_compliance(&mut cache, &modules, &manifest.projects)?;
+    for (_, template) in cache.drain() {
+        let content = crate::core::watermark::apply_watermark(&template)?;
+        if read_to_string(&template.path).ok().as_deref() != Some(content.as_str()) {
+            write(&template.path, content)?;
+        }
+    }
+    Ok(())
 }
 
 fn reconcile_images(root: &Path) -> Result<()> {

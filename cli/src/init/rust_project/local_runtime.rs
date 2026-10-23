@@ -876,6 +876,32 @@ pub(super) fn prune_stale_migrations(root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// The generated local Kafka broker leaves with the last process that read it.
+pub(super) fn release_unused_kafka(root: &Path) -> Result<()> {
+    let path = root.join("docker-compose.yaml");
+    if !path.is_file() {
+        return Ok(());
+    }
+    let mut compose = read_or_create_rust_docker_compose(&path)?;
+    let Some(kafka) = compose.services.get("kafka") else { return Ok(()) };
+    let generated = crate::core::docker::kafka_service(&rust_app_name(root)?);
+    // The generated broker (an application rename keeps its first cluster id).
+    if kafka.image != generated.image || kafka.hostname != generated.hostname {
+        return Ok(());
+    }
+    let used = compose.services.iter().any(|(name, service)| {
+        name != "kafka"
+            && (service.environment.iter().flatten().any(|(key, _)| key.ends_with("KAFKA_BROKERS"))
+                || service.depends_on.as_ref().is_some_and(|depends| depends.contains_key("kafka")))
+    });
+    if used {
+        return Ok(());
+    }
+    compose.services.shift_remove("kafka");
+    write(&path, yaml_to_string(&compose)?)?;
+    Ok(())
+}
+
 /// Drop root `.env` settings for project `name` (`<NAME>_*`) that no Compose
 /// service references any more, after its backend changed or it was deleted.
 /// With `local_keys`, the project's `.env.local` loses those generated keys
@@ -941,7 +967,7 @@ fn owned_by(key: &str, service: &DockerService, name: &str) -> bool {
 
 /// `old` as a whole name segment in `text` (delimited by anything but a
 /// letter, digit or underscore) becomes `new`.
-fn renamed_segment(text: &str, old: &str, new: &str) -> String {
+pub(super) fn renamed_segment(text: &str, old: &str, new: &str) -> String {
     let pattern = regex::Regex::new(&format!(r"(^|[^A-Za-z0-9_]){}($|[^A-Za-z0-9_])", regex::escape(old))).expect("escaped name");
     // Two passes: adjacent matches share a delimiter.
     let once = pattern.replace_all(text, |c: &regex::Captures| format!("{}{new}{}", &c[1], &c[2])).into_owned();
@@ -1176,6 +1202,17 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             depends(&mut provision, "postgresql", DependencyCondition::ServiceStarted);
         }
         compose.services.insert(PROVISION.into(), provision);
+    } else if groups.is_empty() && typescript.is_empty() {
+        // The last database project is gone; so is its role provisioning.
+        compose.services.shift_remove(PROVISION);
+        for service in compose.services.values_mut() {
+            if let Some(depends) = service.depends_on.as_mut() {
+                depends.shift_remove(PROVISION);
+                if depends.is_empty() {
+                    service.depends_on = None;
+                }
+            }
+        }
     }
     restrict_typescript_roles(&mut compose, &typescript);
     for (migrator, migration) in &migrations {
@@ -1368,6 +1405,26 @@ mod tests {
         prune_project_env(root, "jobs", &["DATABASE_URL", "MIGRATION_DATABASE_URL", "SQLX_OFFLINE", "REDIS_URL"]).unwrap();
         assert_eq!(read_to_string(root.join(".env")).unwrap(), "JOBS_REDIS_URL=redis://redis:6379/1\nJOBS_TENANT_ID=t\nOTHER_DATABASE_URL=x\n");
         assert_eq!(read_to_string(root.join("src/jobs/.env.local")).unwrap(), "REDIS_URL=redis://127.0.0.1:6379/1\nMINE=1\n");
+    }
+
+    #[test]
+    fn generated_kafka_leaves_with_its_last_reader() {
+        let root = tempfile::tempdir().unwrap();
+        let root = root.path();
+        create_dir_all(root.join(".forklaunch")).unwrap();
+        write(root.join(".forklaunch/manifest.toml"), "app_name = \"kestrel\"\n").unwrap();
+        let mut compose = DockerCompose::default();
+        compose.services.insert("kafka".into(), crate::core::docker::kafka_service("kestrel"));
+        let mut reader = DockerService::default();
+        reader.environment = Some(IndexMap::from([("KAFKA_BROKERS".to_string(), "kafka:29092".to_string())]));
+        compose.services.insert("events".into(), reader);
+        write(root.join("docker-compose.yaml"), yaml_to_string(&compose).unwrap()).unwrap();
+        release_unused_kafka(root).unwrap();
+        assert!(read_or_create_rust_docker_compose(&root.join("docker-compose.yaml")).unwrap().services.contains_key("kafka"));
+        compose.services.shift_remove("events");
+        write(root.join("docker-compose.yaml"), yaml_to_string(&compose).unwrap()).unwrap();
+        release_unused_kafka(root).unwrap();
+        assert!(!read_or_create_rust_docker_compose(&root.join("docker-compose.yaml")).unwrap().services.contains_key("kafka"));
     }
 
     #[test]

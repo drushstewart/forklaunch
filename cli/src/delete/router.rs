@@ -72,7 +72,7 @@ impl CliCommand for RouterCommand {
                 Arg::new("continue")
                     .short('c')
                     .long("continue")
-                    .help("Continue the eject operation")
+                    .help("Delete without asking for confirmation")
                     .action(ArgAction::SetTrue),
             )
     }

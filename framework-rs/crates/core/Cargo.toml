@@ -92,7 +92,10 @@ base64 = { version = "0.23", optional = true }
 getrandom = { version = "0.4", optional = true }
 zeroize = { version = "1", optional = true }
 serde = { version = "1", features = ["derive"], optional = true }
-serde_json = { version = "=1.0.151", features = ["float_roundtrip"], optional = true }
+# Generated artifacts (contracts, bindings, event packages) keep one key order
+# however the build unifies features: a lone package build and a workspace
+# build write identical files.
+serde_json = { version = "=1.0.151", features = ["float_roundtrip", "preserve_order"], optional = true }
 
 multer = { version = "3", optional = true }
 mime = { version = "0.3", optional = true }
