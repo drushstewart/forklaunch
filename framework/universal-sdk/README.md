@@ -44,5 +44,6 @@ const billing = await universalSdk<BillingSdkClient>({
 `createHmacAuthorization` and `hmacSignedFetch` expose the same signer for
 hand-written calls. The signed path is the full wire path (`POST /payment-link`),
 which every verifier accepts. Express routers used to verify the router-relative
-`req.path` (`/`); that form is deprecated and only accepted while
-`HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=true`, because it is not bound to a mount.
+`req.path` (`/`); that form is still accepted for existing callers but is
+deprecated, because it is not bound to a mount. Servers can reject it with
+`HMAC_ACCEPT_MOUNT_RELATIVE_PATHS=false`.
