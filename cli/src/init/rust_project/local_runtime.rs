@@ -945,6 +945,22 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
             }
         }
     }
+    // A `<svc>-seed` job runs after its service's migration, and the service
+    // waits for it. Compose `up --wait` also treats a one-shot job that nothing
+    // waits on as a failure once it exits.
+    let seeds: Vec<(String, String)> = compose
+        .services
+        .keys()
+        .filter_map(|name| Some((name.clone(), name.strip_suffix("-seed")?.to_owned())))
+        .filter(|(_, service)| compose.services.contains_key(service))
+        .collect();
+    for (seed, service) in seeds {
+        let migrate = format!("{service}-migrate");
+        if compose.services.contains_key(&migrate) {
+            depends(compose.services.get_mut(&seed).unwrap(), &migrate, DependencyCondition::ServiceCompletedSuccessfully);
+        }
+        depends(compose.services.get_mut(&service).unwrap(), &seed, DependencyCondition::ServiceCompletedSuccessfully);
+    }
     if mixed {
         // The TypeScript image compiles native SDK crates too.
         wire_framework_contexts(root, &mut compose, "Dockerfile.rust");
