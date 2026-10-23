@@ -305,7 +305,9 @@ try:
         print(f'PASS {variant}: init, relocation, sync, idempotency, rename, source and variant preservation', flush=True)
 
     run('sdk', 'generate', '--target', 'all', '--from', 'contract', '--check')
-    command('pnpm', 'install', '--ignore-scripts')
+    # Renaming changed the SDK package manifests; CI's pnpm defaults to a frozen
+    # lockfile, so refresh it the way a developer does after a rename.
+    command('pnpm', 'install', '--ignore-scripts', '--no-frozen-lockfile')
     check_sdks([name + '-renamed' for name in variants])
     for variant in variants:
         name = variant + '-renamed'
