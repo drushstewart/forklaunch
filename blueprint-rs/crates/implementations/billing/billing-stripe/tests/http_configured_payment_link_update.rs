@@ -167,7 +167,7 @@ async fn matrix(f: &Fixture) {
     let id = Uuid::new_v4().to_string();
     let cached = json!({"id":id,"amount":12,"currency":"USD","status":"PENDING","paymentMethods":["card"],"providerFields":{"id":"plink_retained","object":"payment_link","livemode":false}});
     *state.response.lock().await =
-        json!({"id":id,"object":"payment_link","line_items":{"data":[{"amount_total":34}]}});
+        json!({"id":"plink_retained","object":"payment_link","line_items":{"data":[{"amount_total":34}]}});
     for correlation in [None, Some("preflight"), Some("")] {
         let response = update(&http, &url, &id, &json!({}), correlation).await;
         assert_eq!(response.status(), 500);
@@ -268,9 +268,11 @@ async fn matrix(f: &Fixture) {
     assert_eq!(body["amount"], 34.0);
     assert_eq!(
         *state.calls.lock().await,
-        vec![format!("POST /v1/payment_links/{id}")]
+        vec!["POST /v1/payment_links/plink_retained".to_string()]
     );
-    assert_eq!(body["stripeFields"]["id"], id);
+    // 5af4a0f70: Stripe is called with the stored Stripe id; the public id stays local.
+    assert_eq!(body["stripeFields"]["id"], "plink_retained");
+    assert_eq!(body["id"], id);
     // Actual shared TS router runs parse before auth. Invalid conversions win
     // over invalid signatures; successful coercion must still authenticate raw bytes.
     // Selected configured HMAC matches actual TS 403 for invalid signatures.
