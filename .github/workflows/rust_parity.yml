@@ -228,7 +228,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 qs@6.16.0 @types/qs@6.15.1 @asyncapi/parser@3.6.3 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5 cross-fetch@4.1.0 zod@4.6.5 ts-deepmerge@8.0.0 ws@8.22.0 @tanstack/react-query@5.104.2 @tanstack/query-core@5.104.2 react@19.2.4 @types/react@19.3.0
+      - run: npm install --before="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 qs@6.16.0 @types/qs@6.15.1 @asyncapi/parser@3.6.3 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 @types/ws@8.18.1 @types/node@26.6.5 cross-fetch@4.1.0 zod@4.6.5 ts-deepmerge@8.0.0 ws@8.22.0 @tanstack/react-query@5.104.2 @tanstack/query-core@5.104.2 react@19.2.4 @types/react@19.3.0
       - run: node cli/tests/rust_common_naming.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -298,8 +298,8 @@ jobs:
         if: matrix.shard == 'http' # shard
       - run: |
           mkdir -p "$RUNNER_TEMP/fl-canonical-http"
-          cp cli/tests/fixtures/canonical-iam/package.json "$RUNNER_TEMP/fl-canonical-http/package.json"
-          npm install --prefix "$RUNNER_TEMP/fl-canonical-http" --ignore-scripts
+          cp cli/tests/fixtures/canonical-iam/package*.json "$RUNNER_TEMP/fl-canonical-http/"
+          npm ci --prefix "$RUNNER_TEMP/fl-canonical-http" --ignore-scripts --no-audit --no-fund
       - run: node cli/tests/rust_canonical_http_parity.mjs
         env:
           FORKLAUNCH_TEST_CANONICAL_DEPENDENCIES: ${{ runner.temp }}/fl-canonical-http
@@ -477,7 +477,7 @@ jobs:
         env:
           CARGO_TARGET_DIR: framework-rs/target
         if: matrix.shard == 'zod' # shard
-      - run: npm install --prefix "$RUNNER_TEMP/fl-canonical-http" --no-save --package-lock=false --ignore-scripts punycode@2.3.1
+      - run: npm install --before="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix "$RUNNER_TEMP/fl-canonical-http" --no-save --package-lock=false --ignore-scripts punycode@2.3.1
       - run: node cli/tests/rust_zod_uri_parity.mjs
         env:
           TSC_BIN: ${{ runner.temp }}/fl-rust-ts/node_modules/.bin/tsc
@@ -1096,15 +1096,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @better-auth/core@1.7.6 @better-auth/utils@0.4.2 @opentelemetry/api@1.9.1 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25 esbuild@0.28.2 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 qs@6.16.0 @types/qs@6.15.1
+      - run: npm install --before="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix "$RUNNER_TEMP/fl-rust-ts" --no-save --package-lock=false --ignore-scripts typescript@5.9.3 @types/node@26.6.5 @sinclair/typebox@0.34.52 stripe@22.6.2 zod@4.6.5 ts-deepmerge@8.0.0 bullmq@6.3.10 ioredis@6.0.0 better-auth@1.7.6 @better-auth/memory-adapter@1.7.6 @better-auth/core@1.7.6 @better-auth/utils@0.4.2 @opentelemetry/api@1.9.1 @mikro-orm/core@7.2.3 @mikro-orm/postgresql@7.2.3 @forklaunch/better-auth-mikro-orm-fork@0.5.11 express@5.2.1 @scalar/express-api-reference@0.10.25 esbuild@0.28.2 ajv@8.20.0 ajv-draft-04@1.0.0 ajv-formats@3.0.1 qs@6.16.0 @types/qs@6.15.1
       - name: Check configured mapper and service source types
         run: |
           mkdir -p "$RUNNER_TEMP/fl-configured-mappers-types"
           cp cli/tests/fixtures/configured-mappers-types/package*.json "$RUNNER_TEMP/fl-configured-mappers-types/"
           npm ci --prefix "$RUNNER_TEMP/fl-configured-mappers-types" --legacy-peer-deps --ignore-scripts --no-audit --no-fund
           mkdir -p "$RUNNER_TEMP/fl-configured-mappers-runtime"
-          cp cli/tests/fixtures/canonical-iam/package.json "$RUNNER_TEMP/fl-configured-mappers-runtime/package.json"
-          npm install --prefix "$RUNNER_TEMP/fl-configured-mappers-runtime" --ignore-scripts --no-audit --no-fund
+          cp cli/tests/fixtures/canonical-iam/package*.json "$RUNNER_TEMP/fl-configured-mappers-runtime/"
+          npm ci --prefix "$RUNNER_TEMP/fl-configured-mappers-runtime" --ignore-scripts --no-audit --no-fund
           node cli/tests/rust_configured_mappers_types.mjs
           node cli/tests/rust_configured_mappers_types.mjs --sdk
         env:
@@ -1112,7 +1112,7 @@ jobs:
           FORKLAUNCH_CONFIGURED_TYPES_RUNTIME_PREFIXES: '["${{ runner.temp }}/fl-configured-mappers-runtime","${{ runner.temp }}/fl-rust-ts"]'
       - name: Install isolated Chromium relay fixture
         run: |
-          npm install --prefix "$RUNNER_TEMP/fl-rust-browser" --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1
+          npm install --before="$(date -u -d '2 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix "$RUNNER_TEMP/fl-rust-browser" --no-save --package-lock=false --ignore-scripts playwright-core@1.62.1
           node "$RUNNER_TEMP/fl-rust-browser/node_modules/playwright-core/cli.js" install --with-deps chromium
         if: matrix.shard == 'billing' # shard
       - run: node cli/tests/rust_oidc_relay.mjs
