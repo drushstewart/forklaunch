@@ -48,19 +48,28 @@ pub(crate) fn preserve_json_layout_renamed(
     fn ordered(original: &Value, rendered: &Value, rename: &dyn Fn(&str) -> String) -> Value {
         match (original, rendered) {
             (Value::Object(before), Value::Object(after)) => {
-                let mut out = Map::new();
+                // Keys kept from the original, in its order.
+                let mut keys: std::vec::Vec<(String, Value)> = std::vec::Vec::new();
                 for (key, value) in before {
                     let key = if after.contains_key(key) { key.clone() } else { rename(key) };
                     if let Some(new) = after.get(&key) {
-                        out.insert(key, ordered(value, new, rename));
+                        keys.push((key, ordered(value, new, rename)));
                     }
                 }
+                // New keys go after the key they follow in `rendered` (a
+                // replaced dependency takes its predecessor's place), or
+                // first when they lead it.
+                let mut previous: Option<&String> = None;
                 for (key, value) in after {
-                    if !out.contains_key(key) {
-                        out.insert(key.clone(), value.clone());
+                    if !keys.iter().any(|(existing, _)| existing == key) {
+                        let at = previous
+                            .and_then(|p| keys.iter().position(|(existing, _)| existing == p))
+                            .map_or(0, |i| i + 1);
+                        keys.insert(at, (key.clone(), value.clone()));
                     }
+                    previous = Some(key);
                 }
-                Value::Object(out)
+                Value::Object(keys.into_iter().collect::<Map<String, Value>>())
             }
             (Value::Array(before), Value::Array(after)) => Value::Array(
                 after
@@ -191,11 +200,14 @@ pub(crate) fn update_application_package_json(
         scripts.seed = Some(update_docker_cmd(&seed_script));
     }
 
-    Ok(Some(RenderedTemplate {
-        path: base_path.join("package.json"),
-        content: to_string_pretty(&full_package_json)?,
-        context: Some(ERROR_FAILED_TO_UPDATE_APPLICATION_PACKAGE_JSON.to_string()),
-    }))
+    Ok(Some(
+        RenderedTemplate {
+            path: base_path.join("package.json"),
+            content: to_string_pretty(&full_package_json)?,
+            context: Some(ERROR_FAILED_TO_UPDATE_APPLICATION_PACKAGE_JSON.to_string()),
+        }
+        .preserving_json_layout(),
+    ))
 }
 
 pub(crate) fn replace_project_in_workspace_definition(
@@ -288,7 +300,7 @@ mod layout_tests {
         let changed = "{\"dependencies\":{\"zod\":\"2\",\"@app/core\":\"workspace:*\",\"uuid\":\"1\"},\"name\":\"a\"}";
         assert_eq!(
             preserve_json_layout(original, changed),
-            "{\n  \"name\": \"a\",\n  \"dependencies\": {\n    \"@app/core\": \"workspace:*\",\n    \"zod\": \"2\",\n    \"uuid\": \"1\"\n  }\n}\n"
+            "{\n  \"name\": \"a\",\n  \"dependencies\": {\n    \"@app/core\": \"workspace:*\",\n    \"uuid\": \"1\",\n    \"zod\": \"2\"\n  }\n}\n"
         );
     }
 }

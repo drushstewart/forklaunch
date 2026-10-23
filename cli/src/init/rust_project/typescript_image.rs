@@ -294,9 +294,25 @@ pub(super) fn adopt_image(root: &Path) -> Result<()> {
     if ignore.is_file() && !target.exists() {
         write(target, read_to_string(ignore)?)?;
     }
-    write(compose_path, serde_yml::to_string(&compose)?)?;
+    write_compose(&compose_path, &compose)?;
     remove_file(source)?;
     reconcile(&root)
+}
+
+/// Write Compose through the same `DockerCompose` model every other command
+/// writes it with, so a project add and its delete agree on key order (this
+/// writer edited a JSON tree and appended the keys it added, which the next
+/// command then moved), keeping the file's leading comment.
+fn write_compose(path: &Path, compose: &JsonValue) -> Result<()> {
+    let model: crate::core::docker::DockerCompose = serde_json::from_value(compose.clone())?;
+    let header: String = read_to_string(path)
+        .unwrap_or_default()
+        .lines()
+        .take_while(|line| line.starts_with('#') || line.trim().is_empty())
+        .map(|line| format!("{line}\n"))
+        .collect();
+    write(path, format!("{header}{}", serde_yml::to_string(&model)?))?;
+    Ok(())
 }
 
 pub(super) fn reconcile(root: &Path) -> Result<()> {
@@ -659,7 +675,11 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
                     );
                     services.remove(&migration);
                     for service in services.values_mut() {
-                        if let Some(dependencies) = service["depends_on"].as_object_mut() {
+                        // `get_mut`, not indexing: indexing inserts a null
+                        // `depends_on` into every service without one.
+                        if let Some(dependencies) =
+                            service.get_mut("depends_on").and_then(JsonValue::as_object_mut)
+                        {
                             dependencies.remove(&migration);
                         }
                     }
@@ -1029,7 +1049,7 @@ pub(super) fn reconcile(root: &Path) -> Result<()> {
     )?;
     write(&docker_path, forklaunch_state::stamp(&docker))?;
     write(ignore_path, forklaunch_state::stamp(&ignore))?;
-    write(compose_path, serde_yml::to_string(&compose)?)?;
+    write_compose(&compose_path, &compose)?;
     // Files the bundler and its plan once lived in are no longer read.
     for retired in [".forklaunch/tools/production-build.mjs", ".forklaunch/typescript-build.mjs"] {
         let path = root.join(retired);

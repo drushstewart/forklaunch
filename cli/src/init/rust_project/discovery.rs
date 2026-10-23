@@ -116,9 +116,13 @@ pub(super) fn routers(root: &Path, name: &str, directory: &Path) -> Result<()> {
         .filter_map(Value::as_str)
         .map(str::to_owned)
         .collect();
+    // Generated routes are not routers: every project's health check, and a
+    // worker's producer endpoint (`enqueue`), which init does not record and
+    // a conversion to a service would otherwise refuse to drop.
+    let worker = project.get("type").and_then(Value::as_str) == Some("Worker");
     let mut names: Vec<_> = rust_route_modules(&routes)?
         .into_iter()
-        .filter(|name| name != "health")
+        .filter(|name| name != "health" && !(worker && name == "enqueue"))
         .map(|module| {
             previous
                 .iter()
