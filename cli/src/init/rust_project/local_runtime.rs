@@ -391,6 +391,16 @@ fn ensure_infrastructure(compose: &mut DockerCompose, app: &str, groups: &[Datab
     if kafka && !compose.services.contains_key("kafka") {
         compose.services.insert("kafka".into(), crate::core::docker::kafka_service(app));
     }
+    // Redis workers and caches point at local Redis even when no project asked
+    // for the `redis` infrastructure, so the service must exist for them too.
+    let redis = compose.services.iter().any(|(name, service)| {
+        name != "redis"
+            && env(service, "REDIS_URL")
+                .is_some_and(|url| url.contains("//redis:") || required_prefix(url, "_REDIS_URL").is_some())
+    });
+    if redis && !compose.services.contains_key("redis") {
+        let _ = crate::core::docker::add_redis_to_docker_compose(app, compose, &mut IndexMap::new(), 0);
+    }
     let mut buckets: BTreeSet<String> = compose
         .services
         .iter()
