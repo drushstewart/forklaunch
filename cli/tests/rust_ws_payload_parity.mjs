@@ -17,7 +17,7 @@ for(const text of ['1e400','['.repeat(130)+'0'+']'.repeat(130)])cases.push({kind
 const temporary=await mkdtemp(path.join(tmpdir(),'fl-ws-payload-'));
 try{
  await writeFile(path.join(temporary,'input.json'),JSON.stringify(cases));
- execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-ws','--all-features','native_ws_payload_conformance'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_WS_PAYLOAD_INPUT:path.join(temporary,'input.json'),FORKLAUNCH_TEST_WS_PAYLOAD_OUTPUT:path.join(temporary,'output.json')},encoding:'utf8',timeout:300000});
+ execFileSync('cargo',['test','--quiet','--manifest-path',path.join(root,'framework-rs/Cargo.toml'),'-p','forklaunch-core','--all-features','native_ws_payload_conformance'],{cwd:root,env:{...process.env,FORKLAUNCH_TEST_WS_PAYLOAD_INPUT:path.join(temporary,'input.json'),FORKLAUNCH_TEST_WS_PAYLOAD_OUTPUT:path.join(temporary,'output.json')},encoding:'utf8',timeout:300000});
  const native=JSON.parse(await readFile(path.join(temporary,'output.json'),'utf8'));
  for(let index=0;index<cases.length;index++){
   const input=cases[index];let value,error;
