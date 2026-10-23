@@ -1,6 +1,6 @@
 //! Node's default query-string value projection; independent of native wire maps.
-use serde_json::Value;
-use std::collections::{BTreeMap, btree_map::Entry};
+use serde_json::{Map, Value, map::Entry};
+use std::collections::BTreeMap;
 
 /// Parse the default `ForkLaunch` Express (`simple`) query-string profile.
 ///
@@ -12,9 +12,21 @@ use std::collections::{BTreeMap, btree_map::Entry};
 /// This pure projection does not mutate native request maps or interpret schemas.
 /// Extended/custom Express query parsers, JavaScript object prototypes/key order,
 /// and inputs containing unpaired UTF-16 surrogates are outside this string API.
+/// [`parse_typescript_simple_query_ordered`] returns the same fields in the
+/// order a TypeScript handler enumerates them.
 #[must_use]
 pub fn parse_typescript_simple_query(raw: Option<&str>) -> BTreeMap<String, Value> {
-    let mut fields = BTreeMap::new();
+    parse_typescript_simple_query_ordered(raw)
+        .into_iter()
+        .collect()
+}
+
+/// [`parse_typescript_simple_query`] with the member order a TypeScript handler
+/// sees on `req.query`: canonical array-index names ascending, then every other
+/// name in first-occurrence order. Values and limits are identical.
+#[must_use]
+pub fn parse_typescript_simple_query_ordered(raw: Option<&str>) -> Map<String, Value> {
+    let mut fields = Map::new();
     for segment in raw.unwrap_or_default().split('&').take(1_000) {
         if segment.is_empty() {
             continue;
@@ -33,6 +45,16 @@ pub fn parse_typescript_simple_query(raw: Option<&str>) -> BTreeMap<String, Valu
                 }
             },
         }
+    }
+    let index = |key: &str| {
+        key.parse::<u32>()
+            .ok()
+            .filter(|index| *index != u32::MAX && index.to_string() == key)
+    };
+    if fields.keys().any(|key| index(key).is_some()) {
+        let mut ordered: Vec<_> = fields.into_iter().collect();
+        ordered.sort_by_key(|(key, _)| index(key).map_or((1, 0), |index| (0, index)));
+        fields = ordered.into_iter().collect();
     }
     fields
 }
@@ -56,6 +78,20 @@ mod tests {
             json!({"a[]":["1","2"],"__proto__":"x","":"y","x":"�%A","z":"�  "})
         );
         assert!(parse_typescript_simple_query(None).is_empty());
+    }
+    #[test]
+    fn ordered_projection_matches_node_member_order() {
+        let raw = Some("b=1&a=2&10=3&2=4&b=5&01=6");
+        let ordered = parse_typescript_simple_query_ordered(raw);
+        assert_eq!(
+            ordered.keys().collect::<Vec<_>>(),
+            ["2", "10", "b", "a", "01"]
+        );
+        assert_eq!(ordered["b"], json!(["1", "5"]));
+        assert_eq!(
+            ordered.into_iter().collect::<BTreeMap<_, _>>(),
+            parse_typescript_simple_query(raw)
+        );
     }
     #[test]
     fn empty_segments_count_towards_node_default_limit() {
