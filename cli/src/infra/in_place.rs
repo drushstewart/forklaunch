@@ -881,6 +881,7 @@ pub(crate) fn set_manifest_resource(
     key: &str,
     value: Option<&str>,
 ) -> Result<String> {
+    let text = &crate::core::manifest::strip_retired_manifest_keys(text);
     let mut doc: toml_edit::DocumentMut = text.parse().context("parsing manifest.toml")?;
     let projects = doc
         .get_mut("projects")
@@ -1120,6 +1121,7 @@ pub(crate) fn set_manifest_capability(
     id: &str,
     adding: bool,
 ) -> Result<String> {
+    let text = &crate::core::manifest::strip_retired_manifest_keys(text);
     let mut doc: toml_edit::DocumentMut = text.parse().context("parsing manifest.toml")?;
     let projects = doc
         .get_mut("projects")

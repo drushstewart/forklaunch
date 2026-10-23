@@ -27,6 +27,13 @@ enum Addable {
     Capability(&'static super::capabilities::Capability),
 }
 
+
+/// Dependencies `infra add` ensures but `infra remove` leaves: every generated
+/// TypeScript service declares ioredis whether or not it has a cache, so
+/// removing it made an add/remove round trip drop a line that was there
+/// before the add.
+const CACHE_INDEPENDENT_DEPENDENCIES: &[&str] = &["ioredis"];
+
 fn parse_addable(name: &str) -> Result<Addable> {
     if let Some(capability) = super::capabilities::find(name) {
         return Ok(Addable::Capability(capability));
@@ -280,6 +287,8 @@ fn change_infrastructure(matches: &ArgMatches, adding: bool) -> Result<()> {
         for (name, version) in dependencies {
             changed = if adding {
                 in_place::add_dependency(&changed, name, version)?
+            } else if CACHE_INDEPENDENT_DEPENDENCIES.contains(name) {
+                changed
             } else {
                 in_place::remove_dependency(&changed, name)?
             };

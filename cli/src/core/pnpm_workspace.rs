@@ -378,6 +378,29 @@ pub(crate) fn render_pnpm_workspace_with_packages(
     Ok(to_string(&pnpm_workspace).with_context(|| ERROR_FAILED_TO_GENERATE_PNPM_WORKSPACE)?)
 }
 
+/// `content` (a rendered pnpm-workspace.yaml) with the settings the shared
+/// production image needs: `injectWorkspacePackages: true` and `build` among
+/// `syncInjectedDepsAfterScripts`, as the image reconciler writes them.
+pub(crate) fn with_injected_workspace_packages(content: &str) -> Result<String> {
+    let mut workspace: PnpmWorkspace =
+        from_str(content).with_context(|| ERROR_FAILED_TO_PARSE_PNPM_WORKSPACE)?;
+    workspace
+        .other
+        .entry("injectWorkspacePackages".to_string())
+        .or_insert(Value::Bool(true));
+    let scripts = workspace
+        .other
+        .entry("syncInjectedDepsAfterScripts".to_string())
+        .or_insert_with(|| Value::Sequence(Vec::new()));
+    if let Value::Sequence(scripts) = scripts {
+        let build = Value::String("build".to_string());
+        if !scripts.contains(&build) {
+            scripts.push(build);
+        }
+    }
+    Ok(to_string(&workspace).with_context(|| ERROR_FAILED_TO_GENERATE_PNPM_WORKSPACE)?)
+}
+
 pub(crate) fn add_project_definition_to_pnpm_workspace<
     T: ManifestConfig + ProjectManifestConfig + InitializableManifestConfig + Serialize,
 >(

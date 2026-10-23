@@ -237,6 +237,28 @@ impl CliCommand for ServiceCommand {
             }
         }
 
+        // The database's shared entries (core driver, workspace scripts,
+        // Compose service) go with the last project that uses it.
+        let mut released_files = Vec::new();
+        if let Ok(database) = manifest_data.database.parse::<crate::constants::Database>() {
+            released_files = crate::core::database::release_database(
+                &service_base_path,
+                &manifest_data.app_name,
+                &manifest_data.projects,
+                &database,
+                Some(&mut docker_compose),
+                &mut rendered_templates_cache,
+            )?;
+            rendered_templates_cache.insert(
+                docker_compose_path.to_string_lossy().to_string(),
+                RenderedTemplate {
+                    path: docker_compose_path.clone(),
+                    content: serde_yml::to_string(&docker_compose)?,
+                    context: Some(ERROR_FAILED_TO_WRITE_DOCKER_COMPOSE.to_string()),
+                },
+            );
+        }
+
         remove_project_from_client_sdk(
             &mut rendered_templates_cache,
             &service_base_path,
@@ -270,6 +292,10 @@ impl CliCommand for ServiceCommand {
             .map(|(_, template)| template)
             .collect();
         write_rendered_templates(&rendered_templates, false, &mut stdout)?;
+        for path in released_files {
+            std::fs::remove_file(&path)
+                .with_context(|| format!("Failed to remove {}", path.display()))?;
+        }
 
         crate::sdk::typescript_build::remove_hook(&app_root_path, &service_name)?;
         // The manifest entry is already gone, so remove_hook cannot find the

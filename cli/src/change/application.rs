@@ -143,6 +143,7 @@ fn change_name(
     let existing_kebab_name = manifest_data.kebab_case_app_name.clone();
 
     manifest_data.app_name = name.to_string();
+    rename_license_holder(base_path, &existing_name, name, rendered_templates_cache)?;
     manifest_data.kebab_case_app_name = name.to_case(Case::Kebab);
     manifest_data.camel_case_app_name = name.to_case(Case::Camel);
     manifest_data.pascal_case_app_name = name.to_case(Case::Pascal);
@@ -281,6 +282,35 @@ fn change_name(
         }
     }
 
+    Ok(())
+}
+
+/// The MIT license names the application as its copyright holder; a rename
+/// carries over to that line (and only that line, so an edited year or a
+/// changed license text stays as written).
+fn rename_license_holder(
+    base_path: &Path,
+    existing_name: &str,
+    name: &str,
+    rendered_templates_cache: &mut RenderedTemplatesCache,
+) -> Result<()> {
+    let license_path = base_path.join("LICENSE");
+    let Some(license) = rendered_templates_cache.get(&license_path)? else {
+        return Ok(());
+    };
+    let holder = regex::Regex::new(&format!(
+        r"(?m)^(Copyright \(c\).*?)\b{}\b([ \t]*)$",
+        regex::escape(existing_name)
+    ))?;
+    let renamed = holder.replace_all(&license.content, |captures: &regex::Captures| {
+        format!("{}{name}{}", &captures[1], &captures[2])
+    });
+    if renamed != license.content {
+        rendered_templates_cache.insert(
+            license_path.to_string_lossy(),
+            RenderedTemplate { path: license_path.clone(), content: renamed.into_owned(), context: None },
+        );
+    }
     Ok(())
 }
 
@@ -937,7 +967,14 @@ fn change_runtime(
         }
     }
 
-    if let Some(test_framework) = test_framework {
+    // The test framework's configuration only needs regenerating when the
+    // application had none (it was just prompted for). A framework requested
+    // with -t is applied by the handler; the one already in place stays as it
+    // is: regenerating it rewrote vitest.config.ts and reordered every
+    // tsconfig's types, so bun→node did not return to the original files.
+    let needs_test_framework_setup = matches.get_one::<String>("test-framework").is_none()
+        && manifest_data.test_framework.is_none();
+    if let Some(test_framework) = test_framework.filter(|_| needs_test_framework_setup) {
         let (test_framework_removal_templates, test_framework_symlink_templates) =
             change_test_framework(
                 base_path,
@@ -1245,6 +1282,17 @@ fn change_runtime(
             }
         }
         Runtime::Node => {
+            // Undo what the Bun branch adds: the package.json workspace list
+            // (pnpm-workspace.yaml holds it), the framework overrides bun reads
+            // from package.json, and the generated bunfig.toml.
+            application_json_to_write.workspaces = None;
+            remove_framework_overrides(application_json_to_write)?;
+            let bunfig_path = base_path.join("bunfig.toml");
+            if read_to_string(&bunfig_path)
+                .is_ok_and(|content| crate::core::bunfig::is_generated_bunfig(&content))
+            {
+                removal_templates.push(RemovalTemplate { path: bunfig_path });
+            }
             rendered_templates_cache.insert(
                 "pnpm-workspace.yaml".to_string(),
                 RenderedTemplate {
@@ -1252,7 +1300,21 @@ fn change_runtime(
                     content: crate::core::pnpm_workspace::render_pnpm_workspace_with_packages(
                         base_path,
                         existing_workspaces,
-                    )?,
+                    )
+                    .and_then(|content| {
+                        // The generated production image installs injected
+                        // workspace packages (see typescript_image); pnpm
+                        // keeps those settings in this file, which the Bun
+                        // runtime did not have.
+                        let managed = base_path.ancestors().any(|root| {
+                            crate::init::rust_project::managed_typescript_image(root).is_some()
+                        });
+                        if managed {
+                            crate::core::pnpm_workspace::with_injected_workspace_packages(&content)
+                        } else {
+                            Ok(content)
+                        }
+                    })?,
                     context: None,
                 },
             );
@@ -1421,6 +1483,25 @@ fn change_runtime(
     }
 
     Ok((removal_templates, symlink_templates))
+}
+
+/// Drop the `overrides` entries the Bun runtime added (each framework package
+/// at the default release pin), and the key when nothing else is left. An
+/// entry the user changed or added stays.
+fn remove_framework_overrides(application_json: &mut ApplicationPackageJson) -> Result<()> {
+    let defaults = serde_json::to_value(crate::core::pnpm_workspace::framework_release_overrides())?;
+    let defaults = defaults.as_object().context("Framework overrides must be an object")?;
+    let Some(overrides) = application_json.additional_entries.get_mut("overrides") else {
+        return Ok(());
+    };
+    let Some(entries) = overrides.as_object_mut() else {
+        return Ok(());
+    };
+    entries.retain(|name, version| defaults.get(name) != Some(version));
+    if entries.is_empty() {
+        application_json.additional_entries.remove("overrides");
+    }
+    Ok(())
 }
 
 fn change_test_framework(
@@ -2182,6 +2263,15 @@ impl CliCommand for ApplicationCommand {
                 removal_templates.push(removal_template);
             }
         }
+        // Package keys under the application's scope follow a rename.
+        let (old_scope, new_scope) = (
+            format!("@{}/", existing_manifest_data.app_name),
+            format!("@{}/", manifest_data.app_name),
+        );
+        let rename_scope = |key: &str| match key.strip_prefix(&old_scope) {
+            Some(rest) => format!("{new_scope}{rest}"),
+            None => key.to_string(),
+        };
         rendered_templates_cache.insert(
             manifest_path.to_string_lossy(),
             RenderedTemplate {
@@ -2194,23 +2284,26 @@ impl CliCommand for ApplicationCommand {
             application_package_json_path.to_string_lossy(),
             RenderedTemplate {
                 path: application_package_json_path.clone(),
-                content: serde_json::to_string_pretty(&application_json_to_write)?,
+                content: crate::core::package_json::preserve_json_layout_renamed(
+                    &application_package_json_data,
+                    &serde_json::to_string_pretty(&application_json_to_write)?,
+                    &rename_scope,
+                ),
                 context: None,
             },
         );
         project_jsons_to_write
             .iter()
             .for_each(|(project_name, project_json)| {
+                let path = app_path.join(project_name).join("package.json");
+                let rendered = serde_json::to_string_pretty(&project_json).unwrap();
+                let content = match read_to_string(&path) {
+                    Ok(original) => crate::core::package_json::preserve_json_layout_renamed(&original, &rendered, &rename_scope),
+                    Err(_) => rendered,
+                };
                 rendered_templates_cache.insert(
-                    app_path
-                        .join(project_name)
-                        .join("package.json")
-                        .to_string_lossy(),
-                    RenderedTemplate {
-                        path: app_path.join(project_name).join("package.json"),
-                        content: serde_json::to_string_pretty(&project_json).unwrap(),
-                        context: None,
-                    },
+                    path.to_string_lossy().to_string(),
+                    RenderedTemplate { path, content, context: None },
                 );
             });
         // A file this change removes may have been read back into the cache by
@@ -2289,6 +2382,22 @@ mod adapter_migration_tests {
 #[cfg(test)]
 mod license_tests {
     use super::*;
+
+    #[test]
+    fn rename_carries_over_to_the_license_copyright_holder() {
+        let root = tempfile::tempdir().unwrap();
+        let text = "MIT License\n\nCopyright (c) 2026 zebra\n\nzebra is free software\n";
+        std::fs::write(root.path().join("LICENSE"), text).unwrap();
+        let mut cache = RenderedTemplatesCache::new();
+        rename_license_holder(root.path(), "zebra", "kestrel", &mut cache).unwrap();
+        let renamed = cache.get(root.path().join("LICENSE")).unwrap().unwrap().content;
+        assert_eq!(renamed, "MIT License\n\nCopyright (c) 2026 kestrel\n\nzebra is free software\n");
+        // A license that does not name the application is left alone.
+        std::fs::write(root.path().join("LICENSE"), "Apache License\n").unwrap();
+        let mut cache = RenderedTemplatesCache::new();
+        rename_license_holder(root.path(), "zebra", "kestrel", &mut cache).unwrap();
+        assert_eq!(cache.get(root.path().join("LICENSE")).unwrap().unwrap().content, "Apache License\n");
+    }
 
     #[test]
     fn changing_license_rewrites_license_file_instead_of_deleting_it() {

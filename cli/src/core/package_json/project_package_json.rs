@@ -347,17 +347,21 @@ impl Serialize for ProjectDependencies {
         if let Some(ref v) = self.mikro_orm_core {
             map.serialize_entry("@mikro-orm/core", v)?;
         }
+        // One migrations package per kind (SQL, MongoDB), not one per
+        // database: two SQL databases used to write the key twice. Drivers
+        // follow in name order; the set itself is unordered.
+        let mut databases: Vec<&Database> = self.databases.iter().collect();
+        databases.sort_by_key(|database| database.to_string());
         if let Some(ref v) = self.mikro_orm_migrations {
-            for database in &self.databases {
-                if database == &Database::MongoDB {
-                    map.serialize_entry("@mikro-orm/migrations-mongodb", v)?;
-                } else {
-                    map.serialize_entry("@mikro-orm/migrations", v)?;
-                }
+            if databases.iter().any(|database| **database != Database::MongoDB) {
+                map.serialize_entry("@mikro-orm/migrations", v)?;
+            }
+            if databases.iter().any(|database| **database == Database::MongoDB) {
+                map.serialize_entry("@mikro-orm/migrations-mongodb", v)?;
             }
         }
         if let Some(ref v) = self.mikro_orm_database {
-            for database in &self.databases {
+            for database in &databases {
                 map.serialize_entry(&format!("@mikro-orm/{}", database.to_string()), v)?;
             }
         }

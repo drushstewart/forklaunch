@@ -832,7 +832,7 @@ impl CliCommand for WorkerCommand {
                         path: worker_base_path.parent().unwrap().join("package.json"),
                         content: serde_json::to_string_pretty(&application_package_json_to_write)?,
                         context: None,
-                    },
+                    }.preserving_json_layout(),
                 );
 
                 rendered_templates_cache.insert(
@@ -844,7 +844,7 @@ impl CliCommand for WorkerCommand {
                         path: worker_base_path.join("package.json"),
                         content: serde_json::to_string_pretty(&project_package_json_to_write)?,
                         context: None,
-                    },
+                    }.preserving_json_layout(),
                 );
 
                 let rendered_templates: Vec<RenderedTemplate> = rendered_templates_cache
@@ -1062,7 +1062,7 @@ impl CliCommand for WorkerCommand {
                 path: application_package_json_path.into(),
                 content: serde_json::to_string_pretty(&application_package_json_to_write)?,
                 context: None,
-            },
+            }.preserving_json_layout(),
         );
 
         rendered_templates_cache.insert(
@@ -1074,7 +1074,7 @@ impl CliCommand for WorkerCommand {
                 path: project_package_json_path.into(),
                 content: serde_json::to_string_pretty(&project_json_to_write)?,
                 context: None,
-            },
+            }.preserving_json_layout(),
         );
 
         let rendered_templates: Vec<RenderedTemplate> = rendered_templates_cache

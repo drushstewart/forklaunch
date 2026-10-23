@@ -31,6 +31,8 @@ config_struct!(
         pub(crate) worker_name: String,
         #[serde(skip_serializing, skip_deserializing)]
         pub(crate) camel_case_name: String,
+        // Derived from the project name; never a manifest key.
+        #[serde(skip_serializing, skip_deserializing)]
         pub(crate) snake_case_name: String,
         #[serde(skip_serializing, skip_deserializing)]
         pub(crate) pascal_case_name: String,
