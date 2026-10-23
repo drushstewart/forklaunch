@@ -25,6 +25,73 @@ pub(crate) mod application_package_json;
 pub(crate) mod package_json_constants;
 pub(crate) mod project_package_json;
 
+/// `rendered` (a package.json the CLI reserialized from its structs) laid
+/// out like `original`, the file on disk: unchanged content keeps the original
+/// bytes, and otherwise every object keeps its original key order, with new
+/// keys after the existing ones, and the file keeps its trailing newline.
+/// The structs serialize in their own field order, so without this a change
+/// that touches one field reorders keys it never touched, and a change and
+/// its inverse do not round-trip.
+pub(crate) fn preserve_json_layout(original: &str, rendered: &str) -> String {
+    preserve_json_layout_renamed(original, rendered, &|key| key.to_string())
+}
+
+/// [`preserve_json_layout`] for a change that renames keys (an application
+/// rename moves `@old/core` to `@new/core`): `rename` maps an original key to
+/// the key it became, which then takes the original's place.
+pub(crate) fn preserve_json_layout_renamed(
+    original: &str,
+    rendered: &str,
+    rename: &dyn Fn(&str) -> String,
+) -> String {
+    use serde_json::{Map, Value};
+    fn ordered(original: &Value, rendered: &Value, rename: &dyn Fn(&str) -> String) -> Value {
+        match (original, rendered) {
+            (Value::Object(before), Value::Object(after)) => {
+                let mut out = Map::new();
+                for (key, value) in before {
+                    let key = if after.contains_key(key) { key.clone() } else { rename(key) };
+                    if let Some(new) = after.get(&key) {
+                        out.insert(key, ordered(value, new, rename));
+                    }
+                }
+                for (key, value) in after {
+                    if !out.contains_key(key) {
+                        out.insert(key.clone(), value.clone());
+                    }
+                }
+                Value::Object(out)
+            }
+            (Value::Array(before), Value::Array(after)) => Value::Array(
+                after
+                    .iter()
+                    .enumerate()
+                    .map(|(i, value)| {
+                        before.get(i).map_or_else(|| value.clone(), |old| ordered(old, value, rename))
+                    })
+                    .collect(),
+            ),
+            (_, rendered) => rendered.clone(),
+        }
+    }
+    let (Ok(before), Ok(after)) = (
+        serde_json::from_str::<Value>(original),
+        serde_json::from_str::<Value>(rendered),
+    ) else {
+        return rendered.to_string();
+    };
+    if before == after {
+        return original.to_string();
+    }
+    let Ok(mut out) = to_string_pretty(&ordered(&before, &after, rename)) else {
+        return rendered.to_string();
+    };
+    if original.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 pub(crate) fn add_project_definition_to_package_json<
     T: Content + ManifestConfig + ProjectManifestConfig + InitializableManifestConfig + Serialize,
 >(
@@ -207,4 +274,21 @@ pub(crate) fn remove_project_definition_to_package_json(
 
     Ok(to_string_pretty(&full_package_json)
         .with_context(|| ERROR_FAILED_TO_ADD_PROJECT_METADATA_TO_PACKAGE_JSON)?)
+}
+
+#[cfg(test)]
+mod layout_tests {
+    use super::preserve_json_layout;
+
+    #[test]
+    fn unchanged_content_keeps_its_bytes_and_changes_keep_key_order() {
+        let original = "{\n  \"name\": \"a\",\n  \"dependencies\": {\"@app/core\": \"workspace:*\", \"zod\": \"1\"}\n}\n";
+        let same = "{\"dependencies\":{\"zod\":\"1\",\"@app/core\":\"workspace:*\"},\"name\":\"a\"}";
+        assert_eq!(preserve_json_layout(original, same), original);
+        let changed = "{\"dependencies\":{\"zod\":\"2\",\"@app/core\":\"workspace:*\",\"uuid\":\"1\"},\"name\":\"a\"}";
+        assert_eq!(
+            preserve_json_layout(original, changed),
+            "{\n  \"name\": \"a\",\n  \"dependencies\": {\n    \"@app/core\": \"workspace:*\",\n    \"zod\": \"2\",\n    \"uuid\": \"1\"\n  }\n}\n"
+        );
+    }
 }
