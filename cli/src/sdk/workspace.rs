@@ -140,6 +140,7 @@ pub(super) fn plan_typescript_sdk(
     }
     let mut outputs = Vec::new();
     let mut has_modules = false;
+    let mut module_scripts = Vec::new();
     if let Some(relative) = manifest.get("modules_path").and_then(toml::Value::as_str) {
         let relative = Path::new(relative);
         let modules_package = output_path(root, &relative.join("package.json"))?;
@@ -149,6 +150,11 @@ pub(super) fn plan_typescript_sdk(
                 outputs.push(("bunfig.toml".into(), policy));
             }
             let mut modules: Json = serde_json::from_str(&fs::read_to_string(&modules_package)?)?;
+            module_scripts = modules
+                .get("scripts")
+                .and_then(Json::as_object)
+                .map(|scripts| scripts.keys().cloned().collect())
+                .unwrap_or_default();
             if !bun
                 && package.get("packageManager").is_none()
                 && let Some(manager) = modules.get("packageManager")
@@ -413,6 +419,31 @@ pub(super) fn plan_typescript_sdk(
             } else {
                 build
             }));
+    }
+    if has_modules {
+        // The TypeScript tooling (linter, formatter, tests) lives with the
+        // modules; the root runs it there, plus the Cargo equivalent.
+        let cargo = root.join("Cargo.toml").is_file();
+        for (name, rust) in [
+            ("lint", Some("cargo clippy --workspace --all-targets --no-deps")),
+            ("lint:fix", None),
+            ("format", Some("cargo fmt --all")),
+            ("test", Some("cargo test --workspace")),
+        ] {
+            if !module_scripts.iter().any(|script| script == name) {
+                continue;
+            }
+            let typescript = if bun {
+                format!("bun run --cwd {modules_path} {name}")
+            } else {
+                format!("pnpm --dir {modules_path} run {name}")
+            };
+            let command = match rust.filter(|_| cargo) {
+                Some(rust) => format!("{typescript} && {rust}"),
+                None => typescript,
+            };
+            scripts.entry(name).or_insert(json!(command));
+        }
     }
     add_packages(&mut workspace, &additions)?;
     // Parse and validate both files before publishing either update.
