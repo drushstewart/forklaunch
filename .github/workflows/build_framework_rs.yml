@@ -19,6 +19,9 @@ on:
       - 'framework/**/package.json'
       - '.github/workflows/build_framework_rs.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

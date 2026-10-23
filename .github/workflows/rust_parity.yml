@@ -711,6 +711,9 @@ on:
       - 'cli/tests/fixtures/rust_typescript_authorization.rs'
       - '.github/workflows/rust_parity.yml'
 
+permissions:
+  contents: read
+
 jobs:
   framework:
     runs-on: ubuntu-latest

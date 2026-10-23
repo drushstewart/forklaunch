@@ -17,6 +17,9 @@ on:
       - 'scripts/rust_format.py'
       - '.github/workflows/build_blueprint_rs.yml'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

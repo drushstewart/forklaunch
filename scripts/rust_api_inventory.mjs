@@ -110,7 +110,7 @@ const packages = manifests.map(manifest => {
       const pattern = target.replace(/^\.\//, '');
       const matches = [...emitted].flatMap(([output, file]) => {
         const match = patternMatch(pattern, output);
-        return match === undefined ? [] : [{subpath: subpath.replace('*', match), target: output, source: relative(file)}];
+        return match === undefined ? [] : [{subpath: subpath.replaceAll('*', match), target: output, source: relative(file)}];
       });
       entries.push(...(matches.length ? matches : [{subpath, target, unresolved: true}]));
     }

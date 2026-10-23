@@ -34,7 +34,7 @@ function scalarConfiguration(html) {
     result = JSON.parse(JSON.stringify(config));
   };
   for (const [, attributes, code] of html.matchAll(
-    /<script([^>]*)>([\s\S]*?)<\/script>/gi
+    /<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi
   )) {
     if (/\bsrc=/.test(attributes)) continue;
     // The official renderer may use an ESM import; provide that function at the
@@ -231,7 +231,7 @@ try {
         }
       };
       const script = output['/swagger'].body.match(
-        /<script>([\s\S]*?)<\/script>/
+        /<script>([\s\S]*?)<\/script\b[^>]*>/i
       )[1];
       vm.runInNewContext(script, context);
       context.window.onload();

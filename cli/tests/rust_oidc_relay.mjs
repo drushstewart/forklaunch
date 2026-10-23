@@ -5,7 +5,7 @@ import vm from 'node:vm';
 const root = new URL('../../blueprint-rs/crates/implementations/iam/iam-base/src/http/browser/',import.meta.url);
 const html = await readFile(new URL('oidc_relay.html',root),'utf8');
 const csp = await readFile(new URL('oidc_relay.csp',root),'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const script = html.match(/<script>([\s\S]*?)<\/script\b[^>]*>/i)[1];
 assert.ok(csp.includes(`script-src 'sha256-${createHash('sha256').update(script).digest('base64')}'`));
 for (const query of ['?code=secret-code&state=secret-state','?code=a&code=b&state=x','?error=access_denied&state=x','?code=a&state=']) {
   const events = [];
