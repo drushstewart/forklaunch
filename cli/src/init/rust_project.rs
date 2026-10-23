@@ -1157,7 +1157,12 @@ pub(crate) fn change_rust_project(
     if current_kind == RustProjectKind::Worker && target_kind == RustProjectKind::Worker && convert_worker && producer_worker
         && let (Some(from), Some(to)) = (current_backend, target_backend)
     {
-        // Rename and describe first, then move the queue backend.
+        // Check the backend change against the current name first so a
+        // refused change leaves the project untouched; then rename and
+        // describe, then move the queue backend.
+        if !dryrun {
+            worker::change_producer_backend(app_root, current_name, from, to, true)?;
+        }
         let name = if current_name != target_name || description.is_some() {
             change_rust_project(app_root, current_name, new_name, description, None, None, None, dryrun)?
         } else {
@@ -1180,7 +1185,12 @@ pub(crate) fn change_rust_project(
         _ => None,
     };
     if let Some(backend) = kind_change {
-        // Rename and describe first, then change the generated shape.
+        // Check the shape change against the current name first so a refused
+        // change leaves the project untouched; then rename and describe, then
+        // change the generated shape.
+        if !dryrun {
+            kind_change::change_kind(app_root, current_name, backend, true)?;
+        }
         let name = if current_name != target_name || description.is_some() {
             change_rust_project(app_root, current_name, new_name, description, None, None, None, dryrun)?
         } else {
