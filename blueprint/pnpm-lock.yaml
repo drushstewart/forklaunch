@@ -15,8 +15,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -106,8 +106,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -230,8 +230,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -354,8 +354,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -500,8 +500,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -558,8 +558,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -1617,8 +1617,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -1738,8 +1738,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)
       '@forklaunch/express':
-        specifier: ^1.2.52
-        version: 1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
+        specifier: ^1.2.53
+        version: 1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)
       '@forklaunch/hyper-express':
         specifier: ^1.2.51
         version: 1.2.51(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(express@5.3.0(supports-color@8.1.1))(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(uWebSockets.js@https://codeload.github.com/uNetworking/uWebSockets.js/tar.gz/cfc9a40d8132a34881813cec3d5f8e3a185b3ce3)
@@ -2787,8 +2787,8 @@ packages:
       stripe:
         optional: true
 
-  '@forklaunch/express@1.2.52':
-    resolution: {integrity: sha512-6pEXHiRf5p9nBVHYnHes/71s5i2oBcSC834ggWMYH7ipvL4jG5h9CcczxiimUV4ikpIy/qiRHgot+d3AenTV6Q==}
+  '@forklaunch/express@1.2.53':
+    resolution: {integrity: sha512-U4bpx+LHYFWCoYEcyWfQb60uBOCSKplgD9dwAvS7YQH7qJ6fM9X6wPNHTmH1lOxnfv1FxBQfR5mvF70WCJs50g==}
 
   '@forklaunch/hyper-express-fork@6.18.1':
     resolution: {integrity: sha512-U8mP9vibNXj4FwmMXcEIqK+oJHXf5Pbn2EFaPBpjtjNiMDNcE+10cObaaGMbSJigjNVM5l38UP3xzF3/e+DWoA==}
@@ -9502,7 +9502,7 @@ snapshots:
       - supports-color
       - sury
 
-  '@forklaunch/express@1.2.52(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)':
+  '@forklaunch/express@1.2.53(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(jose@6.2.12)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)(zod@4.6.7)':
     dependencies:
       '@forklaunch/common': 1.2.32
       '@forklaunch/core': 3.3.0(ajv-formats@3.0.1(ajv@8.20.0))(ajv@8.20.0)(openapi-types@12.1.3)(stripe@22.6.2(@types/node@26.6.5))(supports-color@8.1.1)

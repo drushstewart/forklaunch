@@ -44,7 +44,7 @@
     "@forklaunch/blueprint-monitoring": "workspace:^",
     "@forklaunch/common": "^1.2.32",
     "@forklaunch/core": "^3.3.0",
-    "@forklaunch/express": "^1.2.52",
+    "@forklaunch/express": "^1.2.53",
     "@forklaunch/hyper-express": "^1.2.51",
     "@forklaunch/implementation-billing-stripe": "workspace:^",
     "@forklaunch/infrastructure-redis": "^1.4.22",

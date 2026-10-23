@@ -273,7 +273,7 @@ pub(crate) const COMMON_VERSION: &str = "~1.2.32";
 // @forklaunch/core
 pub(crate) const CORE_VERSION: &str = "~3.3.0";
 // @forklaunch/express
-pub(crate) const EXPRESS_VERSION: &str = "~1.2.52";
+pub(crate) const EXPRESS_VERSION: &str = "~1.2.53";
 // @forklaunch/hyper-express
 pub(crate) const HYPER_EXPRESS_VERSION: &str = "~1.2.51";
 // uWebSockets.js — a peer of @forklaunch/hyper-express rather than one of its
