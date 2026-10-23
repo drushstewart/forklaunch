@@ -30,6 +30,18 @@ pub(crate) fn create_forklaunch_dir(path_dir: &String, dryrun: bool) -> Result<(
     Ok(())
 }
 
+impl RenderedTemplate {
+    /// For a package.json the CLI reserialized: keep the file's own key
+    /// order (and its bytes when nothing changed). See
+    /// [`super::package_json::preserve_json_layout`].
+    pub(crate) fn preserving_json_layout(mut self) -> Self {
+        if let Ok(original) = std::fs::read_to_string(&self.path) {
+            self.content = super::package_json::preserve_json_layout(&original, &self.content);
+        }
+        self
+    }
+}
+
 pub(crate) fn write_rendered_templates(
     rendered_templates: &Vec<RenderedTemplate>,
     dryrun: bool,
