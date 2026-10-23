@@ -398,6 +398,11 @@ def check_sync():
         command('sync', kind, name)
     command('sync', 'all', '--confirm')
     assert all(path.read_bytes() == data for path, data in owned.items()), 'Sync replaced custom source'
+    # Nor does it add sources init would not write (an empty domain/mappers/mod.rs).
+    # Generated SDK and event bindings are sync's to write.
+    added = {path for name in ['accounts', 'jobs'] for path in project(name).rglob('*.rs')
+             if not {'sdk', 'events'} & set(path.relative_to(project(name)).parts)} - owned.keys()
+    assert not added, f'Sync added sources: {sorted(map(str, added))}'
 
     for kind, source, destination in [('service', 'accounts', 'products'), ('worker', 'jobs', 'media'),
                                       ('library', 'shared', 'common')]:
